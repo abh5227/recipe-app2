@@ -73,6 +73,10 @@ def test_cook_log(kitchen):
     assert after_uncook["cook_count"] == 0
 
 
+def test_uncook_nonexistent_is_404(kitchen):
+    assert kitchen.client.post("/api/recipes/does-not-exist/uncook", json={}).status_code == 404
+
+
 def test_deleting_recipe_clears_its_stats(kitchen):
     # deletion relies on ON DELETE CASCADE to remove the recipe's rating + cook history
     cl = kitchen.client

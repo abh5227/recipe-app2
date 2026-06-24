@@ -305,6 +305,21 @@ bite. None occur in the current recipes.
   General fix: the 1d markup approach (mark which number scales). Safe today because no recipe
   uses these forms; add it here if a new recipe ever does.
 
+- **`migrate.py` is not per-migration atomic.** `executescript()` runs statements in autocommit
+  mode, so a migration that fails midway leaves a partial schema with no `schema_migrations`
+  record. Only affects *future* migrations (the existing 7 are applied and fine). Fix if it
+  ever bites: wrap each migration file's statements in an explicit `BEGIN;` / `COMMIT;` block.
+
+- **Tests are coupled to exact seed counts.** Adding recipes or ingredients to `seed.py` will
+  make `test_list_recipes` (`== 5`), `test_ingredients_and_in_season` (`== 36`), and
+  `test_seed_counts` go red until those three numbers are updated. Expected, not a bug — just
+  update the counts when adding seed data.
+
+- **Test harness mutates module globals without teardown.** `tests/harness.py` sets
+  `migrate.DB` / `build_db.DB` / `app.DB` on shared module objects with no restore. Fine for
+  sequential pytest; would break under parallel runs (pytest-xdist). Only relevant if
+  parallelism is ever added.
+
 ## Declined
 
 - Step timers.

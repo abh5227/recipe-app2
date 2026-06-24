@@ -283,9 +283,9 @@ def update_recipe(rid):
             return jsonify({"error": err}), 400
         c.execute(
             """UPDATE recipes SET
-                 name=?, author=?, source_url=?, category=?, servings=?, prep_time=?,
-                 cook_time=?, total_time=?, descr=?, notes=?, image=?
-               WHERE id=?""",
+                name=?, author=?, source_url=?, category=?, servings=?, prep_time=?,
+                cook_time=?, total_time=?, descr=?, notes=?, image=?
+                WHERE id=?""",
             (clean["name"], payload.get("author"), payload.get("source_url"),
              payload.get("category"), payload.get("servings"), payload.get("prep_time"),
              payload.get("cook_time"), payload.get("total_time"), payload.get("descr"),
@@ -342,17 +342,17 @@ def set_line_change(rid, pid, pos):
                 return jsonify({"error": "a quantity is required to change a line"}), 400
             c.execute(
                 """INSERT INTO recipe_line_changes (recipe_id, person_id, position, kind, new_qty)
-                   VALUES (?, ?, ?, 'edit', ?)
-                   ON CONFLICT(recipe_id, person_id, position)
-                       DO UPDATE SET kind = 'edit', new_qty = excluded.new_qty""",
+                VALUES (?, ?, ?, 'edit', ?)
+                ON CONFLICT(recipe_id, person_id, position)
+                DO UPDATE SET kind = 'edit', new_qty = excluded.new_qty""",
                 (rid, pid, pos, qty),
             )
         elif kind == "remove":
             c.execute(
                 """INSERT INTO recipe_line_changes (recipe_id, person_id, position, kind, new_qty)
-                   VALUES (?, ?, ?, 'remove', NULL)
-                   ON CONFLICT(recipe_id, person_id, position)
-                       DO UPDATE SET kind = 'remove', new_qty = NULL""",
+                VALUES (?, ?, ?, 'remove', NULL)
+                ON CONFLICT(recipe_id, person_id, position)
+                DO UPDATE SET kind = 'remove', new_qty = NULL""",
                 (rid, pid, pos),
             )
         else:
@@ -527,6 +527,8 @@ def log_cook(rid):
 def undo_cook(rid):
     """Remove the most recent cook entry — for fixing an accidental tap."""
     with db() as c:
+        if c.execute("SELECT 1 FROM recipes WHERE id = ?", (rid,)).fetchone() is None:
+            return jsonify({"error": "recipe not found"}), 404
         last = c.execute(
             "SELECT id FROM cook_log WHERE recipe_id = ? ORDER BY id DESC LIMIT 1", (rid,)
         ).fetchone()
