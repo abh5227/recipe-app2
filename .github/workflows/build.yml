@@ -1,0 +1,24 @@
+name: SonarQube
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+jobs:
+  sonarqube:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history, so issues map to commits
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run tests with coverage
+        run: |
+          pip install -r requirements.txt -r requirements-dev.txt pytest-cov
+          pytest --cov=. --cov-report=xml     # writes coverage.xml
+      - name: SonarQube Scan
+        uses: SonarSource/sonarqube-scan-action@v5   # check the Marketplace for the current version
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
