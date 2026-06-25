@@ -54,7 +54,8 @@ Everything is free except two items.
 | ✓ done | Phase 0 — Test suite | 22 tests covering API, build/migrate, and per-person change layers |
 | ✓ done | Phase 1a — Scaler | Ingredient list only |
 | ✓ done | Phase 1b — Metric/imperial toggle | Ingredient list only; same scope as 1a |
-| upcoming | Phase 1c–1d | Volume↔weight (King Arthur) · step scaling |
+| ✓ done | Phase 1c — Volume↔weight | King Arthur chart; server-side matcher + coverage report |
+| upcoming | Phase 1d — Step-text scaling | Safe-hybrid: markup > guard > heuristic |
 | not started | Phases 2–19 | See below |
 
 ---
@@ -69,28 +70,44 @@ the throwaway tests used so far.
 - **Schema:** none. **Why first:** highest-leverage safety net as features stack; cheap now,
   expensive to retrofit later.
 
-## Phase 1 — Quantity & units · Free · 1a–1b done
+## Phase 1 — Quantity & units · Free · 1a–1c done
 
 Shared machinery: a parser that reads a quantity string into a number + unit.
 
 - **1a — Scaler.** Scale quantities (×0.5, ×2, "serves N"). *(done — ingredient quantities only)*
 - **1b — Metric/imperial toggle.** Fixed-factor conversions: volume↔volume, weight↔weight. *(done)*
-- **1c — Volume↔weight (King Arthur table) · next.** Ingredient-specific ("1 cup flour" → "120 g");
+- **1c — Volume↔weight (King Arthur table).** *(done)* Ingredient-specific ("1 cup flour" → "120 g");
   adds a per-ingredient weight field (g per cup/tbsp) from the King Arthur Baking table.
   *See also: preferred-units-on-import (Phase 15, future nice-to-have) — the density
   table built here is a dependency for baking volume→weight conversion at import time.*
-- **1d — Scale quantities in the method text.** When you scale a recipe, amounts
-  written into the steps ("add 2 tbsp oil", "stir in 1 cup stock") must scale too, not just
-  the ingredient list. The hazard is that step prose mixes scalable amounts with numbers that
-  must *not* move — oven temperatures ("350°F"), times ("for 20 minutes"), pan sizes ("9×13"),
-  and counts ("cut into 4"). A blind "scale every number" would wreck those. Two candidate
-  approaches: (a) **reliable — explicit markup**: mark scalable amounts in the step source the
-  way ingredients are already tagged with `[[...]]`, so only marked amounts scale (needs a one-
-  time pass over each recipe's steps; no false hits); (b) **convenient — heuristic**: scale only
-  `<number> <measuring-unit>` patterns (tbsp/tsp/cup/g/ml/oz/lb/clove…) and explicitly skip
-  anything followed by a temperature, time, or dimension marker (still fragile at the edges).
-  Likely ship (a) as the dependable default and layer (b) on as an assist. Reuses the 1a parser.
-  *Schema:* none (markup lives in the existing step text).
+- **1d — Scale quantities in the method text.** When you scale a recipe, amounts written
+  into the steps ("add 2 tbsp oil", "stir in 1 cup stock") must scale too — but step prose
+  also holds numbers that must *never* move: temperatures ("350°F"), times ("20 minutes"),
+  pan sizes ("9×13"), doneness temps ("to 160°F"), and counts ("cut into 4").
+  **Safe-hybrid model — three layers, strict priority (markup > guard > heuristic):**
+  1. **Explicit markup wins, always.** `{{2 tbsp}}` = scale this quantity; `{{!350°F}}` =
+     lock, never scale (manual override). Kept distinct from ingredient links (`[[...]]`) so
+     the two can't collide.
+  2. **Hard never-scale guard**, runs regardless of the heuristic: any number adjacent to a
+     temperature (°F/°C/degrees), time (min/hour/sec), dimension (inch/", cm, mm, N×N), or
+     doneness marker is blocked — an absolute block *above* the heuristic, not the heuristic
+     choosing to skip.
+  3. **Heuristic** scales the rest: a `<number>` immediately followed by a recognized
+     volume/weight unit (the existing unit list) that survived layers 1–2.
+  **Bias to under-match:** when unsure, do not scale. A missed quantity is a visible, harmless
+  inconvenience; a wrongly-scaled temperature or time is a silent hazard. Bare unitless numbers
+  ("divide into 4", "3 sets of folds") are left alone (usually counts/structure) and flagged
+  "unitless — review" in the coverage report. **Failure mode is "miss a quantity," never
+  "scale a fixed number."** Reuses the 1a parser for the math. *Schema:* none (markup lives in
+  the existing step text).
+  *See also: heuristic accuracy on bulk-imported recipes ties to import-cleanup (Phases 15/16)
+  and the Ingredient-line data model note (top) — method text arrives messy on import, the
+  same era of work.*
+- **Serves-N scaling (future, its own step).** Scale step + ingredient quantities to a target
+  serving count (factor = target ÷ original yield) instead of a raw multiplier. Needs a
+  **numeric yield field** per recipe — servings is currently free text (or absent) — so it's
+  deferred. 1d ships preset multipliers (×½/×1/×2/×3) plus a custom multiplier input;
+  serves-N layers on top once the yield field exists.
 - **Notes:** parse whole numbers, fractions, ranges; leave "to taste" alone. Convert only
   what's possible. Compose with per-person edits. "Serves N" needs a numeric base yield —
   servings is currently free text, so a small structured-yield field is a dependency. 1c is

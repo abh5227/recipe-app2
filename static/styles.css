@@ -361,6 +361,13 @@ a:hover { color: var(--berry-lift); }
 .scale-control button:focus-visible, .units-control button:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
 .scale-servings { font-size: 12px; color: var(--ink-soft); margin-left: 6px; white-space: nowrap; }
 .grams-note { margin: 10px 0 0; font-size: 13px; font-style: italic; color: var(--ink-soft); }
+/* Phase 1d: custom multiplier input + scaled step quantities */
+.scale-custom {
+  font: inherit; font-size: 12px; width: 70px; padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--line); background: transparent; color: var(--ink-soft);
+}
+.scale-custom:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
+.step-qty { font-variant-numeric: tabular-nums; }
 
 /* ---------- Per-person change layers on a seed recipe ---------- */
 

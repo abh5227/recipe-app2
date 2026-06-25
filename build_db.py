@@ -24,6 +24,9 @@ from migrate import migrate
 from weights import (
     normalize, parse_reference_volume, build_index, match_weight, has_volume_unit,
 )
+from stepscale import (
+    parse_step, MARKED_SCALE, MARKED_LOCK, HEURISTIC_SCALE, GUARDED, UNITLESS,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 DB = BASE_DIR / "recipes.db"
@@ -288,6 +291,52 @@ def print_coverage(coverage):
         print(f"    {recipe}: {wont} of {total}")
 
 
+def compute_step_coverage(conn):
+    """Method-text scaling coverage per recipe, from the SAME parser the live renderer uses
+    (stepscale.parse_step) — so the report reflects exactly what the page does. Build-time
+    only; counts span categories so a bulk import is auditable. No markup is added to the seed
+    recipes — the guard + heuristic carry them, and this shows where markup would help."""
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """SELECT r.name AS recipe, s.text
+           FROM recipe_steps s JOIN recipes r ON r.id = s.recipe_id
+           WHERE s.is_heading = 0
+           ORDER BY r.name, s.position"""
+    ).fetchall()
+    per_recipe = {}
+    for row in rows:
+        c = per_recipe.setdefault(
+            row["recipe"],
+            {"marked_scale": 0, "marked_lock": 0, "heuristic": 0, "guarded": 0, "unitless": []},
+        )
+        for sp in parse_step(row["text"]):
+            cat = sp["category"]
+            if cat == MARKED_SCALE:
+                c["marked_scale"] += 1
+            elif cat == MARKED_LOCK:
+                c["marked_lock"] += 1
+            elif cat == HEURISTIC_SCALE:
+                c["heuristic"] += 1
+            elif cat == GUARDED:
+                c["guarded"] += 1
+            elif cat == UNITLESS:
+                c["unitless"].append(sp["text"])
+    return per_recipe
+
+
+def print_step_coverage(per_recipe):
+    """Print the method-text scaling section of the build report."""
+    print("\nMethod-text scaling (Phase 1d) — markup > guard > heuristic:")
+    for recipe in sorted(per_recipe):
+        c = per_recipe[recipe]
+        u = c["unitless"]
+        ulabel = f"{len(u)} ({', '.join(u)})" if u else "0"
+        print(
+            f"  {recipe}: marked-scale {c['marked_scale']}, marked-lock {c['marked_lock']}, "
+            f"heuristic-scale {c['heuristic']}, guarded {c['guarded']}, unitless-for-review {ulabel}"
+        )
+
+
 def build():
     problems = validate()
     if problems:
@@ -364,6 +413,7 @@ def build():
            ORDER BY r.name, pe.name, a.id"""
     ).fetchall()
     coverage = compute_coverage(conn)
+    step_coverage = compute_step_coverage(conn)
     conn.close()
 
     print(
@@ -409,6 +459,7 @@ def build():
         )
 
     print_coverage(coverage)
+    print_step_coverage(step_coverage)
 
 
 if __name__ == "__main__":

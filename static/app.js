@@ -406,11 +406,15 @@ function scaleControl() {
   const buttons = options
     .map(([v, label]) => `<button data-scale="${v}" class="${view.scale === v ? "on" : ""}">${label}</button>`)
     .join("");
+  // Custom multiplier \u2014 any positive number. Shows the current factor when it isn't a preset.
+  const isPreset = options.some(([v]) => v === view.scale);
+  const customVal = isPreset ? "" : String(view.scale);
+  const custom = `<input class="scale-custom" type="number" min="0" step="0.25" inputmode="decimal" placeholder="custom\u00d7" aria-label="Custom multiplier" value="${customVal}">`;
   const base = servingsBase();
   const servings = (base && view.scale !== 1)
     ? `<span class="scale-servings">${formatAmount(base * view.scale)} servings</span>`
     : "";
-  return `<div class="scale-control" role="group" aria-label="Scale quantities">${buttons}${servings}</div>`;
+  return `<div class="scale-control" role="group" aria-label="Scale quantities">${buttons}${custom}${servings}</div>`;
 }
 
 // Look up a person record / their saved changes by id.
@@ -647,9 +651,25 @@ function rerenderIngredients() {
   if (el) el.innerHTML = ingredientsSectionInner(view);
 }
 
+// Re-render the method steps so tagged "scale" quantities reflect the current factor.
+function rerenderSteps() {
+  const el = document.getElementById("steps-list");
+  if (el) el.innerHTML = view.data.steps.map(renderStepRow).join("");
+}
+
+// Render a step. Non-heading steps arrive as tagged spans (Phase 1d): "scale" spans are
+// rescaled live with the 1a scaler (so they format identically to the ingredient list);
+// "plain" spans are linkified (and may contain [[ingredient]] links). Falls back to raw
+// text if a payload has no spans.
 function renderStepRow(row) {
   if (row.is_heading) return `<li class="group">${esc(row.text)}</li>`;
-  return `<li class="step">${linkify(row.text)}</li>`;
+  const spans = row.spans || [{ t: "plain", text: row.text }];
+  const html = spans
+    .map((s) => (s.t === "scale"
+      ? `<span class="step-qty">${esc(scaleQty(s.text))}</span>`
+      : linkify(s.text)))
+    .join("");
+  return `<li class="step">${html}</li>`;
 }
 
 async function renderRecipe(rid) {
@@ -698,7 +718,7 @@ async function renderRecipe(rid) {
       <section id="ing-section">${ingredientsSectionInner(view)}</section>
       <section>
         <h2 class="col-title">Method</h2>
-        <ol class="steps">${data.steps.map(renderStepRow).join("")}</ol>
+        <ol class="steps" id="steps-list">${data.steps.map(renderStepRow).join("")}</ol>
         ${r.notes ? `<div class="notes"><strong>Note.</strong> ${esc(r.notes)}</div>` : ""}
       </section>
     </div>`;
@@ -1086,6 +1106,7 @@ document.addEventListener("click", (e) => {
     if (scale) {
       view.scale = parseFloat(scale.dataset.scale);
       rerenderIngredients();
+      rerenderSteps();
       return;
     }
     const unitBtn = e.target.closest("[data-units]");
@@ -1165,6 +1186,16 @@ document.addEventListener("keydown", (e) => {
 // In the add-ingredient form, picking a library ingredient pre-fills the text box with
 // its name — but only when the box is empty, so a custom label is never clobbered.
 document.addEventListener("change", (e) => {
+  // Custom multiplier: any positive number scales both ingredients and steps; 0 / negative /
+  // blank / non-numeric falls back to ×1 (consistent with the 1a scaler).
+  const custom = e.target.closest(".scale-custom");
+  if (custom && view) {
+    const n = parseFloat(custom.value);
+    view.scale = n > 0 ? n : 1;
+    rerenderIngredients();
+    rerenderSteps();
+    return;
+  }
   const link = e.target.closest(".af-link");
   if (!link) return;
   const text = document.querySelector(".af-text");

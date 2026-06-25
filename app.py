@@ -19,6 +19,7 @@ from pathlib import Path
 from flask import Flask, jsonify, request, send_from_directory
 
 from weights import build_index, match_weight
+from stepscale import api_spans
 
 # Anchor everything to this file's folder so the app runs from any directory.
 BASE_DIR = Path(__file__).resolve().parent
@@ -255,6 +256,19 @@ def attach_weights(c, ings):
     return out
 
 
+def serialize_steps(steps):
+    """Attach display spans to each non-heading step (Phase 1d). Raw `text` is kept for the
+    editor; `spans` is the render form — {{...}} markup stripped, scalable quantities tagged.
+    Headings have no spans."""
+    out = []
+    for x in steps:
+        d = dict(x)
+        if not d.get("is_heading"):
+            d["spans"] = api_spans(d.get("text") or "")
+        out.append(d)
+    return out
+
+
 @app.route("/api/recipes/<rid>")
 def get_recipe(rid):
     with db() as c:
@@ -278,7 +292,7 @@ def get_recipe(rid):
         {
             "recipe": dict(r),
             "ingredients": attach_weights(c, ings),
-            "steps": [dict(x) for x in steps],
+            "steps": serialize_steps(steps),
             "stats": stats,
             "people": people,
             "changes": changes,
