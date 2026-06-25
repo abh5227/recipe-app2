@@ -437,7 +437,7 @@ function plainRow(row) {
   return `<li>${qtySpan(row.qty, row.grams_per_ml)}<span>${lineBodyHTML(row)}</span></li>`;
 }
 
-// An added line (a person's new ingredient), shown in their colour. In a person's own
+// An added line (a person's new ingredient), shown in their color. In a person's own
 // view it carries a × to delete it; in Compare it's read-only.
 function additionRow(a, color, withDelete) {
   const body = a.ingredient_id
@@ -451,7 +451,7 @@ function additionRow(a, color, withDelete) {
 }
 
 // The view switcher: Original / each person / Compare all. The active person's button
-// is filled with their colour; Original and Compare use the default ink (the .on class).
+// is filled with their color; Original and Compare use the default ink (the .on class).
 function viewSelector(view) {
   const button = (mode, label, color) => {
     const active = view.mode === mode;
@@ -557,7 +557,7 @@ function anyAdditions(view) {
 }
 
 // Compare view: everything anyone has *added*, gathered in one place, each in its
-// owner's colour. Read-only. Edits and removals stay in each person's own view — this
+// owner's color. Read-only. Edits and removals stay in each person's own view — this
 // is the "communal pot," just the extras everyone brings, side by side.
 function compareRows(view) {
   let out = "";
@@ -580,7 +580,7 @@ function addControl(view) {
     .join("");
 
   // If the recipe has section headings, offer them. Default to the last one, so an
-  // addition lands at the very bottom (the old behaviour) unless you pick another section.
+  // addition lands at the very bottom (the old behavior) unless you pick another section.
   const headings = view.data.ingredients.filter((row) => row.is_heading).map((row) => row.raw_text);
   let sectionField = "";
   if (headings.length) {
@@ -629,7 +629,7 @@ function ingredientsSectionInner(view) {
   } else {
     rows = personRows(view, view.mode);
     const name = personById(view.mode) ? esc(personById(view.mode).name) : "this person";
-    hint = `${name}'s version \u2014 edits and additions show in their colour. Use the pencil to change a quantity or remove a line.`;
+    hint = `${name}'s version \u2014 edits and additions show in their color. Use the pencil to change a quantity or remove a line.`;
   }
   const isPersonView = view.mode !== "original" && view.mode !== "compare";
 
