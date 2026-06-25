@@ -81,16 +81,20 @@ data. This is what lets the schema change *in place* without rebuilding from scr
 ### 4. `build_db.py` — loading content safely
 This is where the "content vs. your data" rule is enforced.
 
-- **`seed_content()`** (line ~91): upserts the ingredient library, then wholesale-rebuilds
-  each ingredient's seasons/regions, then (line ~139) **upserts people** and **drops anyone
+- **`seed_content()`** (line ~99): upserts the ingredient library, then wholesale-rebuilds
+  each ingredient's seasons/regions, then (line ~146) **upserts people** and **drops anyone
   removed from `seed.py`** along with their changes, then manages **only** seed-owned
-  recipes. *Interesting line:* the people-cleanup loop (~147) deletes child rows explicitly
+  recipes. *Interesting line:* the people-cleanup loop (~160) deletes child rows explicitly
   because foreign keys are turned **off** during the content load (so the cascade wouldn't
   fire on its own).
-- **`build()`** (line ~193): runs migrations, loads content, then prints a report and a
-  **drift warning** (line ~240). The warning lists where each per-person line change landed
-  after the rebuild and flags `[!]` any that now point at a heading or a missing line. This
-  is the safety net for the position-keyed design (see tradeoffs).
+- **`seed_weights()`** (line ~201): loads `king-arthur-staples-v2.csv` into
+  `ingredient_weights`, computing `grams_per_ml` at seed time (Phase 1c); rebuilt wholesale
+  each run, like seasons/regions.
+- **`build()`** (line ~340): runs migrations, loads content, then prints a report and a
+  **drift warning** (line ~429) — where each per-person change landed, flagging `[!]` any that
+  now point at a heading or a missing line. It also prints two **coverage reports**
+  (`compute_coverage` for volume→weight match rate, `compute_step_coverage` for method-text
+  scaling), each reusing the live parsers so the report can't drift from behavior.
 
 ### 5. `app.py` — the backend and the API
 The heart of the change feature. Read top to bottom; the helpers come before the routes
@@ -124,13 +128,18 @@ that use them.
   Each one validates, makes one small change, and returns `changes_for(...)`.
 - **`set_rating()`** uses SQLite's `ON CONFLICT ... DO UPDATE` upsert so one
   rating per recipe is enforced by the database, not by app logic.
+- **`weights.py` + `stepscale.py`** (Phase 1 helpers app.py imports): `weights` matches an
+  ingredient name to a King Arthur weight and attaches `grams_per_ml` to each served line
+  (volume→weight, 1c); `stepscale` parses method text into scalable vs never-scale spans
+  (markup > guard > heuristic, 1d). Both are the single source of truth shared with the
+  coverage reports in `build_db.py`.
 
 ### 6. `static/app.js` — rendering and interaction
 No content of its own; it fetches JSON and builds HTML strings. Read in this order:
 
-- **State**: `view = { slug, data, mode, editingPos, addingOpen, scale }`. `mode` is the
+- **State**: `view = { slug, data, mode, editingPos, addingOpen, scale, units }`. `mode` is the
   whole UI for the per-person feature (`'original'`, a person id, or `'compare'`); `scale` is
-  the quantity multiplier for the scaler. *Interesting because*
+  the quantity multiplier and `units` is the `'imperial'`/`'metric'` toggle. *Interesting because*
   the entire view is recomputed from this one object — a click sets a field and re-renders.
 - **`esc()`**: every piece of data inserted into HTML goes through this. It's the
   app's XSS defense; the consistency is the point.
@@ -152,6 +161,13 @@ No content of its own; it fetches JSON and builds HTML strings. Read in this ord
   - `ingredientsSectionInner()`: the dispatcher — picks the right renderer for the
     current `mode` and is the function re-run on every change (so the rest of the page
     doesn't flicker).
+  - **The scaler / unit converter** (Phase 1): `scaleControl()` (presets ½×–3× + a custom
+    multiplier) and `unitsControl()` (Imperial/Metric) sit by the Ingredients heading.
+    `displayQty()` dispatches: counts round to whole (`scaleCount`, so "2 medium" never
+    becomes "2 3/8"); Imperial uses `scaleQty` (1a); Metric uses `toMetric` — ≤ 2 tbsp keeps
+    the spoon unit, > 2 tbsp → grams when the King Arthur table matches (marked "~"), else
+    keeps the unit (decline). `renderStepRow` scales tagged quantities in method text from the
+    server's spans (1d).
 - **The mutation helpers**: `saveLineEdit`, `removeLine`, `clearLine`,
   `saveAddition`, `deleteAddition`. They all build on `changeBase()` (the URL prefix for the
   open recipe + active person) and funnel through `applyChanges()`, which writes the server's
@@ -180,7 +196,9 @@ No content of its own; it fetches JSON and builds HTML strings. Read in this ord
   and never touches `recipes.db`.
 - **`test_build_db.py` / `test_api.py` / `test_changes.py`** cover the build/migration process,
   the HTTP API (including that deleting a recipe cascades to its rating + cook history), and the
-  per-person change layers (including rebuild-preservation). Run with `python3 -m pytest`.
+  per-person change layers (including rebuild-preservation). **`test_weights.py`** covers the
+  volume→weight matcher (exact/alias/decline, kosher-salt default); **`test_stepscale.py`** the
+  method-text parser (heaviest on the never-scale guard). Run with `python3 -m pytest`.
 
 ---
 
@@ -321,7 +339,18 @@ What's deliberately explicit, and why it reads the way it does:
 
 Newest first. Add an entry whenever the architecture or a feature changes.
 
-- **Test suite (Phase 0)** *(current)* — a persisted pytest suite under `tests/` replaces
+- **Quantity & units complete (Phase 1)** *(current)* — the amount system, built 1a→1d then
+  refined. 1a scaler; 1b metric/imperial; 1c volume→weight via a server-side matcher
+  (`weights.py`, `ingredient_weights`, seeded from `king-arthur-staples-v2.csv`); 1d step-text
+  scaling (`stepscale.py`, markup > guard > heuristic — temps/times/dimensions never scale).
+  The toggle was then collapsed to a **2-way Imperial↔Metric smart mode** (≤ 2 tbsp keeps
+  tsp/tbsp; > 2 tbsp → grams when KA matches, "~"; else keeps the unit), removing the old
+  3-way (separate all-mL + Grams modes and `toGrams`). Two display bugs fixed: counts no longer
+  fraction ("2 medium" stays whole); same-unit compounds combine ("3 + 2 tbsp" → grams, not
+  "53 + 35 mL"). `build_db.py` gained two coverage reports; the suite is 52 tests (incl.
+  `test_weights.py`, `test_stepscale.py`). The client-side converter has no automated harness
+  yet — see ROADMAP.
+- **Test suite (Phase 0)** — a persisted pytest suite under `tests/` replaces
   the throwaway smoke tests. `tests/harness.py` builds a fresh database (migrations +
   `seed.py`) in a temp directory and returns a Flask test client; `conftest.py` exposes it
   as the `kitchen` fixture, so every test runs against its own throwaway DB and never

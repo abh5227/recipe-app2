@@ -33,6 +33,36 @@ ingredient model and the importer, best done at/around import (Phase 15/16) so s
 recipes are cleaned on the way in rather than after. Not worth hand-cleaning the current 5
 recipes; tolerable at this scale, matters at bulk upload. *See Phases 12, 13, 15, 16.*
 
+**Amount-structure cleanup (extends the above).** Amount text also carries forms the numeric
+parser can't handle — word-numbers ("half", "a few", "a couple"), parenthetical amounts
+("(about half a lime)"), and open-ended amounts ("plus more if needed", "to taste") — each
+needing separation from the scalable quantity, handled at import/data-model time (not a
+standalone word-number feature). Worked example that fails to scale today: the lime-juice line
+"lime juice (about half a lime), plus more if needed". Ties to the import / ingredient-name
+cleanup notes.
+
+**Data-capture principle — capture signal early, build consumers later.** Log cooks, ratings,
+and edits with TIMESTAMPS and STRUCTURED OUTCOMES from the start: the signal you don't capture
+is unrecoverable, but features that consume it can be built anytime. Raises the bar for how
+Phases 5 (journal), 18 (analytics), and 19 (recommender) store data. Edit/version history is
+cheap to start timestamping now (tie to the per-person change layer).
+
+**Provenance principle — cite reference data in the data model.** All gathered REFERENCE data
+(ingredient weights, densities, variances, seasonality…) carries its SOURCE(S) as a column, so
+"blended from multiple reliable sources, cited" is traceable and conflicts (e.g. King Arthur
+120 g/cup vs ATK 140) are reconcilable. Apply to the existing `ingredient_weights` table and
+every future reference table.
+
+**North-Star — a queryable structured recipe dataset (NOT ML training).** The goal is every
+recipe decomposed into clean, queryable fields (ingredients, amounts, units, cuisine, tags,
+technique) so the whole corpus is queryable — via QUERIES over clean data, not learned models.
+The existing normalized schema IS this dataset; the work is ENRICHING it (ingredient-library
+linkage + metadata), NOT a separate denormalized all-in-one table (which would duplicate data
+and create sync problems). Through-line: Phase 6 (linkage, foundational) → Phase 8
+(cuisine/tags) → bulk import (15/16). Volume comes from both published recipes (15/16) and
+friends' shared recipes (17). *Agenda + analysis: see "Data gathering & cross-recipe analysis"
+near the end.*
+
 ---
 
 ## Cost summary
@@ -55,7 +85,7 @@ Everything is free except two items.
 | ✓ done | Phase 1a — Scaler | Ingredient list only |
 | ✓ done | Phase 1b — Metric/imperial toggle | Ingredient list only; same scope as 1a |
 | ✓ done | Phase 1c — Volume↔weight | King Arthur chart; server-side matcher + coverage report |
-| upcoming | Phase 1d — Step-text scaling | Safe-hybrid: markup > guard > heuristic |
+| ✓ done | Phase 1d — Step-text scaling | Safe-hybrid: markup > guard > heuristic |
 | not started | Phases 2–19 | See below |
 
 ---
@@ -70,7 +100,7 @@ the throwaway tests used so far.
 - **Schema:** none. **Why first:** highest-leverage safety net as features stack; cheap now,
   expensive to retrofit later.
 
-## Phase 1 — Quantity & units · Free · 1a–1c done
+## Phase 1 — Quantity & units · Free · 1a–1d done · COMPLETE
 
 Shared machinery: a parser that reads a quantity string into a number + unit.
 
@@ -80,7 +110,7 @@ Shared machinery: a parser that reads a quantity string into a number + unit.
   adds a per-ingredient weight field (g per cup/tbsp) from the King Arthur Baking table.
   *See also: preferred-units-on-import (Phase 15, future nice-to-have) — the density
   table built here is a dependency for baking volume→weight conversion at import time.*
-- **1d — Scale quantities in the method text.** When you scale a recipe, amounts written
+- **1d — Scale quantities in the method text.** *(done)* When you scale a recipe, amounts written
   into the steps ("add 2 tbsp oil", "stir in 1 cup stock") must scale too — but step prose
   also holds numbers that must *never* move: temperatures ("350°F"), times ("20 minutes"),
   pan sizes ("9×13"), doneness temps ("to 160°F"), and counts ("cut into 4").
@@ -431,6 +461,29 @@ ingredients to the library so Phases 10c/13 work on them.
 
 ---
 
+## Data gathering & cross-recipe analysis
+
+A gathering agenda, decoupled from when the consumers get built. All blended-from-multiple-
+sources-and-cited (see the Provenance principle). Enrich the existing ingredient/recipe tables,
+NOT a separate dataset table.
+
+- **Reference data:** savory/global ingredient densities (USDA etc. — directly lifts conversion
+  coverage past today's 10/62); per-ingredient cup-variance (for the grams→cups range);
+  substitutions; shelf-life/storage (USDA FoodKeeper — feeds pantry + storage-category sort);
+  regional seasonality calendars (feeds in-season / Phase 10g).
+- **Ingredient attributes (the dataset backbone):** category/type; flavor-pairing affinities
+  (e.g. Flavor Network / shared-compound data — powers cross-recipe similarity); dietary flags;
+  nutrition (USDA FoodData Central).
+- **Recipe metadata:** cuisine, technique, course, difficulty, total/active time, equipment,
+  numeric yield (also unblocks serves-N scaling).
+- **Personal-generated:** per-cook outcomes (Phase 5), bake conditions (5d), edit/version
+  history, cook frequency/recency/ratings over time.
+
+**Cross-recipe analysis (late-stage, queryable — NOT ML).** Shared-ingredient overlap, cuisine
+clustering, ingredient co-occurrence / pairings, similar-recipe finding — all QUERIES over the
+clean corpus, not learned models. Depends on Phase 6 (linkage) + 8 (metadata) + 15/16/17
+(volume); correctly late — meaningful only once linkage + metadata + corpus volume exist.
+
 ## Parking lot / undecided
 
 - Backwards cook schedule ("start the rice at 6:40") — becomes feasible once per-step
@@ -442,6 +495,16 @@ ingredients to the library so Phases 10c/13 work on them.
 - Automatic backups (a build-time and/or scheduled hook around `backup.py`).
 - Cloud image storage (only relevant if Phase 17 hosting happens).
 - Voice / hands-free step navigation (reliable version needs a paid speech API).
+- **Step-grouped, category-sorted ingredient view.** Group a recipe's ingredients by STEP
+  (outer), within each step sort by STORAGE CATEGORY (inner — fridge/pantry/produce), so you
+  see everything a step needs together and grab same-location items in one trip. Gated on two
+  structures that don't exist yet: (a) an authored ingredient↔step link carrying PER-STEP
+  PORTIONS (so a divided ingredient — "oil, divided" — appears under each step with the right
+  amount; authored, NOT inferred from prose — decline-over-guess); (b) a per-ingredient
+  storage-category field (Phase 13 pantry). Display is easy once both exist; the work is the
+  data, and divided-across-steps is the design crux. Cross-ref Phase 2 (cooking mode) and 4b
+  (step photos) for the shared ingredient↔step link, and 13/14 (pantry/grocery) for the
+  category field + aisle-ordered shopping lists.
 
 ## Cosmetic / nice-to-have polish
 
@@ -456,6 +519,14 @@ value reads.
   whether showing both eventually makes the Imperial↔Metric toggle redundant. *Rationale:*
   grams-primary serves precision (bread/hydration), but showing both also serves cooks who
   don't always weigh. Refines Smart-Metric (Phase 1).
+- **Grams→cups range, on hover (gated on variance data).** For cooks without a scale,
+  highlighting a gram amount shows an honest RANGE in cups (e.g. "450 g ≈ 3¼–3¾ cups"), not a
+  false-precise single value — grams→cups is lossy (packing variance). Range from real
+  per-ingredient/per-category cup-variance (flours wide, liquids ~none, sugars medium), blended
+  and cited (provenance principle); a flat ±% would show fake uncertainty on water and is worse
+  than nothing. Reuses 1c density for the midpoint; weight-table-matched ingredients only
+  (silent on unmatched — decline-over-guess). Hover keeps the display clean. Cheaper relatives
+  on the same spectrum: the shipped "~" marker and "show both units" above.
 - **Pluralize scaled units.** "2 medium head" should read "2 medium heads"; "1/2 large egg"
   ideally "1/2 large eggs". Needs unit-aware pluralization rules.
 - **Friendlier tiny amounts.** Scaling a very small quantity down shows an honest small

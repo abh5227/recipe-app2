@@ -55,8 +55,11 @@ seed.py        YOUR CONTENT — recipes, ingredient library, people. Edit this.
 migrations/    database structure: numbered .sql files applied in order.
 migrate.py     applies any not-yet-applied migrations (never deletes data).
 build_db.py    migrates, then loads seed.py into the content tables.
+king-arthur-staples-v2.csv   ingredient weight chart; build_db loads it into ingredient_weights.
 backup.py      makes a timestamped copy of recipes.db into backups/.
 app.py         the backend: serves the page and runs the SQL queries.
+weights.py     volume→weight matcher + King Arthur density lookup (Phase 1c).
+stepscale.py   method-text quantity parser (markup > guard > heuristic, Phase 1d).
 recipes.db     the generated database (binary; don't hand-edit; git-ignored).
 static/        index.html (page shell) · styles.css (the look) · app.js (renders it)
 tests/         pytest suite; builds a throwaway DB per test (see Tests below).
@@ -82,9 +85,10 @@ python3 -m pytest                      # run the suite
 ```
 
 Each test builds its own throwaway database from the migrations and `seed.py`, so the
-tests never touch your real `recipes.db`. They cover the API, the migration/build process,
-and the per-person change layers (including that a rebuild preserves your edits). When you
-add a migration, bump `EXPECTED_MIGRATIONS` in `tests/test_build_db.py`.
+tests never touch your real `recipes.db`. They cover the API, the migration/build process, the
+per-person change layers (including that a rebuild preserves your edits), the volume→weight
+matcher, and the method-text scaler. When you add a migration, bump `EXPECTED_MIGRATIONS` in
+`tests/test_build_db.py`.
 
 ## Keeping it in git
 
