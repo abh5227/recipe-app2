@@ -306,67 +306,82 @@ const UNIT_TO_G = {
   oz: 28.3495, ounce: 28.3495, ounces: 28.3495,
   lb: 453.592, lbs: 453.592, pound: 453.592, pounds: 453.592,
 };
-const IMPERIAL_UNIT_RE = /\b(fl\s+oz|fluid\s+ounces?|cups?|tbsp|tablespoons?|tsp|teaspoons?|ounces?|oz|lbs?|pounds?)\b/i;
+// All measuring units (volume + weight, imperial + metric) — used to tell a real measure
+// from a bare count/descriptor. Excludes bare "l"/"L" (it would match "small", "oil").
+const MEASURE_UNIT_RE = /\b(fl\s+oz|fluid\s+ounces?|cups?|tbsp|tablespoons?|tsp|teaspoons?|ounces?|oz|lbs?|pounds?|kilograms?|kg|grams?|g|millilit(?:er|re)s?|ml|lit(?:er|re)s?)\b/i;
+const MEASURE_UNIT_RE_G = new RegExp(MEASURE_UNIT_RE.source, "gi");
 
-// Volume-only units (for volume->weight). Unlike IMPERIAL_UNIT_RE this excludes oz/lb,
-// which are already weights.
-const VOLUME_UNIT_RE = /\b(fl\s+oz|fluid\s+ounces?|cups?|tbsp|tablespoons?|tsp|teaspoons?)\b/i;
+// Metric threshold: amounts at or below 2 tbsp stay in measuring spoons (tsp/tbsp).
+const SPOON_MAX_ML = 2 * UNIT_TO_ML.tbsp;
 
-// Full display pipeline: scale (1a), then optionally convert. Imperial = scaleQty.
-// Metric (1b) converts by fixed factor to mL/g. Grams (1c) converts a volume measure to
-// weight using the per-line density (grams_per_ml) the server attached. Dual-unit strings
-// ("2 lb / 1 kg") and anything without a convertible unit fall back to scaleQty.
-function displayQty(qty, gramsPerMl) {
-  if (qty == null) return "";
-  const mode = view ? view.units : "imperial";
-  if (mode === "grams") return toGrams(qty, gramsPerMl);
-  if (mode !== "metric") return scaleQty(qty);
-  if (String(qty).includes(" / ")) return scaleQty(qty);   // dual-unit: scale only
-
-  const scaleFactor = view.scale > 0 ? view.scale : 1;
-  const normalized = normalizeFractions(String(qty));
-  const unitMatch = normalized.match(IMPERIAL_UNIT_RE);
-  if (!unitMatch) return scaleQty(qty);                     // no convertible unit: scale only
-
-  const rawUnit = unitMatch[1].toLowerCase().replace(/\s+/g, " ");
-  const convFactor = UNIT_TO_ML[rawUnit] || UNIT_TO_G[rawUnit];
-  if (!convFactor) return scaleQty(qty);
-
-  const metricUnit = UNIT_TO_ML[rawUnit] ? "mL" : "g";
-  let found = false;
-  const converted = normalized.replace(AMOUNT_TOKEN, (token) => {
-    const n = tokenToNumber(token);
-    if (!isFinite(n)) return token;
-    found = true;
-    return String(Math.max(1, Math.round(n * scaleFactor * convFactor)));
-  });
-  if (!found) return qty;
-  return converted.replace(IMPERIAL_UNIT_RE, metricUnit);
+// A "count" amount has a number but no measuring unit — a bare count ("8"), a size descriptor
+// ("2 medium"), or a count-noun ("4 cloves"). A count is not a measure, so it scales to a
+// whole number rather than a fraction (no "2 3/8 medium").
+function isCountAmount(qty) {
+  const s = normalizeFractions(String(qty));
+  if (s.includes(" / ")) return false;             // dual-unit handled separately
+  if (!/\d/.test(s)) return false;                 // no number (pinch, to taste)
+  return !MEASURE_UNIT_RE.test(s);
 }
 
-// Phase 1c: volume -> weight using the per-ingredient density (grams_per_ml) the server
-// attached to this line. Declines (returns the scaled original) when there's no density
-// match or no volume amount — the same "never guess" rule the server matcher uses.
-// Approximate results are marked with a leading "~".
-function toGrams(qty, gramsPerMl) {
-  if (gramsPerMl == null) return scaleQty(qty);            // no weight-table match
-  if (String(qty).includes(" / ")) return scaleQty(qty);  // dual-unit: leave alone
-  const scaleFactor = view.scale > 0 ? view.scale : 1;
-  const normalized = normalizeFractions(String(qty));
-  const unitMatch = normalized.match(VOLUME_UNIT_RE);
-  if (!unitMatch) return scaleQty(qty);                    // not a volume measure
-  const rawUnit = unitMatch[1].toLowerCase().replace(/\s+/g, " ");
-  const mlPer = UNIT_TO_ML[rawUnit];
-  if (!mlPer) return scaleQty(qty);
+// Scale a countable amount, rounding to a whole number (min 1). Left as authored at x1.
+function scaleCount(qty, factor) {
+  if (!(factor > 0) || factor === 1) return qty;
   let found = false;
-  const converted = normalized.replace(AMOUNT_TOKEN, (token) => {
+  const out = normalizeFractions(String(qty)).replace(AMOUNT_TOKEN, (token) => {
     const n = tokenToNumber(token);
     if (!isFinite(n)) return token;
     found = true;
-    return String(Math.max(1, Math.round(n * scaleFactor * mlPer * gramsPerMl)));
+    return String(Math.max(1, Math.round(n * factor)));
   });
-  if (!found) return scaleQty(qty);
-  return "~" + converted.replace(VOLUME_UNIT_RE, "g");
+  return found ? out : qty;
+}
+
+// Reduce an amount to a single {value, unit}, combining a same-unit "+"-compound
+// ("3 + 2 tbsp" -> 5 tbsp). Returns null if it can't reduce to one unit (different units or
+// none) — the caller then declines, so we never emit a malformed sum like "53 + 35 mL".
+function parseAmount(normalized) {
+  const units = normalized.match(MEASURE_UNIT_RE_G);
+  if (!units) return null;
+  const unit = units[0].toLowerCase().replace(/\s+/g, " ");
+  if (!units.every((u) => u.toLowerCase().replace(/\s+/g, " ") === unit)) return null;
+  let sum = 0, found = false;
+  normalized.replace(AMOUNT_TOKEN, (tok) => {
+    const n = tokenToNumber(tok);
+    if (isFinite(n)) { sum += n; found = true; }
+    return tok;
+  });
+  return found ? { value: sum, unit } : null;
+}
+
+// Smart Metric: each amount picks its own unit.
+//  - <= 2 tbsp           -> keep the measuring-spoon unit (scaled);
+//  - > 2 tbsp + KA match  -> grams (approximate "~"), deferring to the KA table incl. liquids;
+//  - > 2 tbsp, no match   -> keep the original unit (decline);
+//  - oz/lb                -> grams by fixed factor; already-metric/uncombinable -> scaled as-is.
+function toMetric(qty, gramsPerMl, factor) {
+  const parsed = parseAmount(normalizeFractions(String(qty)));
+  if (!parsed) return scaleQty(qty);
+  const scaledValue = parsed.value * factor;
+  const gPer = UNIT_TO_G[parsed.unit];
+  if (gPer) return String(Math.max(1, Math.round(scaledValue * gPer))) + " g";   // oz/lb -> g
+  const mlPer = UNIT_TO_ML[parsed.unit];
+  if (!mlPer) return scaleQty(qty);                          // already metric (g/kg/mL)
+  const ml = scaledValue * mlPer;
+  if (ml <= SPOON_MAX_ML + 1e-9) return scaleQty(qty);        // measuring-spoon zone
+  if (gramsPerMl != null) return "~" + Math.max(1, Math.round(ml * gramsPerMl)) + " g";
+  return scaleQty(qty);                                       // > 2 tbsp, no KA match: decline
+}
+
+// Full display pipeline: counts round to whole (both systems); Imperial = scaleQty; Metric is
+// the smart per-ingredient rule. Dual-unit ("2 lb / 1 kg") passes through as authored.
+function displayQty(qty, gramsPerMl) {
+  if (qty == null) return "";
+  const factor = view && view.scale > 0 ? view.scale : 1;
+  if (isCountAmount(qty)) return scaleCount(qty, factor);
+  if (!view || view.units !== "metric") return scaleQty(qty);
+  if (String(qty).includes(" / ")) return scaleQty(qty);
+  return toMetric(qty, gramsPerMl, factor);
 }
 
 // Wrap a quantity in its <span class="qty">, marking volume->weight conversions (which
@@ -380,16 +395,16 @@ function qtySpan(qty, gramsPerMl, inlineStyle) {
 
 // The metric/imperial toggle beside the scale control.
 function unitsControl() {
-  const opts = [["imperial", "Imperial"], ["metric", "Metric"], ["grams", "Grams"]];
+  const opts = [["imperial", "Imperial"], ["metric", "Metric"]];
   const buttons = opts
     .map(([v, label]) => `<button data-units="${v}" class="${view.units === v ? "on" : ""}">${label}</button>`)
     .join("");
   return `<div class="units-control" role="group" aria-label="Unit system">${buttons}</div>`;
 }
 
-// A one-line caption shown only in Grams mode, explaining the ~ marker.
+// A one-line caption shown in Metric mode, explaining the ~ approximate-weight marker.
 function gramsNote() {
-  if (!view || view.units !== "grams") return "";
+  if (!view || view.units !== "metric") return "";
   return `<p class="grams-note">~ weights are estimated from volume; weigh for precision. Lines without a known weight stay as written.</p>`;
 }
 

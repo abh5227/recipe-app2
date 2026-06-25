@@ -108,6 +108,16 @@ Shared machinery: a parser that reads a quantity string into a number + unit.
   **numeric yield field** per recipe — servings is currently free text (or absent) — so it's
   deferred. 1d ships preset multipliers (×½/×1/×2/×3) plus a custom multiplier input;
   serves-N layers on top once the yield field exists.
+- **Smart-Metric (1b/1c refinement, done).** The metric toggle is 2-way (Imperial ↔ Metric)
+  and picks each ingredient's unit: ≤ 2 tbsp stays tsp/tbsp; > 2 tbsp converts to grams when
+  the KA weight table has it (incl. liquids, shown "~"), else keeps the original unit
+  (decline). Replaces the old separate all-mL "Metric" and "Grams" modes. *Future (needs
+  Phase 8 tags):* recipes tagged baking/dessert default to grams and ignore the 2-tbsp
+  threshold — see Phase 8.
+- **JS test harness (future infra).** The client-side scaler/converter (`displayQty`,
+  `toMetric`, the step parser's JS side) has no automated tests — only manual checklists. A
+  small Node setup plus extracting `displayQty`'s pure logic into a module would make it
+  testable; worth its own infra step since this is high-regression-risk pure logic. Not now.
 - **Notes:** parse whole numbers, fractions, ranges; leave "to taste" alone. Convert only
   what's possible. Compose with per-person edits. "Serves N" needs a numeric base yield —
   servings is currently free text, so a small structured-yield field is a dependency. 1c is
@@ -438,6 +448,14 @@ ingredients to the library so Phases 10c/13 work on them.
 Small display niceties. Low priority, no rush — none of these change behavior, only how a
 value reads.
 
+- **Show both units in Metric (near-term polish).** In Metric mode, for a line with a genuine
+  volume→weight pair, show BOTH instead of grams-only — e.g. "4 tbsp (~36 g)": the volume
+  primary (the exact authored value), grams in parens as the approximate hint (the "~" stays
+  on the grams). *Open questions for build time:* applies only to genuine pairs — no-match
+  lines, declined items, and already-metric amounts show their single unit unchanged; and
+  whether showing both eventually makes the Imperial↔Metric toggle redundant. *Rationale:*
+  grams-primary serves precision (bread/hydration), but showing both also serves cooks who
+  don't always weigh. Refines Smart-Metric (Phase 1).
 - **Pluralize scaled units.** "2 medium head" should read "2 medium heads"; "1/2 large egg"
   ideally "1/2 large eggs". Needs unit-aware pluralization rules.
 - **Friendlier tiny amounts.** Scaling a very small quantity down shows an honest small
