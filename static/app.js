@@ -295,6 +295,59 @@ function scaleQty(qty) {
   return found ? scaled : qty;
 }
 
+// Metric/imperial conversion tables (Phase 1b).
+const UNIT_TO_ML = {
+  tsp: 4.92892, teaspoon: 4.92892, teaspoons: 4.92892,
+  tbsp: 14.7868, tablespoon: 14.7868, tablespoons: 14.7868,
+  "fl oz": 29.5735, "fluid oz": 29.5735, "fluid ounce": 29.5735, "fluid ounces": 29.5735,
+  cup: 236.588, cups: 236.588,
+};
+const UNIT_TO_G = {
+  oz: 28.3495, ounce: 28.3495, ounces: 28.3495,
+  lb: 453.592, lbs: 453.592, pound: 453.592, pounds: 453.592,
+};
+const IMPERIAL_UNIT_RE = /\b(fl\s+oz|fluid\s+ounces?|cups?|tbsp|tablespoons?|tsp|teaspoons?|ounces?|oz|lbs?|pounds?)\b/i;
+
+// Full display pipeline: scale (1a) then convert to metric (1b) when toggled.
+// Imperial mode is identical to scaleQty. Metric mode converts each number by the
+// unit's fixed factor and rounds to the nearest whole number — never a fraction
+// ("236 mL", not "236 1/2 mL"). Dual-unit strings ("2 lb / 1 kg") are passed
+// through to scaleQty unchanged; they already carry both values.
+function displayQty(qty) {
+  if (qty == null) return "";
+  if (!view || view.units !== "metric") return scaleQty(qty);
+  if (String(qty).includes(" / ")) return scaleQty(qty);   // dual-unit: scale only
+
+  const scaleFactor = view.scale > 0 ? view.scale : 1;
+  const normalized = normalizeFractions(String(qty));
+  const unitMatch = normalized.match(IMPERIAL_UNIT_RE);
+  if (!unitMatch) return scaleQty(qty);                     // no convertible unit: scale only
+
+  const rawUnit = unitMatch[1].toLowerCase().replace(/\s+/g, " ");
+  const convFactor = UNIT_TO_ML[rawUnit] || UNIT_TO_G[rawUnit];
+  if (!convFactor) return scaleQty(qty);
+
+  const metricUnit = UNIT_TO_ML[rawUnit] ? "mL" : "g";
+  let found = false;
+  const converted = normalized.replace(AMOUNT_TOKEN, (token) => {
+    const n = tokenToNumber(token);
+    if (!isFinite(n)) return token;
+    found = true;
+    return String(Math.max(1, Math.round(n * scaleFactor * convFactor)));
+  });
+  if (!found) return qty;
+  return converted.replace(IMPERIAL_UNIT_RE, metricUnit);
+}
+
+// The metric/imperial toggle beside the scale control.
+function unitsControl() {
+  const opts = [["imperial", "Imperial"], ["metric", "Metric"]];
+  const buttons = opts
+    .map(([v, label]) => `<button data-units="${v}" class="${view.units === v ? "on" : ""}">${label}</button>`)
+    .join("");
+  return `<div class="units-control" role="group" aria-label="Unit system">${buttons}</div>`;
+}
+
 // The recipe's serving count as a number, if its servings text contains one.
 function servingsBase() {
   const sv = view && view.data.recipe.servings;
@@ -336,7 +389,7 @@ function lineBodyHTML(row) {
 // A plain ingredient line: used for the Original view and for app recipes.
 function plainRow(row) {
   if (row.is_heading) return `<li class="group">${esc(row.raw_text)}</li>`;
-  return `<li><span class="qty">${esc(scaleQty(row.qty))}</span><span>${lineBodyHTML(row)}</span></li>`;
+  return `<li><span class="qty">${esc(displayQty(row.qty))}</span><span>${lineBodyHTML(row)}</span></li>`;
 }
 
 // An added line (a person's new ingredient), shown in their colour. In a person's own
@@ -348,7 +401,7 @@ function additionRow(a, color, withDelete) {
   const tools = withDelete
     ? `<span class="line-tools"><button class="icon-btn" data-del-add data-add="${a.id}" title="Remove this addition" aria-label="Remove this addition">\u00d7</button></span>`
     : "";
-  return `<li><span class="qty" style="color:${color};font-weight:600">${esc(scaleQty(a.qty))}</span>` +
+  return `<li><span class="qty" style="color:${color};font-weight:600">${esc(displayQty(a.qty))}</span>` +
          `<span class="muted-ing" style="color:${color}">${body}</span>${tools}</li>`;
 }
 
@@ -430,14 +483,14 @@ function personRows(view, pid) {
     const removed = ch.removes.includes(pos);
     const editedQty = ch.edits[pos];                  // keys arrive as strings; pos coerces
     if (removed) {
-      return `<li class="ing-line removed"><span class="qty" style="color:${color}">${esc(scaleQty(row.qty))}</span>` +
+      return `<li class="ing-line removed"><span class="qty" style="color:${color}">${esc(displayQty(row.qty))}</span>` +
              `<span class="muted-ing" style="color:${color}">${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
     }
     if (editedQty !== undefined) {
-      return `<li><span class="qty" style="color:${color};font-weight:600">${esc(scaleQty(editedQty))}</span>` +
+      return `<li><span class="qty" style="color:${color};font-weight:600">${esc(displayQty(editedQty))}</span>` +
              `<span class="muted-ing" style="color:${color}">${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
     }
-    return `<li><span class="qty">${esc(scaleQty(row.qty))}</span><span>${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
+    return `<li><span class="qty">${esc(displayQty(row.qty))}</span><span>${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
   };
 
   // this person's additions that belong to the given section (null matches null)
@@ -510,7 +563,7 @@ function ingredientsSectionInner(view) {
   if (!view.data.is_seed) {
     const rows = view.data.ingredients.map(plainRow).join("");
     return `
-      <div class="col-head"><h2 class="col-title">Ingredients</h2>${scaleControl()}</div>
+      <div class="col-head"><h2 class="col-title">Ingredients</h2><div class="ing-controls">${scaleControl()}${unitsControl()}</div></div>
       <ul class="ingredient-list">${rows}</ul>
       <p class="hint">Tap any highlighted ingredient to see when it's in season and where it grows.</p>`;
   }
@@ -535,7 +588,7 @@ function ingredientsSectionInner(view) {
   const isPersonView = view.mode !== "original" && view.mode !== "compare";
 
   return `
-    <div class="col-head"><h2 class="col-title">Ingredients</h2>${scaleControl()}</div>
+    <div class="col-head"><h2 class="col-title">Ingredients</h2><div class="ing-controls">${scaleControl()}${unitsControl()}</div></div>
     ${viewSelector(view)}
     <ul class="ingredient-list">${rows}</ul>
     ${isPersonView ? addControl(view) : ""}
@@ -554,7 +607,7 @@ function renderStepRow(row) {
 
 async function renderRecipe(rid) {
   const data = await api("/api/recipes/" + encodeURIComponent(rid));
-  view = { slug: rid, data, mode: "original", editingPos: null, addingOpen: false, scale: 1 };
+  view = { slug: rid, data, mode: "original", editingPos: null, addingOpen: false, scale: 1, units: "imperial" };
   const r = data.recipe;
 
   // Seed recipes let people add ingredients to their version, so load the library
@@ -985,6 +1038,12 @@ document.addEventListener("click", (e) => {
     const scale = e.target.closest("[data-scale]");
     if (scale) {
       view.scale = parseFloat(scale.dataset.scale);
+      rerenderIngredients();
+      return;
+    }
+    const unitBtn = e.target.closest("[data-units]");
+    if (unitBtn) {
+      view.units = unitBtn.dataset.units;
       rerenderIngredients();
       return;
     }

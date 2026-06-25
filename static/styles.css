@@ -346,17 +346,18 @@ a:hover { color: var(--berry-lift); }
 }
 .col-head .col-title { border-bottom: none; padding-bottom: 0; margin: 0; }
 
-/* The quantity scaler beside the Ingredients heading */
-.scale-control { display: flex; gap: 4px; align-items: center; }
-.scale-control button {
+/* Quantity scaler + metric/imperial toggle beside the Ingredients heading */
+.ing-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.scale-control, .units-control { display: flex; gap: 4px; align-items: center; }
+.scale-control button, .units-control button {
   font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
   padding: 3px 9px; border-radius: 999px;
   border: 1px solid var(--line); background: transparent; color: var(--ink-soft);
   transition: background .15s, color .15s, border-color .15s;
 }
-.scale-control button:hover { color: var(--ink); border-color: var(--ink-soft); }
-.scale-control button.on { background: var(--ink); color: var(--card); border-color: var(--ink); }
-.scale-control button:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
+.scale-control button:hover, .units-control button:hover { color: var(--ink); border-color: var(--ink-soft); }
+.scale-control button.on, .units-control button.on { background: var(--ink); color: var(--card); border-color: var(--ink); }
+.scale-control button:focus-visible, .units-control button:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
 .scale-servings { font-size: 12px; color: var(--ink-soft); margin-left: 6px; white-space: nowrap; }
 
 /* ---------- Per-person change layers on a seed recipe ---------- */

@@ -27,7 +27,19 @@ Everything is free except two items.
 
 ---
 
-## Phase 0 — Test suite (foundational + ongoing) · Free
+## Progress
+
+| Status | Phase | Notes |
+|--------|-------|-------|
+| ✓ done | Phase 0 — Test suite | 22 tests covering API, build/migrate, and per-person change layers |
+| ✓ done | Phase 1a — Scaler | Ingredient list only |
+| ✓ done | Phase 1b — Metric/imperial toggle | Ingredient list only; same scope as 1a |
+| upcoming | Phase 1c–1d | Volume↔weight (King Arthur) · step scaling |
+| not started | Phases 2–19 | See below |
+
+---
+
+## Phase 0 — Test suite (foundational + ongoing) · Free · ✓ done
 
 Stand up a persisted `pytest` suite in the repo covering current behavior — the API
 endpoints, `migrate`/`build_db`, per-person changes, and rebuild-preservation — replacing
@@ -37,15 +49,17 @@ the throwaway tests used so far.
 - **Schema:** none. **Why first:** highest-leverage safety net as features stack; cheap now,
   expensive to retrofit later.
 
-## Phase 1 — Quantity & units · Free
+## Phase 1 — Quantity & units · Free · 1a–1b done
 
 Shared machinery: a parser that reads a quantity string into a number + unit.
 
 - **1a — Scaler.** Scale quantities (×0.5, ×2, "serves N"). *(done — ingredient quantities only)*
-- **1b — Metric/imperial toggle.** Fixed-factor conversions: volume↔volume, weight↔weight.
-- **1c — Volume↔weight (King Arthur table).** Ingredient-specific ("1 cup flour" → "120 g");
+- **1b — Metric/imperial toggle.** Fixed-factor conversions: volume↔volume, weight↔weight. *(done)*
+- **1c — Volume↔weight (King Arthur table) · next.** Ingredient-specific ("1 cup flour" → "120 g");
   adds a per-ingredient weight field (g per cup/tbsp) from the King Arthur Baking table.
-- **1d — Scale quantities in the method text · priority.** When you scale a recipe, amounts
+  *See also: preferred-units-on-import (Phase 15, future nice-to-have) — the density
+  table built here is a dependency for baking volume→weight conversion at import time.*
+- **1d — Scale quantities in the method text.** When you scale a recipe, amounts
   written into the steps ("add 2 tbsp oil", "stir in 1 cup stock") must scale too, not just
   the ingredient list. The hazard is that step prose mixes scalable amounts with numbers that
   must *not* move — oven temperatures ("350°F"), times ("for 20 minutes"), pan sizes ("9×13"),
@@ -213,6 +227,8 @@ The large data cluster.
 - **13d — Shopping list.** Aggregate ingredients from selected recipes, minus the pantry.
 - **13e — Meal planner.** Assign recipes to days/week; generate a shopping list (and, with
   9d, a weekly prep-ahead list) from the plan. *Schema:* a meal-plan table.
+  *See also: Phase 19 (recipe recommender) — the "what should I cook" single-pick view
+  that feeds naturally into this planner once it exists.*
 - **Capstone view — "what can I cook tonight":** emerges from pantry (13b) + in-season (10c) +
   time (9b) + make-ahead (9d). Not new data, just a combined view.
 - **Cross-cutting:** match %, substitutes, in-season, and shopping-list subtraction work only
@@ -236,6 +252,14 @@ pages — ingredients, steps, times, yield — into the form for review.
   structured data) with no API cost; AI scan (Phase 16) covers photos and sites without it.
   Can be pulled forward; the main caveat is the ingredient-mapping step.
 
+- **Preferred-units-on-import (future, nice-to-have).** When importing a recipe
+  (Phase 15/16), convert quantities into the user's preferred unit system, defaultable by
+  category (e.g. baking → grams, savory → imperial). Baking volume→weight conversion
+  (cups → g) needs the 1c per-ingredient density table; rounding must be to the nearest
+  1, not 5, to preserve hydration-percentage accuracy for bread. *Depends on: 1c (density
+  data), Phase 15/16 (import), and a per-user/per-category settings store (which a global
+  units preference would also use — build that store once for both).*
+
 ## Phase 16 — AI recipe scan / auto-populate · Per-use API cost
 
 Read a recipe from a photo or pasted/messy text and auto-fill the form for review.
@@ -255,6 +279,68 @@ Read a recipe from a photo or pasted/messy text and auto-fill the form for revie
   Largest architectural change here and the only feature with an ongoing monthly cost.
 - **Why last:** a different class of project (deployment + multi-user) than the rest, which is
   local and single-user.
+
+## Phase 18 — Cooking analytics dashboard · Free
+
+A `#/dashboard` view that surfaces patterns in your cook log — when you cook, what you
+cook most, and what your weekly rhythm looks like — so you can spot preferences at a
+glance and sketch a plan for the week.
+
+**What's possible with current data (no schema change):**
+- **Seasonality.** Which months you cook most, and which recipes appear in which seasons —
+  built from the existing `cooked_on` date on every `cook_log` entry.
+- **Top recipes.** Most-cooked recipes ranked by count, with last-cooked dates.
+- **Weekly pattern.** Which days of the week you tend to cook, and which recipes appear on
+  which days, derived from `cooked_on`.
+- **Cook frequency.** Cooks per week/month shown as a bar chart or calendar heatmap.
+
+**What needs a small schema addition:**
+- **Time of day.** An optional `cooked_time` column (`HH:MM`) on `cook_log`, recorded when
+  you log a cook and null for existing entries. Unlocks morning/afternoon/evening breakdowns.
+  *Schema:* one nullable `TEXT` column — a one-line `ALTER TABLE` migration, same pattern
+  as `007`.
+- **Meal type.** An optional `meal_type` label (breakfast / lunch / dinner / snack) for
+  explicit tagging rather than inferring from time. *Schema:* one more nullable `TEXT`
+  column on `cook_log`.
+
+**Weekly schedule helper:**
+Shows your historical day-of-week patterns ("you tend to try new things on Sundays") and
+lets you pin a recipe to each day to sketch a plan. Read-only pattern view first; the
+pin-to-day layer follows. A deliberate precursor to the full meal planner (Phase 13e) —
+when Phase 13e ships, this view folds into it rather than sitting alongside it.
+
+- *Depends on:* Phase 5 (per-cook journal) for richer per-entry context; the core
+  seasonality and top-recipe views work on current data and can ship before Phase 5.
+- *Synergy:* weekly pattern data feeds Phase 13e (meal planner); time-of-day data feeds
+  Phase 9e (time calibration); observed cooking habits make a planner feel personal rather
+  than generic.
+- **Can be pulled forward** to right after Phase 5 — the core analytics need no new
+  schema and no dependencies beyond what's already built.
+- *See also: Phase 19 (recipe recommender) — shares cook_log as its data source;
+  analytics patterns (day-of-week, recency) inform the recommender's scoring.*
+
+## Phase 19 — "What's for dinner" recommender · Free
+
+Suggests ONE recipe for tonight from cook history + ratings, driven by a mood.
+Answers "what should I cook" with a single decisive pick, not a list.
+
+- **Moods (pick one):**
+  - *New* — favors never-cooked then rarely-cooked; rating mostly irrelevant (exploration).
+  - *Old* — longest gap since last cooked, gated by a good rating (resurface a forgotten
+    favorite, not a flop); never-cooked excluded.
+  - *Surprise* — balanced: mostly rating, a variety bonus for a longer gap, a dash of novelty.
+- **Universal:** exclude anything cooked in the last ~14 days (tunable); pick via weighted
+  random choice among the top ~5 by score so "show another" varies; show a "why this pick"
+  line; graceful fallback when filters leave nothing (relax and explain, never error).
+- **Scoring:** a transparent weighted score from recency, frequency, rating, novelty — not ML.
+  Weights are tunable constants; expect a tuning round.
+- *Schema:* none. Read-only endpoint + small view. Can be pulled forward — v1 needs no
+  schema change.
+- *Scale note:* low value at ~5 recipes; compounds at 20–50+.
+- *Deferred:* seasonality weighting (cheap later); quick/weeknight (needs Phase 9b structured
+  time); day-of-week (overlaps Phase 18); multiple suggestions / planning (that's Phase 13e).
+- *See also: Phase 18 (analytics) — shares cook_log; Phase 13e (meal planner) — the natural
+  next step once you have a single-pick recommender.*
 
 ---
 

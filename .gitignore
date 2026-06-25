@@ -16,6 +16,9 @@ __pycache__/
 .venv/
 venv/
 
+# Claude Code local settings (permissions, not project config)
+.claude/
+
 # Editor / OS noise
 .vscode/
 .DS_Store
