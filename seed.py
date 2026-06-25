@@ -10,6 +10,10 @@
 #   {"qty": "4 cloves", "item": "garlic",
 #    "label": "garlic", "note": ", crushed"}             -> clickable (item = a key below)
 #
+#   Units in "qty": write liquids measured in ounces as "fl oz" (e.g. "4 fl oz"), NOT
+#   bare "oz". The grams converter treats "fl oz" as volume (-> mL -> grams via density)
+#   but bare "oz" as weight (28.35 g/oz), so a bare "oz" on a liquid would convert wrongly.
+#
 # Step shapes (used in each recipe's "steps" list):
 #   "Plain sentence with a [[garlic]] link or [[red_onion|red onions]] link."
 #   {"heading": "Grill the chicken"}                     -> a sub-heading

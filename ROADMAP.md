@@ -293,6 +293,11 @@ pages — ingredients, steps, times, yield — into the form for review.
   Can be pulled forward; the main caveat is the ingredient-mapping step.
 - *The right place for structural ingredient-line cleanup — see the Ingredient-line data
   model note (top): clean scraped recipes on the way in.*
+- *Bare "oz" on liquids:* scraped recipes often write fluid ounces as bare "oz". On a
+  known-liquid ingredient the importer should normalize "oz" → "fl oz" (or flag for review),
+  so a liquid isn't later converted as weight (28.35 g/oz). Decline over guess — normalize
+  only when the ingredient is confidently a liquid, else flag. (See the Matching principle
+  and the Ingredient-line data model note, top.)
 
 - **Preferred-units-on-import (future, nice-to-have).** When importing a recipe
   (Phase 15/16), convert quantities into the user's preferred unit system, defaultable by
