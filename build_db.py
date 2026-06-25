@@ -12,6 +12,7 @@ wipes everything and rebuilds. Two kinds of data live side by side:
 So it upserts seed rows by their stable key (slug) and leaves everything else alone.
 Run it with:  python3 build_db.py
 """
+import csv
 import datetime
 import re
 import sqlite3
@@ -20,9 +21,13 @@ from pathlib import Path
 
 from seed import INGREDIENTS, RECIPES, PEOPLE
 from migrate import migrate
+from weights import (
+    normalize, parse_reference_volume, build_index, match_weight, has_volume_unit,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 DB = BASE_DIR / "recipes.db"
+WEIGHTS_CSV = BASE_DIR / "king-arthur-staples-v2.csv"
 
 
 def validate():
@@ -190,6 +195,99 @@ def seed_content(conn):
         _insert_lines_and_steps(conn, r)
 
 
+def seed_weights(conn):
+    """Load the King Arthur volume->weight chart into ingredient_weights.
+
+    Pure reference data derived entirely from the CSV (nothing app-owned points at it),
+    so — like seasons/regions — it's rebuilt wholesale each run. grams_per_ml is computed
+    HERE at seed time: grams / (reference volume in mL). Rows with an unparseable volume
+    are skipped. If the CSV is missing, the table is left empty and the converter simply
+    declines every line.
+
+    Source: King Arthur Baking Ingredient Weight Chart (king-arthur-staples-v2.csv).
+    """
+    if not WEIGHTS_CSV.exists():
+        print(f"Note: {WEIGHTS_CSV.name} not found — volume->weight table left empty.")
+        return
+    conn.execute("DELETE FROM ingredient_weights")
+    with open(WEIGHTS_CSV, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(ln for ln in f if not ln.lstrip().startswith("#"))
+        for row in reader:
+            name = (row.get("ingredient") or "").strip()
+            grams = (row.get("grams") or "").strip()
+            ml = parse_reference_volume(row.get("reference_volume") or "")
+            if not name or not grams or not ml:
+                continue
+            conn.execute(
+                "INSERT INTO ingredient_weights (lookup_key, display_name, grams_per_ml) "
+                "VALUES (?,?,?)",
+                (normalize(name), name, float(grams) / ml),
+            )
+
+
+def compute_coverage(conn):
+    """Coverage of the volume->weight converter, computed live from the data (no stored
+    counters). Uses the same matcher as the API (weights), so the report can't drift from
+    what the converter actually does. Returns (n_distinct, n_matched, unmatched, per_recipe):
+      - distinct recipe ingredients grouped by normalized name;
+      - unmatched: [(name, line_count), ...] most-used first;
+      - per_recipe: {recipe_name: [total_lines, wont_convert_lines]}.
+    A line "converts" only if its name matches the table AND its quantity is a volume.
+    """
+    conn.row_factory = sqlite3.Row
+    index = build_index(
+        conn.execute(
+            "SELECT lookup_key, display_name, grams_per_ml FROM ingredient_weights"
+        ).fetchall()
+    )
+    lines = conn.execute(
+        """SELECT r.name AS recipe, ri.label, ri.raw_text, ri.qty
+           FROM recipe_ingredients ri JOIN recipes r ON r.id = ri.recipe_id
+           WHERE ri.is_heading = 0"""
+    ).fetchall()
+
+    distinct = {}
+    per_recipe = {}
+    for ln in lines:
+        name = (ln["label"] or ln["raw_text"] or "").strip()
+        key = normalize(name)
+        rec = per_recipe.setdefault(ln["recipe"], [0, 0])
+        rec[0] += 1
+        if not key:
+            rec[1] += 1
+            continue
+        matched = match_weight(name, index) is not None
+        d = distinct.setdefault(key, {"count": 0, "matched": matched})
+        d["count"] += 1
+        if not (matched and has_volume_unit(ln["qty"])):
+            rec[1] += 1
+
+    n_distinct = len(distinct)
+    n_matched = sum(1 for d in distinct.values() if d["matched"])
+    unmatched = sorted(
+        ((key, d["count"]) for key, d in distinct.items() if not d["matched"]),
+        key=lambda t: (-t[1], t[0]),
+    )
+    return n_distinct, n_matched, unmatched, per_recipe
+
+
+def print_coverage(coverage):
+    """Print the conversion-coverage section of the build report."""
+    n_distinct, n_matched, unmatched, per_recipe = coverage
+    print(
+        f"\nConversion coverage (volume -> weight): {n_matched} of {n_distinct} distinct "
+        f"recipe ingredients match the weight table."
+    )
+    if unmatched:
+        print("  Unmatched (most-used first — add these to the chart for the most gain):")
+        for name, count in unmatched:
+            print(f"    {name}  ({count} line{'' if count == 1 else 's'})")
+    print("  Lines that won't convert, per recipe:")
+    for recipe in sorted(per_recipe):
+        total, wont = per_recipe[recipe]
+        print(f"    {recipe}: {wont} of {total}")
+
+
 def build():
     problems = validate()
     if problems:
@@ -218,6 +316,7 @@ def build():
     conn = sqlite3.connect(DB)
     conn.execute("PRAGMA foreign_keys = OFF")
     seed_content(conn)
+    seed_weights(conn)
     conn.commit()
     conn.execute("PRAGMA foreign_keys = ON")
 
@@ -231,6 +330,7 @@ def build():
     n_ratings = conn.execute("SELECT COUNT(*) FROM ratings").fetchone()[0]
     n_changes = conn.execute("SELECT COUNT(*) FROM recipe_line_changes").fetchone()[0]
     n_additions = conn.execute("SELECT COUNT(*) FROM recipe_additions").fetchone()[0]
+    n_weights = conn.execute("SELECT COUNT(*) FROM ingredient_weights").fetchone()[0]
 
     # A line edit/removal is stored by line position, so reordering or trimming a seed
     # recipe's ingredients in seed.py can leave one pointing at the wrong line, or at a
@@ -263,9 +363,13 @@ def build():
              )
            ORDER BY r.name, pe.name, a.id"""
     ).fetchall()
+    coverage = compute_coverage(conn)
     conn.close()
 
-    print(f"Seed content refreshed: {n_seed} seed recipes, {n_ings} ingredients, {n_people} people.")
+    print(
+        f"Seed content refreshed: {n_seed} seed recipes, {n_ings} ingredients, "
+        f"{n_people} people, {n_weights} ingredient weights."
+    )
     print(
         f"Left untouched (app-owned): {n_app} app recipe(s), {n_cooks} cook-log "
         f"entries, {n_ratings} rating(s), {n_changes} line change(s), {n_additions} addition(s)."
@@ -303,6 +407,8 @@ def build():
             "\nNote: some saved data points at recipes that no longer exist:\n  "
             + "\n  ".join(str(o) for o in orphans)
         )
+
+    print_coverage(coverage)
 
 
 if __name__ == "__main__":

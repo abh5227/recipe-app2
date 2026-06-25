@@ -18,6 +18,8 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 
+from weights import build_index, match_weight
+
 # Anchor everything to this file's folder so the app runs from any directory.
 BASE_DIR = Path(__file__).resolve().parent
 app = Flask(__name__, static_folder=str(BASE_DIR / "static"), static_url_path="")
@@ -235,6 +237,24 @@ def create_recipe():
     return jsonify({"id": slug}), 201
 
 
+def attach_weights(c, ings):
+    """Attach grams_per_ml (or None) to each ingredient-line dict by matching its name
+    against the weight table. Matching is server-side (weights.match_weight) so the live
+    converter and the build-time coverage report always agree. Headings are left as-is."""
+    rows = c.execute(
+        "SELECT lookup_key, display_name, grams_per_ml FROM ingredient_weights"
+    ).fetchall()
+    index = build_index(rows)
+    out = []
+    for x in ings:
+        d = dict(x)
+        if not d.get("is_heading"):
+            m = match_weight(d.get("label") or d.get("raw_text") or "", index)
+            d["grams_per_ml"] = m[0] if m else None
+        out.append(d)
+    return out
+
+
 @app.route("/api/recipes/<rid>")
 def get_recipe(rid):
     with db() as c:
@@ -257,7 +277,7 @@ def get_recipe(rid):
     return jsonify(
         {
             "recipe": dict(r),
-            "ingredients": [dict(x) for x in ings],
+            "ingredients": attach_weights(c, ings),
             "steps": [dict(x) for x in steps],
             "stats": stats,
             "people": people,

@@ -190,6 +190,7 @@ a:hover { color: var(--berry-lift); }
   font-variant-numeric: tabular-nums; color: var(--ink-soft);
   font-size: 14px; min-width: 86px; flex-shrink: 0;
 }
+.qty.approx { font-style: italic; opacity: 0.8; }
 
 .steps { list-style: none; counter-reset: step; padding: 0; margin: 0; }
 .steps li.step {
@@ -359,6 +360,7 @@ a:hover { color: var(--berry-lift); }
 .scale-control button.on, .units-control button.on { background: var(--ink); color: var(--card); border-color: var(--ink); }
 .scale-control button:focus-visible, .units-control button:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
 .scale-servings { font-size: 12px; color: var(--ink-soft); margin-left: 6px; white-space: nowrap; }
+.grams-note { margin: 10px 0 0; font-size: 13px; font-style: italic; color: var(--ink-soft); }
 
 /* ---------- Per-person change layers on a seed recipe ---------- */
 

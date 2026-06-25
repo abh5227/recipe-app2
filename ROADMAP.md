@@ -13,6 +13,26 @@ then ingredient enrichment, then the large pantry + planning cluster, then outpu
 import methods (free, then paid), and the networked friend feed last. Phase numbers are a
 suggested order, not a lock — anything cheap and self-contained can be pulled forward.
 
+**Matching principle — decline over guess, but measure coverage.** Whenever the app
+matches free-text recipe ingredients to structured data (weight table, pantry, library
+links, imported recipes), a wrong match is worse than no match: it produces confidently
+incorrect output (a false-precision gram value, a mis-linked ingredient). Rule: exact
+match first, conservative normalized fallback, curated aliases for known equalities, and on
+anything less than a confident match, pass through unchanged — never guess. AND measure how
+often we decline (coverage reporting) so we know how big the gap is. Applies to Phases 1c,
+13, 15, 16.
+
+**Ingredient-line data model (cross-cutting).** Current ingredient text carries three kinds
+of noise — combined ingredients ("beef mince ground beef"), embedded instructions/qualifiers
+("very warm tap water up to 130 f"), and "X or Y" alternatives ("naan or arabic taboon
+bread"). This degrades every feature that treats ingredients as structured: conversion,
+pantry matching, library linkage, in-season, dietary flags, search. *Detection* belongs in
+Phase 6 (the health scan); *structural* cleanup — cleanly separating quantity · unit ·
+ingredient · prep-note, and handling alternatives — is a bulk-import-era task tied to the
+ingredient model and the importer, best done at/around import (Phase 15/16) so scraped
+recipes are cleaned on the way in rather than after. Not worth hand-cleaning the current 5
+recipes; tolerable at this scale, matters at bulk upload. *See Phases 12, 13, 15, 16.*
+
 ---
 
 ## Cost summary
@@ -105,6 +125,15 @@ out. Optionally record how long it **actually** took (feeds time calibration, Ph
 - **Depends on:** Phase 4 for the optional photo.
 - **Why here:** moves `cook_log` toward the detail that time calibration and the friend feed
   (Phase 17) need.
+- **5d — Bake conditions (weather).** Optional temperature + humidity fields on each
+  cook-log entry, to correlate ambient conditions with how a bake turned out (fermentation
+  speed, proof time, dough feel) — mainly for bread/sourdough. Manual entry is cheap and
+  rides on the Phase 5 journal record (near-zero extra schema). Automatic weather (fetch by
+  date + home location) is deferred: needs a weather API + a stored home-location setting —
+  the same per-user settings store that a global units preference (import-units note) and the
+  Phase 19 recommender's saved-mood preference would also use. Build that store once for all
+  three. Niche (irrelevant to most savory cooking) — keep it an optional field, not a
+  prominent feature.
 
 ## Phase 6 — Data health check · Free
 
@@ -114,6 +143,15 @@ plain-text ingredient lines that *could* be linked to the library.
 - **Why here:** low-risk maintenance tool. The "could be linked" check directly supports the
   linking prerequisite for pantry (Phase 13) and in-season (Phase 10). Useful before bulk
   recipe entry.
+- **Grow into a coverage/health suite** reusing one data scan: (1) ingredient-library
+  linkage — % of recipe lines linked to the library (foundational; gates in-season and
+  pantry); (2) volume→weight conversion coverage (being built now with Phase 1c — see the
+  conversion-coverage report in `build_db.py`); (3) recipes never cooked / never rated (feeds
+  the Phase 19 recommender); (4) recipes missing a photo; (5) flag **messy ingredient names**
+  — lines whose ingredient text looks combined ("beef mince ground beef"), instruction-laden
+  ("very warm tap water up to 130 f"), or alternative-bearing ("naan or arabic taboon bread"),
+  detected cheaply by reusing the coverage scan. Conversion coverage ships now with
+  1c; bring the rest forward into Phase 6 when ready.
 
 ## Phase 7 — Trash / soft-delete · Free
 
@@ -212,6 +250,7 @@ recipes table.
 - **Cost:** schema + manual entry free; AI-assisted gathering is an optional paid upgrade.
 - **Why here:** substitutes (Phase 13c), the dietary-derivation upgrade (Phase 8c), and
   richer pairings (Phase 10e) all need these attributes.
+- *Depends on clean ingredient identity — see the Ingredient-line data model note (top).*
 
 ## Phase 13 — Pantry & planning · Free (rule-based)
 
@@ -232,7 +271,8 @@ The large data cluster.
 - **Capstone view — "what can I cook tonight":** emerges from pantry (13b) + in-season (10c) +
   time (9b) + make-ahead (9d). Not new data, just a combined view.
 - **Cross-cutting:** match %, substitutes, in-season, and shopping-list subtraction work only
-  on recipe lines **linked** to the library; recurse into sub-recipes (Phase 11).
+  on recipe lines **linked** to the library; recurse into sub-recipes (Phase 11). Linkage
+  quality depends on clean ingredient identity — see the Ingredient-line data model note (top).
 
 ## Phase 14 — Output & portability · Free
 
@@ -251,6 +291,8 @@ pages — ingredients, steps, times, yield — into the form for review.
 - **Why here:** the free sibling of the AI scan — it handles the common case (sites with
   structured data) with no API cost; AI scan (Phase 16) covers photos and sites without it.
   Can be pulled forward; the main caveat is the ingredient-mapping step.
+- *The right place for structural ingredient-line cleanup — see the Ingredient-line data
+  model note (top): clean scraped recipes on the way in.*
 
 - **Preferred-units-on-import (future, nice-to-have).** When importing a recipe
   (Phase 15/16), convert quantities into the user's preferred unit system, defaultable by
@@ -258,7 +300,8 @@ pages — ingredients, steps, times, yield — into the form for review.
   (cups → g) needs the 1c per-ingredient density table; rounding must be to the nearest
   1, not 5, to preserve hydration-percentage accuracy for bread. *Depends on: 1c (density
   data), Phase 15/16 (import), and a per-user/per-category settings store (which a global
-  units preference would also use — build that store once for both).*
+  units preference, the Phase 5d weather fields, and the Phase 19 saved-mood preference would
+  all use — build that store once for all).*
 
 ## Phase 16 — AI recipe scan / auto-populate · Per-use API cost
 
@@ -269,6 +312,8 @@ Read a recipe from a photo or pasted/messy text and auto-fill the form for revie
 - **Cost:** per-use API (~cents per recipe), needs a key. Always confirm the parsed result —
   models misread quantities and names.
 - **Payoff:** turns "upload more recipes" from typing into review-and-edit.
+- *Also the place to apply structural ingredient-line cleanup — see the Ingredient-line data
+  model note (top).*
 
 ## Phase 17 — Friend cooking feed / "what's for dinner" · Hosting cost + major change
 
@@ -339,6 +384,9 @@ Answers "what should I cook" with a single decisive pick, not a list.
 - *Scale note:* low value at ~5 recipes; compounds at 20–50+.
 - *Deferred:* seasonality weighting (cheap later); quick/weeknight (needs Phase 9b structured
   time); day-of-week (overlaps Phase 18); multiple suggestions / planning (that's Phase 13e).
+- *Settings store:* a saved-mood preference (remember your default mood) would use the same
+  future per-user settings store as Phase 5d (weather fields) and the import-units note —
+  build it once for all three.
 - *See also: Phase 18 (analytics) — shares cook_log; Phase 13e (meal planner) — the natural
   next step once you have a single-pick recommender.*
 

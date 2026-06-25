@@ -1,0 +1,131 @@
+category,ingredient,grams,reference_volume
+# Source: King Arthur Baking Ingredient Weight Chart (kingarthurbaking.com/learn/ingredient-weight-chart). Values are factual weights; this is a curated subset for the recipe-app volume-to-weight converter.,,,
+Flours & starches,All-Purpose Flour,120,1 cup
+Flours & starches,Bread Flour,120,1 cup
+Flours & starches,Whole Wheat Flour,113,1 cup
+Flours & starches,Whole Wheat Pastry Flour,96,1 cup
+Flours & starches,Cake Flour,120,1 cup
+Flours & starches,Pastry Flour,106,1 cup
+Flours & starches,Self-Rising Flour,113,1 cup
+Flours & starches,Almond Flour,96,1 cup
+Flours & starches,Almond meal,84,1 cup
+Flours & starches,Coconut Flour,128,1 cup
+Flours & starches,Oat Flour,92,1 cup
+Flours & starches,Rye Flour (medium),106,1 cup
+Flours & starches,Buckwheat Flour,120,1 cup
+Flours & starches,Chickpea flour,85,1 cup
+Flours & starches,Brown rice flour,128,1 cup
+Flours & starches,Rice flour (white),142,1 cup
+Flours & starches,Semolina Flour,163,1 cup
+Flours & starches,Spelt Flour,99,1 cup
+Flours & starches,Tapioca starch or flour,113,1 cup
+Flours & starches,Cornmeal (whole),138,1 cup
+Flours & starches,Cornstarch,28,1/4 cup
+Flours & starches,Potato starch,152,1 cup
+Flours & starches,Vital Wheat Gluten,18,2 tablespoons
+Sugars & sweeteners,Sugar (granulated white),198,1 cup
+Sugars & sweeteners,Brown sugar (packed),213,1 cup
+Sugars & sweeteners,Confectioners' sugar,113,1 cup
+Sugars & sweeteners,Turbinado sugar,180,1 cup
+Sugars & sweeteners,Demerara sugar,220,1 cup
+Sugars & sweeteners,Coconut sugar,77,1/2 cup
+Sugars & sweeteners,Honey,21,1 tablespoon
+Sugars & sweeteners,Maple syrup,156,1/2 cup
+Sugars & sweeteners,Molasses,85,1/4 cup
+Sugars & sweeteners,Corn syrup,312,1 cup
+Sugars & sweeteners,Agave syrup,84,1/4 cup
+Fats & oils,Butter,113,1/2 cup
+Fats & oils,Coconut oil,113,1/2 cup
+Fats & oils,Olive oil,50,1/4 cup
+Fats & oils,Vegetable oil,198,1 cup
+Fats & oils,Lard,113,1/2 cup
+Fats & oils,Vegetable shortening,46,1/4 cup
+Fats & oils,Peanut butter,135,1/2 cup
+Fats & oils,Almond butter,68,1/4 cup
+Fats & oils,Tahini paste,128,1/2 cup
+Fats & oils,Mayonnaise,113,1/2 cup
+Dairy & liquids,Milk (fresh),227,1 cup
+Dairy & liquids,Buttermilk,227,1 cup
+Dairy & liquids,Cream (heavy/light/half & half),227,1 cup
+Dairy & liquids,Sour cream,227,1 cup
+Dairy & liquids,Yogurt,227,1 cup
+Dairy & liquids,Cream cheese,227,1 cup
+Dairy & liquids,Cottage cheese,113,1/2 cup
+Dairy & liquids,Ricotta cheese,227,1 cup
+Dairy & liquids,Water,227,1 cup
+Dairy & liquids,Cheese (grated cheddar/jack/mozzarella/Swiss),113,1 cup
+Dairy & liquids,Cheese (grated Parmesan),50,1/2 cup
+Dairy & liquids,Evaporated milk,113,1/2 cup
+Dairy & liquids,Dried nonfat milk (powdered),28,1/4 cup
+Dairy & liquids,Lemon juice,14,1 tablespoon
+Dairy & liquids,Coconut milk (canned),241,1 cup
+Dairy & liquids,Pumpkin puree,227,1 cup
+Dairy & liquids,Applesauce,255,1 cup
+Dairy & liquids,Bananas (mashed),227,1 cup
+Leaveners & small measures,Baking powder,4,1 teaspoon
+Leaveners & small measures,Baking soda,3,1/2 teaspoon
+Leaveners & small measures,Salt (table),18,1 tablespoon
+Leaveners & small measures,Salt (Kosher Diamond Crystal),8,1 tablespoon
+Leaveners & small measures,Salt (Kosher Morton's),16,1 tablespoon
+Leaveners & small measures,Yeast (instant),7,2 1/4 teaspoons
+Leaveners & small measures,Cocoa (unsweetened),42,1/2 cup
+Leaveners & small measures,Espresso powder,7,1 tablespoon
+Leaveners & small measures,Vanilla extract,14,1 tablespoon
+Nuts & seeds,Almonds (whole),142,1 cup
+Nuts & seeds,Almonds (sliced),43,1/2 cup
+Nuts & seeds,Cashews (whole),113,1 cup
+Nuts & seeds,Hazelnuts (whole),142,1 cup
+Nuts & seeds,Pecans (whole),105,1 cup
+Nuts & seeds,Walnuts (chopped),113,1 cup
+Nuts & seeds,Pistachios (shelled),60,1/2 cup
+Nuts & seeds,Pine nuts,71,1/2 cup
+Nuts & seeds,Peanuts (shelled),142,1 cup
+Nuts & seeds,Chia seeds,37,1/4 cup
+Nuts & seeds,Flaxseed,35,1/4 cup
+Nuts & seeds,Poppy seeds,18,2 tablespoons
+Nuts & seeds,Sesame seeds,71,1/2 cup
+Nuts & seeds,Sunflower seeds,35,1/4 cup
+Nuts & seeds,Pumpkin seeds,40,1/4 cup
+Chocolate,Chocolate (chopped),170,1 cup
+Chocolate,Chocolate chips,170,1 cup
+Chocolate,Mini chocolate chips,177,1 cup
+Chocolate,White chocolate chips,170,1 cup
+Chocolate,Cacao nibs,120,1 cup
+Oats & grains,Oats (old-fashioned or quick),89,1 cup
+Oats & grains,Oats (rolled),113,1 cup
+Oats & grains,Steel cut oats,70,1/2 cup
+Oats & grains,Oat bran,53,1/2 cup
+Oats & grains,Wheat germ,28,1/4 cup
+Oats & grains,Wheat bran,32,1/2 cup
+Oats & grains,Bulgur,152,1 cup
+Oats & grains,Quinoa (whole),177,1 cup
+Oats & grains,Polenta,163,1 cup
+Dried fruit & coconut,Raisins (loose),149,1 cup
+Dried fruit & coconut,Currants,142,1 cup
+Dried fruit & coconut,Cranberries (dried),57,1/2 cup
+Dried fruit & coconut,Dates (chopped),149,1 cup
+Dried fruit & coconut,Figs (dried chopped),149,1 cup
+Dried fruit & coconut,Apricots (dried diced),64,1/2 cup
+Dried fruit & coconut,Coconut (sweetened shredded),85,1 cup
+Dried fruit & coconut,Coconut (unsweetened shredded),53,1 cup
+Aromatics & vegetables,Garlic (minced),28,2 tablespoons
+Aromatics & vegetables,Garlic (peeled and sliced),149,1 cup
+Aromatics & vegetables,Ginger (fresh sliced),57,1/4 cup
+Aromatics & vegetables,Onions (diced),142,1 cup
+Aromatics & vegetables,Bell peppers (fresh),142,1 cup
+Aromatics & vegetables,Carrots (diced),142,1 cup
+Aromatics & vegetables,Carrots (grated),99,1 cup
+Aromatics & vegetables,Celery (diced),142,1 cup
+Aromatics & vegetables,Leeks (diced),92,1 cup
+Aromatics & vegetables,Mushrooms (sliced),78,1 cup
+Aromatics & vegetables,Scallions (sliced),64,1 cup
+Aromatics & vegetables,Shallots (sliced),156,1 cup
+Aromatics & vegetables,Chives (fresh),21,1/2 cup
+Aromatics & vegetables,Olives (sliced),142,1 cup
+Aromatics & vegetables,Sundried tomatoes,170,1 cup
+Aromatics & vegetables,Tomato paste,29,2 tablespoons
+Aromatics & vegetables,Mashed potatoes,213,1 cup
+Other common,Jam or preserves,85,1/4 cup
+Other common,Graham cracker crumbs,100,1 cup
+Other common,Breadcrumbs (dried),28,1/4 cup
+Other common,Breadcrumbs (Japanese panko),50,1 cup

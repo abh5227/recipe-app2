@@ -308,14 +308,19 @@ const UNIT_TO_G = {
 };
 const IMPERIAL_UNIT_RE = /\b(fl\s+oz|fluid\s+ounces?|cups?|tbsp|tablespoons?|tsp|teaspoons?|ounces?|oz|lbs?|pounds?)\b/i;
 
-// Full display pipeline: scale (1a) then convert to metric (1b) when toggled.
-// Imperial mode is identical to scaleQty. Metric mode converts each number by the
-// unit's fixed factor and rounds to the nearest whole number — never a fraction
-// ("236 mL", not "236 1/2 mL"). Dual-unit strings ("2 lb / 1 kg") are passed
-// through to scaleQty unchanged; they already carry both values.
-function displayQty(qty) {
+// Volume-only units (for volume->weight). Unlike IMPERIAL_UNIT_RE this excludes oz/lb,
+// which are already weights.
+const VOLUME_UNIT_RE = /\b(fl\s+oz|fluid\s+ounces?|cups?|tbsp|tablespoons?|tsp|teaspoons?)\b/i;
+
+// Full display pipeline: scale (1a), then optionally convert. Imperial = scaleQty.
+// Metric (1b) converts by fixed factor to mL/g. Grams (1c) converts a volume measure to
+// weight using the per-line density (grams_per_ml) the server attached. Dual-unit strings
+// ("2 lb / 1 kg") and anything without a convertible unit fall back to scaleQty.
+function displayQty(qty, gramsPerMl) {
   if (qty == null) return "";
-  if (!view || view.units !== "metric") return scaleQty(qty);
+  const mode = view ? view.units : "imperial";
+  if (mode === "grams") return toGrams(qty, gramsPerMl);
+  if (mode !== "metric") return scaleQty(qty);
   if (String(qty).includes(" / ")) return scaleQty(qty);   // dual-unit: scale only
 
   const scaleFactor = view.scale > 0 ? view.scale : 1;
@@ -339,13 +344,53 @@ function displayQty(qty) {
   return converted.replace(IMPERIAL_UNIT_RE, metricUnit);
 }
 
+// Phase 1c: volume -> weight using the per-ingredient density (grams_per_ml) the server
+// attached to this line. Declines (returns the scaled original) when there's no density
+// match or no volume amount — the same "never guess" rule the server matcher uses.
+// Approximate results are marked with a leading "~".
+function toGrams(qty, gramsPerMl) {
+  if (gramsPerMl == null) return scaleQty(qty);            // no weight-table match
+  if (String(qty).includes(" / ")) return scaleQty(qty);  // dual-unit: leave alone
+  const scaleFactor = view.scale > 0 ? view.scale : 1;
+  const normalized = normalizeFractions(String(qty));
+  const unitMatch = normalized.match(VOLUME_UNIT_RE);
+  if (!unitMatch) return scaleQty(qty);                    // not a volume measure
+  const rawUnit = unitMatch[1].toLowerCase().replace(/\s+/g, " ");
+  const mlPer = UNIT_TO_ML[rawUnit];
+  if (!mlPer) return scaleQty(qty);
+  let found = false;
+  const converted = normalized.replace(AMOUNT_TOKEN, (token) => {
+    const n = tokenToNumber(token);
+    if (!isFinite(n)) return token;
+    found = true;
+    return String(Math.max(1, Math.round(n * scaleFactor * mlPer * gramsPerMl)));
+  });
+  if (!found) return scaleQty(qty);
+  return "~" + converted.replace(VOLUME_UNIT_RE, "g");
+}
+
+// Wrap a quantity in its <span class="qty">, marking volume->weight conversions (which
+// begin with "~") with an extra class so they read as approximate, not authored.
+function qtySpan(qty, gramsPerMl, inlineStyle) {
+  const text = displayQty(qty, gramsPerMl);
+  const cls = text.charAt(0) === "~" ? "qty approx" : "qty";
+  const style = inlineStyle ? ` style="${inlineStyle}"` : "";
+  return `<span class="${cls}"${style}>${esc(text)}</span>`;
+}
+
 // The metric/imperial toggle beside the scale control.
 function unitsControl() {
-  const opts = [["imperial", "Imperial"], ["metric", "Metric"]];
+  const opts = [["imperial", "Imperial"], ["metric", "Metric"], ["grams", "Grams"]];
   const buttons = opts
     .map(([v, label]) => `<button data-units="${v}" class="${view.units === v ? "on" : ""}">${label}</button>`)
     .join("");
   return `<div class="units-control" role="group" aria-label="Unit system">${buttons}</div>`;
+}
+
+// A one-line caption shown only in Grams mode, explaining the ~ marker.
+function gramsNote() {
+  if (!view || view.units !== "grams") return "";
+  return `<p class="grams-note">~ weights are estimated from volume; weigh for precision. Lines without a known weight stay as written.</p>`;
 }
 
 // The recipe's serving count as a number, if its servings text contains one.
@@ -389,7 +434,7 @@ function lineBodyHTML(row) {
 // A plain ingredient line: used for the Original view and for app recipes.
 function plainRow(row) {
   if (row.is_heading) return `<li class="group">${esc(row.raw_text)}</li>`;
-  return `<li><span class="qty">${esc(displayQty(row.qty))}</span><span>${lineBodyHTML(row)}</span></li>`;
+  return `<li>${qtySpan(row.qty, row.grams_per_ml)}<span>${lineBodyHTML(row)}</span></li>`;
 }
 
 // An added line (a person's new ingredient), shown in their colour. In a person's own
@@ -401,7 +446,7 @@ function additionRow(a, color, withDelete) {
   const tools = withDelete
     ? `<span class="line-tools"><button class="icon-btn" data-del-add data-add="${a.id}" title="Remove this addition" aria-label="Remove this addition">\u00d7</button></span>`
     : "";
-  return `<li><span class="qty" style="color:${color};font-weight:600">${esc(displayQty(a.qty))}</span>` +
+  return `<li>${qtySpan(a.qty, a.grams_per_ml, `color:${color};font-weight:600`)}` +
          `<span class="muted-ing" style="color:${color}">${body}</span>${tools}</li>`;
 }
 
@@ -483,14 +528,14 @@ function personRows(view, pid) {
     const removed = ch.removes.includes(pos);
     const editedQty = ch.edits[pos];                  // keys arrive as strings; pos coerces
     if (removed) {
-      return `<li class="ing-line removed"><span class="qty" style="color:${color}">${esc(displayQty(row.qty))}</span>` +
+      return `<li class="ing-line removed">${qtySpan(row.qty, row.grams_per_ml, `color:${color}`)}` +
              `<span class="muted-ing" style="color:${color}">${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
     }
     if (editedQty !== undefined) {
-      return `<li><span class="qty" style="color:${color};font-weight:600">${esc(displayQty(editedQty))}</span>` +
+      return `<li>${qtySpan(editedQty, row.grams_per_ml, `color:${color};font-weight:600`)}` +
              `<span class="muted-ing" style="color:${color}">${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
     }
-    return `<li><span class="qty">${esc(displayQty(row.qty))}</span><span>${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
+    return `<li>${qtySpan(row.qty, row.grams_per_ml)}<span>${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
   };
 
   // this person's additions that belong to the given section (null matches null)
@@ -564,6 +609,7 @@ function ingredientsSectionInner(view) {
     const rows = view.data.ingredients.map(plainRow).join("");
     return `
       <div class="col-head"><h2 class="col-title">Ingredients</h2><div class="ing-controls">${scaleControl()}${unitsControl()}</div></div>
+      ${gramsNote()}
       <ul class="ingredient-list">${rows}</ul>
       <p class="hint">Tap any highlighted ingredient to see when it's in season and where it grows.</p>`;
   }
@@ -589,6 +635,7 @@ function ingredientsSectionInner(view) {
 
   return `
     <div class="col-head"><h2 class="col-title">Ingredients</h2><div class="ing-controls">${scaleControl()}${unitsControl()}</div></div>
+    ${gramsNote()}
     ${viewSelector(view)}
     <ul class="ingredient-list">${rows}</ul>
     ${isPersonView ? addControl(view) : ""}
