@@ -456,6 +456,14 @@ adding a source never touches the hard logic.
   authors** (prints the full plan + dedup decisions); the real write of the 15, then the full
   ~295, follow.
 
+- **Use harvested grams as authoritative weight (captured, not yet used).** Parenthetical grams
+  are now HARVESTED and STORED in `recipe_ingredients.grams` (migration 011) — and the harvested
+  `(NNN g)` is stripped from the name — but the value is NOT yet displayed / scaled / preferred;
+  the app still shows the density-matched weight (1c). Future step: use the harvested gram as the
+  authoritative weight in display + scaling — better than density conversion, and it sidesteps
+  source volume typos (e.g. the "14 cups (250g)" chickpeas line, where the cup measure is wrong
+  but the harvested 250 g is correct). Pairs naturally with the linkage pass. Feeds 1c.
+
 - *Bare "oz" on liquids:* scraped recipes often write fluid ounces as bare "oz". On a
   known-liquid ingredient the importer should normalize "oz" → "fl oz" (or flag for review),
   so a liquid isn't later converted as weight (28.35 g/oz). Decline over guess — normalize

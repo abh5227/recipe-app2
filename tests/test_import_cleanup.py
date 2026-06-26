@@ -99,6 +99,21 @@ def test_grams_messy_nested_declines_not_harvest_15():
     assert "grams_declined" in d["flags"]                # but flags that a gram value was seen
 
 
+def test_harvested_gram_paren_stripped_from_name():
+    # harvest reads the weight AND removes the "(250g)" from the name; raw_text keeps the original
+    d = ic.classify_line("14 cups (250g) dried chickpeas")
+    assert d["grams_harvested"] == 250.0
+    assert d["name"] == "dried chickpeas"
+    assert d["raw"] == "14 cups (250g) dried chickpeas"
+
+
+def test_harvested_gram_paren_strip_keeps_contentful_paren():
+    # only the harvested "(270g)" goes; the contentful "(light roast)" stays
+    d = ic.classify_line("1 cup plus 2 tablespoons (270g) tahini (light roast)")
+    assert d["grams_harvested"] == 270.0
+    assert d["name"] == "plus 2 tablespoons tahini (light roast)"
+
+
 # ----------------------------------------------------------------- dual-unit secondary measure
 def test_dual_unit_secondary_measure_stripped_from_name():
     # "2 teaspoons / 6 g active dry yeast": keep the primary qty, drop the "/ 6 g" from the label
@@ -128,6 +143,21 @@ def test_dual_unit_only_leading_secondary_stripped():
 def test_no_secondary_measure_for_single_unit_line():
     d = ic.classify_line("2 tbsp olive oil")
     assert d["secondary_measure"] is None and d["name"] == "olive oil"
+
+
+# ----------------------------------------------------------------- dangling orphan paren
+def test_dangling_open_paren_stripped_from_name():
+    # the source line is unbalanced ("3 tbsp Thai tea mix (") — strip the lone trailing "("
+    d = ic.classify_line("3 tbsp Thai tea mix (")
+    assert d["kind"] == "ingredient"
+    assert (d["amount"], d["unit"]) == ("3", "tbsp")
+    assert d["name"] == "Thai tea mix"                    # orphan "(" gone
+    assert d["raw"] == "3 tbsp Thai tea mix ("            # raw_text keeps the original
+
+
+def test_contentful_paren_not_stripped():
+    d = ic.classify_line("2 tbsp soy sauce (low sodium)")
+    assert d["name"] == "soy sauce (low sodium)"          # balanced paren is left intact
 
 
 # ----------------------------------------------------------------- ranges

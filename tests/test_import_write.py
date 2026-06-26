@@ -199,3 +199,19 @@ def test_commit_rating_zero_writes_no_ratings_row(kitchen):
         assert conn.execute(
             "SELECT COUNT(*) FROM ratings WHERE recipe_id=?", (plan["recipe"]["id"],)
         ).fetchone()[0] == 0
+
+
+def test_commit_persists_harvested_grams_and_clean_label(kitchen):
+    # end-to-end: FIX 1 (gram-paren stripped from the label) + FIX 2 (gram value persisted)
+    c = _cleaned(name="Hummus Test", ingredient_lines=["14 cups (250g) dried chickpeas"],
+                 directions="Blend.")
+    plan = _plan(c)
+    with kitchen.conn() as conn:
+        iw.commit_plan(conn, plan)
+    with kitchen.conn() as conn:
+        row = conn.execute(
+            "SELECT label, grams, raw_text FROM recipe_ingredients WHERE recipe_id=? AND position=0",
+            (plan["recipe"]["id"],)).fetchone()
+    assert row["label"] == "dried chickpeas"             # FIX 1: harvested paren removed from name
+    assert row["grams"] == 250.0                         # FIX 2: harvested gram persisted
+    assert row["raw_text"] == "14 cups (250g) dried chickpeas"   # original preserved

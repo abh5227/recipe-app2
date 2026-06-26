@@ -2,7 +2,7 @@
 rebuild is idempotent and keeps referential integrity."""
 
 # Bump this when a migration is added.
-EXPECTED_MIGRATIONS = 10
+EXPECTED_MIGRATIONS = 11
 
 
 def test_all_migrations_applied(kitchen):
@@ -11,7 +11,7 @@ def test_all_migrations_applied(kitchen):
     assert len(files) == EXPECTED_MIGRATIONS
     assert files == sorted(files)                 # applied in filename order
     assert files[0].startswith("001")
-    assert files[-1].startswith("010")
+    assert files[-1].startswith("011")
 
 
 def test_seed_counts(kitchen):

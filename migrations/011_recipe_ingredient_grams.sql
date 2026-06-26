@@ -1,0 +1,11 @@
+-- 011_recipe_ingredient_grams.sql
+-- Phase 15 import harvests an authoritative weight from a "(NNN g)" parenthetical on an
+-- ingredient line (e.g. "(250g) dried chickpeas" -> 250 g). Give recipe_ingredients somewhere
+-- to KEEP that value.
+--
+-- CAPTURE ONLY for now: the column is written at import but not yet displayed, scaled, or
+-- preferred — the app still shows the density-matched weight (Phase 1c). A later step will use
+-- this harvested gram as the authoritative weight (better than density conversion, and it
+-- sidesteps source volume typos like "14 cups (250g)" where the cup measure is wrong but the
+-- 250 g is right). Nullable: most lines have no harvested gram.
+ALTER TABLE recipe_ingredients ADD COLUMN grams REAL;

@@ -281,7 +281,7 @@ function lineBodyHTML(row) {
     const label = row.label || row.raw_text || row.ingredient_id;
     return `<button class="ingredient" data-item="${esc(row.ingredient_id)}">${esc(label)}</button>${row.note ? esc(row.note) : ""}`;
   }
-  return esc(row.raw_text || "");
+  return esc(row.label || row.raw_text || "");
 }
 
 // A plain ingredient line: used for the Original view and for app recipes.
@@ -686,7 +686,7 @@ function stepRow(o) {
 function ingToRow(x) {
   if (x.is_heading) return ingRow({ type: "heading", heading: x.raw_text });
   if (x.ingredient_id) return ingRow({ type: "line", qty: x.qty, link: x.ingredient_id, text: x.label || x.raw_text, note: x.note });
-  return ingRow({ type: "line", qty: x.qty, text: x.raw_text });
+  return ingRow({ type: "line", qty: x.qty, text: x.label || x.raw_text });
 }
 function stepToRow(x) {
   if (x.is_heading) return stepRow({ type: "heading", heading: x.text });

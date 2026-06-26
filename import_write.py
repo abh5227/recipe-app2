@@ -113,6 +113,7 @@ def _ingredient_row(pos, line):
         "raw_text": line["raw"].strip(),                 # original line, ALWAYS preserved
         # display-only (commit_plan ignores it): the dual-unit fragment stripped from the label
         "secondary_measure": None if heading else line.get("secondary_measure"),
+        "grams": None if heading else line.get("grams_harvested"),   # harvested weight (captured)
     }
 
 
@@ -213,10 +214,10 @@ def commit_plan(conn, plan):
     for row in plan["ingredients"]:
         conn.execute(
             """INSERT INTO recipe_ingredients
-               (recipe_id, position, is_heading, qty, ingredient_id, label, note, raw_text)
-               VALUES (?,?,?,?,?,?,?,?)""",
+               (recipe_id, position, is_heading, qty, ingredient_id, label, note, raw_text, grams)
+               VALUES (?,?,?,?,?,?,?,?,?)""",
             (r["id"], row["position"], row["is_heading"], row["qty"],
-             row["ingredient_id"], row["label"], row["note"], row["raw_text"]))
+             row["ingredient_id"], row["label"], row["note"], row["raw_text"], row["grams"]))
     for row in plan["steps"]:
         conn.execute(
             "INSERT INTO recipe_steps (recipe_id, position, is_heading, text) VALUES (?,?,?,?)",
@@ -319,9 +320,10 @@ def _print_ingredient_rows(ings, flagged_pos):
             continue
         tag = "[F]" if i["position"] in flagged_pos else "   "
         sec = ("   [2nd %s]" % i["secondary_measure"]) if i.get("secondary_measure") else ""
-        print("         %s %2d. qty=%-11s| %s%s"
+        gr = ("   [%gg]" % i["grams"]) if i.get("grams") else ""
+        print("         %s %2d. qty=%-11s| %s%s%s"
               % (tag, i["position"], _fmt(i["qty"]),
-                 cleanup.trunc(i["label"] or i["raw_text"], 50), sec))
+                 cleanup.trunc(i["label"] or i["raw_text"], 50), sec, gr))
 
 
 def print_plan(plan, index):

@@ -59,6 +59,10 @@ _ALT_RE = re.compile(r"\bor\b", re.IGNORECASE)
 # raw_text keeps the original. A "/ 60 ml" deeper in the line (e.g. inside a note) is untouched.
 _SECONDARY_MEASURE = re.compile(r"^/\s*" + _NUM + r"\s*" + _SCALE_UNIT + r"\b\s*", re.IGNORECASE)
 
+# A lone trailing orphan "(" (e.g. "Thai tea mix (") is unbalanced source junk — strip it from
+# the parsed name. Only a trailing "(" with nothing after it; a contentful/balanced paren is kept.
+_DANGLING_PAREN = re.compile(r"\s*\($")
+
 # Parenthetical-grams harvest: find a complete (...) group, then a gram value inside it.
 # A dangling "(" never forms a group, so it's silently ignored (no crash, no harvest).
 _PAREN_GROUP = re.compile(r"\(([^)]*)\)")
@@ -132,10 +136,11 @@ def _strip_secondary_measure(name):
 
 
 def harvest_grams(text):
-    """Authoritative grams from a weight-focused "(NNN g/grams)". Returns (grams, declined):
-    grams is the float harvested or None; declined is True when a gram value WAS present in a
-    paren but the confidence guard rejected it (and nothing was harvested) — so the caller can
-    flag what we decline rather than silently drop it.
+    """Authoritative grams from a weight-focused "(NNN g/grams)". Returns
+    (grams, declined, gram_paren): grams is the float harvested or None; declined is True when a
+    gram value WAS present in a paren but the confidence guard rejected it (nothing harvested) —
+    so the caller can flag what we decline; gram_paren is the FULL matched "(NNN g)" substring
+    that was harvested (so the caller can strip it from the name), else None.
 
     Paren-safe: a dangling/unclosed "(" forms no group and is ignored (no crash, no harvest).
     CONFIDENCE GUARD: harvest only when the gram paren is weight-only — no volume-unit words
@@ -152,10 +157,19 @@ def harvest_grams(text):
         if [n for n in re.findall(r"\d+(?:\.\d+)?", content) if n != m.group(1)]:
             continue
         try:
-            return float(m.group(1)), False
+            return float(m.group(1)), False, grp.group(0)
         except ValueError:
             pass
-    return None, saw_gram
+    return None, saw_gram, None
+
+
+def _strip_gram_paren(name, gram_paren):
+    """Remove the exact harvested gram parenthetical (e.g. '(250g)') from the name and collapse
+    the gap it leaves — so '(250g) dried chickpeas' -> 'dried chickpeas'. ONLY the harvested
+    paren is removed; a contentful paren like '(light roast)' is left untouched."""
+    if not gram_paren:
+        return name
+    return re.sub(r"\s+", " ", name.replace(gram_paren, "", 1)).strip()
 
 
 def parse_servings(raw):
@@ -176,7 +190,7 @@ def parse_servings(raw):
 def classify_line(raw):
     """Turn one raw ingredient line into a structured-or-flagged record."""
     line = raw.strip()
-    grams, grams_declined = harvest_grams(line)
+    grams, grams_declined, gram_paren = harvest_grams(line)
     res = {
         "raw": raw, "kind": "ingredient", "amount": "", "value": None, "unit": "",
         "name": line, "range": None, "grams_harvested": grams,
@@ -202,6 +216,8 @@ def classify_line(raw):
     #    stripped from the name (kept in raw_text) so the label/linkage key stays clean.
     if amount:
         name, secondary = _strip_secondary_measure(name)
+        name = _DANGLING_PAREN.sub("", name)         # drop a lone trailing orphan "("
+        name = _strip_gram_paren(name, gram_paren)   # drop the harvested "(NNN g)" paren
         res.update(amount=amount, value=value, unit=unit, name=name, range=rng)
         res["secondary_measure"] = secondary
         res["has_alternative"] = bool(_ALT_RE.search(name))
