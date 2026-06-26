@@ -99,6 +99,37 @@ def test_grams_messy_nested_declines_not_harvest_15():
     assert "grams_declined" in d["flags"]                # but flags that a gram value was seen
 
 
+# ----------------------------------------------------------------- dual-unit secondary measure
+def test_dual_unit_secondary_measure_stripped_from_name():
+    # "2 teaspoons / 6 g active dry yeast": keep the primary qty, drop the "/ 6 g" from the label
+    d = ic.classify_line("2 teaspoons / 6 g active dry yeast")
+    assert d["kind"] == "ingredient"
+    assert (d["amount"], d["unit"]) == ("2", "teaspoons")
+    assert d["name"] == "active dry yeast"               # label is now the clean ingredient name
+    assert d["secondary_measure"] == "/ 6 g"
+    assert d["raw"] == "2 teaspoons / 6 g active dry yeast"   # raw_text kept intact
+
+
+def test_dual_unit_metric_weight_stripped_keeps_alternative():
+    d = ic.classify_line("3 ½ cups / 440 g bread flour or high gluten flour")
+    assert d["name"] == "bread flour or high gluten flour"
+    assert d["secondary_measure"] == "/ 440 g"
+    assert d["has_alternative"] is True                  # "or" still detected on the clean name
+
+
+def test_dual_unit_only_leading_secondary_stripped():
+    # a "/60 ml" later in a note must NOT be touched — only the leading secondary measure goes
+    d = ic.classify_line("1 ¼ cups / 300 ml warm water (you may need ± ¼ cup /60 ml more)")
+    assert d["name"].startswith("warm water")
+    assert "/60 ml" in d["name"]
+    assert d["secondary_measure"] == "/ 300 ml"
+
+
+def test_no_secondary_measure_for_single_unit_line():
+    d = ic.classify_line("2 tbsp olive oil")
+    assert d["secondary_measure"] is None and d["name"] == "olive oil"
+
+
 # ----------------------------------------------------------------- ranges
 def test_range_endash():
     d = ic.classify_line("1 – 2 tbsp extra virgin olive oil")

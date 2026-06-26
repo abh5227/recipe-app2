@@ -291,6 +291,7 @@ RECIPES = [
         "name": "Roast Chicken with Sumac and Red Onions (Mussakhan)",
         "author": "Yasmin Khan · Zaitoun",
         "source_url": None,
+        "uid": "633B9573-44E4-47F1-91FC-3D53757C0014",   # Paprika native twin — import dedup-skips it
         "image": "images/mussakhan.jpg",
         "category": "Chicken · Palestinian · Middle Eastern",
         "servings": "4",
@@ -329,6 +330,7 @@ RECIPES = [
         "name": "Roasted Aloo Gobhi",
         "author": "Priya Krishna · Indian-ish",
         "source_url": None,
+        "uid": "9AEAE67F-172B-4083-AC8A-7BCDDCE2F3AF",   # Paprika native twin — import dedup-skips it
         "image": "images/aloo-gobhi.jpg",
         "category": "Indian · Vegetarian · Vegetables",
         "servings": "4",
@@ -365,6 +367,7 @@ RECIPES = [
         "name": "Thai BBQ Chicken (Gai Yang)",
         "author": "Hot Thai Kitchen",
         "source_url": "https://hot-thai-kitchen.com/ultimate-bbq-chicken/",
+        "uid": "21FB182C-8CED-4E3A-B20C-893310AA4631",   # Paprika native twin — import dedup-skips it
         "image": "images/gai-yang.jpg",
         "category": "Chicken · Thai",
         "servings": "4",
@@ -415,6 +418,7 @@ RECIPES = [
         "name": "No-Knead Yeast Bread",
         "author": "RecipeTin Eats",
         "source_url": "https://www.recipetineats.com/easy-yeast-bread-recipe-no-knead/",
+        "uid": "C9880B00-CFDF-40F8-A53A-7F4E2AEFDED2",   # Paprika native twin — import dedup-skips it
         "image": "images/no-knead-bread.jpg",
         "category": "Bread",
         "servings": "10",
@@ -446,6 +450,7 @@ RECIPES = [
         "name": "Korean Beef Bulgogi Rice Bowls",
         "author": "RecipeTin Eats",
         "source_url": "https://www.recipetineats.com/korean-beef-bulgogi-rice-bowls-the-easy-way/",
+        "uid": "123E269C-1E9F-4E41-8B11-217EC32537DF",   # Paprika native twin — import dedup-skips it
         "image": "images/bulgogi-bowls.jpg",
         "category": "Beef · Korean · Rice",
         "servings": "4",

@@ -247,6 +247,65 @@ cost of a second set of endpoints. At this scale, clarity wins.
 
 ---
 
+## The recipe import pipeline (Phase 15)
+
+Importing is a three-stage pipeline, each stage its own module so adding a source never touches
+the hard logic:
+
+1. **`paprika_native_reader.py`** — reads the Paprika NATIVE export (`.paprikarecipes`, a ZIP of
+   gzip'd JSON) in memory and maps each recipe into a source-agnostic **normalized shape**
+   (name, ingredient_lines, directions, source/source_url, categories, uid, hash, …).
+2. **`import_cleanup.py`** — the source-agnostic **cleanup core**: turns each raw line into a
+   structured-or-flagged record (amount/unit/name, sections, parenthetical grams, ranges, risky
+   `N x SIZE`/`each`, the dual-unit `/ N unit` secondary-measure strip). Its rule is
+   *decline-over-guess*: extract clear wins, FLAG the ambiguous, never silently mis-structure.
+3. **`import_write.py`** — maps a cleaned recipe to database rows. This is the write path.
+
+### The write path (`import_write.py`)
+
+It splits into a **pure plan** and **one writer**, so the plan can be dry-run with no DB access:
+
+- **`plan_recipe(cleaned, uid_index, taken_slugs)`** returns a write PLAN (touches no DB):
+  - **slug vs. uid.** The **slug** is `recipes.id`, the human primary key minted from the title
+    (lowercase, hyphenated, accent-folded; collisions get `-2`/`-3`); every child row
+    (ingredients, steps, ratings, flags) references it. The **uid** is the *separate* dedup key —
+    the source's stable id. One identifies the row; the other recognises the recipe.
+  - **field mapping:** Paprika `source`→`author`, categories list→the `·`-joined `category`
+    string, servings parsed-or-blank, `uid`+`hash` carried; `source='app'`.
+  - **ingredients → `recipe_ingredients`** (position-ordered, `raw_text` always preserved);
+    sections → `is_heading=1`; flagged lines are still written, just marked.
+  - **steps → `recipe_steps`** (plain text, no `{{…}}` markup; section-header steps → heading).
+  - **rating:** 1–5 → a `ratings` row; **0/unrated → no row** (the table's
+    `CHECK(rating BETWEEN 1 AND 5)` would reject 0).
+- **`commit_plan(conn, plan)`** is the only writer; the dry-run never calls it.
+
+### uid-dedup and the `source='app'` tier
+
+Before writing, the plan checks the recipe's `uid` against the uids already in the database
+(migration `009` added `recipes.uid` + `hash` with a partial unique index). If it's already
+present, the recipe is **SKIPPED** — that's what makes re-importing idempotent, and how the **5
+seed recipes** (now tagged in `seed.py` with their matched Paprika uids) skip their native twins
+instead of duplicating them. Imported recipes are written at the **`source='app'`** tier, so they
+live alongside the seed recipes and **survive every rebuild** (`build_db.py` only ever rebuilds
+`source='seed'`).
+
+### The review queue (`import_flags`, migration 010)
+
+Nothing is ever dropped. Lines the core couldn't confidently structure are still written (with
+`raw_text` intact) and *also* recorded in **`import_flags`** for later review — line-level flags
+(`multiplier`, `each_multi`, `ambiguous_section`, `grams_declined`) carry the line's `position`;
+recipe-level incompletes (`no_ingredients`, `no_directions`, `photo_only`) use a NULL position.
+It's kept out of the rendering tables, so one `SELECT` is the whole queue.
+
+**Validated by a dry-run** (`python3 import_write.py [--seed N]`) on a random 15 recipes with
+distinct authors: it prints the full plan for each — field values, minted slug, dedup decision,
+ingredient/step rows, rating decision, and review-queue rows — and **writes nothing**.
+
+**Not done here — separate upcoming passes:** library **linkage** (`ingredient_id` stays NULL)
+and full **image storage** (`image` stays NULL; `photos[]` is not extracted yet).
+
+---
+
 ## Critical pros & cons / future considerations
 
 Known tradeoffs and considerations before extending the app.
@@ -339,7 +398,18 @@ What's deliberately explicit, and why it reads the way it does:
 
 Newest first. Add an entry whenever the architecture or a feature changes.
 
-- **Quantity & units complete (Phase 1)** *(current)* — the amount system, built 1a→1d then
+- **Recipe import — reader → cleanup core → write (Phase 15)** *(current)* — a three-stage import
+  pipeline: `paprika_native_reader.py` (Paprika NATIVE export → normalized shape),
+  `import_cleanup.py` (source-agnostic cleanup core, decline-over-guess), and `import_write.py`
+  (cleaned recipe → DB rows). Migration `009` added `recipes.uid` + `hash` (uid = dedup key,
+  separate from the slug PK); the 5 seed recipes were tagged with their Paprika uids so import
+  skips their twins. The write layer mints a slug from the title (collision-safe), writes at the
+  `source='app'` tier, maps categories/servings/rating (0 → no `ratings` row), and routes flagged
+  lines + recipe-level incompletes to a new `import_flags` review queue (migration `010`) —
+  dropping nothing. Validated by a writes-nothing dry-run on a random 15 distinct-author recipes.
+  Library linkage (`ingredient_id`) and full image storage remain separate upcoming passes.
+  Suite: 116 tests.
+- **Quantity & units complete (Phase 1)** — the amount system, built 1a→1d then
   refined. 1a scaler; 1b metric/imperial; 1c volume→weight via a server-side matcher
   (`weights.py`, `ingredient_weights`, seeded from `king-arthur-staples-v2.csv`); 1d step-text
   scaling (`stepscale.py`, markup > guard > heuristic — temps/times/dimensions never scale).

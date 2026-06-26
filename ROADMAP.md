@@ -370,8 +370,9 @@ adding a source never touches the hard logic.
   per ingredient line; flag section-headers for review (the ~5% ambiguous Title-Case / no-amount
   lines); harvest parenthetical grams; servings conservative-or-blank; library linkage
   (decline-over-guess). The hard engineering lives here and is reused across all readers.
-- **WRITE layer:** recipes → app-tier (uid-dedup); ingredients → seed-tier shared library;
-  images → storage. Field-guide AI baseline + linkage run as separate passes (see below).
+- **WRITE layer:** recipes → app-tier (uid-dedup) — **recipes-write now BUILT** (see
+  "Recipe-write — BUILT" below); ingredients → seed-tier shared library and images → storage are
+  still to come. Field-guide AI baseline + linkage run as separate passes (see below).
 - **Build order:** Paprika-native reader + the core now; URL and AI-scan readers later — don't
   build ahead of need, but the core is designed against the normalized shape so they slot in
   without a refactor.
@@ -417,6 +418,43 @@ adding a source never touches the hard logic.
 - **Images in scope** — bringing across recipe photos is part of a "seamless transition."
 - *Cross-reference: the data-capture, provenance, ingredient-name-cleanup, and amount-structure
   notes (top) are the cleanup core's concerns, exercised at scale here.*
+
+**Recipe-write — BUILT (the write layer's first persisting step; Project A):**
+
+- **Migration 009** adds `recipes.uid` (the source's stable id) + `recipes.hash` (content hash),
+  with a partial UNIQUE index on `uid` (where non-null). `uid` is the DEDUP key; it is NOT the
+  primary key — `recipes.id` stays the slug every child row references. `hash` is stored now for
+  later change-detection (not yet used).
+- **5 seed recipes tagged** with their matched Paprika `uid`s (in `seed.py`, written by
+  `build_db.py`), so importing the native archive SKIPS their twins instead of duplicating them.
+- **Mapping (`import_write.py`)** consumes the cleanup core's output as a pure write PLAN (no DB),
+  committed by a single writer (`commit_plan`):
+  - **slug (PK) minted from the title** (lowercase, hyphenated, accent-folded, punctuation
+    stripped); collisions get `-2`/`-3`. The slug identifies the row; the `uid` is the SEPARATE
+    dedup key.
+  - recipes → **`source='app'`** tier (survives every rebuild — `build_db` only rebuilds
+    `'seed'`); Paprika `source`→`author`, categories LIST→`·`-joined `category` string (each
+    stripped), servings **parsed-or-blank**, `uid`+`hash` carried, `created_at`=now.
+  - ingredients → `recipe_ingredients` (position-ordered, **`raw_text` always preserved**);
+    sections → `is_heading=1`; `ingredient_id` left NULL.
+  - steps → `recipe_steps` (**plain text, no `{{…}}` markup**); section-header steps → heading.
+  - **rating 0 (unrated) → NO `ratings` row** (avoids `CHECK(rating BETWEEN 1 AND 5)`); 1–5 → a row.
+  - **DEDUP:** a recipe whose `uid` is already present is SKIPPED (this skips the 5 seed twins).
+  - **image:** primary photo only if trivially available, else NULL — `photos[]` is NOT extracted.
+  - **dual-unit secondary-measure strip** (cleanup core): a `2 tsp / 6 g salt` line keeps the
+    primary qty and strips the leading `/ 6 g` from the LABEL (kept in `raw_text`) so the
+    label / future linkage key stays clean; an in-note `/60 ml` and a parenthetical `(N g)` are
+    left intact.
+- **Review queue — `import_flags` table (migration 010).** Flagged lines (`multiplier`,
+  `each_multi`, `ambiguous_section`, `grams_declined`) and recipe-level incompletes
+  (`no_ingredients`, `no_directions`, `photo_only`) land here, told apart by a nullable
+  `position` (NULL = recipe-level). Kept OUT of the rendering tables so one SELECT is the whole
+  queue; app-owned, cascades with its recipe. Lines are still WRITTEN — nothing is dropped.
+- **NOT done here — separate upcoming write-layer passes:** library **LINKAGE** (`ingredient_id`)
+  and full **IMAGE storage**.
+- **Staged rollout:** validated by a writes-nothing dry-run on a random **15 with distinct
+  authors** (prints the full plan + dedup decisions); the real write of the 15, then the full
+  ~295, follow.
 
 - *Bare "oz" on liquids:* scraped recipes often write fluid ounces as bare "oz". On a
   known-liquid ingredient the importer should normalize "oz" → "fl oz" (or flag for review),

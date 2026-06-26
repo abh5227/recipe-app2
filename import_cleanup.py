@@ -53,6 +53,12 @@ _RANGE_SPLIT = re.compile(r"\s*(?:to|[-–—])\s*", re.IGNORECASE)
 _EACH_RE = re.compile(r"\beach\b", re.IGNORECASE)
 _ALT_RE = re.compile(r"\bor\b", re.IGNORECASE)
 
+# Secondary/dual measure left at the START of the name after the primary amount is parsed:
+# "2 tsp / 6 g salt" parses qty "2 tsp" and leaves "/ 6 g salt" as the name. Strip a LEADING
+# "/ <amount> <unit>" so the label (and the future linkage key) is the clean ingredient name;
+# raw_text keeps the original. A "/ 60 ml" deeper in the line (e.g. inside a note) is untouched.
+_SECONDARY_MEASURE = re.compile(r"^/\s*" + _NUM + r"\s*" + _SCALE_UNIT + r"\b\s*", re.IGNORECASE)
+
 # Parenthetical-grams harvest: find a complete (...) group, then a gram value inside it.
 # A dangling "(" never forms a group, so it's silently ignored (no crash, no harvest).
 _PAREN_GROUP = re.compile(r"\(([^)]*)\)")
@@ -115,6 +121,16 @@ def parse_amount(line):
     return amount, value, unit, name, None
 
 
+def _strip_secondary_measure(name):
+    """Strip a LEADING secondary measure ('/ 6 g …') the primary-amount parse left at the
+    front of the name on a dual-unit line. Returns (clean_name, stripped_fragment|None); only
+    the leading one is removed and the original survives in raw_text (caller never loses it)."""
+    m = _SECONDARY_MEASURE.match(name)
+    if not m:
+        return name, None
+    return name[m.end():].strip(), m.group(0).strip()
+
+
 def harvest_grams(text):
     """Authoritative grams from a weight-focused "(NNN g/grams)". Returns (grams, declined):
     grams is the float harvested or None; declined is True when a gram value WAS present in a
@@ -164,7 +180,7 @@ def classify_line(raw):
     res = {
         "raw": raw, "kind": "ingredient", "amount": "", "value": None, "unit": "",
         "name": line, "range": None, "grams_harvested": grams,
-        "has_alternative": False, "has_prep_note": False,
+        "has_alternative": False, "has_prep_note": False, "secondary_measure": None,
         # grams_declined: a gram value was present but the guard didn't trust it — flag what we
         # decline, never silently drop it. Soft signal: doesn't by itself flag the line.
         "flags": ["grams_declined"] if grams_declined else [],
@@ -181,12 +197,13 @@ def classify_line(raw):
 
     amount, value, unit, name, rng = parse_amount(line)
 
-    # 2. Has a leading amount -> ingredient (then layer on informational signals).
-    # NOTE: a dual-unit inline amount ("350g / 12 oz") captures the primary (350 g) and leaves
-    # the "/ 12 oz" fragment at the start of the name — conservative + link-tolerable. Could
-    # later flag a "secondary amount" rather than leaving it in the name.
+    # 2. Has a leading amount -> ingredient (then layer on informational signals). A dual-unit
+    #    inline amount ("2 tsp / 6 g") captures the primary; the leading "/ 6 g" secondary is
+    #    stripped from the name (kept in raw_text) so the label/linkage key stays clean.
     if amount:
+        name, secondary = _strip_secondary_measure(name)
         res.update(amount=amount, value=value, unit=unit, name=name, range=rng)
+        res["secondary_measure"] = secondary
         res["has_alternative"] = bool(_ALT_RE.search(name))
         res["has_prep_note"] = bool(_PREP.search(name))
         if _EACH_RE.search(line):
@@ -271,6 +288,8 @@ def fmt_line(d):
         ann.append("alt")
     if d["has_prep_note"]:
         ann.append("prep")
+    if d.get("secondary_measure"):
+        ann.append("2nd=%s" % d["secondary_measure"])
     tail = ("   [" + ", ".join(ann) + "]") if ann else ""
     if d["kind"] == "section":
         return "[SECTION   ] %s" % d["raw"].strip()

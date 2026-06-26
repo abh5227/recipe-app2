@@ -60,14 +60,20 @@ backup.py      makes a timestamped copy of recipes.db into backups/.
 app.py         the backend: serves the page and runs the SQL queries.
 weights.py     volume→weight matcher + King Arthur density lookup (Phase 1c).
 stepscale.py   method-text quantity parser (markup > guard > heuristic, Phase 1d).
+paprika_native_reader.py   Phase 15 import — reads the Paprika NATIVE export (.paprikarecipes) into a normalized shape.
+import_cleanup.py          Phase 15 import — source-agnostic cleanup core: structures/flags each line.
+import_write.py            Phase 15 import — maps a cleaned recipe to DB rows (source='app', uid-dedup, review queue).
 recipes.db     the generated database (binary; don't hand-edit; git-ignored).
 static/        index.html (page shell) · styles.css (the look) · app.js (renders it)
 tests/         pytest suite; builds a throwaway DB per test (see Tests below).
 requirements.txt      / requirements-dev.txt   runtime (flask) and test (pytest) deps.
 ROADMAP.md     planned features, phase by phase.
 CODE_WALKTHROUGH.md   a guided tour of the code and the design decisions.
-demo_foreign_keys.py  a standalone teaching script (runs on a copy; safe to ignore).
 ```
+
+The import path is a multi-step pipeline — **reader → cleanup core → write** — from the
+**Paprika native** export. Imported recipes are written at the **app tier** (so a rebuild never
+touches them) and de-duplicated by their source `uid`.
 
 ## Two safety nets
 
