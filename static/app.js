@@ -213,181 +213,15 @@ async function renderHome() {
 
 /* ---------- recipe view ---------- */
 
-/* Quantity scaling (Phase 1a).
-   Quantities are free text ("4 cloves", "1½ cups", "2 lb / 1 kg", "3 + 2 tbsp", "to
-   taste"). To scale, we multiply every number in the string and leave the rest (units,
-   words) alone, so non-numeric quantities pass through unchanged. A mixed number like
-   "1 1/2" is treated as a single value. This parser is shared — the metric/imperial
-   toggle and weight conversion (Phases 1b/1c) are meant to build on it. */
-
-const UNICODE_FRACTIONS = {
-  "\u00bc": "1/4", "\u00bd": "1/2", "\u00be": "3/4", "\u2153": "1/3", "\u2154": "2/3",
-  "\u215b": "1/8", "\u215c": "3/8", "\u215d": "5/8", "\u215e": "7/8", "\u2159": "1/6", "\u215a": "5/6",
-};
-
-// Turn "1\u00bd" into "1 1/2" and "\u00bd" into "1/2", then tidy whitespace.
-function normalizeFractions(s) {
-  return s
-    .replace(/[\u00bc\u00bd\u00be\u2153\u2154\u215b\u215c\u215d\u215e\u2159\u215a]/g,
-             (m) => " " + UNICODE_FRACTIONS[m] + " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-// Parse one numeric token ("4", "1.5", "1/2", "1 1/2") into a Number, or NaN.
-function tokenToNumber(token) {
-  token = token.trim();
-  if (/^\d+(\.\d+)?$/.test(token)) return parseFloat(token);
-  let m = token.match(/^(\d+)\s+(\d+)\/(\d+)$/);          // mixed, e.g. "1 1/2"
-  if (m) { const d = parseInt(m[3], 10); return d ? parseInt(m[1], 10) + parseInt(m[2], 10) / d : NaN; }
-  m = token.match(/^(\d+)\/(\d+)$/);                       // fraction, e.g. "1/2"
-  if (m) { const d = parseInt(m[2], 10); return d ? parseInt(m[1], 10) / d : NaN; }
-  return NaN;
-}
-
-// Render a number back as a readable amount, preferring common kitchen fractions.
-const NICE_FRACTIONS = [
-  [0, ""], [1 / 16, "1/16"], [1 / 8, "1/8"], [1 / 6, "1/6"], [1 / 4, "1/4"],
-  [1 / 3, "1/3"], [3 / 8, "3/8"], [1 / 2, "1/2"], [5 / 8, "5/8"], [2 / 3, "2/3"],
-  [3 / 4, "3/4"], [7 / 8, "7/8"], [1, ""],
-];
-function formatAmount(n) {
-  if (!isFinite(n)) return String(n);
-  if (n === 0) return "0";
-  // Large amounts (metric mL/g, big batches) read better as a rounded whole number than as
-  // a mixed fraction or a decimal: 187.5 -> "188", not "187 1/2" or "187.5". Small cooking
-  // amounts keep their fractions. Magnitude heuristic; 1b will handle this properly, by unit.
-  if (n >= 20) return String(Math.round(n));
-  const whole = Math.floor(n + 1e-9);
-  const frac = n - whole;
-  let best = NICE_FRACTIONS[0], bestErr = Infinity;
-  for (const cand of NICE_FRACTIONS) {
-    const err = Math.abs(frac - cand[0]);
-    if (err < bestErr) { bestErr = err; best = cand; }
-  }
-  if (bestErr < 0.04) {
-    const w = whole + (best[0] === 1 ? 1 : 0);   // e.g. 1.97 rounds up to the next whole
-    const label = best[0] === 1 ? "" : best[1];
-    if (label && w > 0) return w + " " + label;
-    if (label) return label;
-    if (w > 0) return String(w);
-    // positive but rounded toward zero — show a small decimal, never a misleading "0"
-    return String(Math.round(n * 1000) / 1000);
-  }
-  return String(Math.round(n * 100) / 100);       // otherwise a trimmed decimal
-}
-
-// Matches one amount token, longest form first (mixed > fraction > int/decimal).
-const AMOUNT_TOKEN = /\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?/g;
-
-// Scale a quantity string by the current factor; unchanged at \u00d71 or if no number is found.
-function scaleQty(qty) {
-  const factor = view ? view.scale : 1;
-  if (qty == null) return "";
-  if (factor === 1 || !(factor > 0)) return qty;   // \u00d71, or a 0/negative/NaN factor: leave as-is
-  let found = false;
-  const scaled = normalizeFractions(qty).replace(AMOUNT_TOKEN, (token) => {
-    const n = tokenToNumber(token);
-    if (!isFinite(n)) return token;
-    found = true;
-    return formatAmount(n * factor);
-  });
-  return found ? scaled : qty;
-}
-
-// Metric/imperial conversion tables (Phase 1b).
-const UNIT_TO_ML = {
-  tsp: 4.92892, teaspoon: 4.92892, teaspoons: 4.92892,
-  tbsp: 14.7868, tablespoon: 14.7868, tablespoons: 14.7868,
-  "fl oz": 29.5735, "fluid oz": 29.5735, "fluid ounce": 29.5735, "fluid ounces": 29.5735,
-  cup: 236.588, cups: 236.588,
-};
-const UNIT_TO_G = {
-  oz: 28.3495, ounce: 28.3495, ounces: 28.3495,
-  lb: 453.592, lbs: 453.592, pound: 453.592, pounds: 453.592,
-};
-// All measuring units (volume + weight, imperial + metric) — used to tell a real measure
-// from a bare count/descriptor. Excludes bare "l"/"L" (it would match "small", "oil").
-const MEASURE_UNIT_RE = /\b(fl\s+oz|fluid\s+ounces?|cups?|tbsp|tablespoons?|tsp|teaspoons?|ounces?|oz|lbs?|pounds?|kilograms?|kg|grams?|g|millilit(?:er|re)s?|ml|lit(?:er|re)s?)\b/i;
-const MEASURE_UNIT_RE_G = new RegExp(MEASURE_UNIT_RE.source, "gi");
-
-// Metric threshold: amounts at or below 2 tbsp stay in measuring spoons (tsp/tbsp).
-const SPOON_MAX_ML = 2 * UNIT_TO_ML.tbsp;
-
-// A "count" amount has a number but no measuring unit — a bare count ("8"), a size descriptor
-// ("2 medium"), or a count-noun ("4 cloves"). A count is not a measure, so it scales to a
-// whole number rather than a fraction (no "2 3/8 medium").
-function isCountAmount(qty) {
-  const s = normalizeFractions(String(qty));
-  if (s.includes(" / ")) return false;             // dual-unit handled separately
-  if (!/\d/.test(s)) return false;                 // no number (pinch, to taste)
-  return !MEASURE_UNIT_RE.test(s);
-}
-
-// Scale a countable amount, rounding to a whole number (min 1). Left as authored at x1.
-function scaleCount(qty, factor) {
-  if (!(factor > 0) || factor === 1) return qty;
-  let found = false;
-  const out = normalizeFractions(String(qty)).replace(AMOUNT_TOKEN, (token) => {
-    const n = tokenToNumber(token);
-    if (!isFinite(n)) return token;
-    found = true;
-    return String(Math.max(1, Math.round(n * factor)));
-  });
-  return found ? out : qty;
-}
-
-// Reduce an amount to a single {value, unit}, combining a same-unit "+"-compound
-// ("3 + 2 tbsp" -> 5 tbsp). Returns null if it can't reduce to one unit (different units or
-// none) — the caller then declines, so we never emit a malformed sum like "53 + 35 mL".
-function parseAmount(normalized) {
-  const units = normalized.match(MEASURE_UNIT_RE_G);
-  if (!units) return null;
-  const unit = units[0].toLowerCase().replace(/\s+/g, " ");
-  if (!units.every((u) => u.toLowerCase().replace(/\s+/g, " ") === unit)) return null;
-  let sum = 0, found = false;
-  normalized.replace(AMOUNT_TOKEN, (tok) => {
-    const n = tokenToNumber(tok);
-    if (isFinite(n)) { sum += n; found = true; }
-    return tok;
-  });
-  return found ? { value: sum, unit } : null;
-}
-
-// Smart Metric: each amount picks its own unit.
-//  - <= 2 tbsp           -> keep the measuring-spoon unit (scaled);
-//  - > 2 tbsp + KA match  -> grams (approximate "~"), deferring to the KA table incl. liquids;
-//  - > 2 tbsp, no match   -> keep the original unit (decline);
-//  - oz/lb                -> grams by fixed factor; already-metric/uncombinable -> scaled as-is.
-function toMetric(qty, gramsPerMl, factor) {
-  const parsed = parseAmount(normalizeFractions(String(qty)));
-  if (!parsed) return scaleQty(qty);
-  const scaledValue = parsed.value * factor;
-  const gPer = UNIT_TO_G[parsed.unit];
-  if (gPer) return String(Math.max(1, Math.round(scaledValue * gPer))) + " g";   // oz/lb -> g
-  const mlPer = UNIT_TO_ML[parsed.unit];
-  if (!mlPer) return scaleQty(qty);                          // already metric (g/kg/mL)
-  const ml = scaledValue * mlPer;
-  if (ml <= SPOON_MAX_ML + 1e-9) return scaleQty(qty);        // measuring-spoon zone
-  if (gramsPerMl != null) return "~" + Math.max(1, Math.round(ml * gramsPerMl)) + " g";
-  return scaleQty(qty);                                       // > 2 tbsp, no KA match: decline
-}
-
-// Full display pipeline: counts round to whole (both systems); Imperial = scaleQty; Metric is
-// the smart per-ingredient rule. Dual-unit ("2 lb / 1 kg") passes through as authored.
-function displayQty(qty, gramsPerMl) {
-  if (qty == null) return "";
-  const factor = view && view.scale > 0 ? view.scale : 1;
-  if (isCountAmount(qty)) return scaleCount(qty, factor);
-  if (!view || view.units !== "metric") return scaleQty(qty);
-  if (String(qty).includes(" / ")) return scaleQty(qty);
-  return toMetric(qty, gramsPerMl, factor);
-}
+/* Quantity scaling / unit conversion (Phase 1a-1d + smart-Metric).
+   The pure logic + constants now live in static/scaler.js, loaded as a global before
+   this file (and unit-tested under Node, tests/js/). app.js keeps the DOM/rendering and
+   passes view.scale / view.units into displayQty() and scaleQty(). */
 
 // Wrap a quantity in its <span class="qty">, marking volume->weight conversions (which
 // begin with "~") with an extra class so they read as approximate, not authored.
 function qtySpan(qty, gramsPerMl, inlineStyle) {
-  const text = displayQty(qty, gramsPerMl);
+  const text = displayQty(qty, gramsPerMl, view.scale, view.units);
   const cls = text.charAt(0) === "~" ? "qty approx" : "qty";
   const style = inlineStyle ? ` style="${inlineStyle}"` : "";
   return `<span class="${cls}"${style}>${esc(text)}</span>`;
@@ -681,7 +515,7 @@ function renderStepRow(row) {
   const spans = row.spans || [{ t: "plain", text: row.text }];
   const html = spans
     .map((s) => (s.t === "scale"
-      ? `<span class="step-qty">${esc(scaleQty(s.text))}</span>`
+      ? `<span class="step-qty">${esc(scaleQty(s.text, view.scale))}</span>`
       : linkify(s.text)))
     .join("");
   return `<li class="step">${html}</li>`;

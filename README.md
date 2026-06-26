@@ -81,7 +81,8 @@ The backend has a pytest suite under `tests/`. From the project folder:
 
 ```
 pip install -r requirements-dev.txt   # one-time; installs pytest
-python3 -m pytest                      # run the suite
+python3 -m pytest                      # run the Python suite
+node --test tests/js                   # run the JS suite (scaler/converter; needs Node 20+)
 ```
 
 Each test builds its own throwaway database from the migrations and `seed.py`, so the

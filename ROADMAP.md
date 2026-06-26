@@ -144,10 +144,12 @@ Shared machinery: a parser that reads a quantity string into a number + unit.
   (decline). Replaces the old separate all-mL "Metric" and "Grams" modes. *Future (needs
   Phase 8 tags):* recipes tagged baking/dessert default to grams and ignore the 2-tbsp
   threshold — see Phase 8.
-- **JS test harness (future infra).** The client-side scaler/converter (`displayQty`,
-  `toMetric`, the step parser's JS side) has no automated tests — only manual checklists. A
-  small Node setup plus extracting `displayQty`'s pure logic into a module would make it
-  testable; worth its own infra step since this is high-regression-risk pure logic. Not now.
+- **JS test harness.** *(done)* The pure scaler/converter is extracted to `static/scaler.js`
+  (UMD: browser global + Node `require`) and tested with Node's built-in `node:test` — run
+  `node --test tests/js` (covers `scaleQty`/`formatAmount`, the count + compound logic, and the
+  smart-Metric threshold). A `factor-sync` test reads both `scaler.js` and `weights.py` and
+  asserts the JS↔Python conversion factors agree. CI runs both the Python and JS suites on
+  every push. *(Zero dependencies — no bundler/framework.)*
 - **Notes:** parse whole numbers, fractions, ranges; leave "to taste" alone. Convert only
   what's possible. Compose with per-person edits. "Serves N" needs a numeric base yield —
   servings is currently free text, so a small structured-yield field is a dependency. 1c is
