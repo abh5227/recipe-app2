@@ -340,18 +340,84 @@ The large data cluster.
   additions, ratings, cook history). *Placed late on purpose:* earlier phases keep adding
   tables, which would otherwise force repeated rewrites of the export format.
 
-## Phase 15 — Free recipe import (JSON-LD) · Free
+## Phase 15 — Recipe import (multi-source) · Free
 
-Import a recipe by parsing the schema.org Recipe data (JSON-LD) embedded in most recipe-site
-pages — ingredients, steps, times, yield — into the form for review.
+Import recipes from multiple sources into clean, structured records. **Architecture: thin
+source-specific READERS feed a single source-agnostic CORE through a NORMALIZED shape** — so
+adding a source never touches the hard logic.
 
-- **Scope:** fetch a URL, parse JSON-LD, prefill the form; then map ingredients to the
-  library. *Schema:* none (writes through the form).
-- **Why here:** the free sibling of the AI scan — it handles the common case (sites with
-  structured data) with no API cost; AI scan (Phase 16) covers photos and sites without it.
-  Can be pulled forward; the main caveat is the ingredient-mapping step.
-- *The right place for structural ingredient-line cleanup — see the Ingredient-line data
-  model note (top): clean scraped recipes on the way in.*
+- **Source format — Paprika NATIVE (`.paprikarecipes`), not HTML.** The native export is a ZIP
+  of gzip'd-JSON `.paprikarecipe` entries. Chosen over the HTML export because: images are
+  embedded (base64) and complete (HTML's image story was folder-dependent and linked only the
+  primary); it's structured JSON (no entity decoding / `<strong>` / PhotoSwipe boilerplate);
+  `categories` is a real list and `rating` an int; and each recipe carries a stable `uid`
+  (→ idempotent / no-duplicate import) and a content `hash` (→ change-detection). **Cost:**
+  native has no `<strong>` amount hint, so leading-amount parsing falls to the cleanup core —
+  acceptable, because the core must parse amounts robustly anyway (the hint never solved ranges,
+  secondary amounts, "2 x 6oz"). The HTML reader + format study stay as a documented fallback
+  and for the friends-migration tool (Project B).
+- **Source-specific READERS** (thin adapters, one per source) — each extracts a source's raw
+  fields and emits the SAME normalized shape:
+  - **Paprika-native reader** — build now (the Paprika files on hand).
+  - **URL / JSON-LD reader** — build later: ONE reader covering NYT, Woks of Life, RecipeTin,
+    and most recipe sites (they share the schema.org standard) — NOT a per-site reader.
+  - **AI-scan reader** — Phase 16 fallback for sites without structured data, and for photos.
+- **NORMALIZED shape (the contract / seam):** `{name, ingredient_lines (list of raw strings),
+  directions, source (raw) + source_url, servings_raw, categories (list), notes, description,
+  images, uid, hash, times, rating}`. The core ONLY sees this; it never knows the source. Adding
+  a source = a new thin reader producing this shape; the core is untouched.
+- **Shared CLEANUP CORE** (source-agnostic — the real engineering): parse amount / unit / name
+  per ingredient line; flag section-headers for review (the ~5% ambiguous Title-Case / no-amount
+  lines); harvest parenthetical grams; servings conservative-or-blank; library linkage
+  (decline-over-guess). The hard engineering lives here and is reused across all readers.
+- **WRITE layer:** recipes → app-tier (uid-dedup); ingredients → seed-tier shared library;
+  images → storage. Field-guide AI baseline + linkage run as separate passes (see below).
+- **Build order:** Paprika-native reader + the core now; URL and AI-scan readers later — don't
+  build ahead of need, but the core is designed against the normalized shape so they slot in
+  without a refactor.
+- *Cleanup-core concerns, exercised at scale on import: cross-reference the
+  ingredient-name-cleanup / amount-structure / data-capture / provenance notes (top).*
+
+**Phase 15 design decisions (settled):**
+
+- **Two projects, sequenced.** Project A = import MY 298 Paprika files (build now). Project B
+  = a general Paprika→app migration tool for friends (roadmapped, AFTER A; needs friends' real
+  exports to harden against format variation — not available yet).
+- **Import ALL — flag incompletes, never drop.** All 298 recipes import, including photo-only
+  entries (e.g. a photo-journal salmon folder with no text). Incompletes — no-directions
+  (26 found), no-ingredients (3), or photo-only — are FLAGGED for review, never dropped:
+  "empty" can be intentional and the parser can't tell intentional from junk.
+- **Data tiering.** Imported RECIPES → app-tier (mine, live in the DB, not rebuilt). Imported
+  INGREDIENTS → seed-tier SHARED library (ships to others), so the field guide grows into a
+  built-in knowledge base others benefit from on import.
+- **Cleanup = aggressive + decline-over-guess.** Parse aggressively where the pattern is clear
+  (amount via leading-token parse, sections, unit/name split); when a line is genuinely
+  ambiguous, FLAG it for review rather than guess. Failure mode must be "flagged a line," never
+  "structured it wrong."
+- **Harvest parenthetical grams** (e.g. "(226 grams)") as authoritative weights — better than
+  volume→weight conversion; feeds 1c.
+- **Source field = flexible provenance.** Store whatever's there (cookbook, cookbook+author,
+  URL, URL+author, or none); don't require a URL; preserve the raw value + structure what's
+  detectable.
+- **Carry original notes faithfully** (including storage tips in notes — the author's content,
+  preserved as-is). Distinct from AI generation below.
+- **Field-guide AI baseline (separate pass, NOT during import).** A separate pass generates a
+  first-pass field guide per ingredient — seasons, regions, pairings, general culinary info — so
+  the library ships useful, not as empty stubs. **Bounded:** AI does NOT generate food-safety,
+  allergen, or storage-safety claims (sourced-or-blank only — a wrong claim there has real
+  stakes a disclaimer doesn't cover). Every AI field carries provenance ("AI-generated,
+  baseline") + a needs-sourcing flag (tracker), via the per-field provenance model. Marking is
+  present/findable but visually QUIET — must not clutter the design. The user replaces AI
+  content with sourced data over time; the tracker shows what's still baseline.
+- **Batch-then-link rhythm.** Per batch: import recipes → generate field-guide baseline for NEW
+  ingredients → run a dedicated LINKAGE pass (link confident library matches, flag uncertain,
+  leave no-match as free text). Linkage improves each round as the library grows.
+- **Staged rollout.** Build the import core → validate on a hand-picked, deliberately varied /
+  messy ~15 → then ship all 298.
+- **Images in scope** — bringing across recipe photos is part of a "seamless transition."
+- *Cross-reference: the data-capture, provenance, ingredient-name-cleanup, and amount-structure
+  notes (top) are the cleanup core's concerns, exercised at scale here.*
+
 - *Bare "oz" on liquids:* scraped recipes often write fluid ounces as bare "oz". On a
   known-liquid ingredient the importer should normalize "oz" → "fl oz" (or flag for review),
   so a liquid isn't later converted as weight (28.35 g/oz). Decline over guess — normalize

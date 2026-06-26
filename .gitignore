@@ -8,6 +8,11 @@ recipes.db-shm
 # Local backups (made by backup.py)
 backups/
 
+# Paprika recipe exports — bulk data, not code (the native archive is 200 MB+).
+# Read-only import tooling unpacks these to a scratch dir; never commit them.
+*.paprikarecipes
+*.paprikarecipe
+
 # Python bytecode caches
 __pycache__/
 *.pyc
