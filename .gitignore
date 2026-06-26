@@ -13,6 +13,11 @@ backups/
 *.paprikarecipes
 *.paprikarecipe
 
+# Paprika HTML-export study data — no longer the import source (we're on native now);
+# kept on disk as possible fallback-reader material for the friends-migration tool.
+/index.html
+/paprika_samples/
+
 # Python bytecode caches
 __pycache__/
 *.pyc
