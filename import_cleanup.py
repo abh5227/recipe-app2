@@ -1,0 +1,351 @@
+#!/usr/bin/env python3
+"""import_cleanup.py — the source-agnostic IMPORT CLEANUP CORE (preview only).
+
+Takes ONE normalized recipe (the shape emitted by paprika_native_reader.normalize)
+and returns structured-or-flagged data. It is the format-agnostic half of Phase 15:
+it neither knows nor cares that the source is Paprika.
+
+GUIDING PRINCIPLE: aggressive = extract every CLEAR win, FLAG the ambiguous/risky ones
+for review — never force-parse in a way that could corrupt data or break library linkage,
+and never silently drop anything. Failure mode = "flagged a line," never "structured it
+wrong." (decline-over-guess, applied to import.)
+
+PREVIEW ONLY: writes NOTHING to recipes.db, modifies no app files, builds no write layer.
+It reuses the existing amount/fraction machinery from stepscale.py (imported, not copied —
+see the ROADMAP note about extracting a shared public amounts.py later).
+
+Run:  python3 import_cleanup.py
+"""
+import re
+import zipfile
+from collections import Counter
+from pathlib import Path
+
+# Reuse the EXISTING amount/fraction parser — do not write a third copy. These are
+# underscore-private in stepscale today; importing them is an accepted temporary
+# compromise (ROADMAP: extract a shared public amounts.py).
+from stepscale import _NUM, _SCALE_UNIT, _to_value, _normalize_unicode
+
+# The reader is our own preview tool (not an app file); reuse its archive walk + mapping.
+import paprika_native_reader as reader
+
+ARCHIVE = Path(__file__).resolve().parent / "My Recipes.paprikarecipes"
+
+# --------------------------------------------------------------------------- #
+# Regexes (built from the reused stepscale fragments)
+# --------------------------------------------------------------------------- #
+_RANGE = r"(?:to|[-–—])"
+
+# Leading amount (optionally a range), an OPTIONAL measure unit (\b so bare "g" can't
+# swallow the "g" in "garlic"), then the name. _NUM is required at the start, so a
+# no-amount line ("Sea Salt") simply doesn't match.
+_LEAD_RE = re.compile(
+    r"^\s*(?P<amount>" + _NUM + r"(?:\s*" + _RANGE + r"\s*" + _NUM + r")?)"
+    r"(?:\s*(?P<unit>" + _SCALE_UNIT + r")\b)?"
+    r"\s*(?P<name>.*)$",
+    re.IGNORECASE,
+)
+# A "N x SIZE" multiplier at the start ("2 x 6oz") — risky, flag it.
+_MULT_RE = re.compile(r"^\s*" + _NUM + r"\s*[x×]\s*" + _NUM, re.IGNORECASE)
+_RANGE_FIND = re.compile(r"\d\s*(?:to|[-–—])\s*\d", re.IGNORECASE)
+_RANGE_SPLIT = re.compile(r"\s*(?:to|[-–—])\s*", re.IGNORECASE)
+
+_EACH_RE = re.compile(r"\beach\b", re.IGNORECASE)
+_ALT_RE = re.compile(r"\bor\b", re.IGNORECASE)
+
+# Parenthetical-grams harvest: find a complete (...) group, then a gram value inside it.
+# A dangling "(" never forms a group, so it's silently ignored (no crash, no harvest).
+_PAREN_GROUP = re.compile(r"\(([^)]*)\)")
+_GRAMS_IN = re.compile(r"(\d+(?:\.\d+)?)\s*g(?:rams?)?\b", re.IGNORECASE)
+# Volume-unit words that, inside a gram parenthetical, mean the grams describe a SUB-measure
+# ("1/2 cup (15g) once soaked"), not the line's primary amount — the guard declines those.
+_VOL_WORDS = re.compile(r"\b(cups?|tbsp|tablespoons?|tsp|teaspoons?|oz|ounces?|ml|fl)\b", re.I)
+
+# Prep-note detector — INFORMATIONAL only; the name is kept whole (weights.normalize
+# already drops the trailing ", <prep>" clause for the linkage key, non-destructively).
+_PREP = re.compile(
+    r"\b(minced|chopped|sliced|diced|crushed|peeled|grated|halved|quartered|divided|"
+    r"crumbled|melted|softened|beaten|cubed|julienned|trimmed|drained|rinsed|shredded|"
+    r"seeded|deboned|sifted|packed|room temperature|finely|roughly|thinly)\b", re.I)
+
+# Servings: an exact bare integer is accepted whole; otherwise a number must be adjacent
+# to a servings word (never a stray pan-size number). Longest words first.
+_BARE_INT_RE = re.compile(r"^\s*(\d+)\s*$")
+_SERV_WORD_RE = re.compile(
+    r"(?:servings|serving|serves|makes?|portions?)\s*:?\s*(\d+)"
+    r"|(\d+)\s*(?:servings?|portions?)\b",
+    re.IGNORECASE)
+
+
+# --------------------------------------------------------------------------- #
+# Subsystems
+# --------------------------------------------------------------------------- #
+def is_section(text):
+    """Reliable section header: colon-terminated OR all-caps (with letters). Callers only
+    ask this for NO-amount lines, so a quantity line is never mistaken for a section."""
+    t = text.strip()
+    if not t:
+        return False
+    if t.endswith(":"):
+        return True
+    return any(c.isalpha() for c in t) and t == t.upper()
+
+
+def parse_amount(line):
+    """Leading amount/unit/name split. Returns (amount_text, value, unit, name, range).
+    range is (lo, hi) for "N–M"/"N to M", else None; value is None for a range."""
+    m = _LEAD_RE.match(line)
+    if not m:
+        return "", None, "", line.strip(), None
+    amount = m.group("amount").strip()
+    unit = (m.group("unit") or "").strip()
+    name = (m.group("name") or "").strip()
+    if _RANGE_FIND.search(amount):
+        parts = _RANGE_SPLIT.split(amount, maxsplit=1)
+        try:
+            lo = _to_value(_normalize_unicode(parts[0]))
+            hi = _to_value(_normalize_unicode(parts[1]))
+            return amount, None, unit, name, (lo, hi)
+        except (ValueError, ZeroDivisionError, IndexError):
+            return amount, None, unit, name, None
+    try:
+        value = _to_value(_normalize_unicode(amount))
+    except (ValueError, ZeroDivisionError):
+        value = None
+    return amount, value, unit, name, None
+
+
+def harvest_grams(text):
+    """Authoritative grams from a weight-focused "(NNN g/grams)". Returns (grams, declined):
+    grams is the float harvested or None; declined is True when a gram value WAS present in a
+    paren but the confidence guard rejected it (and nothing was harvested) — so the caller can
+    flag what we decline rather than silently drop it.
+
+    Paren-safe: a dangling/unclosed "(" forms no group and is ignored (no crash, no harvest).
+    CONFIDENCE GUARD: harvest only when the gram paren is weight-only — no volume-unit words
+    and no other numbers — so "1/2 cup (15g) once soaked" declines instead of mis-harvesting."""
+    saw_gram = False
+    for grp in _PAREN_GROUP.finditer(text or ""):
+        content = grp.group(1)
+        m = _GRAMS_IN.search(content)
+        if not m:
+            continue
+        saw_gram = True
+        if _VOL_WORDS.search(content):
+            continue
+        if [n for n in re.findall(r"\d+(?:\.\d+)?", content) if n != m.group(1)]:
+            continue
+        try:
+            return float(m.group(1)), False
+        except ValueError:
+            pass
+    return None, saw_gram
+
+
+def parse_servings(raw):
+    """Exact bare integer -> accept; else a number adjacent to a servings word -> accept;
+    else BLANK (never a stray number like a pan size)."""
+    if not raw:
+        return None
+    s = raw.strip()
+    m = _BARE_INT_RE.match(s)
+    if m:
+        return int(m.group(1))
+    m = _SERV_WORD_RE.search(s)
+    if m:
+        return int(m.group(1) or m.group(2))
+    return None
+
+
+def classify_line(raw):
+    """Turn one raw ingredient line into a structured-or-flagged record."""
+    line = raw.strip()
+    grams, grams_declined = harvest_grams(line)
+    res = {
+        "raw": raw, "kind": "ingredient", "amount": "", "value": None, "unit": "",
+        "name": line, "range": None, "grams_harvested": grams,
+        "has_alternative": False, "has_prep_note": False,
+        # grams_declined: a gram value was present but the guard didn't trust it — flag what we
+        # decline, never silently drop it. Soft signal: doesn't by itself flag the line.
+        "flags": ["grams_declined"] if grams_declined else [],
+        "flag_reason": "", "suggestion": None,
+    }
+
+    # 1. Risky N x SIZE multiplier — has a number, but flag rather than mis-structure.
+    if _MULT_RE.match(line):
+        res["kind"] = "flagged"
+        res["flags"].append("multiplier")
+        res["flag_reason"] = "N x SIZE multiplier — ambiguous semantics, review"
+        res["has_alternative"] = bool(_ALT_RE.search(line))
+        return res
+
+    amount, value, unit, name, rng = parse_amount(line)
+
+    # 2. Has a leading amount -> ingredient (then layer on informational signals).
+    # NOTE: a dual-unit inline amount ("350g / 12 oz") captures the primary (350 g) and leaves
+    # the "/ 12 oz" fragment at the start of the name — conservative + link-tolerable. Could
+    # later flag a "secondary amount" rather than leaving it in the name.
+    if amount:
+        res.update(amount=amount, value=value, unit=unit, name=name, range=rng)
+        res["has_alternative"] = bool(_ALT_RE.search(name))
+        res["has_prep_note"] = bool(_PREP.search(name))
+        if _EACH_RE.search(line):
+            res["kind"] = "flagged"
+            res["flags"].append("each_multi")
+            res["flag_reason"] = "'each' distributes one amount over several ingredients — review"
+        return res
+
+    # 3. No amount, but a reliable section header.
+    if is_section(line):
+        res["kind"] = "section"
+        return res
+
+    # 4. No amount, not a clear section -> ambiguous; suggest (never decide).
+    res["kind"] = "flagged"
+    res["flags"].append("ambiguous_section")
+    low = line.lower()
+    res["suggestion"] = "section" if low.startswith(("for ", "to ")) else "ingredient"
+    res["flag_reason"] = "no amount and not clearly a section — suggest %s" % res["suggestion"]
+    res["has_alternative"] = bool(_ALT_RE.search(line))
+    return res
+
+
+def clean_recipe(norm):
+    """Map a normalized recipe -> structured/flagged result. Carries every field through;
+    drops nothing; flags incompletes at the recipe level."""
+    ings = [classify_line(ln) for ln in norm["ingredient_lines"]]
+    directions = [s.strip() for s in (norm["directions"] or "").split("\n") if s.strip()]
+    has_img = bool(norm.get("images") or norm.get("primary_photo"))
+    no_ing = len(norm["ingredient_lines"]) == 0
+    no_dir = len(directions) == 0
+    flags = []
+    if no_ing:
+        flags.append("no_ingredients")
+    if no_dir:
+        flags.append("no_directions")
+    if no_ing and no_dir and has_img:
+        flags.append("photo_only")
+    return {
+        "name": norm["name"], "uid": norm["uid"], "hash": norm["hash"],
+        "servings": parse_servings(norm["servings_raw"]),
+        "servings_raw": norm["servings_raw"],
+        "categories": norm["categories"], "source": norm["source"],
+        "source_url": norm["source_url"], "notes": norm["notes"],
+        "description": norm["description"], "rating": norm["rating"],
+        "times": {"prep": norm["prep_time"], "cook": norm["cook_time"], "total": norm["total_time"]},
+        "ingredients": ings,
+        "directions": directions,
+        "images": norm["images"],
+        "recipe_flags": flags,
+        "review_count": sum(1 for i in ings if i["kind"] == "flagged"),
+    }
+
+
+# --------------------------------------------------------------------------- #
+# Preview (writes nothing)
+# --------------------------------------------------------------------------- #
+TARGETS = [
+    ("acqua pazza", "Acqua Pazza — sections, range, N x SIZE, alternatives"),
+    ("blueberry muffin sugar cookies", "Blueberry Muffin Sugar Cookies — parenthetical grams + unicode fractions"),
+    ("thai tea ice cream", "Thai Tea Ice Cream — dangling open paren (must not crash/harvest)"),
+    ("panang curry", "Panang Curry — 'each' multi-ingredient + no-amount ambiguous lines"),
+    ("beef and pepper", "Beef and Pepper Stir-Fry — all-caps colon sections"),
+    ("blueberry muffins", "Blueberry Muffins — stub (photo-only)"),
+]
+
+
+def trunc(s, n=66):
+    s = " ".join(str(s if s is not None else "").split())
+    return s if len(s) <= n else s[:n - 1] + "…"
+
+
+def fmt_line(d):
+    ann = []
+    if d["range"]:
+        ann.append("range=%s–%s" % d["range"])
+    if d["grams_harvested"] is not None:
+        ann.append("grams=%g" % d["grams_harvested"])
+    if "grams_declined" in d["flags"]:
+        ann.append("grams-declined")
+    if d["has_alternative"]:
+        ann.append("alt")
+    if d["has_prep_note"]:
+        ann.append("prep")
+    tail = ("   [" + ", ".join(ann) + "]") if ann else ""
+    if d["kind"] == "section":
+        return "[SECTION   ] %s" % d["raw"].strip()
+    if d["kind"] == "flagged":
+        sug = " ->%s" % d["suggestion"] if d["suggestion"] else ""
+        blocking = [f for f in d["flags"] if f != "grams_declined"]  # grams-declined shown in tail
+        parsed = "  {amt=%r unit=%r}" % (d["amount"], d["unit"]) if d["amount"] else ""
+        return "[FLAGGED   ] (%s%s) %s%s%s\n             reason: %s" % (
+            ",".join(blocking), sug, trunc(d["name"]), parsed, tail, d["flag_reason"])
+    return "[INGREDIENT] amt=%-8r unit=%-7r | %s%s" % (d["amount"], d["unit"], trunc(d["name"], 48), tail)
+
+
+def print_recipe(r, label):
+    print("\n" + "=" * 88)
+    print("%s" % label)
+    print("  name=%s" % r["name"])
+    print("=" * 88)
+    print("  servings : %s   (raw %r)" % (r["servings"] if r["servings"] is not None else "BLANK", r["servings_raw"]))
+    print("  recipe_flags: %s    review_count: %d" % (r["recipe_flags"] or "none", r["review_count"]))
+    print("  ingredients (%d):" % len(r["ingredients"]))
+    for d in r["ingredients"]:
+        print("    " + fmt_line(d))
+    if not r["ingredients"]:
+        print("    (none)")
+    print("  directions: %d step-line(s) carried as-is" % len(r["directions"]))
+
+
+def print_summary(results):
+    lines = [d for r in results for d in r["ingredients"]]
+    kinds = {k: sum(d["kind"] == k for d in lines) for k in ("ingredient", "section", "flagged")}
+    flagtypes = Counter(f for d in lines for f in d["flags"] if f != "grams_declined")
+    declined = sum("grams_declined" in d["flags"] for d in lines)
+    grams = sum(d["grams_harvested"] is not None for d in lines)
+    servings_ok = sum(r["servings"] is not None for r in results)
+    print("\n" + "=" * 88)
+    print("SAMPLE SUMMARY (%d recipes)" % len(results))
+    print("=" * 88)
+    print("  line kinds       : %s" % kinds)
+    print("  flag types       : %s" % (dict(flagtypes) or "none"))
+    print("  grams harvested  : %d line(s)   (declined low-confidence: %d)" % (grams, declined))
+    print("  servings parsed  : %d   blank: %d" % (servings_ok, len(results) - servings_ok))
+    print("  recipe_flags     : %s" % {r["name"]: r["recipe_flags"] for r in results if r["recipe_flags"]})
+
+
+def collect_samples(zf):
+    """Scan the archive once; return {label: cleaned recipe} for the TARGETS found."""
+    found = {}
+    for _name, rec, err in reader.iter_entries(zf):
+        if err or not rec:
+            continue
+        nm = reader.strip_quotes(rec.get("name") or "").lower()
+        for sub, label in TARGETS:
+            if sub in nm and label not in found:
+                found[label] = clean_recipe(reader.normalize(rec))
+    return found
+
+
+def main():
+    if not ARCHIVE.is_file():
+        raise SystemExit("Archive not found: %s" % ARCHIVE)
+    print("IMPORT CLEANUP CORE — preview only (writes nothing; archive read in memory)")
+
+    with zipfile.ZipFile(ARCHIVE) as zf:
+        found = collect_samples(zf)
+
+    results = []
+    for sub, label in TARGETS:
+        if label in found:
+            print_recipe(found[label], label)
+            results.append(found[label])
+        else:
+            print("\n(sample not found: %s)" % label)
+
+    print_summary(results)
+
+
+if __name__ == "__main__":
+    main()

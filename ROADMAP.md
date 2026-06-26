@@ -433,6 +433,18 @@ adding a source never touches the hard logic.
   units preference, the Phase 5d weather fields, and the Phase 19 saved-mood preference would
   all use — build that store once for all).*
 
+- **Range scaling — known limitation.** The cleanup core parses ranges (`1–2 tbsp`) with both
+  ends, and scaling multiplies BOTH — correct for divisible amounts, but WRONG for per-item
+  ranges (`5–7 blueberries per cookie` shouldn't grow with batch size). Distinguishing
+  discretionary from per-item ranges is itself an ambiguity problem; revisit later, don't
+  force it at parse time.
+
+- **Extract a shared public `amounts.py` (tech debt).** The fraction/amount parser now exists
+  three times — `stepscale._to_value`, `weights._to_number`, and the JS `tokenToNumber` — and
+  `import_cleanup` imports `stepscale`'s underscore-private `_NUM` / `_to_value` / `_SCALE_UNIT`
+  / `_normalize_unicode`. Consolidate into one public module later; deferred now because it
+  would touch tested Phase-1 code mid-import-build.
+
 ## Phase 16 — AI recipe scan / auto-populate · Per-use API cost
 
 Read a recipe from a photo or pasted/messy text and auto-fill the form for review.
