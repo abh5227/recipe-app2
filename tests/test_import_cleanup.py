@@ -59,8 +59,15 @@ def test_section_all_caps():
     assert ic.classify_line("FOR THE PASTRY")["kind"] == "section"
 
 
-def test_for_the_dough_flagged_suggest_section():
+def test_for_the_dough_promoted_section():
+    # ends in "dough" (a section word, <=3 words) -> now a flagged section header (head-noun match)
     d = ic.classify_line("For the dough")
+    assert d["kind"] == "section" and "section_suggested" in d["flags"]
+
+
+def test_for_serving_still_ambiguous_suggest_section():
+    # "serving" is NOT a section word -> stays ambiguous, but still suggests section (for/to path)
+    d = ic.classify_line("For serving")
     assert d["kind"] == "flagged" and d["suggestion"] == "section"
     assert "ambiguous_section" in d["flags"]
 
@@ -222,6 +229,25 @@ def test_amountless_non_section_word_not_promoted():
 def test_step_mirror_hint_promotes():
     d = ic.classify_line("Habanero Syrup", section_hints={"habanero syrup"})
     assert d["kind"] == "section" and "section_suggested" in d["flags"]
+
+
+def test_section_ends_with_word_promoted():
+    # head-noun match: modifier + section word -> promote + flag (no step-mirror hint needed)
+    for line in ("Habanero Syrup", "Lemon Glaze", "Almond Filling"):
+        d = ic.classify_line(line)
+        assert d["kind"] == "section", line
+        assert "section_suggested" in d["flags"], line
+
+
+def test_ingredient_ending_non_section_word_unaffected():
+    for line in ("kosher salt", "olive oil", "ground cumin"):
+        d = ic.classify_line(line)
+        assert d["kind"] == "flagged" and "section_suggested" not in d["flags"], line
+
+
+def test_long_line_containing_section_word_not_promoted():
+    d = ic.classify_line("maple syrup for drizzling on top")   # >3 words -> the bound holds
+    assert d["kind"] == "flagged" and "section_suggested" not in d["flags"]
 
 
 # ----------------------------------------------------------------- multiplier N=1 vs N>1

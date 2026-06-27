@@ -273,12 +273,14 @@ def _step_heading_key(text):
 
 def _is_section_candidate(line, hints):
     """Narrow, conservative test for a bare lowercase ingredient section-header: SHORT (<=3
-    words) AND a common section word OR a same-recipe step-section mirror (hints). Bias to NOT
-    promote — a wrongly-promoted ingredient disappears from the list, the worse error."""
+    words, no amount) AND its key ENDS WITH a common section word (head-noun match: "lemon glaze"
+    -> glaze, "habanero syrup" -> syrup) OR it mirrors a same-recipe step-section (hints). Bias
+    to NOT promote — a wrongly-promoted ingredient disappears from the list, the worse error; the
+    <=3-word bound keeps a longer line that merely CONTAINS a section word from promoting."""
     key = _section_key(line)
     if not key or len(key.split()) > 3:
         return False
-    return key in _COMMON_SECTION_WORDS or key in (hints or frozenset())
+    return key.split()[-1] in _COMMON_SECTION_WORDS or key in (hints or frozenset())
 
 
 def _parse_mult_one(line):
