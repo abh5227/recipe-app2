@@ -63,6 +63,18 @@ _SECONDARY_MEASURE = re.compile(r"^/\s*" + _NUM + r"\s*" + _SCALE_UNIT + r"\b\s*
 # the parsed name. Only a trailing "(" with nothing after it; a contentful/balanced paren is kept.
 _DANGLING_PAREN = re.compile(r"\s*\($")
 
+# A clean VOLUME-measure parenthetical on a dual-measure line — "(1 cup)", "(about 1 ¼ cups)",
+# "(240 ml)". Strip it from the name and capture the volume. Matches only a paren whose WHOLE
+# content is a volume measure, so "(light roast)" / "(1 cup, packed)" / a gram paren are left be.
+_VOL_UNIT = r"(?:tablespoons?|teaspoons?|millilit(?:re|er)s?|lit(?:re|er)s?|cups?|tbsp|tsp|ml|l)"
+_VOLUME_PAREN = re.compile(
+    r"\(\s*(?:about\s+|~\s*)?(" + _NUM + r"\s*" + _VOL_UNIT + r")\s*\)", re.IGNORECASE)
+# Leading-amount unit buckets for dual-measure capture (grams = weight, secondary = volume).
+_WEIGHT_LEAD_UNITS = {"g", "gram", "grams"}
+_VOLUME_LEAD_UNITS = {"cup", "cups", "tbsp", "tablespoon", "tablespoons", "tsp", "teaspoon",
+                      "teaspoons", "ml", "millilitre", "millilitres", "milliliter", "milliliters",
+                      "l", "litre", "litres", "liter", "liters"}
+
 # Parenthetical-grams harvest: find a complete (...) group, then a gram value inside it.
 # A dangling "(" never forms a group, so it's silently ignored (no crash, no harvest).
 _PAREN_GROUP = re.compile(r"\(([^)]*)\)")
@@ -172,6 +184,33 @@ def _strip_gram_paren(name, gram_paren):
     return re.sub(r"\s+", " ", name.replace(gram_paren, "", 1)).strip()
 
 
+def _strip_volume_paren(name):
+    """Strip a clean VOLUME parenthetical ('(1 cup)', '(about 1 ¼ cups)', '(240 ml)') from the
+    name and return (clean_name, volume_text|None). Only a paren whose WHOLE content is a volume
+    measure is removed — a contentful paren like '(light roast)' or '(1 cup, packed)' is kept."""
+    m = _VOLUME_PAREN.search(name)
+    if not m:
+        return name, None
+    cleaned = re.sub(r"\s+", " ", name[:m.start()] + name[m.end():]).strip()
+    return cleaned, m.group(1).strip()
+
+
+def _dual_measure(amount, value, unit, name, grams):
+    """Capture a dual-measure line's two measures, EITHER order. Returns
+    (clean_name, grams, secondary_measure). Net rule: grams = the WEIGHT (the paren-harvested gram,
+    else the leading amount when its unit is grams); secondary_measure = the VOLUME (a clean volume
+    paren stripped from the name, else the leading amount when it's a volume on a line that also
+    carries a weight); name = clean. The caller's raw_text keeps the full original."""
+    name, volume = _strip_volume_paren(name)
+    u = (unit or "").lower()
+    if grams is None and value is not None and u in _WEIGHT_LEAD_UNITS:
+        grams = value                                    # weight-first: the gram IS the leading amount
+    secondary = volume                                   # weight-first / metric-volume: from the paren
+    if secondary is None and grams is not None and u in _VOLUME_LEAD_UNITS:
+        secondary = ("%s %s" % (amount, unit)).strip()   # volume-first dual: the leading volume
+    return name, grams, secondary
+
+
 def parse_servings(raw):
     """Exact bare integer -> accept; else a number adjacent to a servings word -> accept;
     else BLANK (never a stray number like a pan size)."""
@@ -211,15 +250,17 @@ def classify_line(raw):
 
     amount, value, unit, name, rng = parse_amount(line)
 
-    # 2. Has a leading amount -> ingredient (then layer on informational signals). A dual-unit
-    #    inline amount ("2 tsp / 6 g") captures the primary; the leading "/ 6 g" secondary is
-    #    stripped from the name (kept in raw_text) so the label/linkage key stays clean.
+    # 2. Has a leading amount -> ingredient (then layer on informational signals): the "/ N unit"
+    #    slash secondary, then dual-measure capture (a "(1 cup)" / "(250 g)" paren — grams = weight,
+    #    secondary_measure = volume, name cleaned, either order). raw_text keeps the original.
     if amount:
-        name, secondary = _strip_secondary_measure(name)
+        name, slash_secondary = _strip_secondary_measure(name)
         name = _DANGLING_PAREN.sub("", name)         # drop a lone trailing orphan "("
         name = _strip_gram_paren(name, gram_paren)   # drop the harvested "(NNN g)" paren
+        name, grams, secondary = _dual_measure(amount, value, unit, name, grams)
         res.update(amount=amount, value=value, unit=unit, name=name, range=rng)
-        res["secondary_measure"] = secondary
+        res["grams_harvested"] = grams
+        res["secondary_measure"] = secondary or slash_secondary
         res["has_alternative"] = bool(_ALT_RE.search(name))
         res["has_prep_note"] = bool(_PREP.search(name))
         if _EACH_RE.search(line):

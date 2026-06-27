@@ -160,6 +160,30 @@ def test_contentful_paren_not_stripped():
     assert d["name"] == "soy sauce (low sodium)"          # balanced paren is left intact
 
 
+# ----------------------------------------------------------------- dual measure (volume + weight)
+def test_weight_first_volume_paren_captured():
+    # weight-first: gram is the leading amount; the "(1 cup)" volume paren is stripped + captured
+    d = ic.classify_line("100 g (1 cup) granulated sugar")
+    assert d["name"] == "granulated sugar"
+    assert d["grams_harvested"] == 100.0                  # captured from the leading amount
+    assert d["secondary_measure"] == "1 cup"
+    assert d["raw"] == "100 g (1 cup) granulated sugar"   # raw_text untouched
+
+
+def test_volume_first_gram_paren_captures_both():
+    # volume-first: gram harvested from the paren (as before) + the leading volume captured
+    d = ic.classify_line("1 cup (250g) flour")
+    assert d["name"] == "flour"
+    assert d["grams_harvested"] == 250.0
+    assert d["secondary_measure"] == "1 cup"
+
+
+def test_dual_measure_leaves_contentful_paren():
+    d = ic.classify_line("2 tbsp tahini (light roast)")
+    assert d["name"] == "tahini (light roast)"            # not a volume measure -> not stripped
+    assert d["secondary_measure"] is None
+
+
 # ----------------------------------------------------------------- ranges
 def test_range_endash():
     d = ic.classify_line("1 – 2 tbsp extra virgin olive oil")

@@ -215,3 +215,18 @@ def test_commit_persists_harvested_grams_and_clean_label(kitchen):
     assert row["label"] == "dried chickpeas"             # FIX 1: harvested paren removed from name
     assert row["grams"] == 250.0                         # FIX 2: harvested gram persisted
     assert row["raw_text"] == "14 cups (250g) dried chickpeas"   # original preserved
+
+
+def test_commit_persists_secondary_measure_both_orders(kitchen):
+    # dual-measure capture lands grams + secondary_measure regardless of source order
+    c = _cleaned(name="Dual Test", directions="Mix.",
+                 ingredient_lines=["100 g (1 cup) granulated sugar", "1 cup (250g) flour"])
+    plan = _plan(c)
+    with kitchen.conn() as conn:
+        iw.commit_plan(conn, plan)
+    with kitchen.conn() as conn:
+        rows = conn.execute(
+            "SELECT label, grams, secondary_measure FROM recipe_ingredients "
+            "WHERE recipe_id=? ORDER BY position", (plan["recipe"]["id"],)).fetchall()
+    assert tuple(rows[0]) == ("granulated sugar", 100.0, "1 cup")   # weight-first
+    assert tuple(rows[1]) == ("flour", 250.0, "1 cup")              # volume-first

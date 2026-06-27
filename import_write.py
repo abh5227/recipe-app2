@@ -101,7 +101,8 @@ def _rating_row(rating):
 
 def _ingredient_row(pos, line):
     """One recipe_ingredients row from a cleaned line. A section -> heading (text in raw_text);
-    ingredient_id stays NULL (linkage = later pass); secondary_measure is display-only."""
+    ingredient_id stays NULL (linkage = later pass). grams + secondary_measure are the dual-measure
+    capture (the weight and the volume); both are persisted (migrations 011/012)."""
     heading = line["kind"] == "section"
     return {
         "position": pos,
@@ -111,9 +112,8 @@ def _ingredient_row(pos, line):
         "label": None if heading else (line["name"] or None),
         "note": None,                                    # name kept whole; no note split yet
         "raw_text": line["raw"].strip(),                 # original line, ALWAYS preserved
-        # display-only (commit_plan ignores it): the dual-unit fragment stripped from the label
-        "secondary_measure": None if heading else line.get("secondary_measure"),
-        "grams": None if heading else line.get("grams_harvested"),   # harvested weight (captured)
+        "grams": None if heading else line.get("grams_harvested"),       # the WEIGHT (captured)
+        "secondary_measure": None if heading else line.get("secondary_measure"),  # the VOLUME
     }
 
 
@@ -214,10 +214,12 @@ def commit_plan(conn, plan):
     for row in plan["ingredients"]:
         conn.execute(
             """INSERT INTO recipe_ingredients
-               (recipe_id, position, is_heading, qty, ingredient_id, label, note, raw_text, grams)
-               VALUES (?,?,?,?,?,?,?,?,?)""",
+               (recipe_id, position, is_heading, qty, ingredient_id, label, note, raw_text, grams,
+                secondary_measure)
+               VALUES (?,?,?,?,?,?,?,?,?,?)""",
             (r["id"], row["position"], row["is_heading"], row["qty"],
-             row["ingredient_id"], row["label"], row["note"], row["raw_text"], row["grams"]))
+             row["ingredient_id"], row["label"], row["note"], row["raw_text"], row["grams"],
+             row["secondary_measure"]))
     for row in plan["steps"]:
         conn.execute(
             "INSERT INTO recipe_steps (recipe_id, position, is_heading, text) VALUES (?,?,?,?)",

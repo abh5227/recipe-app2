@@ -672,6 +672,11 @@ value reads.
   whether showing both eventually makes the Imperial↔Metric toggle redundant. *Rationale:*
   grams-primary serves precision (bread/hydration), but showing both also serves cooks who
   don't always weigh. Refines Smart-Metric (Phase 1).
+- **Dual-measure toggle display (next).** A line with BOTH measures (grams + secondary_measure
+  volume, captured at import) should show the VOLUME in Imperial and GRAMS in Metric — symmetric
+  across source orderings (weight-first "100 g (1 cup)" or volume-first "1 cup (250 g)"). The data
+  is now captured (`recipe_ingredients.grams` + `secondary_measure`, migrations 011/012); wiring
+  the toggle to pick the right one is the next step, folded with "show both units in Metric" above.
 - **Grams→cups range, on hover (gated on variance data).** For cooks without a scale,
   highlighting a gram amount shows an honest RANGE in cups (e.g. "450 g ≈ 3¼–3¾ cups"), not a
   false-precise single value — grams→cups is lossy (packing variance). Range from real
