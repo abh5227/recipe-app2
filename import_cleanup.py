@@ -98,6 +98,30 @@ _SERV_WORD_RE = re.compile(
     r"|(\d+)\s*(?:servings?|portions?)\b",
     re.IGNORECASE)
 
+# --- Header detection (Steps 1 & 2) ---
+# A STEP line ending in a trailing dash is a heading ("prepare your pan -"). Archive scan found
+# NO real instruction ends in a dash, so the dash alone is a safe heading signal; strip it.
+_TRAILING_DASH = re.compile(r"\s*[-–—]\s*$")
+# Bare lowercase ingredient section-headers: a NARROW common-section-word list (primary signal),
+# plus a same-recipe step-section mirror (secondary). Conservative — every promotion is FLAGGED.
+_COMMON_SECTION_WORDS = frozenset({
+    "crust", "filling", "topping", "sauce", "dough", "batter", "base", "marinade",
+    "glaze", "frosting", "icing", "streusel", "crumble", "coating", "assembly",
+    "garnish", "dressing", "syrup",
+})
+_STEP_HEADING_PREFIX = re.compile(
+    r"^(?:to\s+)?(?:make|prepare|assemble|finish|build|cook|for)\s+(?:the\s+)?", re.IGNORECASE)
+
+# --- N=1 multiplier (Step 3) ---
+# "1 x SIZE unit thing" with leading count 1 (e.g. "1 x 397 grams can of condensed milk") is
+# resolvable: one container of a given size -> qty "1 <unit>", grams from SIZE. (N>1 stays
+# flagged — ambiguous.) Requires a recognized count/container noun, else the caller flags it.
+_CONTAINER_WORD = (r"cans?|jars?|bottles?|tins?|packages?|packets?|containers?|bags?|blocks?|"
+                   r"packs?|sticks?|cloves?|heads?|sheets?|cubes?|boxes|box|bunches|bunch|loaves|loaf")
+_MULT_ONE_RE = re.compile(
+    r"^\s*1\s*[x×]\s*(?P<size>" + _NUM + r"\s*" + _SCALE_UNIT + r")\s+"
+    r"(?P<unit>" + _CONTAINER_WORD + r")\b\s+(?:of\s+)?(?P<name>.+\S)\s*$", re.IGNORECASE)
+
 
 # --------------------------------------------------------------------------- #
 # Subsystems
@@ -226,7 +250,52 @@ def parse_servings(raw):
     return None
 
 
-def classify_line(raw):
+def classify_step(text):
+    """A direction line -> (is_heading, clean_text). Heading if colon-terminated / ALL-CAPS
+    (is_section) OR ending in a trailing dash ("prepare your pan -"); the trailing dash is
+    stripped. STEPS only — never applied to ingredient lines."""
+    t = (text or "").strip()
+    if _TRAILING_DASH.search(t):
+        return True, _TRAILING_DASH.sub("", t).strip()
+    return is_section(t), t
+
+
+def _section_key(text):
+    """Normalize a line to a comparable key: lowercase, alphanumerics + single spaces only."""
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]+", " ", (text or "").lower())).strip()
+
+
+def _step_heading_key(text):
+    """A step heading -> its core-noun key, stripping a leading verb phrase ("make the crust"
+    -> "crust"), so a step section can be mirrored onto a matching ingredient header."""
+    return _section_key(_STEP_HEADING_PREFIX.sub("", (text or "").strip()))
+
+
+def _is_section_candidate(line, hints):
+    """Narrow, conservative test for a bare lowercase ingredient section-header: SHORT (<=3
+    words) AND a common section word OR a same-recipe step-section mirror (hints). Bias to NOT
+    promote — a wrongly-promoted ingredient disappears from the list, the worse error."""
+    key = _section_key(line)
+    if not key or len(key.split()) > 3:
+        return False
+    return key in _COMMON_SECTION_WORDS or key in (hints or frozenset())
+
+
+def _parse_mult_one(line):
+    """N=1 multiplier "1 x SIZE unit thing" (e.g. "1 x 397 grams can of condensed milk") ->
+    a res-update: qty "1 <unit>", grams from SIZE when it's grams, name = the thing. Returns
+    None when it isn't a clean N=1 container pattern (N>1, or no recognized count noun), so the
+    caller flags it instead."""
+    m = _MULT_ONE_RE.match(line)
+    if not m:
+        return None
+    _, s_value, s_unit, _, _ = parse_amount(m.group("size"))
+    grams = s_value if (s_unit or "").lower() in _WEIGHT_LEAD_UNITS and s_value is not None else None
+    return {"amount": "1", "value": 1.0, "unit": m.group("unit"),
+            "name": m.group("name").strip(), "grams_harvested": grams}
+
+
+def classify_line(raw, section_hints=None):
     """Turn one raw ingredient line into a structured-or-flagged record."""
     line = raw.strip()
     grams, grams_declined, gram_paren = harvest_grams(line)
@@ -240,8 +309,13 @@ def classify_line(raw):
         "flag_reason": "", "suggestion": None,
     }
 
-    # 1. Risky N x SIZE multiplier — has a number, but flag rather than mis-structure.
+    # 1. N x SIZE multiplier. N=1 ("1 x 397 g can of X") is resolvable -> clean parse, no flag;
+    #    N>1 is genuinely ambiguous (scale the count or the total?) -> flag for review.
     if _MULT_RE.match(line):
+        one = _parse_mult_one(line)
+        if one:
+            res.update(one)
+            return res
         res["kind"] = "flagged"
         res["flags"].append("multiplier")
         res["flag_reason"] = "N x SIZE multiplier — ambiguous semantics, review"
@@ -269,9 +343,17 @@ def classify_line(raw):
             res["flag_reason"] = "'each' distributes one amount over several ingredients — review"
         return res
 
-    # 3. No amount, but a reliable section header.
+    # 3. No amount, but a reliable section header (colon-terminated / ALL-CAPS).
     if is_section(line):
         res["kind"] = "section"
+        return res
+
+    # 3b. No amount; matches a NARROW section signal (a common section word, or a same-recipe
+    #     step-section mirror) -> treat as a section header, but FLAG it for confirmation.
+    if _is_section_candidate(line, section_hints):
+        res["kind"] = "section"
+        res["flags"].append("section_suggested")
+        res["flag_reason"] = "no amount, matches section pattern — treated as section header, confirm"
         return res
 
     # 4. No amount, not a clear section -> ambiguous; suggest (never decide).
@@ -287,8 +369,11 @@ def classify_line(raw):
 def clean_recipe(norm):
     """Map a normalized recipe -> structured/flagged result. Carries every field through;
     drops nothing; flags incompletes at the recipe level."""
-    ings = [classify_line(ln) for ln in norm["ingredient_lines"]]
     directions = [s.strip() for s in (norm["directions"] or "").split("\n") if s.strip()]
+    # step-section headings -> hint words, so a bare ingredient header that mirrors a step section
+    # (e.g. "Habanero Syrup" ~ the "Habanero Syrup -" step) can be promoted (secondary signal, 3b).
+    hints = {_step_heading_key(t) for t in directions if classify_step(t)[0]} - {""}
+    ings = [classify_line(ln, hints) for ln in norm["ingredient_lines"]]
     has_img = bool(norm.get("images") or norm.get("primary_photo"))
     no_ing = len(norm["ingredient_lines"]) == 0
     no_dir = len(directions) == 0

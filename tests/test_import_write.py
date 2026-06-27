@@ -230,3 +230,20 @@ def test_commit_persists_secondary_measure_both_orders(kitchen):
             "WHERE recipe_id=? ORDER BY position", (plan["recipe"]["id"],)).fetchall()
     assert tuple(rows[0]) == ("granulated sugar", 100.0, "1 cup")   # weight-first
     assert tuple(rows[1]) == ("flour", 250.0, "1 cup")              # volume-first
+
+
+def test_commit_section_suggested_heading_and_mult_one(kitchen):
+    c = _cleaned(name="Promote Test", directions="Mix.",
+                 ingredient_lines=["crust", "1 x 397 grams can of condensed milk"])
+    plan = _plan(c)
+    with kitchen.conn() as conn:
+        iw.commit_plan(conn, plan)
+    with kitchen.conn() as conn:
+        rows = conn.execute(
+            "SELECT is_heading, qty, label, grams FROM recipe_ingredients "
+            "WHERE recipe_id=? ORDER BY position", (plan["recipe"]["id"],)).fetchall()
+        flags = [r[0] for r in conn.execute(
+            "SELECT flag FROM import_flags WHERE recipe_id=?", (plan["recipe"]["id"],))]
+    assert rows[0]["is_heading"] == 1                        # "crust" promoted to a heading
+    assert "section_suggested" in flags
+    assert tuple(rows[1])[1:] == ("1 can", "condensed milk", 397.0)   # N=1 multiplier resolved

@@ -139,11 +139,13 @@ def _ingredient_rows(cleaned):
 
 def _step_rows(cleaned):
     """directions (already split into lines by the cleanup core) -> recipe_steps rows: plain
-    text, position-ordered, NO {{...}} markup. A section-header line -> is_heading=1."""
-    return [
-        {"position": pos, "is_heading": 1 if cleanup.is_section(text) else 0, "text": text}
-        for pos, text in enumerate(cleaned["directions"])
-    ]
+    text, position-ordered, NO {{...}} markup. A heading line (colon / ALL-CAPS, or a trailing
+    dash) -> is_heading=1, with the trailing dash stripped from the text (cleanup.classify_step)."""
+    rows = []
+    for pos, text in enumerate(cleaned["directions"]):
+        is_h, clean = cleanup.classify_step(text)
+        rows.append({"position": pos, "is_heading": 1 if is_h else 0, "text": clean})
+    return rows
 
 
 def plan_recipe(cleaned, uid_index, taken_slugs, now=None):
@@ -318,7 +320,8 @@ def _print_ingredient_rows(ings, flagged_pos):
           % (len(ings), nhead, len(ings) - nhead))
     for i in ings:
         if i["is_heading"]:
-            print("         [H] %2d. %s" % (i["position"], i["raw_text"]))
+            tag = "[H?]" if i["position"] in flagged_pos else "[H ]"   # H? = section_suggested
+            print("         %s %2d. %s" % (tag, i["position"], i["raw_text"]))
             continue
         tag = "[F]" if i["position"] in flagged_pos else "   "
         sec = ("   [2nd %s]" % i["secondary_measure"]) if i.get("secondary_measure") else ""
@@ -340,7 +343,9 @@ def print_plan(plan, index):
     flagged_pos = {f["position"] for f in plan["review_flags"] if f["position"] is not None}
     _print_ingredient_rows(plan["ingredients"], flagged_pos)
     steps = plan["steps"]
-    print("       step rows : %d (%d heading)" % (len(steps), sum(s["is_heading"] for s in steps)))
+    sh = [s["text"] for s in steps if s["is_heading"]]
+    print("       step rows : %d (%d heading)%s"
+          % (len(steps), len(sh), ("  -> " + " | ".join(sh)) if sh else ""))
     print("       rating    : %s" % ("no row (0 / unrated)" if plan["rating"] is None
                                       else "%d  -> ratings row" % plan["rating"]))
     if plan["recipe_flags"]:

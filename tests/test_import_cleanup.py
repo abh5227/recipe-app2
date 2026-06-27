@@ -184,6 +184,60 @@ def test_dual_measure_leaves_contentful_paren():
     assert d["secondary_measure"] is None
 
 
+# ----------------------------------------------------------------- step headers (trailing dash)
+def test_step_trailing_dash_is_heading_stripped():
+    is_h, text = ic.classify_step("prepare your pan -")
+    assert is_h is True and text == "prepare your pan"     # dash stripped
+
+
+def test_step_colon_still_heading():
+    is_h, text = ic.classify_step("Brown the butter:")
+    assert is_h is True and text == "Brown the butter:"
+
+
+def test_step_normal_not_heading():
+    is_h, text = ic.classify_step("Preheat the oven to 350°F and grease the pan.")
+    assert is_h is False and text == "Preheat the oven to 350°F and grease the pan."
+
+
+# ----------------------------------------------------------------- ingredient section-headers
+def test_section_word_promoted_and_flagged():
+    for w in ("crust", "filling"):
+        d = ic.classify_line(w)
+        assert d["kind"] == "section", w
+        assert "section_suggested" in d["flags"], w
+
+
+def test_salt_not_promoted_stays_ambiguous():
+    d = ic.classify_line("salt")
+    assert d["kind"] == "flagged"
+    assert "ambiguous_section" in d["flags"] and "section_suggested" not in d["flags"]
+
+
+def test_amountless_non_section_word_not_promoted():
+    d = ic.classify_line("Nonstick spray")
+    assert d["kind"] == "flagged" and "ambiguous_section" in d["flags"]
+
+
+def test_step_mirror_hint_promotes():
+    d = ic.classify_line("Habanero Syrup", section_hints={"habanero syrup"})
+    assert d["kind"] == "section" and "section_suggested" in d["flags"]
+
+
+# ----------------------------------------------------------------- multiplier N=1 vs N>1
+def test_multiplier_one_resolved_no_flag():
+    d = ic.classify_line("1 x 397 grams can of condensed milk")
+    assert d["kind"] == "ingredient"
+    assert (d["amount"], d["unit"], d["name"]) == ("1", "can", "condensed milk")
+    assert d["grams_harvested"] == 397.0
+    assert "multiplier" not in d["flags"]
+
+
+def test_multiplier_two_still_flagged():
+    d = ic.classify_line("2 x 6 oz halibut fillets")
+    assert d["kind"] == "flagged" and "multiplier" in d["flags"]
+
+
 # ----------------------------------------------------------------- ranges
 def test_range_endash():
     d = ic.classify_line("1 – 2 tbsp extra virgin olive oil")

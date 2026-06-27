@@ -677,6 +677,9 @@ value reads.
   across source orderings (weight-first "100 g (1 cup)" or volume-first "1 cup (250 g)"). The data
   is now captured (`recipe_ingredients.grams` + `secondary_measure`, migrations 011/012); wiring
   the toggle to pick the right one is the next step, folded with "show both units in Metric" above.
+  Also covers count+weight lines like "1 can" + grams (e.g. condensed milk): show the count
+  always, with the weight in the toggle's unit — Imperial "1 can (14 oz)" (grams→oz, a clean
+  weight conversion), Metric "1 can (397 g)".
 - **Grams→cups range, on hover (gated on variance data).** For cooks without a scale,
   highlighting a gram amount shows an honest RANGE in cups (e.g. "450 g ≈ 3¼–3¾ cups"), not a
   false-precise single value — grams→cups is lossy (packing variance). Range from real
@@ -699,6 +702,14 @@ value reads.
 
 Things that are actually *wrong* in edge cases (not just cosmetic), plus deferred cleanups —
 worth knowing before they bite. None of the limitations occur in the current recipes.
+
+- **Lowercase ingredient section-headers — narrow detection + flag, not silent auto-classify.**
+  Bare lowercase headers (e.g. "crust", "filling") are promoted to section headings only via a
+  NARROW signal — a common-section-word list plus a same-recipe step-section mirror — and every
+  promotion is FLAGGED (`section_suggested`) for confirmation, never committed silently. At scale
+  (~295) the better answer than a broader auto-classifier is a quick review UI to confirm /
+  reclassify flagged lines: broad auto-detection risks mis-classifying a real amountless
+  ingredient, and a wrongly-promoted ingredient *disappears* from the list (the worse error).
 
 - **Scaler — numbers that aren't quantities.** The scaler multiplies every number in a
   quantity string, so any number that isn't an amount-to-scale gets scaled wrongly:
