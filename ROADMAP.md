@@ -1,67 +1,97 @@
 # Seasonal Kitchen — Roadmap / Feature Tracker
 
-A running list of features to implement eventually, ordered into phases. This is a
-planning document, not a commitment — reorder, add, or drop items as priorities change.
+A running list of features, grouped into **priority tiers**. This is a planning document, not a
+commitment — reorder, add, or drop items as priorities change. Each feature keeps a stable
+**(Pxx)** id (its original phase number) so older cross-references still resolve; the **tier**
+conveys priority, the number is just a permanent label.
 
-**Working principle:** slow and gradual. One phase (or sub-step) at a time, each an
-independently shippable change we review before moving on. Larger features are split into
-sub-steps for the same reason.
+---
 
-**Order rationale:** a test-suite foundation first, then cheap isolated wins and
-maintenance, then the recipe metadata that filtering/discovery depend on, then sub-recipes,
-then ingredient enrichment, then the large pantry + planning cluster, then output, the two
-import methods (free, then paid), and the networked friend feed last. Phase numbers are a
-suggested order, not a lock — anything cheap and self-contained can be pulled forward.
+## Tier 0 — Cross-cutting principles
 
-**Matching principle — decline over guess, but measure coverage.** Whenever the app
-matches free-text recipe ingredients to structured data (weight table, pantry, library
-links, imported recipes), a wrong match is worse than no match: it produces confidently
-incorrect output (a false-precision gram value, a mis-linked ingredient). Rule: exact
-match first, conservative normalized fallback, curated aliases for known equalities, and on
-anything less than a confident match, pass through unchanged — never guess. AND measure how
-often we decline (coverage reporting) so we know how big the gap is. Applies to Phases 1c,
-13, 15, 16.
+The *why* and the *how* behind everything below. The first principle is the strategic "why"; the
+rest are the "how" that serves it.
 
-**Ingredient-line data model (cross-cutting).** Current ingredient text carries three kinds
-of noise — combined ingredients ("beef mince ground beef"), embedded instructions/qualifiers
-("very warm tap water up to 130 f"), and "X or Y" alternatives ("naan or arabic taboon
-bread"). This degrades every feature that treats ingredients as structured: conversion,
-pantry matching, library linkage, in-season, dietary flags, search. *Detection* belongs in
-Phase 6 (the health scan); *structural* cleanup — cleanly separating quantity · unit ·
-ingredient · prep-note, and handling alternatives — is a bulk-import-era task tied to the
-ingredient model and the importer, best done at/around import (Phase 15/16) so scraped
+### Data philosophy — capture meaningful signal, not data for its own sake
+
+Recipes themselves are a commodity: the internet has millions and capable models already know
+them, so raw recipe *volume* is nearly worthless — and far too small, at app scale, to train a
+model on. The scarce, valuable asset is **outcome data**: which recipes real people actually
+cook, how they rate them, and what they modify. That signal exists nowhere else at scale and is
+the unique thing that could make grounded recipe suggestions beat a generic model. So optimize
+every feature to capture meaningful signal — outcomes, modifications, behavior — **structured and
+timestamped from the start**; when designing anything, ask *"does this capture signal worth
+having?"* This is why the cook log, ratings, and per-person modifications are strategically
+central (Tier 3). The long-term payoff: this signal **grounds a capable LLM via RAG** (retrieval
+over our structured corpus), not a model we train ourselves.
+
+### Data-capture — capture signal early, build consumers later
+
+Log cooks, ratings, and edits with TIMESTAMPS and STRUCTURED OUTCOMES from the start: the signal
+you don't capture is unrecoverable, but features that consume it can be built anytime. Raises the
+bar for how Phases 5 (journal), 18 (analytics), and 19 (recommender) store data. Edit/version
+history is cheap to start timestamping now (tie to the per-person change layer).
+
+### Matching — decline over guess, but measure coverage
+
+Whenever the app matches free-text recipe ingredients to structured data (weight table, pantry,
+library links, imported recipes), a wrong match is worse than no match: it produces confidently
+incorrect output (a false-precision gram value, a mis-linked ingredient). Rule: exact match
+first, conservative normalized fallback, curated aliases for known equalities, and on anything
+less than a confident match, pass through unchanged — never guess. AND measure how often we
+decline (coverage reporting) so we know how big the gap is. Applies to Phases 1c, 13, 15, 16.
+
+### Provenance — cite reference data in the data model
+
+All gathered REFERENCE data (ingredient weights, densities, variances, seasonality…) carries its
+SOURCE(S) as a column, so "blended from multiple reliable sources, cited" is traceable and
+conflicts (e.g. King Arthur 120 g/cup vs ATK 140) are reconcilable. Apply to the existing
+`ingredient_weights` table and every future reference table.
+
+### Ingredient-line data model
+
+Current ingredient text carries three kinds of noise — combined ingredients ("beef mince ground
+beef"), embedded instructions/qualifiers ("very warm tap water up to 130 f"), and "X or Y"
+alternatives ("naan or arabic taboon bread"). This degrades every feature that treats ingredients
+as structured: conversion, pantry matching, library linkage, in-season, dietary flags, search.
+*Detection* belongs in Phase 6 (the health scan); *structural* cleanup — cleanly separating
+quantity · unit · ingredient · prep-note, and handling alternatives — is a bulk-import-era task
+tied to the ingredient model and the importer, best done at/around import (Phase 15/16) so scraped
 recipes are cleaned on the way in rather than after. Not worth hand-cleaning the current 5
 recipes; tolerable at this scale, matters at bulk upload. *See Phases 12, 13, 15, 16.*
 
-**Amount-structure cleanup (extends the above).** Amount text also carries forms the numeric
-parser can't handle — word-numbers ("half", "a few", "a couple"), parenthetical amounts
-("(about half a lime)"), and open-ended amounts ("plus more if needed", "to taste") — each
-needing separation from the scalable quantity, handled at import/data-model time (not a
-standalone word-number feature). Worked example that fails to scale today: the lime-juice line
-"lime juice (about half a lime), plus more if needed". Ties to the import / ingredient-name
-cleanup notes.
+### Amount-structure cleanup
 
-**Data-capture principle — capture signal early, build consumers later.** Log cooks, ratings,
-and edits with TIMESTAMPS and STRUCTURED OUTCOMES from the start: the signal you don't capture
-is unrecoverable, but features that consume it can be built anytime. Raises the bar for how
-Phases 5 (journal), 18 (analytics), and 19 (recommender) store data. Edit/version history is
-cheap to start timestamping now (tie to the per-person change layer).
+Amount text also carries forms the numeric parser can't handle — word-numbers ("half", "a few",
+"a couple"), parenthetical amounts ("(about half a lime)"), and open-ended amounts ("plus more if
+needed", "to taste") — each needing separation from the scalable quantity, handled at
+import/data-model time (not a standalone word-number feature). Worked example that fails to scale
+today: the lime-juice line "lime juice (about half a lime), plus more if needed". Ties to the
+import / ingredient-name cleanup notes.
 
-**Provenance principle — cite reference data in the data model.** All gathered REFERENCE data
-(ingredient weights, densities, variances, seasonality…) carries its SOURCE(S) as a column, so
-"blended from multiple reliable sources, cited" is traceable and conflicts (e.g. King Arthur
-120 g/cup vs ATK 140) are reconcilable. Apply to the existing `ingredient_weights` table and
-every future reference table.
+### North-Star — a queryable structured recipe dataset (NOT ML training)
 
-**North-Star — a queryable structured recipe dataset (NOT ML training).** The goal is every
-recipe decomposed into clean, queryable fields (ingredients, amounts, units, cuisine, tags,
-technique) so the whole corpus is queryable — via QUERIES over clean data, not learned models.
-The existing normalized schema IS this dataset; the work is ENRICHING it (ingredient-library
-linkage + metadata), NOT a separate denormalized all-in-one table (which would duplicate data
-and create sync problems). Through-line: Phase 6 (linkage, foundational) → Phase 8
-(cuisine/tags) → bulk import (15/16). Volume comes from both published recipes (15/16) and
-friends' shared recipes (17). *Agenda + analysis: see "Data gathering & cross-recipe analysis"
-near the end.*
+The goal is every recipe decomposed into clean, queryable fields (ingredients, amounts, units,
+cuisine, tags, technique) so the whole corpus is queryable — via QUERIES over clean data, not
+learned models. The existing normalized schema IS this dataset; the work is ENRICHING it
+(ingredient-library linkage + metadata), NOT a separate denormalized all-in-one table (which
+would duplicate data and create sync problems). Through-line: Phase 6 (linkage, foundational) →
+Phase 8 (cuisine/tags) → bulk import (15/16). Volume comes from both published recipes (15/16)
+and friends' shared recipes (17). *Agenda + analysis: see "Data gathering & cross-recipe
+analysis" near the end.*
+
+### Working principle — slow and gradual
+
+One phase (or sub-step) at a time, each an independently shippable change we review before moving
+on. Larger features are split into sub-steps for the same reason.
+
+### Order rationale
+
+A test-suite foundation first, then cheap isolated wins and maintenance, then the recipe metadata
+that filtering/discovery depend on, then sub-recipes, then ingredient enrichment, then the large
+pantry + planning cluster, then output, the two import methods (free, then paid), and the
+networked friend feed last. Phase numbers are a suggested order, not a lock — anything cheap and
+self-contained can be pulled forward. *(The tiers below now reflect this priority directly.)*
 
 ---
 
@@ -77,20 +107,9 @@ Everything is free except two items.
 
 ---
 
-## Progress
+## Tier 1 — Done / in progress
 
-| Status | Phase | Notes |
-|--------|-------|-------|
-| ✓ done | Phase 0 — Test suite | 22 tests covering API, build/migrate, and per-person change layers |
-| ✓ done | Phase 1a — Scaler | Ingredient list only |
-| ✓ done | Phase 1b — Metric/imperial toggle | Ingredient list only; same scope as 1a |
-| ✓ done | Phase 1c — Volume↔weight | King Arthur chart; server-side matcher + coverage report |
-| ✓ done | Phase 1d — Step-text scaling | Safe-hybrid: markup > guard > heuristic |
-| not started | Phases 2–19 | See below |
-
----
-
-## Phase 0 — Test suite (foundational + ongoing) · Free · ✓ done
+### Test Suite (P0) · ✓
 
 Stand up a persisted `pytest` suite in the repo covering current behavior — the API
 endpoints, `migrate`/`build_db`, per-person changes, and rebuild-preservation — replacing
@@ -100,7 +119,7 @@ the throwaway tests used so far.
 - **Schema:** none. **Why first:** highest-leverage safety net as features stack; cheap now,
   expensive to retrofit later.
 
-## Phase 1 — Quantity & units · Free · 1a–1d done · COMPLETE
+### Quantity & Units (P1) · ✓
 
 Shared machinery: a parser that reads a quantity string into a number + unit.
 
@@ -108,8 +127,8 @@ Shared machinery: a parser that reads a quantity string into a number + unit.
 - **1b — Metric/imperial toggle.** Fixed-factor conversions: volume↔volume, weight↔weight. *(done)*
 - **1c — Volume↔weight (King Arthur table).** *(done)* Ingredient-specific ("1 cup flour" → "120 g");
   adds a per-ingredient weight field (g per cup/tbsp) from the King Arthur Baking table.
-  *See also: preferred-units-on-import (Phase 15, future nice-to-have) — the density
-  table built here is a dependency for baking volume→weight conversion at import time.*
+  *See also: preferred-units-on-import (future nice-to-have, see Known limitations & tech debt) —
+  the density table built here is a dependency for baking volume→weight conversion at import time.*
 - **1d — Scale quantities in the method text.** *(done)* When you scale a recipe, amounts written
   into the steps ("add 2 tbsp oil", "stir in 1 cup stock") must scale too — but step prose
   also holds numbers that must *never* move: temperatures ("350°F"), times ("20 minutes"),
@@ -157,190 +176,7 @@ Shared machinery: a parser that reads a quantity string into a number + unit.
   yield field.
 - **Later:** sub-recipe components should scale with the parent (see Phase 11).
 
-## Phase 2 — Cooking mode · Free
-
-- **2a — Full-screen step-by-step** with the screen kept awake (Screen Wake Lock API).
-- **2b — Check off ingredients & steps** (mise en place) while cooking.
-- **Schema:** none. **Depends on:** nothing. Isolated, high daily value.
-
-## Phase 3 — Dark mode / theme toggle · Free
-
-App-wide light/dark toggle. Frontend only, no schema. Cheap; pull forward freely.
-
-## Phase 4 — Photo upload · Free
-
-Upload a recipe photo in-app instead of dropping a file in `static/images`.
-
-- **Scope:** Flask multipart endpoint, save locally, store the path. *Schema:* none.
-- **Depends on:** nothing. Prerequisite for per-cook photos (Phase 5) and AI scan (Phase 16).
-- **Notes:** validate type/size, safe filenames.
-
-## Phase 5 — Per-cook journal · Free
-
-Notes (and an optional result photo) on each cook-log entry — what changed, how it turned
-out. Optionally record how long it **actually** took (feeds time calibration, Phase 9e).
-
-- *Schema:* columns on `cook_log` (note, photo path, actual active/elapsed time).
-- **Depends on:** Phase 4 for the optional photo.
-- **Why here:** moves `cook_log` toward the detail that time calibration and the friend feed
-  (Phase 17) need.
-- **5d — Bake conditions (weather).** Optional temperature + humidity fields on each
-  cook-log entry, to correlate ambient conditions with how a bake turned out (fermentation
-  speed, proof time, dough feel) — mainly for bread/sourdough. Manual entry is cheap and
-  rides on the Phase 5 journal record (near-zero extra schema). Automatic weather (fetch by
-  date + home location) is deferred: needs a weather API + a stored home-location setting —
-  the same per-user settings store that a global units preference (import-units note) and the
-  Phase 19 recommender's saved-mood preference would also use. Build that store once for all
-  three. Niche (irrelevant to most savory cooking) — keep it an optional field, not a
-  prominent feature.
-
-## Phase 6 — Data health check · Free
-
-Extend `build_db.py`'s report to flag: unused ingredients, recipes missing a photo, and
-plain-text ingredient lines that *could* be linked to the library.
-
-- **Why here:** low-risk maintenance tool. The "could be linked" check directly supports the
-  linking prerequisite for pantry (Phase 13) and in-season (Phase 10). Useful before bulk
-  recipe entry.
-- **Grow into a coverage/health suite** reusing one data scan: (1) ingredient-library
-  linkage — % of recipe lines linked to the library (foundational; gates in-season and
-  pantry); (2) volume→weight conversion coverage (being built now with Phase 1c — see the
-  conversion-coverage report in `build_db.py`); (3) recipes never cooked / never rated (feeds
-  the Phase 19 recommender); (4) recipes missing a photo; (5) flag **messy ingredient names**
-  — lines whose ingredient text looks combined ("beef mince ground beef"), instruction-laden
-  ("very warm tap water up to 130 f"), or alternative-bearing ("naan or arabic taboon bread"),
-  detected cheaply by reusing the coverage scan. Conversion coverage ships now with
-  1c; bring the rest forward into Phase 6 when ready.
-
-## Phase 7 — Trash / soft-delete · Free
-
-Replace permanent deletion with soft-delete: mark a recipe deleted, exclude it from lists,
-and provide a Trash view to restore or permanently remove it. Plus undo for the last
-destructive action.
-
-- *Schema:* a `deleted_at`/`is_deleted` flag on recipes; the delete endpoint flags instead of
-  removing, and list/detail queries exclude deleted rows.
-- **Why here:** today deletion is permanent and cascades to a recipe's ratings, history, and
-  changes — this prevents accidental loss as more data accrues.
-
-## Phase 8 — Recipe metadata & organization · Free
-
-Small recipe-metadata features that later filtering/discovery depend on.
-
-- **8a — Want-to-try / favorites.** Status flag + filter. Tiny.
-- **8b — Tags / collections.** Freeform labels; tags + recipe-tags join (mirrors the regions
-  pattern).
-- **8c — Dietary flags.** Vegetarian/vegan/GF/allergens, set manually for now; later derived
-  from ingredient tags (after Phase 12).
-- **8d — Cuisine / region taxonomy + region search.** Hierarchy (Indian → Kolkata,
-  Delhi); search/filter by it. Foundational — also feeds origin-based substitutes (Phase 13)
-  and AI scan (Phase 16). *Schema:* recipe cuisine/region structure.
-
-## Phase 9 — Planning attributes (equipment, difficulty, time, make-ahead) · Free
-
-Recipe attributes for deciding what and when to cook. Their filters surface in Phase 10.
-
-- **9a — Equipment list + filter.** "Needs a wok / blender". *Schema:* equipment field/table.
-- **9b — Structured time (active vs wait).** Replace coarse prep/cook/total with **active**
-  time (hands-on), **hands-off/wait** time (marinate, rise, chill, rest, cool), and **cook**
-  time; total derived. Waits can be itemized, so a recipe shows both active and elapsed
-  (wall-clock) time. *Schema:* structured time fields on recipes.
-  - *Later refinement:* per-step durations (each step tagged active/passive with a time) —
-    more accurate, auto-derives totals, powers cooking-mode pacing and a backwards schedule.
-- **9c — Difficulty + filter.** Manual, or later derived from active time.
-- **9d — Make-ahead prep.** Flag ingredient lines that can be prepped ahead, with an optional
-  storage note (e.g. "airtight, fridge, 5 days"). A "prep plan" view splits the recipe into a
-  **prep-ahead list** (do anytime) and a **day-of list**. *Schema:* a flag (+ note) on recipe
-  ingredient lines.
-  - *Later:* combine with the meal planner (Phase 13e) for a weekly batch-prep list, and with
-    9b to show *day-of* active time (active minus what's prepped ahead).
-- **9e — Calibrate times from your cooks.** Using actual durations logged in the journal
-  (Phase 5), show your personal average against the recipe's stated time and optionally adjust
-  the estimate. Most accurate with per-step durations (9b refinement). The most direct fix for
-  inaccurate recipe times.
-
-## Phase 10 — Search, sort & discovery · Free
-
-Builds on Phases 8–9.
-
-- **10a — Search ranking & sort.** Rank matches (name > ingredient > notes); sort by
-  rating, cook count, recency, cuisine, time, tag. Sets the home list's default order.
-- **10b — Filters.** Cuisine/region, tags, dietary, equipment, difficulty, time, favorites.
-- **10c — In-season recipe filter.** Recipes whose linked ingredients are in season now
-  (global or local season — see 10g; linked lines only).
-- **10d — Surprise me.** Random recipe, optionally honoring active filters.
-- **10e — Pairing / side suggestions.** Accompaniments from the existing ingredient `pairs`
-  data; richer version after enrichment (Phase 12).
-- **10f — Reverse lookup.** From an ingredient's field guide, list recipes that feature it.
-  Basic version already exists via the field guide's "used in"; this expands it, and with the
-  pantry (Phase 13) becomes "recipes you could make using what you have."
-- **10g — Local / regional seasonality.** Today an ingredient's season is one global month
-  list. This makes it location-aware: set a home location (e.g. Boston) and "in season"
-  reflects the *local* calendar — asparagus and tomatoes peak weeks apart in New England
-  vs. California. Surfaces in the field guide ("in season near you") and feeds the 10c filter.
-  *Schema:* region-scope the season data (a region/zone dimension on the per-ingredient
-  season rows, or a separate region-season table) plus a stored home location/region.
-  *Depends on:* sourcing real regional seasonal calendars (state agricultural / extension
-  guides, CSA charts) and transcribing them with you rather than approximating — same
-  discipline as the King Arthur weights (1c), and shares the data-entry character of
-  ingredient enrichment (Phase 12). Global season stays the fallback where a region has no
-  local data.
-
-## Phase 11 — Sub-recipes / components · Free
-
-Let a recipe reference another recipe as a single ingredient line (e.g. the bulgogi drizzle
-sauce as its own recipe, reused in the bowl). Same idea as ingredient linking, aimed at the
-recipes table.
-
-- **v1 scope:** a line links to another recipe (`{component: "..."}` in `seed.py`), clicking
-  opens that recipe, and `build_db.py` validates the reference exists. *Schema:* a
-  component-recipe reference on recipe lines.
-- **Notes / complexity:** cycle detection + a nesting-depth limit; v1 references a whole
-  batch (fractional scaling later); v1 links out (inline expansion later). Synergy with
-  make-ahead (a prepped component). Add notes to Phase 1 (scale components with the parent)
-  and Phase 13 (recurse into components for match %, substitutes, shopping lists).
-
-## Phase 12 — Ingredient enrichment: citations + flavor/category tags · Free (manual)
-
-- **Citations.** One or more sources per ingredient, shown on the field guide.
-- **Flavor/category tags.** Category (allium, chili, herb…), flavor notes, spice grouping —
-  distinct from `pairs` ("goes with", not "stands in for").
-- *Schema:* citations + tag fields/tables on ingredients.
-- **Cost:** schema + manual entry free; AI-assisted gathering is an optional paid upgrade.
-- **Why here:** substitutes (Phase 13c), the dietary-derivation upgrade (Phase 8c), and
-  richer pairings (Phase 10e) all need these attributes.
-- *Depends on clean ingredient identity — see the Ingredient-line data model note (top).*
-
-## Phase 13 — Pantry & planning · Free (rule-based)
-
-The large data cluster.
-
-- **13a — Essential-ingredient flag.** Missing an essential ingredient rules a recipe out
-  entirely, regardless of match %. *Schema:* a flag on recipe lines.
-- **13b — Pantry inventory + match %.** What you have; "you have X% of this" / "you're 2
-  away". *Schema:* a pantry table.
-- **13c — Substitute suggestions.** For a missing ingredient, suggest library substitutes by
-  shared attributes (region/origin, flavor/category, spices) from Phase 12. Rule-based/free;
-  AI-ranked is an optional paid upgrade.
-- **13d — Shopping list.** Aggregate ingredients from selected recipes, minus the pantry.
-- **13e — Meal planner.** Assign recipes to days/week; generate a shopping list (and, with
-  9d, a weekly prep-ahead list) from the plan. *Schema:* a meal-plan table.
-  *See also: Phase 19 (recipe recommender) — the "what should I cook" single-pick view
-  that feeds naturally into this planner once it exists.*
-- **Capstone view — "what can I cook tonight":** emerges from pantry (13b) + in-season (10c) +
-  time (9b) + make-ahead (9d). Not new data, just a combined view.
-- **Cross-cutting:** match %, substitutes, in-season, and shopping-list subtraction work only
-  on recipe lines **linked** to the library; recurse into sub-recipes (Phase 11). Linkage
-  quality depends on clean ingredient identity — see the Ingredient-line data model note (top).
-
-## Phase 14 — Output & portability · Free
-
-- **14a — Print / PDF export.** Clean printable recipe (print stylesheet or server-side PDF).
-- **14b — Export / import recipes.** Back up to / restore from JSON (recipes, changes,
-  additions, ratings, cook history). *Placed late on purpose:* earlier phases keep adding
-  tables, which would otherwise force repeated rewrites of the export format.
-
-## Phase 15 — Recipe import (multi-source) · Free
+### Recipe Import (P15) · IN PROGRESS
 
 Import recipes from multiple sources into clean, structured records. **Architecture: thin
 source-specific READERS feed a single source-agnostic CORE through a NORMALIZED shape** — so
@@ -450,70 +286,123 @@ adding a source never touches the hard logic.
   (`no_ingredients`, `no_directions`, `photo_only`) land here, told apart by a nullable
   `position` (NULL = recipe-level). Kept OUT of the rendering tables so one SELECT is the whole
   queue; app-owned, cascades with its recipe. Lines are still WRITTEN — nothing is dropped.
-- **NOT done here — separate upcoming write-layer passes:** library **LINKAGE** (`ingredient_id`)
-  and full **IMAGE storage**.
-- **Staged rollout:** validated by a writes-nothing dry-run on a random **15 with distinct
-  authors** (prints the full plan + dedup decisions); the real write of the 15, then the full
-  ~295, follow.
+- **Harvested grams captured (migration 011).** A `(NNN g)` weight is harvested and stored in
+  `recipe_ingredients.grams`, and the gram parenthetical is stripped from the name. Captured
+  only — not yet displayed/scaled (see Known limitations & tech debt).
+- **Validation:** a writes-nothing dry-run on a random **15 with distinct authors** (prints the
+  full plan + dedup decisions). **15 recipes really imported** so far.
 
-- **Use harvested grams as authoritative weight (captured, not yet used).** Parenthetical grams
-  are now HARVESTED and STORED in `recipe_ingredients.grams` (migration 011) — and the harvested
-  `(NNN g)` is stripped from the name — but the value is NOT yet displayed / scaled / preferred;
-  the app still shows the density-matched weight (1c). Future step: use the harvested gram as the
-  authoritative weight in display + scaling — better than density conversion, and it sidesteps
-  source volume typos (e.g. the "14 cups (250g)" chickpeas line, where the cup measure is wrong
-  but the harvested 250 g is correct). Pairs naturally with the linkage pass. Feeds 1c.
+**Remaining work:**
 
-- *Bare "oz" on liquids:* scraped recipes often write fluid ounces as bare "oz". On a
-  known-liquid ingredient the importer should normalize "oz" → "fl oz" (or flag for review),
-  so a liquid isn't later converted as weight (28.35 g/oz). Decline over guess — normalize
-  only when the ingredient is confidently a liquid, else flag. (See the Matching principle
-  and the Ingredient-line data model note, top.)
+- Full **~295 import** (the validated path; 15 imported so far).
+- Library **linkage** pass (`ingredient_id`) — link confident library matches, flag uncertain,
+  leave no-match as free text.
+- Full **image storage** (extract `photos[]`; today `image` is primary-only / NULL).
+- **Use the harvested gram** as the authoritative display + scaling weight (captured now, not yet
+  used — see Known limitations & tech debt).
 
-- **Preferred-units-on-import (future, nice-to-have).** When importing a recipe
-  (Phase 15/16), convert quantities into the user's preferred unit system, defaultable by
-  category (e.g. baking → grams, savory → imperial). Baking volume→weight conversion
-  (cups → g) needs the 1c per-ingredient density table; rounding must be to the nearest
-  1, not 5, to preserve hydration-percentage accuracy for bread. *Depends on: 1c (density
-  data), Phase 15/16 (import), and a per-user/per-category settings store (which a global
-  units preference, the Phase 5d weather fields, and the Phase 19 saved-mood preference would
-  all use — build that store once for all).*
+---
 
-- **Range scaling — known limitation.** The cleanup core parses ranges (`1–2 tbsp`) with both
-  ends, and scaling multiplies BOTH — correct for divisible amounts, but WRONG for per-item
-  ranges (`5–7 blueberries per cookie` shouldn't grow with batch size). Distinguishing
-  discretionary from per-item ranges is itself an ambiguity problem; revisit later, don't
-  force it at parse time.
+## Tier 2 — Near-term core experience
 
-- **Extract a shared public `amounts.py` (tech debt).** The fraction/amount parser now exists
-  three times — `stepscale._to_value`, `weights._to_number`, and the JS `tokenToNumber` — and
-  `import_cleanup` imports `stepscale`'s underscore-private `_NUM` / `_to_value` / `_SCALE_UNIT`
-  / `_normalize_unicode`. Consolidate into one public module later; deferred now because it
-  would touch tested Phase-1 code mid-import-build.
+### Cooking Mode (P2)
 
-## Phase 16 — AI recipe scan / auto-populate · Per-use API cost
+- **2a — Full-screen step-by-step** with the screen kept awake (Screen Wake Lock API).
+- **2b — Check off ingredients & steps** (mise en place) while cooking.
+- **Schema:** none. **Depends on:** nothing. Isolated, high daily value.
 
-Read a recipe from a photo or pasted/messy text and auto-fill the form for review.
+### Recipe Metadata & Organization (P8)
 
-- **Depends on:** Phase 4 (photos); quality improves with Phase 8/12 metadata. Complements
-  Phase 15 (use free JSON-LD when available, AI for the rest).
-- **Cost:** per-use API (~cents per recipe), needs a key. Always confirm the parsed result —
-  models misread quantities and names.
-- **Payoff:** turns "upload more recipes" from typing into review-and-edit.
-- *Also the place to apply structural ingredient-line cleanup — see the Ingredient-line data
-  model note (top).*
+Small recipe-metadata features that later filtering/discovery depend on.
 
-## Phase 17 — Friend cooking feed / "what's for dinner" · Hosting cost + major change
+- **8a — Want-to-try / favorites.** Status flag + filter. Tiny.
+- **8b — Tags / collections.** Freeform labels; tags + recipe-tags join (mirrors the regions
+  pattern).
+- **8c — Dietary flags.** Vegetarian/vegan/GF/allergens, set manually for now; later derived
+  from ingredient tags (after Phase 12).
+- **8d — Cuisine / region taxonomy + region search.** Hierarchy (Indian → Kolkata,
+  Delhi); search/filter by it. Foundational — also feeds origin-based substitutes (Phase 13)
+  and AI scan (Phase 16). *Schema:* recipe cuisine/region structure.
 
-- **Free local precursor (can be earlier):** attribute `cook_log` to a person and show an
-  in-app activity view; one instance only, no cross-device sharing. (Phase 5 already moves
-  `cook_log` this way.)
-- **Full networked version:** multi-user accounts, a hosted database, a deployed server.
-  Largest architectural change here and the only feature with an ongoing monthly cost.
-- **Why last:** a different class of project (deployment + multi-user) than the rest, which is
-  local and single-user.
+### Search, Sort & Discovery (P10)
 
-## Phase 18 — Cooking analytics dashboard · Free
+Builds on Phases 8–9.
+
+- **10a — Search ranking & sort.** Rank matches (name > ingredient > notes); sort by
+  rating, cook count, recency, cuisine, time, tag. Sets the home list's default order.
+- **10b — Filters.** Cuisine/region, tags, dietary, equipment, difficulty, time, favorites.
+- **10c — In-season recipe filter.** Recipes whose linked ingredients are in season now
+  (global or local season — see 10g; linked lines only).
+- **10d — Surprise me.** Random recipe, optionally honoring active filters.
+- **10e — Pairing / side suggestions.** Accompaniments from the existing ingredient `pairs`
+  data; richer version after enrichment (Phase 12).
+- **10f — Reverse lookup.** From an ingredient's field guide, list recipes that feature it.
+  Basic version already exists via the field guide's "used in"; this expands it, and with the
+  pantry (Phase 13) becomes "recipes you could make using what you have."
+- **10g — Local / regional seasonality.** Today an ingredient's season is one global month
+  list. This makes it location-aware: set a home location (e.g. Boston) and "in season"
+  reflects the *local* calendar — asparagus and tomatoes peak weeks apart in New England
+  vs. California. Surfaces in the field guide ("in season near you") and feeds the 10c filter.
+  *Schema:* region-scope the season data (a region/zone dimension on the per-ingredient
+  season rows, or a separate region-season table) plus a stored home location/region.
+  *Depends on:* sourcing real regional seasonal calendars (state agricultural / extension
+  guides, CSA charts) and transcribing them with you rather than approximating — same
+  discipline as the King Arthur weights (1c), and shares the data-entry character of
+  ingredient enrichment (Phase 12). Global season stays the fallback where a region has no
+  local data.
+
+### Trash / Soft-delete (P7)
+
+Replace permanent deletion with soft-delete: mark a recipe deleted, exclude it from lists,
+and provide a Trash view to restore or permanently remove it. Plus undo for the last
+destructive action.
+
+- *Schema:* a `deleted_at`/`is_deleted` flag on recipes; the delete endpoint flags instead of
+  removing, and list/detail queries exclude deleted rows.
+- **Why here:** today deletion is permanent and cascades to a recipe's ratings, history, and
+  changes — this prevents accidental loss as more data accrues.
+
+### Dark Mode / Theme Toggle (P3)
+
+App-wide light/dark toggle. Frontend only, no schema. Cheap; pull forward freely.
+
+---
+
+## Tier 3 — Data-asset features
+
+**Strategically central (see the Data philosophy, Tier 0).** These exist to capture the scarce,
+valuable signal — what gets cooked, how it turns out, what gets changed — structured and
+timestamped from the start. Grouped together because together they build the outcome dataset that
+grounds the long-term vision; individually modest, collectively the whole point.
+
+### Photo Upload (P4)
+
+Upload a recipe photo in-app instead of dropping a file in `static/images`.
+
+- **Scope:** Flask multipart endpoint, save locally, store the path. *Schema:* none.
+- **Depends on:** nothing. Prerequisite for per-cook photos (Phase 5) and AI scan (Phase 16).
+- **Notes:** validate type/size, safe filenames.
+
+### Per-cook Journal (P5)
+
+Notes (and an optional result photo) on each cook-log entry — what changed, how it turned
+out. Optionally record how long it **actually** took (feeds time calibration, Phase 9e).
+
+- *Schema:* columns on `cook_log` (note, photo path, actual active/elapsed time).
+- **Depends on:** Phase 4 for the optional photo.
+- **Why here:** moves `cook_log` toward the detail that time calibration and the friend feed
+  (Phase 17) need.
+- **5d — Bake conditions (weather).** Optional temperature + humidity fields on each
+  cook-log entry, to correlate ambient conditions with how a bake turned out (fermentation
+  speed, proof time, dough feel) — mainly for bread/sourdough. Manual entry is cheap and
+  rides on the Phase 5 journal record (near-zero extra schema). Automatic weather (fetch by
+  date + home location) is deferred: needs a weather API + a stored home-location setting —
+  the same per-user settings store that a global units preference (import-units note) and the
+  Phase 19 recommender's saved-mood preference would also use. Build that store once for all
+  three. Niche (irrelevant to most savory cooking) — keep it an optional field, not a
+  prominent feature.
+
+### Analytics Dashboard (P18)
 
 A `#/dashboard` view that surfaces patterns in your cook log — when you cook, what you
 cook most, and what your weekly rhythm looks like — so you can spot preferences at a
@@ -552,7 +441,134 @@ when Phase 13e ships, this view folds into it rather than sitting alongside it.
 - *See also: Phase 19 (recipe recommender) — shares cook_log as its data source;
   analytics patterns (day-of-week, recency) inform the recommender's scoring.*
 
-## Phase 19 — "What's for dinner" recommender · Free
+### Data Health Check (P6)
+
+Extend `build_db.py`'s report to flag: unused ingredients, recipes missing a photo, and
+plain-text ingredient lines that *could* be linked to the library.
+
+- **Why here:** low-risk maintenance tool. The "could be linked" check directly supports the
+  linking prerequisite for pantry (Phase 13) and in-season (Phase 10). Useful before bulk
+  recipe entry.
+- **Grow into a coverage/health suite** reusing one data scan: (1) ingredient-library
+  linkage — % of recipe lines linked to the library (foundational; gates in-season and
+  pantry); (2) volume→weight conversion coverage (being built now with Phase 1c — see the
+  conversion-coverage report in `build_db.py`); (3) recipes never cooked / never rated (feeds
+  the Phase 19 recommender); (4) recipes missing a photo; (5) flag **messy ingredient names**
+  — lines whose ingredient text looks combined ("beef mince ground beef"), instruction-laden
+  ("very warm tap water up to 130 f"), or alternative-bearing ("naan or arabic taboon bread"),
+  detected cheaply by reusing the coverage scan. Conversion coverage ships now with
+  1c; bring the rest forward into Phase 6 when ready.
+
+---
+
+## Tier 4 — Later features
+
+### Planning Attributes (P9)
+
+Recipe attributes for deciding what and when to cook. Their filters surface in Phase 10.
+
+- **9a — Equipment list + filter.** "Needs a wok / blender". *Schema:* equipment field/table.
+- **9b — Structured time (active vs wait).** Replace coarse prep/cook/total with **active**
+  time (hands-on), **hands-off/wait** time (marinate, rise, chill, rest, cool), and **cook**
+  time; total derived. Waits can be itemized, so a recipe shows both active and elapsed
+  (wall-clock) time. *Schema:* structured time fields on recipes.
+  - *Later refinement:* per-step durations (each step tagged active/passive with a time) —
+    more accurate, auto-derives totals, powers cooking-mode pacing and a backwards schedule.
+- **9c — Difficulty + filter.** Manual, or later derived from active time.
+- **9d — Make-ahead prep.** Flag ingredient lines that can be prepped ahead, with an optional
+  storage note (e.g. "airtight, fridge, 5 days"). A "prep plan" view splits the recipe into a
+  **prep-ahead list** (do anytime) and a **day-of list**. *Schema:* a flag (+ note) on recipe
+  ingredient lines.
+  - *Later:* combine with the meal planner (Phase 13e) for a weekly batch-prep list, and with
+    9b to show *day-of* active time (active minus what's prepped ahead).
+- **9e — Calibrate times from your cooks.** Using actual durations logged in the journal
+  (Phase 5), show your personal average against the recipe's stated time and optionally adjust
+  the estimate. Most accurate with per-step durations (9b refinement). The most direct fix for
+  inaccurate recipe times.
+
+### Sub-recipes / Components (P11)
+
+Let a recipe reference another recipe as a single ingredient line (e.g. the bulgogi drizzle
+sauce as its own recipe, reused in the bowl). Same idea as ingredient linking, aimed at the
+recipes table.
+
+- **v1 scope:** a line links to another recipe (`{component: "..."}` in `seed.py`), clicking
+  opens that recipe, and `build_db.py` validates the reference exists. *Schema:* a
+  component-recipe reference on recipe lines.
+- **Notes / complexity:** cycle detection + a nesting-depth limit; v1 references a whole
+  batch (fractional scaling later); v1 links out (inline expansion later). Synergy with
+  make-ahead (a prepped component). Add notes to Phase 1 (scale components with the parent)
+  and Phase 13 (recurse into components for match %, substitutes, shopping lists).
+
+### Ingredient Enrichment: citations + flavor/category tags (P12)
+
+- **Citations.** One or more sources per ingredient, shown on the field guide.
+- **Flavor/category tags.** Category (allium, chili, herb…), flavor notes, spice grouping —
+  distinct from `pairs` ("goes with", not "stands in for").
+- *Schema:* citations + tag fields/tables on ingredients.
+- **Cost:** schema + manual entry free; AI-assisted gathering is an optional paid upgrade.
+- **Why here:** substitutes (Phase 13c), the dietary-derivation upgrade (Phase 8c), and
+  richer pairings (Phase 10e) all need these attributes.
+- *Depends on clean ingredient identity — see the Ingredient-line data model note (top).*
+
+### Pantry & Planning (P13)
+
+The large data cluster.
+
+- **13a — Essential-ingredient flag.** Missing an essential ingredient rules a recipe out
+  entirely, regardless of match %. *Schema:* a flag on recipe lines.
+- **13b — Pantry inventory + match %.** What you have; "you have X% of this" / "you're 2
+  away". *Schema:* a pantry table.
+- **13c — Substitute suggestions.** For a missing ingredient, suggest library substitutes by
+  shared attributes (region/origin, flavor/category, spices) from Phase 12. Rule-based/free;
+  AI-ranked is an optional paid upgrade.
+- **13d — Shopping list.** Aggregate ingredients from selected recipes, minus the pantry.
+- **13e — Meal planner.** Assign recipes to days/week; generate a shopping list (and, with
+  9d, a weekly prep-ahead list) from the plan. *Schema:* a meal-plan table.
+  *See also: Phase 19 (recipe recommender) — the "what should I cook" single-pick view
+  that feeds naturally into this planner once it exists.*
+- **Capstone view — "what can I cook tonight":** emerges from pantry (13b) + in-season (10c) +
+  time (9b) + make-ahead (9d). Not new data, just a combined view.
+- **Cross-cutting:** match %, substitutes, in-season, and shopping-list subtraction work only
+  on recipe lines **linked** to the library; recurse into sub-recipes (Phase 11). Linkage
+  quality depends on clean ingredient identity — see the Ingredient-line data model note (top).
+
+### Output & Portability (P14)
+
+- **14a — Print / PDF export.** Clean printable recipe (print stylesheet or server-side PDF).
+- **14b — Export / import recipes.** Back up to / restore from JSON (recipes, changes,
+  additions, ratings, cook history). *Placed late on purpose:* earlier phases keep adding
+  tables, which would otherwise force repeated rewrites of the export format.
+
+---
+
+## Tier 5 — Far-future vision
+
+Depends on the full dataset (corpus + linkage + the Tier-3 outcome data).
+
+### Friend Cooking Feed / multi-user (P17)
+
+- **Free local precursor (can be earlier):** attribute `cook_log` to a person and show an
+  in-app activity view; one instance only, no cross-device sharing. (Phase 5 already moves
+  `cook_log` this way.)
+- **Full networked version:** multi-user accounts, a hosted database, a deployed server.
+  Largest architectural change here and the only feature with an ongoing monthly cost.
+- **Why last:** a different class of project (deployment + multi-user) than the rest, which is
+  local and single-user.
+
+### AI Recipe Scan / auto-populate (P16)
+
+Read a recipe from a photo or pasted/messy text and auto-fill the form for review.
+
+- **Depends on:** Phase 4 (photos); quality improves with Phase 8/12 metadata. Complements
+  Phase 15 (use free JSON-LD when available, AI for the rest).
+- **Cost:** per-use API (~cents per recipe), needs a key. Always confirm the parsed result —
+  models misread quantities and names.
+- **Payoff:** turns "upload more recipes" from typing into review-and-edit.
+- *Also the place to apply structural ingredient-line cleanup — see the Ingredient-line data
+  model note (top).*
+
+### "What's for Dinner" Recommender (P19)
 
 Suggests ONE recipe for tonight from cook history + ratings, driven by a mood.
 Answers "what should I cook" with a single decisive pick, not a list.
@@ -578,14 +594,25 @@ Answers "what should I cook" with a single decisive pick, not a list.
 - *See also: Phase 18 (analytics) — shares cook_log; Phase 13e (meal planner) — the natural
   next step once you have a single-pick recommender.*
 
+### AI Recipe Generation (new)
+
+A capable LLM (via API) generates **novel** recipes through RAG — grounded in our structured
+corpus plus the outcome / pairing / cuisine data — rather than free-associating like a generic
+model. Every generated recipe is marked **AI-generated + untested**, and **bounded away from
+trusted food-safety-critical claims** (cook temperatures, preservation/canning, allergen safety):
+those stay sourced-or-blank, and validation is *actually cooking it*. Depends on the full dataset,
+library linkage, and the Tier-3 data-asset features being in place.
+
+- **Strategic arc:** multi-user (P17) → more outcome data → better grounding + ranking — a
+  grounding/signal **flywheel, NOT a training one**. We never train a model; we accumulate the
+  signal that lets a capable off-the-shelf model do this well for *our* corpus.
+
 ---
 
-## Continuous — Upload more recipes & data · Free
+## Continuous — Upload more recipes & data
 
 Ongoing. Add recipes via `seed.py`, the in-app form, or import (Phases 15/16). Link
 ingredients to the library so Phases 10c/13 work on them.
-
----
 
 ## Data gathering & cross-recipe analysis
 
@@ -663,10 +690,10 @@ value reads.
   numbers (188 mL, not 187 1/2 mL), but a small one can still show a fraction ("1/2 kg"). Proper
   per-unit handling lands with the metric/imperial toggle (1b).
 
-## Known limitations / sharp edges
+## Known limitations & tech debt
 
-Things that are actually *wrong* in edge cases (not just cosmetic), worth knowing before they
-bite. None occur in the current recipes.
+Things that are actually *wrong* in edge cases (not just cosmetic), plus deferred cleanups —
+worth knowing before they bite. None of the limitations occur in the current recipes.
 
 - **Scaler — numbers that aren't quantities.** The scaler multiplies every number in a
   quantity string, so any number that isn't an amount-to-scale gets scaled wrongly:
@@ -678,7 +705,7 @@ bite. None occur in the current recipes.
 
 - **`migrate.py` is not per-migration atomic.** `executescript()` runs statements in autocommit
   mode, so a migration that fails midway leaves a partial schema with no `schema_migrations`
-  record. Only affects *future* migrations (the existing 7 are applied and fine). Fix if it
+  record. Only affects *future* migrations (the existing ones are applied and fine). Fix if it
   ever bites: wrap each migration file's statements in an explicit `BEGIN;` / `COMMIT;` block.
 
 - **Tests are coupled to exact seed counts.** Adding recipes or ingredients to `seed.py` will
@@ -690,6 +717,58 @@ bite. None occur in the current recipes.
   `migrate.DB` / `build_db.DB` / `app.DB` on shared module objects with no restore. Fine for
   sequential pytest; would break under parallel runs (pytest-xdist). Only relevant if
   parallelism is ever added.
+
+- **Range scaling — per-item ranges (import).** The cleanup core parses ranges (`1–2 tbsp`) with
+  both ends, and scaling multiplies BOTH — correct for divisible amounts, but WRONG for per-item
+  ranges (`5–7 blueberries per cookie` shouldn't grow with batch size). Distinguishing
+  discretionary from per-item ranges is itself an ambiguity problem; revisit later, don't force
+  it at parse time.
+
+- **Bare "oz" on liquids (import).** Scraped recipes often write fluid ounces as bare "oz". On a
+  known-liquid ingredient the importer should normalize "oz" → "fl oz" (or flag for review),
+  so a liquid isn't later converted as weight (28.35 g/oz). Decline over guess — normalize
+  only when the ingredient is confidently a liquid, else flag. (See the Matching principle
+  and the Ingredient-line data model note.)
+
+- **Preferred-units-on-import (future, nice-to-have).** When importing a recipe
+  (Phase 15/16), convert quantities into the user's preferred unit system, defaultable by
+  category (e.g. baking → grams, savory → imperial). Baking volume→weight conversion
+  (cups → g) needs the 1c per-ingredient density table; rounding must be to the nearest
+  1, not 5, to preserve hydration-percentage accuracy for bread. *Depends on: 1c (density
+  data), Phase 15/16 (import), and a per-user/per-category settings store (which a global
+  units preference, the Phase 5d weather fields, and the Phase 19 saved-mood preference would
+  all use — build that store once for all).*
+
+*Tech debt:*
+
+- **Harvested-gram display (deferred).** Parenthetical grams are HARVESTED and STORED in
+  `recipe_ingredients.grams` (migration 011) — and the harvested `(NNN g)` is stripped from the
+  name — but the value is NOT yet displayed / scaled / preferred; the app still shows the
+  density-matched weight (1c). Future: use the harvested gram as the authoritative display +
+  scaling weight — better than density conversion, and it sidesteps source volume typos (e.g. the
+  "14 cups (250g)" chickpeas line, where the cup measure is wrong but the harvested 250 g is
+  correct). Pairs with the linkage pass. Feeds 1c.
+
+- **Extract a shared public `amounts.py`.** The fraction/amount parser now exists
+  three times — `stepscale._to_value`, `weights._to_number`, and the JS `tokenToNumber` — and
+  `import_cleanup` imports `stepscale`'s underscore-private `_NUM` / `_to_value` / `_SCALE_UNIT`
+  / `_normalize_unicode`. Consolidate into one public module later; deferred now because it
+  would touch tested Phase-1 code mid-import-build.
+
+- **Sonar coverage gap.** `sonar.sources` in `sonar-project.properties` is a hand-listed set
+  (`app.py, build_db.py, migrate.py, seed.py, backup.py, static`) — it omits `weights.py`,
+  `stepscale.py`, the `import_*` modules, and the `paprika_*`/`study` scripts, so those are NOT
+  scanned by SonarQube in CI (only local SonarLint sees them). Add them to `sonar.sources` (or
+  point it at a directory) to close the gap.
+
+## Prior art / why our model differs
+
+**Cooklang** (cooklang.org) was considered — a clean plain-text recipe markup format with an
+ownership pitch and a tooling ecosystem — but we chose a **relational model (SQLite)** because the
+goal is queryable, outcome-rich structured data for the grounding/recommendation vision, which a
+folder-of-text-files model doesn't serve well. Its explicit scale/no-scale ingredient syntax
+(`@salt{}` vs `@flour{2%cups}`) is, however, a useful reference for our step-text scaling if we
+ever add user-authored scaling hints (cf. the 1d markup).
 
 ## Declined
 

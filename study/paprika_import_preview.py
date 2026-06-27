@@ -20,7 +20,7 @@ try:
 except ImportError:
     sys.exit("BeautifulSoup not installed — run:  pip install beautifulsoup4")
 
-SAMPLES = Path(__file__).resolve().parent / "paprika_samples"
+SAMPLES = Path(__file__).resolve().parent.parent / "paprika_samples"  # study/ -> repo root
 
 # Unit words — used ONLY for the "count with no unit" flag, not for any cleaning/linking.
 UNIT_WORDS = {

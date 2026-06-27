@@ -20,7 +20,7 @@ try:
 except ImportError:
     sys.exit("BeautifulSoup not installed — run:  pip install beautifulsoup4")
 
-SAMPLES = Path(__file__).resolve().parent / "paprika_samples"
+SAMPLES = Path(__file__).resolve().parent.parent / "paprika_samples"  # study/ -> repo root
 UNICODE_FRAC = "¼½¾⅓⅔⅛⅜⅝⅞⅙⅚⅕⅖⅗⅘⅐⅑⅒"
 UNIT_WORDS = {
     "tsp", "teaspoon", "teaspoons", "tbsp", "tablespoon", "tablespoons", "cup", "cups",
