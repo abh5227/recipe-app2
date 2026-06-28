@@ -301,6 +301,25 @@ adding a source never touches the hard logic.
 - **Use the harvested gram** as the authoritative display + scaling weight (captured now, not yet
   used — see Known limitations & tech debt).
 
+### Frontend design pass — "used cookbook" recipe page · IN PROGRESS
+
+A redesign of the recipe page into a printed-cookbook aesthetic that embodies the outcome-data
+vision (the typeset original = the commodity; the user's hand-layer + wear = the asset). Full
+direction — palette, type, the R1/R2 boundary, the punch-list — in
+**[docs/design-decisions.md](docs/design-decisions.md)**.
+
+- **Round 1 (now):** the clean cookbook page against the verified 15 — paper/type/color tokens, a
+  single-column shell, the masthead, the volume+weight **ledger** (no units toggle; the
+  `convert_to_grams` flag governs which lines show grams), control strip + scaler/rating fixes,
+  amount formatting, tags, graceful empty states. Staged A (tokens/shell/type) → B (masthead) →
+  C (ledger + formatting) → D (controls/rating) → E (reserve R2 hooks); per-stage commits, suite
+  green at each. **Recipe page only.**
+- **Round 2 (deferred — needs real accruing data):** the handwritten **oxblood** edit/note layer,
+  the **wear/patina** deepening with cook count, the populated compare/version display, and the
+  **list/browse page redesign** (the scale/browsing review, after the ~295 import).
+- **App rename pending:** "Seasonal Kitchen" → **"Chef's Choice"** across UI + docs (decided; not
+  yet applied — see design-decisions.md).
+
 ---
 
 ## Tier 2 — Near-term core experience
@@ -382,6 +401,12 @@ Upload a recipe photo in-app instead of dropping a file in `static/images`.
 - **Scope:** Flask multipart endpoint, save locally, store the path. *Schema:* none.
 - **Depends on:** nothing. Prerequisite for per-cook photos (Phase 5) and AI scan (Phase 16).
 - **Notes:** validate type/size, safe filenames.
+- **4b — Inline step-reference photos.** Attach a photo to a SPECIFIC step ("what the dough should
+  look like at this point") for cooking-time reference — distinct from the single finished-dish
+  image. *Depends on:* image storage (the roadmapped write-layer step) + a step-level media relation
+  (`recipe_steps` → image). Groups with the cooking-mode / richer-step cluster (Phase 2; the
+  per-step-duration refinement in 9b). The Round-1 design **reserves layout room** (a step-body
+  wrapper) so it attaches later without a retrofit — see docs/design-decisions.md.
 
 ### Per-cook Journal (P5)
 
@@ -795,6 +820,24 @@ worth knowing before they bite. None of the limitations occur in the current rec
   `stepscale.py`, the `import_*` modules, and the `paprika_*`/`study` scripts, so those are NOT
   scanned by SonarQube in CI (only local SonarLint sees them). Add them to `sonar.sources` (or
   point it at a directory) to close the gap.
+
+- **R2 handwritten layer — extend the per-person model to app-tier (architectural).** The
+  per-person change model (edit/remove lines, additions) currently exists ONLY for seed recipes
+  (gated on `is_seed`); the imported recipes are app-tier and have the **form-edit** path but NOT
+  the per-person annotation layer. The Round-2 handwritten oxblood edit/note layer (see
+  docs/design-decisions.md) needs that model extended to app-tier recipes (or the two unified), and
+  the coexistence of "edit the canonical recipe" vs. "annotate by hand" decided. Architect-only in
+  R1 (reserved tokens / gutter / strike-able cell); resolve before building R2.
+
+- **Edit-form authoring polish (deferred).** The create/edit form (`#/new`, `#/edit`) is a separate
+  full-page view, OUT of the Round-1 design scope. It inherits the new tokens (so it stays
+  coherent) but isn't purpose-designed — a later small authoring-polish pass (or fold into R2).
+
+- **Re-harvest-on-save (future capability — distinct from the grams-preservation fix).** If a user
+  types a weight parenthetical (e.g. "(300 g)") into the edit form, run the edited line through
+  `import_cleanup.classify_line` on save to harvest it. This is a NEW capability — *not* the
+  grams-wipe fix, which already landed (`0c3f6ae`: it preserves EXISTING harvested grams across an
+  edit but can't recover a paren the import already stripped from the editable text).
 
 ## Prior art / why our model differs
 
