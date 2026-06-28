@@ -126,3 +126,48 @@ def test_api_attaches_grams_per_ml(kitchen):
     assert by_name["fish sauce"]["grams_per_ml"] is None   # not in the chart -> declined
     # headings carry no grams_per_ml key at all
     assert all("grams_per_ml" not in l for l in d["ingredients"] if l.get("is_heading"))
+
+
+def test_descriptor_aliases_resolve(kitchen):
+    """Group A+B: every descriptor/word-order/brand variant seen in the imported recipes resolves
+    to its chart row (so it converts in Metric), against the real seeded chart."""
+    with kitchen.conn() as c:
+        idx = weights.build_index(c.execute(
+            "SELECT lookup_key, display_name, grams_per_ml, convert_to_grams FROM ingredient_weights"
+        ).fetchall())
+    cases = {
+        "granulated sugar": "Sugar (granulated white)", "white granulated sugar": "Sugar (granulated white)",
+        "king arthur unbleached all purpose flour": "All-Purpose Flour", "whole milk": "Milk (fresh)",
+        "heavy cream": "Cream (heavy/light/half & half)", "double cream": "Cream (heavy/light/half & half)",
+        "half and half": "Cream (heavy/light/half & half)", "unsalted butter": "Butter", "salted butter": "Butter",
+        "plain yogurt": "Yogurt", "semisweet chocolate chips": "Chocolate chips",
+        "dark chocolate chips": "Chocolate chips", "unsweetened cocoa": "Cocoa (unsweetened)",
+        "cocoa powder": "Cocoa (unsweetened)", "light brown sugar": "Brown sugar (packed)",
+        "dark brown sugar": "Brown sugar (packed)", "packed dark brown sugar": "Brown sugar (packed)",
+        "ice water": "Water", "ice cold water": "Water", "warm water": "Water",
+        "fresh lemon juice": "Lemon juice", "vanilla": "Vanilla extract",
+        "king arthur pure vanilla extract": "Vanilla extract",
+        "rolled oats": "Oats (rolled)", "tahini": "Tahini paste",
+        "panko crumbs": "Breadcrumbs (Japanese panko)", "table salt": "Salt (table)",
+        "diamond crystal kosher salt": "Salt (Kosher Diamond Crystal)",
+    }
+    for name, expected in cases.items():
+        m = weights.match_weight(name, idx)
+        assert m is not None, f"{name!r} should resolve, got None"
+        assert m[1] == expected, f"{name!r} -> {m[1]!r}, expected {expected!r}"
+        assert m[2] == 1, f"{name!r} target should be convert_to_grams=TRUE"
+
+
+def test_alias_group_c_traps_decline(kitchen):
+    """Decline-over-guess guard: look-alikes that are DIFFERENT ingredients/densities must NOT
+    resolve, so a future alias/normalization change can't silently start mis-mapping them."""
+    with kitchen.conn() as c:
+        idx = weights.build_index(c.execute(
+            "SELECT lookup_key, display_name, grams_per_ml, convert_to_grams FROM ingredient_weights"
+        ).fetchall())
+    for name in ("condensed milk", "golden caster sugar", "caster sugar", "glutinous rice flour",
+                 "greek yogurt", "vanilla bean paste", "sea salt", "salt"):
+        assert weights.match_weight(name, idx) is None, f"{name!r} must DECLINE, not alias"
+    # a 'milk' alias must not hijack ingredients that own a distinct chart row
+    assert weights.match_weight("coconut milk", idx)[1] == "Coconut milk (canned)"
+    assert weights.match_weight("evaporated milk", idx)[1] == "Evaporated milk"

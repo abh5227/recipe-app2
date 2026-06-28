@@ -130,13 +130,40 @@ def build_index(rows):
 # Grouped by canonical chart name (each appears once), then flattened to synonym->canonical.
 _ALIAS_GROUPS = {
     "olive oil": ["extra virgin olive oil", "virgin olive oil", "evoo"],  # grades / abbrev
-    "all-purpose flour": ["plain flour"],                                 # British
     "confectioners' sugar": ["powdered sugar", "icing sugar"],            # US / British
     "baking soda": ["bicarbonate of soda", "bicarb"],                    # British
+    "all-purpose flour": ["plain flour",                                  # British
+                          "king arthur unbleached all purpose flour"],   # brand prefix
     # Single-user default: bare "kosher salt" is genuinely ambiguous (Diamond Crystal
     # ~8 g/tbsp vs Morton's ~16 — an imported recipe assuming Morton's would convert ~2x
     # light). We resolve it to MY kitchen's salt (Diamond Crystal) on purpose, not by guessing.
-    "salt (kosher diamond crystal)": ["kosher salt"],
+    "salt (kosher diamond crystal)": ["kosher salt", "diamond crystal kosher salt"],
+
+    # Descriptor / word-order / brand variants seen in the imported recipes — all genuinely the
+    # SAME chart ingredient (same density), differing only by a fat-%/style/temperature/brand
+    # qualifier. normalize() drops any post-comma clause, so each head also covers its
+    # ", melted" / ", to taste" / ", dutch-process" tail. Deliberately NOT a descriptor stripper:
+    # near-but-different names (caster vs granulated sugar, condensed vs fresh milk, glutinous vs
+    # white rice flour, greek vs plain yogurt) are EXCLUDED so they keep declining (decline-over-guess).
+    "sugar (granulated white)": ["granulated sugar", "white granulated sugar"],
+    "brown sugar (packed)": ["light brown sugar", "dark brown sugar", "packed dark brown sugar"],
+    "milk (fresh)": ["whole milk"],
+    "cream (heavy/light/half & half)": ["heavy cream", "double cream", "half and half"],
+    "butter": ["unsalted butter", "salted butter"],
+    "yogurt": ["plain yogurt"],
+    "chocolate chips": ["semisweet chocolate chips", "dark chocolate chips"],
+    "cocoa (unsweetened)": ["unsweetened cocoa", "cocoa powder"],
+    "water": ["ice water", "ice cold water", "warm water"],
+    "lemon juice": ["fresh lemon juice"],
+    "vanilla extract": ["vanilla", "king arthur pure vanilla extract"],
+
+    # Exact-only targets: the chart's BASE is ambiguous (oats, salt, breadcrumbs) or its name
+    # carries an extra word the recipe omits (tahini paste), so the base-name fallback can't
+    # reach them — they must resolve through the full parenthetical chart name.
+    "oats (rolled)": ["rolled oats"],                  # base "oats" ambiguous (rolled 113 vs old-fashioned 89)
+    "tahini paste": ["tahini"],                        # chart base is "tahini paste"
+    "breadcrumbs (japanese panko)": ["panko crumbs"],  # base "breadcrumbs" ambiguous (panko vs dried)
+    "salt (table)": ["table salt"],                    # base "salt" ambiguous (table/DC/Morton)
 }
 ALIASES = {syn: canon for canon, syns in _ALIAS_GROUPS.items() for syn in syns}
 
