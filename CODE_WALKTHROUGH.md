@@ -1,4 +1,4 @@
-# Seasonal Kitchen — Code Walkthrough & History
+# Chef's Choice — Code Walkthrough & History
 
 This is the **detailed companion** to the README. The README is the quick start; this
 document is the living history — a guided tour of the code, the reasoning behind the

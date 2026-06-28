@@ -1,4 +1,4 @@
-# Seasonal Kitchen — Roadmap / Feature Tracker
+# Chef's Choice — Roadmap / Feature Tracker
 
 A running list of features, grouped into **priority tiers**. This is a planning document, not a
 commitment — reorder, add, or drop items as priorities change. Each feature keeps a stable

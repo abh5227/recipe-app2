@@ -1,4 +1,4 @@
-# Seasonal Kitchen — Overview
+# Chef's Choice — Overview
 
 A two-minute orientation. For the quick start see [README.md](README.md); for the guided code
 tour and history see [CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md); for the plan see

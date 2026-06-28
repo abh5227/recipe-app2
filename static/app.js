@@ -197,7 +197,7 @@ async function renderHome() {
   app.innerHTML = `
     <div class="site-head">
       <div>
-        <h1 class="site-title">Seasonal Kitchen</h1>
+        <h1 class="site-title">Chef's Choice</h1>
         <p class="site-sub">Field notes from the kitchen — recipes, and what goes in them.</p>
       </div>
       <a class="btn new-recipe" href="#/new">+ New recipe</a>

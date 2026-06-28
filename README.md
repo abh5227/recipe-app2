@@ -1,4 +1,4 @@
-# Seasonal Kitchen
+# Chef's Choice
 
 A personal recipe app. Recipes link to a shared **ingredient field guide** — tap an
 ingredient to see when it's in season, where it grows, and which other recipes use it —
