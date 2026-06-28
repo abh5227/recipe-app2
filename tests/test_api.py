@@ -53,6 +53,56 @@ def test_create_edit_delete_app_recipe(kitchen):
     assert kitchen.client.get(f"/api/recipes/{rid}").status_code == 404
 
 
+def test_edit_preserves_unchanged_harvested_grams(kitchen):
+    # The create path writes NULL grams; set grams/secondary_measure directly to simulate an
+    # imported recipe. These are PLAIN lines (created via {qty, text}) -> label=NULL with the name
+    # in raw_text, mirroring the imported 15 and exercising the raw_text side of the
+    # (qty, label||raw_text) key. flour and cocoa share a qty ("1 cup"), so ONLY the name (raw_text)
+    # tells them apart -- a label-only key would collide here and carry the wrong weight.
+    rid = kitchen.client.post("/api/recipes", json={
+        "name": "Grams Keep Test",
+        "ingredients": [{"qty": "1 cup", "text": "flour"},
+                        {"qty": "1 cup", "text": "cocoa"},
+                        {"qty": "2 cups", "text": "milk"}],
+        "steps": ["mix"],
+    }).get_json()["id"]
+    with kitchen.conn() as c:
+        # guard the premise: the seeded lines really are plain (label NULL, name in raw_text)
+        rows = c.execute("SELECT label FROM recipe_ingredients WHERE recipe_id=?", (rid,)).fetchall()
+        assert all(r["label"] is None for r in rows)
+        c.execute("UPDATE recipe_ingredients SET grams=120.0, secondary_measure='1 cup' WHERE recipe_id=? AND raw_text='flour'", (rid,))
+        c.execute("UPDATE recipe_ingredients SET grams=50.0 WHERE recipe_id=? AND raw_text='cocoa'", (rid,))
+        c.execute("UPDATE recipe_ingredients SET grams=480.0 WHERE recipe_id=? AND raw_text='milk'", (rid,))
+
+    def weight(name):
+        with kitchen.conn() as c:
+            r = c.execute("SELECT grams, secondary_measure FROM recipe_ingredients "
+                          "WHERE recipe_id=? AND raw_text=?", (rid, name)).fetchone()
+        return (r["grams"], r["secondary_measure"])
+
+    # (a) flour + cocoa UNCHANGED (same qty, told apart only by raw_text); (b) milk's qty CHANGED
+    assert kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Grams Keep Test",
+        "ingredients": [{"qty": "1 cup", "text": "flour"},
+                        {"qty": "1 cup", "text": "cocoa"},
+                        {"qty": "3 cups", "text": "milk"}],
+        "steps": ["mix", "bake"],
+    }).status_code == 200
+    assert weight("flour") == (120.0, "1 cup")   # (a) unchanged plain line -> preserved via raw_text key
+    assert weight("cocoa") == (50.0, None)        # (a) same qty as flour -> kept its OWN grams, not flour's
+    assert weight("milk") == (None, None)         # (b) changed qty -> harvested value cleared
+
+    # (c) note-only change on flour (note isn't part of the key) -> grams preserved
+    assert kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Grams Keep Test",
+        "ingredients": [{"qty": "1 cup", "text": "flour", "note": "sifted"},
+                        {"qty": "1 cup", "text": "cocoa"},
+                        {"qty": "3 cups", "text": "milk"}],
+        "steps": ["mix", "bake"],
+    }).status_code == 200
+    assert weight("flour") == (120.0, "1 cup")
+
+
 def test_seed_recipe_is_read_only(kitchen):
     assert kitchen.client.put("/api/recipes/gai-yang", json={
         "name": "x", "ingredients": [], "steps": []}).status_code == 403

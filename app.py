@@ -147,8 +147,22 @@ def validate_recipe_payload(c, payload):
     return {"name": name, "ingredients": ingredients, "steps": steps}, None
 
 
-def write_recipe_rows(c, rid, clean):
-    """(Re)write a recipe's ingredient lines and steps from a validated payload."""
+def _preserve_key(qty, name):
+    """Match key for carrying import-harvested grams/secondary_measure across an edit. Light and
+    predictable on purpose: trim + lowercase ONLY, on the quantity and the line's display name
+    (its label, or raw_text when there's no label) — keyed identically on both sides. It does NOT
+    strip units or fold fractions, so " 1 Cup " matches "1 cup" but "1 cup" != "1 c" (a unit change
+    is a real change). `note` is deliberately excluded, so a note-only edit keeps the weight."""
+    return ((qty or "").strip().lower(), (name or "").strip().lower())
+
+
+def write_recipe_rows(c, rid, clean, preserve=None):
+    """(Re)write a recipe's ingredient lines and steps from a validated payload.
+
+    `preserve` (edit path only) maps a line's _preserve_key -> (grams, secondary_measure),
+    snapshotted from the rows about to be replaced, so an UNCHANGED line keeps its import-harvested
+    weight; a changed or new line (key absent) gets NULL — exactly as on create, which passes none."""
+    preserve = preserve or {}
     c.execute("DELETE FROM recipe_ingredients WHERE recipe_id = ?", (rid,))
     c.execute("DELETE FROM recipe_steps WHERE recipe_id = ?", (rid,))
 
@@ -162,17 +176,20 @@ def write_recipe_rows(c, rid, clean):
         elif row.get("item"):
             label = row.get("label") or row["item"]
             note = row.get("note") or ""
+            grams, secondary = preserve.get(_preserve_key(row.get("qty"), label), (None, None))
             c.execute(
                 """INSERT INTO recipe_ingredients
-                   (recipe_id, position, qty, ingredient_id, label, note, raw_text)
-                   VALUES (?,?,?,?,?,?,?)""",
+                   (recipe_id, position, qty, ingredient_id, label, note, raw_text, grams, secondary_measure)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
                 (rid, pos, row.get("qty"), row["item"], label, note,
-                 f"{row.get('qty','')} {label}{note}".strip()),
+                 f"{row.get('qty','')} {label}{note}".strip(), grams, secondary),
             )
         else:
+            text = row.get("text", "") or ""
+            grams, secondary = preserve.get(_preserve_key(row.get("qty"), text), (None, None))
             c.execute(
-                "INSERT INTO recipe_ingredients (recipe_id, position, qty, raw_text) VALUES (?,?,?,?)",
-                (rid, pos, row.get("qty"), row.get("text", "") or ""),
+                "INSERT INTO recipe_ingredients (recipe_id, position, qty, raw_text, grams, secondary_measure) VALUES (?,?,?,?,?,?)",
+                (rid, pos, row.get("qty"), text, grams, secondary),
             )
 
     for pos, step in enumerate(clean["steps"]):
@@ -327,7 +344,17 @@ def update_recipe(rid):
              payload.get("cook_time"), payload.get("total_time"), payload.get("descr"),
              payload.get("notes"), payload.get("image"), rid),
         )
-        write_recipe_rows(c, rid, clean)
+        # Preserve import-harvested grams/secondary_measure across the edit: snapshot the rows
+        # about to be replaced, keyed by (qty, name); write_recipe_rows re-applies them to the
+        # UNCHANGED lines (a changed qty/name, or a new line, gets NULL — see write_recipe_rows).
+        preserve = {}
+        for o in c.execute(
+            "SELECT qty, label, raw_text, grams, secondary_measure "
+            "FROM recipe_ingredients WHERE recipe_id = ? AND is_heading = 0", (rid,)
+        ):
+            if o["grams"] is not None or o["secondary_measure"] is not None:
+                preserve[_preserve_key(o["qty"], o["label"] or o["raw_text"])] = (o["grams"], o["secondary_measure"])
+        write_recipe_rows(c, rid, clean, preserve)
     return jsonify({"id": rid})
 
 
