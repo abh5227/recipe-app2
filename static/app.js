@@ -159,6 +159,7 @@ function photo(r, kind) {
 
 async function renderHome() {
   view = null;
+  app.className = "page home-view";
   const [recipes, season] = await Promise.all([
     api("/api/recipes"),
     api("/api/in-season"),
@@ -521,9 +522,20 @@ function renderStepRow(row) {
   return `<li class="step">${html}</li>`;
 }
 
+// Long headnotes clamp to 3 lines + a "more" expander; short ones show in full. Measured after
+// fonts load so the clamped line-count is accurate (Spectral may change wrapping vs the fallback).
+function setupHeadnote() {
+  const dek = app.querySelector(".dek");
+  const more = app.querySelector(".dek-more");
+  if (!dek || !more) return;
+  if (dek.scrollHeight > dek.clientHeight + 2) more.hidden = false;  // long -> keep clamp, offer "more"
+  else dek.classList.remove("clamped");                              // short -> show full, no expander
+}
+
 async function renderRecipe(rid) {
   const data = await api("/api/recipes/" + encodeURIComponent(rid));
   view = { slug: rid, data, mode: "original", editingPos: null, addingOpen: false, scale: 1, units: "imperial" };
+  app.className = "page recipe-view";
   const r = data.recipe;
 
   // Seed recipes let people add ingredients to their version, so load the library
@@ -559,7 +571,7 @@ async function renderRecipe(rid) {
     ${photo(r, "hero")}
     ${sourceLine}
     <h1 class="recipe-title">${esc(r.name)}</h1>
-    ${r.descr ? `<p class="dek">${esc(r.descr)}</p>` : ""}
+    ${r.descr ? `<div class="headnote"><p class="dek clamped">${esc(r.descr)}</p><button class="dek-more" data-dek-toggle hidden>more</button></div>` : ""}
     ${meta ? `<ul class="meta">${meta}</ul>` : ""}
     <div class="stats" data-rid="${esc(r.id)}">${statsInner(data.stats)}</div>
     ${owner}
@@ -571,6 +583,9 @@ async function renderRecipe(rid) {
         ${r.notes ? `<div class="notes"><strong>Note.</strong> ${esc(r.notes)}</div>` : ""}
       </section>
     </div>`;
+
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(setupHeadnote);
+  else setupHeadnote();
 }
 
 // ---- saving per-person changes (everything goes through the change endpoints) ----
@@ -695,6 +710,7 @@ function stepToRow(x) {
 
 async function renderForm(mode, slug) {
   view = null;
+  app.className = "page form-view";
   let pre = {};
   let ingRowsHTML = ingRow({ type: "line" });
   let stepRowsHTML = stepRow({ type: "step" });
@@ -944,6 +960,14 @@ document.addEventListener("click", (e) => {
     if (rate) { updateStats(stats, `/api/recipes/${rid}/rating`, { rating: Number(rate.dataset.rate) }); return; }
     if (e.target.closest("[data-cook]"))   { updateStats(stats, `/api/recipes/${rid}/cooked`, {}); return; }
     if (e.target.closest("[data-uncook]")) { updateStats(stats, `/api/recipes/${rid}/uncook`, {}); return; }
+  }
+
+  // headnote "more" / "less" expander (long imported descriptions)
+  const dekToggle = e.target.closest("[data-dek-toggle]");
+  if (dekToggle) {
+    const dek = app.querySelector(".dek");
+    if (dek) dekToggle.textContent = dek.classList.toggle("clamped") ? "more" : "less";
+    return;
   }
 
   // recipe-detail interactions: app-recipe delete + the per-person change layers

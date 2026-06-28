@@ -1,34 +1,95 @@
 :root {
-  --paper:      #EDF0E6;
-  --card:       #FBFCF7;
-  --ink:        #1F2A20;
-  --ink-soft:   #51604F;
-  --berry:      #6B2D5C;
-  --berry-lift: #9C4A82;
-  --amber:      #C8902A;
-  --line:       #CBD2BF;
-  --line-soft:  #DDE3D2;
+  /* ===== "used cookbook" design tokens (Round 1 — clean state) ===== */
 
-  --display: "Fraunces", Georgia, "Times New Roman", serif;
-  --body:    "Hanken Grotesk", system-ui, -apple-system, sans-serif;
+  /* surfaces: a warm page lifted off a neutral desk (page-as-object) */
+  --backdrop:   #D2CAB9;   /* desk behind the page (warm taupe); body paints a gradient over this */
+  --paper:      #EFE8D6;   /* page solid fill / fallback; .page.recipe-view paints a warm gradient + patina */
+  --paper-edge: #E0D7C1;   /* warm hairline on the card edge */
+  --card:       #FBF6EA;   /* a hair-raised warm inset surface (drawer, notes, form fields) */
+
+  /* ink */
+  --ink:        #262320;   /* warm near-black body text (~11:1 on paper) */
+  --ink-soft:   #655C4F;   /* captions / muted / meta (~5:1 on paper, AA) */
+
+  /* the two accents, two jobs */
+  --aubergine:      #5A3658;   /* PRINTED structure: byline, section labels, masthead rule, step #s */
+  --aubergine-lift: #774A72;   /* hover lift of aubergine */
+  --oxblood:        #842D33;   /* USER hand layer — RESERVED for Round 2 (≈unused in R1) */
+
+  /* rules / hairlines */
+  --rule:       #D5CAB0;   /* warm ledger separators, meta borders */
+  --rule-soft:  #E6DDC9;   /* faint warm row separators */
+
+  /* one muted functional ochre (rating/season); finalized in Stage D */
+  --ochre:      #A97C2E;
+
+  /* type */
+  --font-serif: "Spectral", Georgia, "Times New Roman", serif;
+  --font-title: var(--font-serif);   /* one-line swap point (Newsreader / Fraunces) — decided by eye after Stage A/B */
+  --font-mono:  "IBM Plex Mono", "SF Mono", Consolas, monospace;
+  --font-hand:  "Caveat", "Kalam", cursive;   /* Round 2 — token reserved, font not loaded yet */
+
+  --fs-title:    clamp(33px, 5.2vw, 49px);
+  --fs-headnote: 16px;     /* subordinate to the title — near body size, italic */
+  --fs-body:     17.5px;
+  --fs-amount:   14px;     /* mono, tabular */
+  --fs-label:    12px;     /* mono, uppercase, tracked */
+
+  --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:72px;
+
+  --page-measure: 760px;   /* recipe content column */
+  --hand-gutter:  0px;     /* Round 2: right margin reserved for oxblood margin-notes */
+
+  /* compatibility aliases — older rules keep rendering; each is retired as Stages B–D
+     restyle its section into the tokens above. */
+  --berry:      var(--aubergine);
+  --berry-lift: var(--aubergine-lift);
+  --amber:      var(--ochre);
+  --line:       var(--rule);
+  --line-soft:  var(--rule-soft);
+  --display:    var(--font-serif);
+  --body:       var(--font-serif);
 }
 
 * { box-sizing: border-box; }
 
 body {
   margin: 0;
-  background: var(--paper);
+  background-color: var(--backdrop);   /* the desk: warm taupe + a faint top patina */
+  background-image:
+    radial-gradient(100% 60% at 50% 0%, rgba(70,45,15,0.035), transparent 60%),
+    linear-gradient(180deg, #d6cfbf, #cdc5b3);
   color: var(--ink);
-  font-family: var(--body);
-  font-size: 17px;
-  line-height: 1.65;
+  font-family: var(--font-serif);
+  font-size: var(--fs-body);
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 .page {
   max-width: 920px;
   margin: 0 auto;
   padding: clamp(24px, 5vw, 56px) clamp(20px, 5vw, 44px) 96px;
+}
+
+/* The recipe page is the cookbook "page-as-object": warm paper lifted off the desk, a single
+   reading column (--page-measure) with the right --hand-gutter reserved for the Round-2 margin
+   layer. Home / forms keep their full-width layout (the browse redesign is Round 2). */
+.page.recipe-view {
+  max-width: calc(var(--page-measure) + var(--hand-gutter));
+  margin: clamp(0px, 4vw, 40px) auto;
+  padding: clamp(28px, 5vw, 64px);
+  /* warm paper with depth: a tan linear base + two faint patina radials (brown top-right,
+     aubergine bottom-left) — paper, not a flat screen fill. */
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(120% 80% at 86% 10%, rgba(70,45,15,0.045), transparent 52%),
+    radial-gradient(55% 45% at 10% 96%, rgba(90,54,88,0.05), transparent 60%),
+    linear-gradient(180deg, #f3ecdc, #ece4d0);
+  border: 1px solid var(--paper-edge);
+  border-radius: 3px;
+  box-shadow: 0 1px 1px rgba(40,35,30,.05), 0 16px 44px -14px rgba(40,35,30,.16);
 }
 
 a { color: var(--berry); text-decoration: none; }
@@ -48,7 +109,7 @@ a:hover { color: var(--berry-lift); }
 /* ---------- Home: masthead ---------- */
 .site-head { border-bottom: 2px solid var(--ink); padding-bottom: 18px; margin-bottom: 30px; }
 .site-title {
-  font-family: var(--display); font-weight: 600;
+  font-family: var(--font-title); font-weight: 600;
   font-size: clamp(34px, 7vw, 54px); line-height: 1.0;
   letter-spacing: -0.01em; margin: 0;
 }
@@ -110,15 +171,29 @@ a:hover { color: var(--berry-lift); }
 
 /* ---------- Recipe detail ---------- */
 .recipe-title {
-  font-family: var(--display); font-weight: 600;
+  font-family: var(--font-title); font-weight: 600;
   font-size: clamp(32px, 6.5vw, 52px); line-height: 1.04;
   letter-spacing: -0.01em; margin: 0 0 14px;
 }
+/* Headnote (imported description) — subordinate to the title and capped so the ingredients stay
+   near the top. Long ones clamp to 3 lines with a "more" expander (wired in app.js); short ones
+   show in full (the clamp is removed after measuring); none render nothing. */
+.headnote { max-width: 60ch; margin: 0 0 20px; }
 .dek {
-  font-family: var(--display); font-style: italic; font-weight: 400;
-  font-size: clamp(17px, 3vw, 21px); color: var(--ink-soft);
-  max-width: 56ch; margin: 0 0 20px;
+  font-family: var(--font-serif); font-style: italic; font-weight: 400;
+  font-size: var(--fs-headnote); line-height: 1.5; color: var(--ink-soft);
+  margin: 0;
 }
+.dek.clamped {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
+}
+.dek-more {
+  font: inherit; font-style: normal; font-size: 13px; cursor: pointer;
+  background: none; border: none; padding: 0; margin: 4px 0 0;
+  color: var(--aubergine); text-decoration: underline; text-underline-offset: 2px;
+}
+.dek-more:hover { color: var(--aubergine-lift); }
+.dek-more[hidden] { display: none; }
 .meta {
   list-style: none; display: flex; flex-wrap: wrap; gap: 26px;
   padding: 16px 0; margin: 0;
@@ -163,11 +238,12 @@ a:hover { color: var(--berry-lift); }
 .rc-stats .ct { color: var(--ink-soft); letter-spacing: normal; }
 .rc-stats .dot { color: var(--ink-soft); }
 
+/* Single-column reading flow: masthead -> ledger -> method (the cookbook page). The old
+   two-column split is retired so the right --hand-gutter stays free for the Round-2 margin layer. */
 .recipe-cols {
   display: grid; grid-template-columns: 1fr;
-  gap: clamp(34px, 6vw, 54px); margin-top: 42px;
+  gap: clamp(30px, 5vw, 46px); margin-top: 40px;
 }
-@media (min-width: 720px) { .recipe-cols { grid-template-columns: 5fr 7fr; } }
 
 .col-title {
   font-family: var(--display); font-size: 14px; font-weight: 600;
