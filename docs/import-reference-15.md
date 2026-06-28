@@ -50,11 +50,11 @@ uid-dedup skips the 5 seed twins.
 | import_flags — `section_suggested` | 3 |
 | import_flags — `multiplier` | 0 |
 | incomplete recipes (recipe-level flags) | 0 |
-| ingredient rows with `grams` | 54 |
+| ingredient rows with `grams` | 55 |
 | ingredient rows with `secondary_measure` | 38 |
 
 Derived rates, for comparison against the 295: **~9%** of ingredient rows flagged for review
-(17/189), **~29%** carry a harvested gram (54/189), **~20%** carry a secondary measure (38/189).
+(17/189), **~29%** carry a harvested gram (55/189), **~20%** carry a secondary measure (38/189).
 A large deviation from these on the 295 is a signal to inspect, not necessarily a bug.
 
 ## The 3 `section_suggested` promotions (confirmed correct by eye)
@@ -74,7 +74,12 @@ committed. (At scale, a review UI to confirm/reclassify these is the plan; see R
 - **Weight-first** lines (`100 g (1 cup) sugar`) → clean name + `grams` + `secondary_measure`.
 - **Volume-first** lines (`1 cup (250 g) flour`) → clean name + harvested `grams` + `secondary_measure`.
 - Dual-unit `/ N unit` and a dangling `(` stripped from names; `raw_text` is always the full original.
-- **N=1 multiplier** (`1 x 397 g can of …`) → `1 can` + grams, no flag; N>1 stays flagged.
+- **Canned goods** — COUNT + CONTAINER + SIZE, any delimiter (`1 can (15 oz)`, `1 (12-oz) can`,
+  `1 8-oz package`, `1 x 397 g can`) → `N <container>` + grams (oz→g; a dual `oz / g` takes the
+  grams), clean name with alternatives/prep kept. N>1 resolves **without** a flag (the count is the
+  scalable unit); a bare `N x SIZE` with no container still flags. (Subsumes the old N=1 rule — and
+  is why grams ticked 54 → 55 vs the prior baseline: the `1 can (15 oz)` chickpeas line now harvests
+  425 g, where the old x-only rule harvested nothing.)
 - **Step section-headers** (colon / ALL-CAPS / trailing-dash) → `is_heading=1` (trailing dash stripped).
 - **Source typos preserved faithfully** (e.g. Basic Hummus "14 cups" — the harvested 250 g is the
   authoritative weight; we don't correct source data).
@@ -99,9 +104,21 @@ as expected, not as new regressions.
   `toMetric`. Deliberate for now — see ROADMAP, *Known limitations & tech debt → Step-text Metric
   conversion*.
 
+- **(iii) Compound amounts (known limitation).** Some lines carry a secondary amount the parser
+  doesn't split, e.g. Oat Bars: "¾ cup plus 2 tablespoons (200 grams) cold unsalted butter" — qty
+  parses "¾ cup", the "plus 2 tablespoons" remainder stays in the label. The authoritative weight
+  (200 g) IS harvested. Roadmapped amount-structure cleanup; left as-authored.
+
+- **(iv) "Stick(s)" as a butter unit not recognized (known gap).** E.g. Chocolate Chip: "2 sticks
+  unsalted butter (227g) cut into tablespoons" — "2" parses as the count but "sticks" isn't a
+  recognized unit, so "sticks unsalted butter cut into tablespoons" stays in the label. The weight
+  (227 g) IS harvested. A unit-recognition gap (1 stick = ½ cup = 113 g) to handle in 295-prep with
+  other unit gaps; left as-is for now.
+
 ## Cleanup-core commits behind this baseline
 
 - `5bf44a5` — gram-paren strip + grams capture
 - `ce684e6` — dual-measure capture (`grams` + `secondary_measure`, either order)
 - `fa10f1e` — step + ingredient section-headers + N=1 multiplier
 - `ebde9dd` — section-header head-noun (ends-with) widening
+- `1cd4319` — unified canned-good rule (subsumes N=1) + step-range scaling fix + `convert_to_grams` (013) + millilitres
