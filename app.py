@@ -243,7 +243,7 @@ def attach_weights(c, ings):
     against the weight table. Matching is server-side (weights.match_weight) so the live
     converter and the build-time coverage report always agree. Headings are left as-is."""
     rows = c.execute(
-        "SELECT lookup_key, display_name, grams_per_ml FROM ingredient_weights"
+        "SELECT lookup_key, display_name, grams_per_ml, convert_to_grams FROM ingredient_weights"
     ).fetchall()
     index = build_index(rows)
     out = []
@@ -251,7 +251,9 @@ def attach_weights(c, ings):
         d = dict(x)
         if not d.get("is_heading"):
             m = match_weight(d.get("label") or d.get("raw_text") or "", index)
-            d["grams_per_ml"] = m[0] if m else None
+            # Attach a density only when the chart row opts into gram conversion (013): oils &
+            # raw produce match the chart but stay in their authored volume under Metric.
+            d["grams_per_ml"] = m[0] if (m and m[2]) else None
         out.append(d)
     return out
 

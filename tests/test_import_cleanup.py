@@ -260,8 +260,54 @@ def test_multiplier_one_resolved_no_flag():
 
 
 def test_multiplier_two_still_flagged():
-    d = ic.classify_line("2 x 6 oz halibut fillets")
+    d = ic.classify_line("2 x 6 oz halibut fillets")   # NO container -> still flagged
     assert d["kind"] == "flagged" and "multiplier" in d["flags"]
+
+
+# ----------------------------------------------------------------- canned goods (COUNT+CONTAINER+SIZE)
+def test_canned_unit_before_paren():
+    d = ic.classify_line("1 can (15 ounces) chickpeas, rinsed and drained, or 1 1/2 cups cooked chickpeas")
+    assert d["kind"] == "ingredient"
+    assert (d["amount"], d["unit"]) == ("1", "can")
+    assert d["grams_harvested"] == 425.0                  # 15 oz -> g
+    assert d["name"].startswith("chickpeas") and "or 1 1/2 cups cooked chickpeas" in d["name"]
+    assert "multiplier" not in d["flags"]
+
+
+def test_canned_paren_before_unit():
+    d = ic.classify_line("1 (12-ounce) can evaporated milk")
+    assert (d["amount"], d["unit"], d["name"]) == ("1", "can", "evaporated milk")
+    assert d["grams_harvested"] == 340.0                  # 12 oz -> g
+
+
+def test_canned_hyphenated_inline():
+    d = ic.classify_line("1 8-ounce package cream cheese")
+    assert (d["amount"], d["unit"], d["name"]) == ("1", "package", "cream cheese")
+    assert d["grams_harvested"] == 227.0                  # 8 oz -> g
+
+
+def test_canned_x_form_subsumed():
+    d = ic.classify_line("1 x 397 grams can of condensed milk")
+    assert (d["amount"], d["unit"], d["name"]) == ("1", "can", "condensed milk")
+    assert d["grams_harvested"] == 397.0
+
+
+def test_canned_dual_oz_g_takes_grams():
+    d = ic.classify_line("1 1/2 tins (21 oz / 600g) chickpeas, drained")
+    assert (d["amount"], d["unit"], d["name"]) == ("1 1/2", "tins", "chickpeas, drained")
+    assert d["grams_harvested"] == 600.0                  # dual -> grams directly
+
+
+def test_canned_n_gt_1_resolves_no_flag():
+    d = ic.classify_line("2 cans (14 oz) diced tomatoes")
+    assert (d["amount"], d["unit"], d["name"]) == ("2", "cans", "diced tomatoes")
+    assert d["grams_harvested"] == 397.0                  # per-can 14 oz -> g
+    assert "multiplier" not in d["flags"]
+
+
+def test_canned_prep_paren_not_eaten():
+    d = ic.classify_line("1 jar (drained) artichoke hearts")   # paren is prep, not a weight
+    assert d["grams_harvested"] is None and "(drained)" in d["name"]
 
 
 # ----------------------------------------------------------------- ranges

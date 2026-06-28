@@ -755,6 +755,25 @@ worth knowing before they bite. None of the limitations occur in the current rec
   units preference, the Phase 5d weather fields, and the Phase 19 saved-mood preference would
   all use — build that store once for all).*
 
+- **Step-text Metric conversion (future, gated).** Step / method-text amounts SCALE but do not
+  Metric-convert: the ingredient list smart-converts volume→grams (Phase 1c), but step amounts
+  render through the scale-only path (`stepscale.api_spans` → the 1a `scaleQty`), never
+  `toMetric` — so "stir in 2 cups stock" stays "2 cups" (scaled) in Metric view while the same
+  ingredient shows grams. Deliberate for now (a step gram value with no per-line density match
+  would read inconsistently, and the >2 tbsp gram threshold is an ingredient-list rule). Future,
+  gated: route step scalable-spans through the same Smart-Metric path as ingredients (reusing the
+  server-attached density), behind the same baking/dessert tag gate as the ingredient converter
+  (Phase 8). *Documented in docs/import-reference-15.md, Known limitations (ii).*
+
+- **Oils convert in baking-tagged recipes (future, gated on tags).** `convert_to_grams=FALSE`
+  (migration 013) keeps pure cooking oils & raw produce in their authored VOLUME under Metric —
+  right for everyday cooking (you pour a glug of oil or scoop a cup of diced onion, you don't
+  weigh it). But baking weighs oil by the gram. Future, gated: when a recipe is tagged
+  baking/dessert (Phase 8), let the `convert_to_grams=FALSE` *oils* (olive/vegetable/coconut oil,
+  lard, shortening) convert to grams anyway — the same recipe-tag gate as the "baking defaults to
+  grams" Smart-Metric note (Phase 1). Raw produce/aromatics stay volume regardless of tag.
+  *Depends on: Phase 8 tags.*
+
 *Tech debt:*
 
 - **Harvested-gram display (deferred).** Parenthetical grams are HARVESTED and STORED in

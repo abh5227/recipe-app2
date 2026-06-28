@@ -32,6 +32,23 @@ BASE_DIR = Path(__file__).resolve().parent
 DB = BASE_DIR / "recipes.db"
 WEIGHTS_CSV = BASE_DIR / "king-arthur-staples-v2.csv"
 
+# Chart rows that should NOT smart-convert volume->grams in Metric (migration 013). Keyed by
+# normalize(display_name) so it matches the lookup_key seed_weights stores. Two kinds:
+#   - pure cooking oils & solid fats: you pour/scoop a glug, you don't weigh it (butter is
+#     the deliberate exception — it stays TRUE, since baking weighs butter);
+#   - raw produce & aromatics: chopped/sliced by the cup, not a weigh-it staple.
+# Everything else (flours, sugars, syrups, soft dairy/pastes incl. tomato paste, nuts,
+# grated cheese, pourable liquids, chocolate, oats, dried fruit) keeps the TRUE default.
+WEIGHT_CONVERT_EXCLUDE = frozenset({
+    # oils & solid fats (NOT butter)
+    "coconut oil", "olive oil", "vegetable oil", "lard", "vegetable shortening",
+    # raw produce & aromatics
+    "garlic minced", "garlic peeled and sliced", "ginger fresh sliced", "onions diced",
+    "bell peppers fresh", "carrots diced", "carrots grated", "celery diced", "leeks diced",
+    "mushrooms sliced", "scallions sliced", "shallots sliced", "chives fresh",
+    "olives sliced", "sundried tomatoes",
+})
+
 
 def validate():
     """Catch references to ingredient keys that don't exist in the library."""
@@ -221,10 +238,11 @@ def seed_weights(conn):
             ml = parse_reference_volume(row.get("reference_volume") or "")
             if not name or not grams or not ml:
                 continue
+            key = normalize(name)
             conn.execute(
-                "INSERT INTO ingredient_weights (lookup_key, display_name, grams_per_ml) "
-                "VALUES (?,?,?)",
-                (normalize(name), name, float(grams) / ml),
+                "INSERT INTO ingredient_weights "
+                "(lookup_key, display_name, grams_per_ml, convert_to_grams) VALUES (?,?,?,?)",
+                (key, name, float(grams) / ml, 0 if key in WEIGHT_CONVERT_EXCLUDE else 1),
             )
 
 

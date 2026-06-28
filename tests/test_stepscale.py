@@ -20,6 +20,17 @@ def _categories(text):
     return [s["category"] for s in ss.parse_step(text)]
 
 
+def test_srange_scales_as_one_span():
+    # "1 to 2 tablespoons" is ONE scalable span (not bare "1" + heuristic "2 tablespoons"), so the
+    # client scales BOTH ends together — a range can no longer collapse to "1 to 1".
+    assert _scalable("add 1 to 2 tablespoons more ice water") == ["1 to 2 tablespoons"]
+
+
+def test_guard_range_still_locked():
+    # a range adjacent to a GUARD unit (time) stays guarded / never-scaled
+    assert _scalable("bake 20 to 25 minutes") == []
+
+
 # ----------------------------------------------------------------- never-scale guard
 NEVER_SCALE = [
     "bake at 350°F",

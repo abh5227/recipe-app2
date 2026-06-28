@@ -112,15 +112,27 @@ _COMMON_SECTION_WORDS = frozenset({
 _STEP_HEADING_PREFIX = re.compile(
     r"^(?:to\s+)?(?:make|prepare|assemble|finish|build|cook|for)\s+(?:the\s+)?", re.IGNORECASE)
 
-# --- N=1 multiplier (Step 3) ---
-# "1 x SIZE unit thing" with leading count 1 (e.g. "1 x 397 grams can of condensed milk") is
-# resolvable: one container of a given size -> qty "1 <unit>", grams from SIZE. (N>1 stays
-# flagged — ambiguous.) Requires a recognized count/container noun, else the caller flags it.
-_CONTAINER_WORD = (r"cans?|jars?|bottles?|tins?|packages?|packets?|containers?|bags?|blocks?|"
-                   r"packs?|sticks?|cloves?|heads?|sheets?|cubes?|boxes|box|bunches|bunch|loaves|loaf")
-_MULT_ONE_RE = re.compile(
-    r"^\s*1\s*[x×]\s*(?P<size>" + _NUM + r"\s*" + _SCALE_UNIT + r")\s+"
-    r"(?P<unit>" + _CONTAINER_WORD + r")\b\s+(?:of\s+)?(?P<name>.+\S)\s*$", re.IGNORECASE)
+# --- Canned goods: COUNT + CONTAINER unit + SIZE (any delimiter) ---
+# One unified rule for "1 can (15 ounces) chickpeas", "1 (12-ounce) can milk", "1 8-ounce package
+# cheese", and the x-form "1 x 397 g can …" -> qty "N <container>", grams from the SIZE (oz->g),
+# clean name. SUBSUMES the old N=1 multiplier rule. N>1 containers resolve too (the count is the
+# scalable unit: 2 cans -> 4 cans). A bare "N x SIZE thing" with NO container still flags.
+_CONT = r"(?:cans?|jars?|packages?|pkgs?|boxes|box|bottles?|tins?|tubs?|containers?|bags?)"
+_WT_UNIT = r"(?:ounces?|oz|grams?|g|pounds?|lbs?|lb|kilograms?|kg)"
+# a weight SIZE: number + weight unit (allows the hyphen in "8-ounce"), optional dual "/ 600g".
+_SIZE = r"\d+(?:\.\d+)?\s*-?\s*" + _WT_UNIT + r"(?:\s*[./]\s*\d+(?:\.\d+)?\s*(?:grams?|g)\b)?"
+_CANNED_X = re.compile(r"^\s*(?P<count>" + _NUM + r")\s*[x×]\s*(?P<size>" + _SIZE + r")\s+"
+                       r"(?P<unit>" + _CONT + r")\b\s+(?:of\s+)?(?P<rest>\S.*)$", re.IGNORECASE)
+_CANNED_UP = re.compile(r"^\s*(?P<count>" + _NUM + r")\s+(?P<unit>" + _CONT + r")\s*\(\s*"
+                        r"(?P<size>" + _SIZE + r")[^)]*\)\s*(?:of\s+)?(?P<rest>\S.*)$", re.IGNORECASE)
+_CANNED_PU = re.compile(r"^\s*(?P<count>" + _NUM + r")\s*\(\s*(?P<size>" + _SIZE + r")[^)]*\)\s*"
+                        r"(?P<unit>" + _CONT + r")\b\s*(?:of\s+)?(?P<rest>\S.*)$", re.IGNORECASE)
+_CANNED_HY = re.compile(r"^\s*(?P<count>" + _NUM + r")\s+(?P<size>" + _SIZE + r")\s+"
+                        r"(?P<unit>" + _CONT + r")\b\s*(?:of\s+)?(?P<rest>\S.*)$", re.IGNORECASE)
+_WT_TOKEN = re.compile(r"(\d+(?:\.\d+)?)\s*-?\s*(ounces?|oz|grams?|g|pounds?|lbs?|lb|kilograms?|kg)\b", re.I)
+_OZ_TO_G = {"ounce": 28.35, "ounces": 28.35, "oz": 28.35, "gram": 1.0, "grams": 1.0, "g": 1.0,
+            "pound": 453.592, "pounds": 453.592, "lb": 453.592, "lbs": 453.592,
+            "kilogram": 1000.0, "kilograms": 1000.0, "kg": 1000.0}
 
 
 # --------------------------------------------------------------------------- #
@@ -283,18 +295,39 @@ def _is_section_candidate(line, hints):
     return key.split()[-1] in _COMMON_SECTION_WORDS or key in (hints or frozenset())
 
 
-def _parse_mult_one(line):
-    """N=1 multiplier "1 x SIZE unit thing" (e.g. "1 x 397 grams can of condensed milk") ->
-    a res-update: qty "1 <unit>", grams from SIZE when it's grams, name = the thing. Returns
-    None when it isn't a clean N=1 container pattern (N>1, or no recognized count noun), so the
-    caller flags it instead."""
-    m = _MULT_ONE_RE.match(line)
-    if not m:
+def _size_to_grams(size):
+    """A canned-good SIZE ('15 ounces', '12-ounce', '21 oz / 600g') -> grams. Prefer an explicit
+    gram token (a dual 'oz / g' -> take the grams); else convert oz/lb/kg. None if no weight."""
+    toks = _WT_TOKEN.findall(size or "")
+    if not toks:
         return None
-    _, s_value, s_unit, _, _ = parse_amount(m.group("size"))
-    grams = s_value if (s_unit or "").lower() in _WEIGHT_LEAD_UNITS and s_value is not None else None
-    return {"amount": "1", "value": 1.0, "unit": m.group("unit"),
-            "name": m.group("name").strip(), "grams_harvested": grams}
+    for num, unit in toks:
+        if unit.lower() in ("g", "gram", "grams"):
+            return float(round(float(num)))
+    num, unit = toks[0]
+    return float(round(float(num) * _OZ_TO_G[unit.lower()]))
+
+
+def _parse_canned(line):
+    """Unified canned-good parse: COUNT + CONTAINER + SIZE across delimiters (x / paren / hyphen).
+    Returns a res-update — qty 'N <container>', grams from the SIZE (oz->g), name = the thing
+    (alternatives/prep kept) — or None if it's not a canned-good shape (caller falls through).
+    N>1 resolves WITHOUT flagging (the count is the scalable unit); raw_text keeps the original."""
+    for rx in (_CANNED_X, _CANNED_UP, _CANNED_PU, _CANNED_HY):
+        m = rx.match(line)
+        if not m:
+            continue
+        grams = _size_to_grams(m.group("size"))
+        if grams is None:          # the matched paren/segment wasn't a real weight size -> skip
+            continue
+        count = m.group("count").strip()
+        try:
+            value = _to_value(_normalize_unicode(count))
+        except (ValueError, ZeroDivisionError):
+            value = None
+        return {"amount": count, "value": value, "unit": m.group("unit").lower(),
+                "name": m.group("rest").strip(), "grams_harvested": grams}
+    return None
 
 
 def classify_line(raw, section_hints=None):
@@ -311,13 +344,17 @@ def classify_line(raw, section_hints=None):
         "flag_reason": "", "suggestion": None,
     }
 
-    # 1. N x SIZE multiplier. N=1 ("1 x 397 g can of X") is resolvable -> clean parse, no flag;
-    #    N>1 is genuinely ambiguous (scale the count or the total?) -> flag for review.
+    # 1. Canned good: COUNT + CONTAINER + SIZE (paren / hyphen / x) -> qty "N container" + grams
+    #    (subsumes the N x SIZE can case). N>1 resolves (the count is the scalable unit).
+    canned = _parse_canned(line)
+    if canned:
+        res.update(canned)
+        res["has_alternative"] = bool(_ALT_RE.search(res["name"]))
+        res["has_prep_note"] = bool(_PREP.search(res["name"]))
+        return res
+
+    # 2. Bare N x SIZE multiplier (NO container) -> genuinely ambiguous, flag for review.
     if _MULT_RE.match(line):
-        one = _parse_mult_one(line)
-        if one:
-            res.update(one)
-            return res
         res["kind"] = "flagged"
         res["flags"].append("multiplier")
         res["flag_reason"] = "N x SIZE multiplier — ambiguous semantics, review"

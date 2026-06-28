@@ -36,6 +36,14 @@ test("scaleQty: scales numbers, keeps units; mixed + unicode + fraction", () => 
   assert.equal(s.scaleQty("1/2 cup", 2), "1 cup");
 });
 
+test("scaleQty: ranges scale BOTH ends and collapse N-to-N", () => {
+  assert.equal(s.scaleQty("1 to 2 tablespoons", 0.5), "1/2 to 1 tablespoons");  // both ends scale
+  assert.equal(s.scaleQty("1 to 2 tablespoons", 2), "2 to 4 tablespoons");
+  assert.equal(s.scaleQty("1 to 1 tablespoons", 1), "1 tablespoons");           // degenerate -> single
+  assert.equal(s.scaleQty("1 to 1 tbsp", 0.5), "1/2 tbsp");                     // scales then collapses
+  assert.equal(s.collapseRange("2 – 2 cups"), "2 cups");                        // en-dash too
+});
+
 test("scaleQty: no-op guards (x1 / 0 / negative / NaN / undefined / null)", () => {
   assert.equal(s.scaleQty("2 tbsp", 1), "2 tbsp");
   assert.equal(s.scaleQty("2 tbsp", 0), "2 tbsp");

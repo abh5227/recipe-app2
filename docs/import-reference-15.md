@@ -79,6 +79,26 @@ committed. (At scale, a review UI to confirm/reclassify these is the plan; see R
 - **Source typos preserved faithfully** (e.g. Basic Hummus "14 cups" — the harvested 250 g is the
   authoritative weight; we don't correct source data).
 
+## Known limitations
+
+Edge cases the cleanup core does NOT solve today — recorded so the 295-import review knows them
+as expected, not as new regressions.
+
+- **(i) Word-number counts in prose / parentheticals are not structured.** The amount parser
+  (and the canned-good rule) key on a *digit* count, so a line whose count is spelled out —
+  "**One** 12-ounce package cream cheese", or a parenthetical "(about **one** 14-ounce can)" —
+  is NOT parsed into a structured count/size; the words stay in the name (or the line is flagged),
+  never silently mis-structured. Folds into the broader amount-structure cleanup (word-numbers
+  like "half", "a few") rather than a one-off fix — see ROADMAP, *Amount-structure cleanup*.
+
+- **(ii) Step-text amounts scale but do not Metric-convert.** Amounts written into method/step
+  text scale with the recipe, but in Metric view they stay in their authored unit — only the
+  *ingredient list* smart-converts volume→grams (Phase 1c). "Stir in 2 cups stock" stays
+  "2 cups" (scaled) in a step even when the same ingredient shows grams in the list, because step
+  text renders through the scale-only path (`stepscale.api_spans` → the 1a `scaleQty`), never
+  `toMetric`. Deliberate for now — see ROADMAP, *Known limitations & tech debt → Step-text Metric
+  conversion*.
+
 ## Cleanup-core commits behind this baseline
 
 - `5bf44a5` — gram-paren strip + grams capture

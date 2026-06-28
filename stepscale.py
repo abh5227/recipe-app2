@@ -73,6 +73,7 @@ _TOKEN_RE = re.compile(
     r"(?P<grange>" + _NUM + r"\s*(?:to|[-–—])\s*" + _NUM + r"\s*-?\s*" + _GUARD_UNIT + r")"
     r"|(?P<gnxn>" + _NUM + r"\s*[x×]\s*" + _NUM + r")"
     r"|(?P<gsingle>" + _NUM + r"\s*-?\s*" + _GUARD_UNIT + r")"
+    r"|(?P<srange>" + _NUM + r"\s*(?:to|[-–—])\s*" + _NUM + r"\s*" + _SCALE_UNIT + r"\b)"
     r"|(?P<heur>" + _NUM + r"\s*" + _SCALE_UNIT + r"\b)"
     r"|(?P<bare>" + _NUM + r")",
     re.IGNORECASE,
@@ -125,7 +126,9 @@ def _parse_free(segment):
         tok = m.group()
         if kind in ("grange", "gnxn", "gsingle"):
             spans.append({"category": GUARDED, "text": tok})
-        elif kind == "heur":
+        elif kind in ("heur", "srange"):
+            # srange ("1 to 2 tbsp") is ONE scalable span -> the client scaler scales BOTH ends
+            # together (not just the unit-bearing one), so a range can't collapse to "1 to 1".
             value, unit = _parse_qty(tok)
             spans.append({"category": HEURISTIC_SCALE, "text": tok, "value": value, "unit": unit})
         else:                            # bare number, no unit

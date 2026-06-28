@@ -62,8 +62,12 @@ def normalize(name):
     return s
 
 
-# Volume units the converter understands (mirrors VOLUME_UNIT_RE in static/app.js).
-_VOLUME_UNIT_RE = re.compile(r"\b(fl\s+oz|fluid\s+ounces?|cups?|tbsp|tablespoons?|tsp|teaspoons?)\b", re.I)
+# Volume units the converter recognizes (the volume subset of MEASURE_UNIT_RE in
+# static/scaler.js). Includes spelled-out millilitres/milliliters so a metric-volume line
+# reads as a volume, not an unrecognized unit.
+_VOLUME_UNIT_RE = re.compile(
+    r"\b(fl\s+oz|fluid\s+ounces?|cups?|tbsp|tablespoons?|tsp|teaspoons?"
+    r"|millilit(?:re|er)s?)\b", re.I)
 
 
 def has_volume_unit(qty):
@@ -81,10 +85,21 @@ def base_name(name):
     return normalize(re.sub(r"\([^)]*\)", " ", name))
 
 
+def _row_convert(r):
+    """The row's convert_to_grams flag (migration 013), defaulting to True when the column
+    is absent — older callers and test fixtures that don't supply it still behave as before."""
+    try:
+        v = r["convert_to_grams"]
+    except (KeyError, IndexError):
+        return True
+    return True if v is None else bool(v)
+
+
 def build_index(rows):
     """Build a matcher from ingredient_weights rows (each supporting row["lookup_key"],
-    row["display_name"], row["grams_per_ml"]). Returns {"exact": {...}, "base": {...}},
-    each mapping a name -> (grams_per_ml, display_name).
+    row["display_name"], row["grams_per_ml"], and optionally row["convert_to_grams"]).
+    Returns {"exact": {...}, "base": {...}}, each mapping a name ->
+    (grams_per_ml, display_name, convert_to_grams).
 
     The base index only keeps a name when every chart row sharing that base agrees on
     grams_per_ml (within a tiny epsilon). Where they disagree — table vs kosher salt,
@@ -95,11 +110,12 @@ def build_index(rows):
     groups = {}
     for r in rows:
         key, display, gpm = r["lookup_key"], r["display_name"], r["grams_per_ml"]
-        exact.setdefault(key, (gpm, display))
-        groups.setdefault(base_name(display), []).append((gpm, display))
+        conv = _row_convert(r)
+        exact.setdefault(key, (gpm, display, conv))
+        groups.setdefault(base_name(display), []).append((gpm, display, conv))
     base = {}
     for b, entries in groups.items():
-        gpms = [g for g, _ in entries]
+        gpms = [g for g, _, _ in entries]
         if max(gpms) - min(gpms) <= 1e-9:
             base[b] = entries[0]
     return {"exact": exact, "base": base}
@@ -126,7 +142,8 @@ ALIASES = {syn: canon for canon, syns in _ALIAS_GROUPS.items() for syn in syns}
 
 
 def match_weight(name, index):
-    """Resolve a recipe line's ingredient name to (grams_per_ml, display_name), or None.
+    """Resolve a recipe line's ingredient name to (grams_per_ml, display_name,
+    convert_to_grams), or None. (Callers that only want the density read element [0].)
 
     1) exact normalized match;
     2) conservative fallback: unambiguous base-name match;

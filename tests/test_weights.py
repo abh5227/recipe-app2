@@ -60,6 +60,48 @@ def test_matcher_exact_fuzzy_alias_decline():
     assert weights.match_weight("dragonfruit", idx) is None     # absent from the chart
 
 
+def test_convert_to_grams_flows_through_matcher():
+    # convert_to_grams (013) rides along as element [2]; absent column defaults to True.
+    rows = [
+        {"lookup_key": "all purpose flour", "display_name": "All-Purpose Flour",
+         "grams_per_ml": 0.51, "convert_to_grams": 1},
+        {"lookup_key": "olive oil", "display_name": "Olive oil",
+         "grams_per_ml": 0.85, "convert_to_grams": 0},
+        {"lookup_key": "bread flour", "display_name": "Bread Flour", "grams_per_ml": 0.5},
+    ]
+    idx = weights.build_index(rows)
+    assert weights.match_weight("all-purpose flour", idx)[2] is True   # staple -> converts
+    assert weights.match_weight("olive oil", idx)[2] is False          # oil -> declines
+    assert weights.match_weight("bread flour", idx)[2] is True         # column absent -> default
+
+
+def test_seeded_convert_flags(kitchen):
+    # the real CSV-driven flags: staples / soft dairy / pastes / liquids TRUE; oils + raw
+    # produce FALSE. Butter is the deliberate fats exception (baking weighs butter).
+    with kitchen.conn() as c:
+        def flag(key):
+            return c.execute(
+                "SELECT convert_to_grams FROM ingredient_weights WHERE lookup_key = ?", (key,)
+            ).fetchone()[0]
+        assert flag("all purpose flour") == 1
+        assert flag("butter") == 1
+        assert flag("milk fresh") == 1
+        assert flag("honey") == 1
+        assert flag("tomato paste") == 1            # a paste, not raw produce -> converts
+        assert flag("olive oil") == 0
+        assert flag("vegetable oil") == 0
+        assert flag("garlic minced") == 0
+        assert flag("onions diced") == 0
+
+
+def test_has_volume_unit_recognizes_spelled_out_millilitres():
+    assert weights.has_volume_unit("240 millilitres") is True   # the 013 fix
+    assert weights.has_volume_unit("240 milliliters") is True   # US spelling
+    assert weights.has_volume_unit("2 cups") is True            # originals still work
+    assert weights.has_volume_unit("1 tablespoon") is True
+    assert weights.has_volume_unit("200 grams") is False        # weight, not a volume
+
+
 def test_coverage_report_runs(kitchen):
     with kitchen.conn() as c:
         n_distinct, n_matched, unmatched, per_recipe = build_db.compute_coverage(c)

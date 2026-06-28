@@ -73,11 +73,19 @@
   // Matches one amount token, longest form first (mixed > fraction > int/decimal).
   const AMOUNT_TOKEN = /\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?/g;
 
-  // Scale a quantity string by `factor`; unchanged at factor 1 or a 0/negative/NaN factor.
-  // (factor is passed in — in the browser it's view.scale; in tests it's explicit.)
+  // Collapse a degenerate range whose two ends render EQUAL: "1 to 1 tbsp" -> "1 tbsp",
+  // "2 – 2 cups" -> "2 cups". A real range ("1 to 2") is untouched. (Step ranges scale both
+  // ends together now, so this mainly catches genuinely-equal ends / degenerate sources.)
+  function collapseRange(s) {
+    return s.replace(/(\d+(?:\s+\d+\/\d+|\/\d+|\.\d+)?)\s*(?:to|[-–—])\s*\1(?=\s|$)/g, "$1");
+  }
+
+  // Scale a quantity string by `factor`; unchanged at factor 1 or a 0/negative/NaN factor
+  // (but a degenerate "N to N" range still collapses to "N"). factor is passed in — in the
+  // browser it's view.scale; in tests it's explicit.
   function scaleQty(qty, factor) {
     if (qty == null) return "";
-    if (factor === 1 || !(factor > 0)) return qty;   // x1, or 0/negative/NaN: leave as-is
+    if (factor === 1 || !(factor > 0)) return collapseRange(qty);   // x1 / invalid: still collapse N-to-N
     let found = false;
     const scaled = normalizeFractions(qty).replace(AMOUNT_TOKEN, (token) => {
       const n = tokenToNumber(token);
@@ -85,7 +93,7 @@
       found = true;
       return formatAmount(n * factor);
     });
-    return found ? scaled : qty;
+    return collapseRange(found ? scaled : qty);
   }
 
   // Metric/imperial conversion tables (Phase 1b). KEEP IN SYNC with weights.py VOLUME_TO_ML.
@@ -181,7 +189,7 @@
 
   return {
     UNICODE_FRACTIONS, normalizeFractions, tokenToNumber, NICE_FRACTIONS, formatAmount,
-    AMOUNT_TOKEN, scaleQty, UNIT_TO_ML, UNIT_TO_G, MEASURE_UNIT_RE, MEASURE_UNIT_RE_G,
+    AMOUNT_TOKEN, scaleQty, collapseRange, UNIT_TO_ML, UNIT_TO_G, MEASURE_UNIT_RE, MEASURE_UNIT_RE_G,
     SPOON_MAX_ML, isCountAmount, scaleCount, parseAmount, toMetric, displayQty,
   };
 });
