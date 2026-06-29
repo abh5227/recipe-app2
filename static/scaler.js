@@ -27,6 +27,18 @@
       .trim();
   }
 
+  // The reverse, for DISPLAY: ascii fractions -> unicode glyphs, so every amount looks the same
+  // (cookbook style) whether it came from storage ("1 1/2") or the scaler ("8 3/4"). "1 1/2" -> "1½",
+  // "3/4" -> "¾"; the "~" prefix and unknown fractions (e.g. "1/16", no glyph) pass through.
+  const ASCII_TO_GLYPH = {};
+  for (const g in UNICODE_FRACTIONS) ASCII_TO_GLYPH[UNICODE_FRACTIONS[g]] = g;
+  function toUnicodeFractions(s) {
+    return String(s).replace(/(\d+)\s+(\d+\/\d+)|(\d+\/\d+)/g, (m, w, wf, lone) => {
+      if (w !== undefined) { const glyph = ASCII_TO_GLYPH[wf]; return glyph ? w + glyph : m; }
+      return ASCII_TO_GLYPH[lone] || m;
+    });
+  }
+
   // Parse one numeric token ("4", "1.5", "1/2", "1 1/2") into a Number, or NaN.
   function tokenToNumber(token) {
     token = token.trim();
@@ -44,13 +56,15 @@
     [1 / 3, "1/3"], [3 / 8, "3/8"], [1 / 2, "1/2"], [5 / 8, "5/8"], [2 / 3, "2/3"],
     [3 / 4, "3/4"], [7 / 8, "7/8"], [1, ""],
   ];
+  // Group an integer with thousands separators: 2820 -> "2,820".
+  function group(n) { return Math.round(n).toLocaleString("en-US"); }
+
   function formatAmount(n) {
     if (!isFinite(n)) return String(n);
     if (n === 0) return "0";
-    // Large amounts (metric mL/g, big batches) read better as a rounded whole number than as
-    // a mixed fraction or a decimal: 187.5 -> "188", not "187 1/2" or "187.5". Small cooking
-    // amounts keep their fractions.
-    if (n >= 20) return String(Math.round(n));
+    // Large amounts (metric mL/g, big batches) read better as a rounded whole number, with
+    // thousands separators: 187.5 -> "188", 2820 -> "2,820". Small cooking amounts keep fractions.
+    if (n >= 20) return group(n);
     const whole = Math.floor(n + 1e-9);
     const frac = n - whole;
     let best = NICE_FRACTIONS[0], bestErr = Infinity;
@@ -58,16 +72,17 @@
       const err = Math.abs(frac - cand[0]);
       if (err < bestErr) { bestErr = err; best = cand; }
     }
-    if (bestErr < 0.04) {
-      const w = whole + (best[0] === 1 ? 1 : 0);   // e.g. 1.97 rounds up to the next whole
-      const label = best[0] === 1 ? "" : best[1];
-      if (label && w > 0) return w + " " + label;
-      if (label) return label;
-      if (w > 0) return String(w);
-      // positive but rounded toward zero — show a small decimal, never a misleading "0"
-      return String(Math.round(n * 1000) / 1000);
-    }
-    return String(Math.round(n * 100) / 100);       // otherwise a trimmed decimal
+    // Always snap to the nearest kitchen fraction — never a false-precise decimal like "8.81".
+    // When the snap moved the value more than a hair, mark it approximate with a leading "~"
+    // (so "8.81" -> "~8 3/4"); a value that was already clean (err ~0) gets no "~".
+    const w = whole + (best[0] === 1 ? 1 : 0);   // e.g. 1.97 rounds up to the next whole
+    const label = best[0] === 1 ? "" : best[1];
+    let text;
+    if (label && w > 0) text = w + " " + label;
+    else if (label) text = label;
+    else if (w > 0) text = String(w);
+    else text = String(Math.round(n * 1000) / 1000); // positive but rounds toward 0 — a small decimal
+    return (bestErr > 0.02 ? "~" : "") + toUnicodeFractions(text);
   }
 
   // Matches one amount token, longest form first (mixed > fraction > int/decimal).
@@ -77,7 +92,11 @@
   // "2 – 2 cups" -> "2 cups". A real range ("1 to 2") is untouched. (Step ranges scale both
   // ends together now, so this mainly catches genuinely-equal ends / degenerate sources.)
   function collapseRange(s) {
-    return s.replace(/(\d+(?:\s+\d+\/\d+|\/\d+|\.\d+)?)\s*(?:to|[-–—])\s*\1(?=\s|$)/g, "$1");
+    // collapse "N to N" (identical ends) -> "N"; N may be whole, ascii fraction, or unicode glyph
+    const G = "¼½¾⅓⅔⅛⅜⅝⅞⅙⅚";
+    const TOK = `\\d+\\s+\\d+\\/\\d+|\\d+\\/\\d+|\\d+\\s*[${G}]|[${G}]|\\d+(?:\\.\\d+)?`;
+    return String(s).replace(new RegExp(`(${TOK})\\s*(?:to|[-–—])\\s*(${TOK})(?=\\s|$)`, "g"),
+      (m, a, b) => (a === b ? a : m));
   }
 
   // Scale a quantity string by `factor`; unchanged at factor 1 or a 0/negative/NaN factor
@@ -187,9 +206,55 @@
     return toMetric(qty, gramsPerMl, f);
   }
 
+  // ---- Stage-C ledger: amount column + weight column (no units toggle — both are shown) ----
+
+  // Standardize recognized measuring units to their canonical short form at display
+  // ("tablespoons" -> "tbsp"); descriptors and unrecognized words are left as authored.
+  const UNIT_ABBREV = [
+    [/\bfluid\s+ounces?\b/gi, "fl oz"],
+    [/\btablespoons?\b/gi, "tbsp"],
+    [/\bteaspoons?\b/gi, "tsp"],
+    [/\bkilograms?\b/gi, "kg"],
+    [/\bmilli(?:lit(?:re|er)s?)\b/gi, "ml"],
+    [/\bounces?\b/gi, "oz"],
+    [/\bpounds?\b/gi, "lb"],
+    [/\bgrams?\b/gi, "g"],
+  ];
+  function abbrevUnits(s) {
+    for (const [re, a] of UNIT_ABBREV) s = String(s).replace(re, a);
+    return s;
+  }
+
+  // The ledger AMOUNT column: the authored quantity, scaled, in canonical units (the volume the
+  // recipe was written in). Counts round to whole; dual-unit ("2 lb / 1 kg") passes through scaled.
+  function amountText(qty, factor) {
+    if (qty == null || String(qty).trim() === "") return "";
+    const f = factor > 0 ? factor : 1;
+    let t;
+    if (isCountAmount(qty)) t = scaleCount(qty, f);
+    else if (String(qty).includes(" / ")) t = scaleQty(qty, f);
+    else t = abbrevUnits(scaleQty(qty, f));
+    return toUnicodeFractions(t);   // stored ascii ("1 1/2") -> unicode, so all amounts match
+  }
+
+  // The ledger WEIGHT column: the estimated gram weight of a VOLUME amount, for ingredients the
+  // weight chart knows (gramsPerMl set) and above the 2-tbsp spoon threshold — else "" (empty for
+  // spoon-sized amounts, weights/counts, already-metric amounts, and unmatched names).
+  function weightText(qty, gramsPerMl, factor) {
+    if (gramsPerMl == null) return "";
+    const parsed = parseAmount(normalizeFractions(String(qty)));
+    if (!parsed) return "";
+    const mlPer = UNIT_TO_ML[parsed.unit];
+    if (!mlPer) return "";                               // not a volume (oz/lb/g/kg/ml/count)
+    const ml = parsed.value * (factor > 0 ? factor : 1) * mlPer;
+    if (ml <= SPOON_MAX_ML + 1e-9) return "";            // <= 2 tbsp stays a measuring spoon
+    return "~" + group(Math.max(1, Math.round(ml * gramsPerMl))) + " g";
+  }
+
   return {
-    UNICODE_FRACTIONS, normalizeFractions, tokenToNumber, NICE_FRACTIONS, formatAmount,
+    UNICODE_FRACTIONS, normalizeFractions, tokenToNumber, NICE_FRACTIONS, formatAmount, group,
     AMOUNT_TOKEN, scaleQty, collapseRange, UNIT_TO_ML, UNIT_TO_G, MEASURE_UNIT_RE, MEASURE_UNIT_RE_G,
     SPOON_MAX_ML, isCountAmount, scaleCount, parseAmount, toMetric, displayQty,
+    abbrevUnits, amountText, weightText, toUnicodeFractions,
   };
 });
