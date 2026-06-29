@@ -8,6 +8,9 @@ recipes.db-shm
 # Local backups (made by backup.py)
 backups/
 
+# Design-review preview HTML (generated; viewed locally, never committed)
+previews/
+
 # Paprika recipe exports — bulk data, not code (the native archive is 200 MB+).
 # Read-only import tooling unpacks these to a scratch dir; never commit them.
 *.paprikarecipes

@@ -219,28 +219,38 @@ async function renderHome() {
    this file (and unit-tested under Node, tests/js/). app.js keeps the DOM/rendering and
    passes view.scale / view.units into displayQty() and scaleQty(). */
 
-// Wrap a quantity in its <span class="qty">, marking volume->weight conversions (which
-// begin with "~") with an extra class so they read as approximate, not authored.
-function qtySpan(qty, gramsPerMl, inlineStyle) {
-  const text = displayQty(qty, gramsPerMl, view.scale, view.units);
-  const cls = text.charAt(0) === "~" ? "qty approx" : "qty";
+// One ledger figure cell — the amount or the weight, mono + tabular. A leading "~" (an estimated
+// weight, or a humane-rounded amount) earns the shared "approx" treatment. inlineStyle carries a
+// person's colour on edited/added lines (seed recipes).
+function figCell(cls, text, inlineStyle) {
+  const approx = text.charAt(0) === "~" ? " approx" : "";
   const style = inlineStyle ? ` style="${inlineStyle}"` : "";
-  return `<span class="${cls}"${style}>${esc(text)}</span>`;
+  return `<span class="${cls}${approx}"${style}>${esc(text)}</span>`;
 }
 
-// The metric/imperial toggle beside the scale control.
-function unitsControl() {
-  const opts = [["imperial", "Imperial"], ["metric", "Metric"]];
-  const buttons = opts
-    .map(([v, label]) => `<button data-units="${v}" class="${view.units === v ? "on" : ""}">${label}</button>`)
-    .join("");
-  return `<div class="units-control" role="group" aria-label="Unit system">${buttons}</div>`;
+// One ledger amount-cell for a line: the amount, with the gram estimate stacked as a muted sub-line
+// beneath it when present (chart-known volume over 2 tbsp) — nothing emitted otherwise, so weightless
+// rows reserve no column and names stay aligned (Option B2). Replaces the old metric/imperial toggle.
+function ledgerCells(qty, gramsPerMl, inlineStyle) {
+  const weight = weightText(qty, gramsPerMl, view.scale);
+  return `<span class="amount-cell">` +
+         figCell("qty", amountText(qty, view.scale), inlineStyle) +
+         (weight ? figCell("weight", weight, inlineStyle) : "") +
+         `</span>`;
 }
 
-// A one-line caption shown in Metric mode, explaining the ~ approximate-weight marker.
-function gramsNote() {
-  if (!view || view.units !== "metric") return "";
-  return `<p class="grams-note">~ weights are estimated from volume; weigh for precision. Lines without a known weight stay as written.</p>`;
+// Does any non-heading ingredient produce a weight at the current scale? Drives the weight column's
+// presence — a recipe with no convertible volumes shows no empty gram gutter.
+function anyWeights() {
+  return view.data.ingredients.some((row) =>
+    !row.is_heading && weightText(row.qty, row.grams_per_ml, view.scale) !== "");
+}
+
+// A quiet caption for the estimated-weight "~", shown only when the ledger has a weight column.
+function weightNote() {
+  return anyWeights()
+    ? `<p class="grams-note">~ weights are estimated from volume; weigh for precision.</p>`
+    : "";
 }
 
 // The recipe's serving count as a number, if its servings text contains one.
@@ -288,7 +298,7 @@ function lineBodyHTML(row) {
 // A plain ingredient line: used for the Original view and for app recipes.
 function plainRow(row) {
   if (row.is_heading) return `<li class="group">${esc(row.raw_text)}</li>`;
-  return `<li>${qtySpan(row.qty, row.grams_per_ml)}<span>${lineBodyHTML(row)}</span></li>`;
+  return `<li>${ledgerCells(row.qty, row.grams_per_ml)}<span class="iname">${lineBodyHTML(row)}</span></li>`;
 }
 
 // An added line (a person's new ingredient), shown in their color. In a person's own
@@ -300,8 +310,8 @@ function additionRow(a, color, withDelete) {
   const tools = withDelete
     ? `<span class="line-tools"><button class="icon-btn" data-del-add data-add="${a.id}" title="Remove this addition" aria-label="Remove this addition">\u00d7</button></span>`
     : "";
-  return `<li>${qtySpan(a.qty, a.grams_per_ml, `color:${color};font-weight:600`)}` +
-         `<span class="muted-ing" style="color:${color}">${body}</span>${tools}</li>`;
+  return `<li>${ledgerCells(a.qty, a.grams_per_ml, `color:${color};font-weight:600`)}` +
+         `<span class="iname muted-ing" style="color:${color}">${body}</span>${tools}</li>`;
 }
 
 // The view switcher: Original / each person / Compare all. The active person's button
@@ -382,14 +392,14 @@ function personRows(view, pid) {
     const removed = ch.removes.includes(pos);
     const editedQty = ch.edits[pos];                  // keys arrive as strings; pos coerces
     if (removed) {
-      return `<li class="ing-line removed">${qtySpan(row.qty, row.grams_per_ml, `color:${color}`)}` +
-             `<span class="muted-ing" style="color:${color}">${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
+      return `<li class="ing-line removed">${ledgerCells(row.qty, row.grams_per_ml, `color:${color}`)}` +
+             `<span class="iname muted-ing" style="color:${color}">${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
     }
     if (editedQty !== undefined) {
-      return `<li>${qtySpan(editedQty, row.grams_per_ml, `color:${color};font-weight:600`)}` +
-             `<span class="muted-ing" style="color:${color}">${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
+      return `<li>${ledgerCells(editedQty, row.grams_per_ml, `color:${color};font-weight:600`)}` +
+             `<span class="iname muted-ing" style="color:${color}">${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
     }
-    return `<li>${qtySpan(row.qty, row.grams_per_ml)}<span>${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
+    return `<li>${ledgerCells(row.qty, row.grams_per_ml)}<span class="iname">${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
   };
 
   // this person's additions that belong to the given section (null matches null)
@@ -462,9 +472,9 @@ function ingredientsSectionInner(view) {
   if (!view.data.is_seed) {
     const rows = view.data.ingredients.map(plainRow).join("");
     return `
-      <div class="col-head"><h2 class="col-title">Ingredients</h2><div class="ing-controls">${scaleControl()}${unitsControl()}</div></div>
-      ${gramsNote()}
+      <div class="col-head"><h2 class="col-title">Ingredients</h2><div class="ing-controls">${scaleControl()}</div></div>
       <ul class="ingredient-list">${rows}</ul>
+      ${weightNote()}
       <p class="hint">Tap any highlighted ingredient to see when it's in season and where it grows.</p>`;
   }
 
@@ -488,11 +498,11 @@ function ingredientsSectionInner(view) {
   const isPersonView = view.mode !== "original" && view.mode !== "compare";
 
   return `
-    <div class="col-head"><h2 class="col-title">Ingredients</h2><div class="ing-controls">${scaleControl()}${unitsControl()}</div></div>
-    ${gramsNote()}
+    <div class="col-head"><h2 class="col-title">Ingredients</h2><div class="ing-controls">${scaleControl()}</div></div>
     ${viewSelector(view)}
     <ul class="ingredient-list">${rows}</ul>
     ${isPersonView ? addControl(view) : ""}
+    ${weightNote()}
     <p class="hint">${hint}</p>`;
 }
 
@@ -516,7 +526,7 @@ function renderStepRow(row) {
   const spans = row.spans || [{ t: "plain", text: row.text }];
   const html = spans
     .map((s) => (s.t === "scale"
-      ? `<span class="step-qty">${esc(scaleQty(s.text, view.scale))}</span>`
+      ? `<span class="step-qty">${esc(toUnicodeFractions(abbrevUnits(scaleQty(s.text, view.scale))))}</span>`
       : linkify(s.text)))
     .join("");
   return `<li class="step">${html}</li>`;
@@ -532,7 +542,7 @@ function setupHeadnote() {
   else dek.classList.remove("clamped");                              // short -> show full, no expander
 }
 
-// Masthead byline: the author / source, linked to source_url when present (aubergine mono kicker).
+// Masthead byline: the author / source, linked to source_url when present (green kicker).
 function bylineHTML(r) {
   if (!r.author) return "";
   const who = r.source_url
@@ -624,7 +634,7 @@ function deleteConfirmHTML(r) {
 
 async function renderRecipe(rid) {
   const data = await api("/api/recipes/" + encodeURIComponent(rid));
-  view = { slug: rid, data, mode: "original", editingPos: null, addingOpen: false, scale: 1, units: "imperial" };
+  view = { slug: rid, data, mode: "original", editingPos: null, addingOpen: false, scale: 1 };
   app.className = "page recipe-view";
   const r = data.recipe;
 
@@ -1069,12 +1079,6 @@ document.addEventListener("click", (e) => {
       view.scale = parseFloat(scale.dataset.scale);
       rerenderIngredients();
       rerenderSteps();
-      return;
-    }
-    const unitBtn = e.target.closest("[data-units]");
-    if (unitBtn) {
-      view.units = unitBtn.dataset.units;
-      rerenderIngredients();
       return;
     }
 

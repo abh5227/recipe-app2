@@ -11,7 +11,7 @@ or build against the wrong intent.
 - **The verified-clean 15** (the real data Round 1 is designed against, incl. the
   `convert_to_grams` flag) is in [docs/import-reference-15.md](import-reference-15.md).
 
-Status: **Round 1 in progress** (Stage A built, under review). Nothing here is rendered on real
+Status: **Round 1 in progress** (Stages A–C built; D–E pending). Nothing here is rendered on real
 data beyond Round 1's scope — see the R1/R2 boundary below.
 
 ---
@@ -19,10 +19,8 @@ data beyond Round 1's scope — see the R1/R2 boundary below.
 ## App name
 
 **Chef's Choice** — the chosen product name (renamed from the prior working name, *Seasonal
-Kitchen*). The codebase and the other docs still carry the old name (`static/index.html`,
-`static/app.js`, `OVERVIEW.md`, `README.md`, `ROADMAP.md`, `CODE_WALKTHROUGH.md`); applying the
-rename across UI + docs is a pending task (tracked in ROADMAP), deliberately **not** bundled with
-the design-code stages.
+Kitchen*). The rename has since been **applied** across the UI + docs (as a standalone commit, kept
+separate from the design-code stages).
 
 ## Product vision (recap — see OVERVIEW / ROADMAP Tier 0)
 
@@ -61,22 +59,41 @@ was considered and **rejected**: *precise* showcases the measurement rigor (the 
 the scaling). It evolved from an earlier "newspaper structure + warm cookbook undertone" framing
 into this precise-cookbook character.
 
-### Palette — two accent colors, two jobs
+### Palette — all earth tones (aubergine removed)
 
-- **Aubergine `#5a3658`** — the **printed recipe's structure**: byline, section labels, the masthead
-  rule, step numbers. (Continuity with the pre-existing step-number color.)
-- **Oxblood `#842d33`** — the **user's handwritten layer**: struck-original replacements, notes.
-  *Reserved in Round 1* (token defined, ≈unused); rendered in Round 2.
-- **Warm paper** — matched to the design mockup: a layered warm tan with subtle patina (not a flat,
-  cool screen fill), the recipe a page lifted off a warm desk.
+A coherent warm-earth system — cream paper, brown ink, green structure — with no cool note.
+**Aubergine `#5a3658` was removed entirely** (it was the one cool color and clashed with the warm
+paper/brown).
 
-### Type
+- **Warm brown** — the body + control layer: all reading text (ingredient names, steps, title) is a
+  warm rich brown (`--ink #523823`, ~8.5:1 on paper), and the active/primary control ("Cooked it"
+  button, active scale pill) is a deeper warm brown (`--btn-fill #4A3220`, cream text). Amounts and
+  weights are the muted brown (`--ink-soft`).
+- **Warm earthy green `--green #4E4B24`** (drab olive) — the **printed recipe's structure**: section
+  labels, **both** section-divider rules, step-number circles, links, the byline. Replaces aubergine
+  on everything it used to mark; chosen deep enough to read as small label text (~7.1:1).
+- **Warm paper** — unchanged: a layered warm tan/cream with subtle patina, the recipe a page lifted
+  off a warm desk.
+- **The user's hand layer** — a **reserved earthy tone** (`--hand`, a warm terracotta/rust,
+  finalized at R2), replacing the old oxblood; warm-earth yet contrasting the green structure.
+  *Reserved in Round 1* (token defined, unused); rendered in Round 2.
+- **Category tags** — re-toned to a warm-earth set (brick / olive / ochre / terracotta / clay-rose),
+  muted and distinct; **same category = same color** (cuisine kept as one crisper color, not a shade
+  per cuisine). Status tags stay dashed/quiet; unlisted tags stay plain.
 
-- **Spectral** (transitional serif) — title, body, ingredient names, step text.
-- **IBM Plex Mono** (tabular figures) — amounts, weights, labels, byline kicker, tags.
+So the two structural jobs are now **green = the printed structure** and **the earthy hand color =
+the user's layer**, with **brown** carrying the body text and the primary control.
+
+### Type — one Spectral voice (mono dropped)
+
+- **Spectral** (transitional serif) — the **single text face**: title, body, ingredient names, step
+  text, AND the ledger's tabular figures + labels. **IBM Plex Mono was dropped** (Option C): instead
+  of a second font, amounts/labels are distinguished from prose by **treatment** — `tabular-nums`,
+  size, muted color, letter-spacing/uppercase — not a different typeface. (`--font-mono` is retired
+  to an alias of `--font-serif` so existing figure/label rules still resolve.)
 - **A pen-like hand** (Caveat / Kalam) — the Round-2 user layer; **reserved**, not loaded in R1.
-- **Masthead title face — OPEN**: being decided by eye between Spectral / Newsreader / Fraunces;
-  `--font-title` is kept as the one-line swap point until then.
+- **Masthead title face** — `--font-title` remains the one-line swap point (Spectral / Newsreader /
+  Fraunces); largely moot under the one-voice direction, kept for flexibility.
 
 ### Layout — single-column (required, not just aesthetic)
 
@@ -86,10 +103,14 @@ cleanly to mobile.
 
 ### Ingredients — a precise ledger
 
-A tabular **amount** column + a **weight** column (`~N g`) + the **name**. **No units toggle** — the
-ledger's volume+weight display replaces it. Which ingredients show a weight is governed by the
-`convert_to_grams` flag from the import work: dry staples / dairy / pastes convert; **oils and raw
-produce stay in their authored volume**. (See [import-reference-15.md](import-reference-15.md).)
+An **amount** column + the **name**, with the gram estimate (`~N g`) shown as a **small muted
+sub-line tucked under the amount** — only when present (Option B2). There is **no fixed weight
+column**: weightless rows read tight, ingredient names stay aligned at a consistent left edge on
+every row, and scaling never flips the layout (the earlier reserved-column design left a dead gap on
+weightless rows and could appear/disappear with scale). **No units toggle** — the volume+weight
+display replaces it. Which lines show a weight is governed by the `convert_to_grams` flag from the
+import work: dry staples / dairy / pastes convert; **oils and raw produce stay in their authored
+volume**. (See [import-reference-15.md](import-reference-15.md).)
 
 ### Masthead
 
@@ -106,8 +127,8 @@ block takes the full width — no placeholder box.
 ### The handwritten edit treatment (Round 2)
 
 A changed value renders as the **original struck in print** (a clean strikethrough) **+ the new
-value in the oxblood hand** beside it — the **print-vs-hand contrast** is what makes it read as an
-*edit* rather than a correction. Notes render as oxblood hand near the relevant step. This is
+value in the earthy hand color** beside it — the **print-vs-hand contrast** is what makes it read as
+an *edit* rather than a correction. Notes render in the hand color near the relevant step. This is
 **reserved/structural in R1** (see boundary) and **built in R2**.
 
 ---
@@ -122,14 +143,14 @@ only.**
 
 ### Round 2 (deferred) — needs real accruing data we don't have yet
 
-- The handwritten **oxblood edit/note layer**.
+- The handwritten **edit/note layer** (in the reserved earthy hand color).
 - The **wear / patina deepening** with cook count.
 - The **populated compare / version display**.
 - The **list / browse page redesign** (the "scale / browsing review" — after the ~295 import).
 
 ### Reserve-not-build (R1 architects for R2 so it isn't a retrofit)
 
-Defined or structured in R1, but **not rendered on real data**: the `--oxblood` token, the
+Defined or structured in R1, but **not rendered on real data**: the `--hand` color token (earthy; was `--oxblood`), the
 `--font-hand` token, the reserved right **`--hand-gutter`** (0 in R1), a **step-body wrapper** so
 inline step-photos can attach later, and a **strike-able amount cell**.
 
@@ -152,7 +173,7 @@ inline step-photos can attach later, and a **strike-able amount cell**.
 | byline / author-source distinction | B |
 | distinguishable tags (split the `·`-joined category) | B |
 | section-header styling | C |
-| two-column alignment + long-name wrapping (fixed figure columns) | C |
+| two-column alignment + long-name wrapping (aligned amount cell; weight as a sub-line — B2) | C |
 | amount formatting — humane decimals, thousands separators, unit-abbreviation standardization | C |
 | post-ingredients → method flow | B/C |
 | **scaler/rating cluster** — five-star **hover-preview** (left-to-right fill on hover); rating **gated on a logged cook** (inline "Mark cooked & rate?"); custom-field fixes; servings original-vs-scaled labeling; clamped-count honesty note; layout robust to long custom values | D |

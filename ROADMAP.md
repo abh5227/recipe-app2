@@ -101,9 +101,9 @@ Everything is free except two items.
 
 | Cost | Features |
 |------|----------|
-| Free | Test suite, quantity & units, cooking mode + checkoff, dark mode, photo upload, per-cook journal, data health check, trash / soft-delete, recipe metadata — favorites/tags/dietary/cuisine, planning attributes — equipment/difficulty/time/make-ahead/calibration, search & discovery incl. in-season/pairings/reverse-lookup, sub-recipes, ingredient enrichment, pantry + shopping list + meal planner, output — print + export/import, free JSON-LD import, local cooking-activity view (precursor), adding recipes |
+| Free | Test suite, quantity & units, cooking mode + checkoff, dark mode, photo upload, per-cook journal, data health check, trash / soft-delete, recipe metadata — favorites/tags/dietary/cuisine, planning attributes — equipment/difficulty/time/make-ahead/calibration, search & discovery incl. in-season/pairings/reverse-lookup, sub-recipes, ingredient enrichment, pantry + shopping list + meal planner, output — print + export/import, free JSON-LD import, local cooking-activity view (precursor), adding recipes, recipe collections (playlists), share-by-file export |
 | Per-use API cost (cents per call; needs a key) | AI recipe scan/auto-populate; optional: AI-assisted citations, AI-ranked substitutes |
-| Ongoing hosting cost + major architecture change | Friend cooking feed, networked version |
+| Ongoing hosting cost + major architecture change | Friend cooking feed, networked version, recipe/collection sharing (public link or multi-user) |
 
 ---
 
@@ -314,7 +314,7 @@ direction — palette, type, the R1/R2 boundary, the punch-list — in
   amount formatting, tags, graceful empty states. Staged A (tokens/shell/type) → B (masthead) →
   C (ledger + formatting) → D (controls/rating) → E (reserve R2 hooks); per-stage commits, suite
   green at each. **Recipe page only.**
-- **Round 2 (deferred — needs real accruing data):** the handwritten **oxblood** edit/note layer,
+- **Round 2 (deferred — needs real accruing data):** the handwritten **edit/note layer** (earthy hand color),
   the **wear/patina** deepening with cook count, the populated compare/version display, and the
   **list/browse page redesign** (the scale/browsing review, after the ~295 import).
 - **App rename pending:** "Seasonal Kitchen" → **"Chef's Choice"** across UI + docs (decided; not
@@ -564,6 +564,50 @@ The large data cluster.
 - **14b — Export / import recipes.** Back up to / restore from JSON (recipes, changes,
   additions, ratings, cook history). *Placed late on purpose:* earlier phases keep adding
   tables, which would otherwise force repeated rewrites of the export format.
+
+### Recipe Collections ("playlists") + Sharing (P20)
+
+Group recipes into named, ORDERED collections — "playlists" of recipes (e.g. "Thanksgiving",
+"Weeknight dinners") — and, separately and much later, SHARE recipes and whole collections with
+friends. **Two tiers by cost; they are very different lifts.** Tier 1 (collections) is buildable in
+the current architecture and lives here in Tier 4. Tier 2 (sharing) — anything beyond
+export-a-file — is a major networked/hosted/multi-user DIRECTION, not a feature; it escalates into
+Tier-5 territory and overlaps Phase 17 (decide the architecture before committing).
+
+**Tier 1 — Collections (local organizing; moderate, fits current architecture):**
+
+- A collection = a named, ORDERED set of recipe references. New tables (`collections` +
+  a `collection_recipes` join), CRUD, a collections view, and add/remove a recipe to/from
+  collections.
+- Purely local / single-user — no networking needed. Consistent with the current app.
+- **Benefit:** organize recipes by occasion/theme; a natural fit with the existing recipe model.
+- **Cost:** a new entity + join table + UI — moderate but self-contained. *Schema:* `collections`,
+  `collection_recipes` (ordered).
+- *Relation:* a first-class, ordered, named-collection feature that extends the lightweight
+  "8b — Tags / collections" idea (Tier 2); if 8b ships first, this builds on it.
+
+**Tier 2 — Sharing (BIG — breaks the local-only / single-user / no-auth assumptions):**
+
+Sharing recipes/collections with other people requires the app to be reachable by others — hosting
+a server others can hit (not just localhost), and possibly identity (who shares with whom) + a
+sharing mechanism. A spectrum, smallest to largest:
+
+- **(a) Export / import a file** — export a recipe or collection as a self-contained file (JSON, or
+  a standalone HTML page) the friend opens/imports. Gives "sharing" WITHOUT becoming a multi-user
+  server app. **Smallest lift; the pragmatic first version.** Rides on Phase 14b (export/import).
+- **(b) Public read-only LINK** — host the app (or a static export) so a friend opens a URL.
+  Requires hosting + a public/shareable representation. Medium.
+- **(c) Full MULTI-USER** — accounts, auth, per-user data, sharing between users. Large; a
+  fundamental change from the current single-user local app. **This IS Phase 17** (friend feed /
+  multi-user / hosted) — track the heavy version there.
+- **Benefit:** share recipes/collections with friends. **Cost:** ranges from small
+  (export-a-file) to a major re-architecture (multi-user). Sharing an individual recipe is the same
+  spectrum (export → link → accounts).
+
+**Note:** Tier 1 is buildable now within the current architecture. Tier 2 — especially anything
+beyond export-a-file — is a major direction (networked/hosted/multi-user), not a feature; decide
+the architecture before committing. **Export/import (2a) is the recommended first step for sharing**
+if/when pursued. *Cross-ref: Phase 14b (export/import), Phase 17 (multi-user / hosting).*
 
 ---
 
@@ -824,7 +868,7 @@ worth knowing before they bite. None of the limitations occur in the current rec
 - **R2 handwritten layer — extend the per-person model to app-tier (architectural).** The
   per-person change model (edit/remove lines, additions) currently exists ONLY for seed recipes
   (gated on `is_seed`); the imported recipes are app-tier and have the **form-edit** path but NOT
-  the per-person annotation layer. The Round-2 handwritten oxblood edit/note layer (see
+  the per-person annotation layer. The Round-2 handwritten edit/note layer (see
   docs/design-decisions.md) needs that model extended to app-tier recipes (or the two unified), and
   the coexistence of "edit the canonical recipe" vs. "annotate by hand" decided. Architect-only in
   R1 (reserved tokens / gutter / strike-able cell); resolve before building R2.

@@ -8,13 +8,15 @@
   --card:       #FBF6EA;   /* a hair-raised warm inset surface (drawer, notes, form fields) */
 
   /* ink */
-  --ink:        #262320;   /* warm near-black body text (~11:1 on paper) */
-  --ink-soft:   #655C4F;   /* captions / muted / meta (~5:1 on paper, AA) */
+  --ink:        #523823;   /* warm rich brown body text (#4A3220 button family, a hair warmer; ~8.5:1 on paper, AAA) */
+  --ink-soft:   #6E5842;   /* captions / muted / meta — warm brown in step with --ink (~5.3:1 on paper, AA) */
 
-  /* the two accents, two jobs */
-  --aubergine:      #5A3658;   /* PRINTED structure: byline, section labels, masthead rule, step #s */
-  --aubergine-lift: #774A72;   /* hover lift of aubergine */
-  --oxblood:        #842D33;   /* USER hand layer — RESERVED for Round 2 (≈unused in R1) */
+  /* the two accents, two jobs (EARTH palette — aubergine removed) */
+  --green:        #4E4B24;   /* STRUCTURE accent: byline, section labels + rules, step #s, links (drab olive — ~7.1:1 on paper, AAA as small text) */
+  --green-lift:   #6A663A;   /* hover lift of the structure green */
+  --btn-fill:     #4A3220;   /* deep warm BROWN — "Cooked it" button + active pill anchor (cream text on it) */
+  --btn-fill-lift:#5C4129;   /* hover lift of the brown button */
+  --hand:         #9C4A2E;   /* USER hand layer — RESERVED for Round 2 (warm terracotta/rust; unused in R1, was --oxblood) */
 
   /* rules / hairlines */
   --rule:       #D5CAB0;   /* warm ledger separators, meta borders */
@@ -27,24 +29,26 @@
   /* type */
   --font-serif: "Spectral", Georgia, "Times New Roman", serif;
   --font-title: var(--font-serif);   /* one-line swap point (Newsreader / Fraunces) — decided by eye after Stage A/B */
-  --font-mono:  "IBM Plex Mono", "SF Mono", Consolas, monospace;
+  --font-mono:  var(--font-serif);   /* RETIRED (Option C): one Spectral voice — alias kept so the figure/label rules resolve */
   --font-hand:  "Caveat", "Kalam", cursive;   /* Round 2 — token reserved, font not loaded yet */
 
   --fs-title:    clamp(28px, 4vw, 38px);   /* reduced so long titles stay ~2 lines, not ~4 */
   --fs-headnote: 16px;     /* subordinate to the title — near body size, italic */
-  --fs-body:     17.5px;
-  --fs-amount:   14px;     /* mono, tabular */
+  --fs-body:     18.5px;   /* a step up — the primary read was a touch small */
+  --fs-amount:   15px;     /* mono, tabular — nudged with the body so ledger figures keep proportion */
   --fs-label:    12px;     /* mono, uppercase, tracked */
 
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:72px;
 
   --page-measure: 760px;   /* recipe content column */
-  --hand-gutter:  0px;     /* Round 2: right margin reserved for oxblood margin-notes */
+  --hand-gutter:  0px;     /* Round 2: right margin reserved for the hand-layer margin-notes */
+  --col-amount:   5rem;    /* ledger amount column (fixed; fits the widest dual "2 lb / 1 kg") */
+  --col-weight:   3.5rem;  /* ledger weight column — snug; weight right-aligns to hug the name */
 
   /* compatibility aliases — older rules keep rendering; each is retired as Stages B–D
      restyle its section into the tokens above. */
-  --berry:      var(--aubergine);
-  --berry-lift: var(--aubergine-lift);
+  --berry:      var(--green);
+  --berry-lift: var(--green-lift);
   --amber:      var(--ochre);
   --line:       var(--rule);
   --line-soft:  var(--rule-soft);
@@ -82,11 +86,11 @@ body {
   margin: clamp(0px, 4vw, 40px) auto;
   padding: clamp(28px, 5vw, 64px);
   /* warm paper with depth: a tan linear base + two faint patina radials (brown top-right,
-     aubergine bottom-left) — paper, not a flat screen fill. */
+     olive bottom-left) — paper, not a flat screen fill. */
   background-color: var(--paper);
   background-image:
     radial-gradient(120% 80% at 86% 10%, rgba(70,45,15,0.045), transparent 52%),
-    radial-gradient(55% 45% at 10% 96%, rgba(90,54,88,0.05), transparent 60%),
+    radial-gradient(55% 45% at 10% 96%, rgba(78,75,36,0.06), transparent 60%),
     linear-gradient(180deg, #f3ecdc, #ece4d0);
   border: 1px solid var(--paper-edge);
   border-radius: 3px;
@@ -191,27 +195,27 @@ a:hover { color: var(--berry-lift); }
 .dek-more {
   font: inherit; font-style: normal; font-size: 13px; cursor: pointer;
   background: none; border: none; padding: 0; margin: 4px 0 0;
-  color: var(--aubergine); text-decoration: underline; text-underline-offset: 2px;
+  color: var(--green); text-decoration: underline; text-underline-offset: 2px;
 }
-.dek-more:hover { color: var(--aubergine-lift); }
+.dek-more:hover { color: var(--green-lift); }
 .dek-more[hidden] { display: none; }
 
 /* ---------- Masthead (Stage B): byline · title · headnote · meta · tags + framed photo ---------- */
 .masthead {
-  display: grid; grid-template-columns: 1fr auto; gap: clamp(18px, 4vw, 40px);
+  display: grid; grid-template-columns: 1fr auto; gap: clamp(16px, 3vw, 28px);
   align-items: start; margin: 0 0 6px;
 }
 .masthead.no-photo { grid-template-columns: 1fr; }   /* no photo -> the title block takes full width */
 .masthead-text { min-width: 0; }                      /* long titles wrap instead of overflowing the grid */
 
-/* byline = author / source, aubergine mono kicker (linked to source_url) */
+/* byline = author / source, green kicker (linked to source_url) */
 .byline {
   font-family: var(--font-mono); font-size: var(--fs-label); letter-spacing: 0.04em;
-  color: var(--aubergine); margin: 0 0 10px;
+  color: var(--green); margin: 0 0 10px;
 }
-.byline a { color: var(--aubergine); text-decoration: underline;
+.byline a { color: var(--green); text-decoration: underline;
   text-decoration-thickness: 1px; text-underline-offset: 2px; }
-.byline a:hover { color: var(--aubergine-lift); }
+.byline a:hover { color: var(--green-lift); }
 
 /* compact meta: Serves · time · cook-count */
 .meta-line { font-family: var(--font-mono); font-size: 13px; color: var(--ink-soft); margin: 14px 0 0; }
@@ -226,7 +230,8 @@ a:hover { color: var(--berry-lift); }
 }
 
 /* the single finished-dish photo, framed with a quiet caption (top-right) */
-.dish-photo { margin: 0; width: clamp(132px, 22vw, 188px); flex-shrink: 0; }
+.dish-photo { margin: 0; width: clamp(116px, 16vw, 150px); flex-shrink: 0; }
+.dish-photo.add-photo { width: clamp(92px, 12vw, 116px); }   /* empty affordance claims less width so a long title isn't squeezed */
 .dish-photo .frame {
   display: block; border: 1px solid var(--paper-edge); padding: 5px; background: var(--card);
   box-shadow: 0 1px 2px rgba(40,35,30,.08);
@@ -250,22 +255,22 @@ a:hover { color: var(--berry-lift); }
   border: 1px dashed var(--rule); background: transparent; box-shadow: none;
 }
 .add-photo-mark { font-family: var(--font-serif); font-size: 30px; line-height: 1; color: var(--rule); }
-.add-photo:hover { color: var(--aubergine); }
-.add-photo:hover .frame { border-color: var(--aubergine); }
-.add-photo:hover .add-photo-mark, .add-photo:hover figcaption { color: var(--aubergine); }
+.add-photo:hover { color: var(--green); }
+.add-photo:hover .frame { border-color: var(--green); }
+.add-photo:hover .add-photo-mark, .add-photo:hover figcaption { color: var(--green); }
 
 /* status tags (Made / To Make — the Paprika cook-tracking workaround) read quietest; all tags are
    plain, non-clickable labels — tag-click-to-filter is R2 (browse redesign). */
 .cat-tag.status { background: transparent; border-style: dashed; opacity: 0.7; }
 
 /* Muted, within-palette category tints (driven by TAG_CATEGORY in app.js) — dusty tones that
-   harmonize with the warm paper + aubergine/oxblood, chosen to stay distinct even when several sit
+   harmonize with the warm paper + green/brown, chosen to stay distinct even when several sit
    together. Neutral (unlisted) tags keep the plain .cat-tag look above. */
-.cat-tag.cat-cuisine { color: #355F68; background: #E4ECEC; border-color: #C3D6D6; }  /* dusty teal      */
-.cat-tag.cat-main    { color: #54632F; background: #E9EDDC; border-color: #CFD8BC; }  /* dusty sage      */
-.cat-tag.cat-course  { color: #7C5E22; background: #EFE7CE; border-color: #DDCCA4; }  /* muted ochre     */
-.cat-tag.cat-bread   { color: #8C4F33; background: #EEE0D4; border-color: #DCC4AE; }  /* warm terracotta */
-.cat-tag.cat-dessert { color: #8C4A5B; background: #F0E2E5; border-color: #DEC5CB; }  /* dusty rose      */
+.cat-tag.cat-cuisine { color: #A8412B; background: #F2DFD5; border-color: #E6C3B2; }  /* crisp paprika      */
+.cat-tag.cat-main    { color: #5F6B31; background: #E9EDD9; border-color: #CFD7B6; }  /* olive / herb       */
+.cat-tag.cat-course  { color: #7A581C; background: #F2E9CD; border-color: #E0CEA2; }  /* ochre / mustard    */
+.cat-tag.cat-bread   { color: #875026; background: #F1E5D3; border-color: #E2CBB0; }  /* terracotta / toast */
+.cat-tag.cat-dessert { color: #8F5350; background: #F1E3E0; border-color: #DFCAC6; }  /* warm clay-rose     */
 
 /* two-step delete confirmation (replaces the single browser confirm()) — calm, names the recipe */
 .delete-confirm { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
@@ -306,10 +311,10 @@ a:hover { color: var(--berry-lift); }
 .btn {
   font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap;
   padding: 7px 16px; border-radius: 999px;
-  border: 1px solid var(--berry); background: var(--berry); color: #fff;
+  border: 1px solid var(--btn-fill); background: var(--btn-fill); color: var(--card);
   transition: background .15s, border-color .15s, color .15s;
 }
-.btn:hover { background: var(--berry-lift); border-color: var(--berry-lift); }
+.btn:hover { background: var(--btn-fill-lift); border-color: var(--btn-fill-lift); }
 .btn.ghost { background: transparent; color: var(--ink-soft); border-color: var(--line); }
 .btn.ghost:hover { color: var(--ink); border-color: var(--ink-soft); background: var(--paper); }
 .btn:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
@@ -326,43 +331,54 @@ a:hover { color: var(--berry-lift); }
 }
 
 .col-title {
-  font-family: var(--display); font-size: 14px; font-weight: 600;
-  letter-spacing: 0.16em; text-transform: uppercase; color: var(--ink-soft);
-  border-bottom: 2px solid var(--ink); padding-bottom: 8px; margin: 0 0 20px;
+  font-family: var(--font-mono); font-size: 14px; font-weight: 600;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--green);
+  border-bottom: 2px solid var(--green); padding-bottom: 8px; margin: 0 0 18px;
 }
 
+/* The ledger: a fixed amount column + weight column + the wrapping name column. Fixed figure
+   columns keep every row aligned; long names wrap in the 1fr name column without shoving them. */
 .ingredient-list { list-style: none; padding: 0; margin: 0; }
 .ingredient-list li {
-  padding: 8px 0; border-bottom: 1px solid var(--line-soft);
-  display: flex; gap: 12px; align-items: baseline;
+  display: grid; grid-template-columns: var(--col-amount) 1fr;
+  column-gap: 10px; align-items: baseline;
+  padding: 5px 0; border-bottom: 1px solid var(--rule-soft);
 }
+
+/* section headers within the list (crust / filling / Habanero Syrup) — green labels */
 .ingredient-list li.group {
-  border-bottom: none; padding: 18px 0 4px;
-  font-family: var(--display); font-style: italic; color: var(--ink);
-  font-size: 17px;
+  display: block; border-bottom: none; padding: 14px 0 6px;
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--green);
 }
 .ingredient-list li.group:first-child { padding-top: 0; }
-.qty {
-  font-variant-numeric: tabular-nums; color: var(--ink-soft);
-  font-size: 14px; min-width: 86px; flex-shrink: 0;
-}
-.qty.approx { font-style: italic; opacity: 0.8; }
+
+/* amount cell — the amount, with the gram estimate stacked as a small muted SUB-LINE beneath it
+   (only when present). No reserved weight column, so weightless rows read tight and ingredient
+   names stay aligned at --col-amount on every row, weighted or not (Option B2). */
+.amount-cell { display: flex; flex-direction: column; }
+.qty, .weight { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+.qty { font-size: var(--fs-amount); }                             /* the amount — primary figure */
+.weight { font-size: 12px; line-height: 1.15; margin-top: 1px; }  /* gram estimate, tucked under the amount */
+.qty.approx, .weight.approx { opacity: 0.8; }   /* "~" estimated / humane-rounded — shared treatment */
+.iname { min-width: 0; }                          /* let long names wrap inside the 1fr column */
 
 .steps { list-style: none; counter-reset: step; padding: 0; margin: 0; }
 .steps li.step {
   counter-increment: step; position: relative;
-  padding: 0 0 24px 52px; min-height: 36px;
+  padding: 0 0 16px 38px; min-height: 26px;
 }
 .steps li.step::before {
   content: counter(step);
-  position: absolute; left: 0; top: -2px;
-  width: 34px; height: 34px; display: grid; place-items: center;
-  font-family: var(--display); font-size: 16px; color: var(--berry);
-  border: 1.5px solid var(--berry); border-radius: 50%;
+  position: absolute; left: 0; top: 2px;
+  width: 26px; height: 26px; display: grid; place-items: center;
+  font-family: var(--font-mono); font-size: 13px; color: var(--green);
+  border: 1px solid var(--green); border-radius: 50%;
 }
 .steps li.group {
-  font-family: var(--display); font-style: italic; font-size: 18px;
-  color: var(--ink); margin: 6px 0 16px; padding-left: 2px;
+  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--green);
+  margin: 14px 0 8px; padding-left: 0;
 }
 
 .notes {
@@ -380,11 +396,14 @@ a:hover { color: var(--berry-lift); }
 .ingredient {
   font: inherit; color: var(--berry); background: none; border: none;
   padding: 1px 2px; margin: 0; cursor: pointer;
-  text-decoration: underline; text-decoration-style: dotted;
-  text-decoration-thickness: 1.5px; text-underline-offset: 3px;
+  text-decoration: none;   /* clean list at rest — the link affordance appears on hover only */
+  text-underline-offset: 3px;
   transition: color .15s, background .15s; border-radius: 3px;
 }
-.ingredient:hover { color: var(--berry-lift); background: rgba(107,45,92,0.07); }
+.ingredient:hover {
+  color: var(--berry-lift); background: rgba(78,75,36,0.08);   /* faint olive wash, was aubergine */
+  text-decoration: underline; text-decoration-style: dotted; text-decoration-thickness: 1.5px;
+}
 .ingredient:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
 
 /* ---------- Loading / error ---------- */
@@ -499,7 +518,7 @@ a:hover { color: var(--berry-lift); }
    Wraps the same underline the bare .col-title has, so they look identical. */
 .col-head {
   display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
-  border-bottom: 2px solid var(--ink); margin: 0 0 20px; padding-bottom: 8px;
+  border-bottom: 2px solid var(--green); margin: 0 0 20px; padding-bottom: 8px;
 }
 .col-head .col-title { border-bottom: none; padding-bottom: 0; margin: 0; }
 
@@ -513,7 +532,7 @@ a:hover { color: var(--berry-lift); }
   transition: background .15s, color .15s, border-color .15s;
 }
 .scale-control button:hover, .units-control button:hover { color: var(--ink); border-color: var(--ink-soft); }
-.scale-control button.on, .units-control button.on { background: var(--ink); color: var(--card); border-color: var(--ink); }
+.scale-control button.on, .units-control button.on { background: var(--btn-fill); color: var(--card); border-color: var(--btn-fill); }
 .scale-control button:focus-visible, .units-control button:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
 .scale-servings { font-size: 12px; color: var(--ink-soft); margin-left: 6px; white-space: nowrap; }
 .grams-note { margin: 10px 0 0; font-size: 13px; font-style: italic; color: var(--ink-soft); }
@@ -523,7 +542,7 @@ a:hover { color: var(--berry-lift); }
   border: 1px solid var(--line); background: transparent; color: var(--ink-soft);
 }
 .scale-custom:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
-.step-qty { font-variant-numeric: tabular-nums; }
+.step-qty { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
 
 /* ---------- Per-person change layers on a seed recipe ---------- */
 
@@ -536,7 +555,7 @@ a:hover { color: var(--berry-lift); }
   transition: background .15s, color .15s, border-color .15s;
 }
 .view-seg button:hover { color: var(--ink); border-color: var(--ink-soft); }
-.view-seg button.on { background: var(--ink); color: var(--card); border-color: var(--ink); }
+.view-seg button.on { background: var(--btn-fill); color: var(--card); border-color: var(--btn-fill); }
 .view-seg button:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
 
 /* A line shown in a person's colour: let the (normally berry) ingredient link and
@@ -621,7 +640,7 @@ a:hover { color: var(--berry-lift); }
 .form-save { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
 
 .form-error {
-  background: #F6E4EC; border: 1px solid var(--berry-lift); color: var(--berry);
+  background: #F4E3DC; border: 1px solid var(--danger); color: var(--danger);
   padding: 10px 14px; border-radius: 8px; margin: 0 0 18px; font-size: 14.5px;
 }
 .form-error[hidden] { display: none; }

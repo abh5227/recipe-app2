@@ -59,7 +59,7 @@ paprika_native_reader.py ──► import_cleanup.py ──► import_write.py
   dry-run-validated, and **15 recipes have been imported** (`source='app'`).
 - **Not yet:** library linkage (`ingredient_id`), full image storage, the remaining ~280-recipe
   import, and *using* the harvested gram in display.
-- **Tests:** 121 pytest + 22 JS, CI green on every push (with a SonarQube scan).
+- **Tests:** 154 pytest + 29 JS, CI green on every push (with a SonarQube scan).
 
 ## The vision
 
