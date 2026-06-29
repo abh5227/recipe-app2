@@ -22,6 +22,7 @@
 
   /* one muted functional ochre (rating/season); finalized in Stage D */
   --ochre:      #A97C2E;
+  --danger:     #9A3B34;   /* muted brick for the delete-confirm action (deliberate, not alarm-red) */
 
   /* type */
   --font-serif: "Spectral", Georgia, "Times New Roman", serif;
@@ -29,7 +30,7 @@
   --font-mono:  "IBM Plex Mono", "SF Mono", Consolas, monospace;
   --font-hand:  "Caveat", "Kalam", cursive;   /* Round 2 — token reserved, font not loaded yet */
 
-  --fs-title:    clamp(33px, 5.2vw, 49px);
+  --fs-title:    clamp(28px, 4vw, 38px);   /* reduced so long titles stay ~2 lines, not ~4 */
   --fs-headnote: 16px;     /* subordinate to the title — near body size, italic */
   --fs-body:     17.5px;
   --fs-amount:   14px;     /* mono, tabular */
@@ -172,7 +173,7 @@ a:hover { color: var(--berry-lift); }
 /* ---------- Recipe detail ---------- */
 .recipe-title {
   font-family: var(--font-title); font-weight: 600;
-  font-size: clamp(32px, 6.5vw, 52px); line-height: 1.04;
+  font-size: var(--fs-title); line-height: 1.1;
   letter-spacing: -0.01em; margin: 0 0 14px;
 }
 /* Headnote (imported description) — subordinate to the title and capped so the ingredients stay
@@ -194,6 +195,84 @@ a:hover { color: var(--berry-lift); }
 }
 .dek-more:hover { color: var(--aubergine-lift); }
 .dek-more[hidden] { display: none; }
+
+/* ---------- Masthead (Stage B): byline · title · headnote · meta · tags + framed photo ---------- */
+.masthead {
+  display: grid; grid-template-columns: 1fr auto; gap: clamp(18px, 4vw, 40px);
+  align-items: start; margin: 0 0 6px;
+}
+.masthead.no-photo { grid-template-columns: 1fr; }   /* no photo -> the title block takes full width */
+.masthead-text { min-width: 0; }                      /* long titles wrap instead of overflowing the grid */
+
+/* byline = author / source, aubergine mono kicker (linked to source_url) */
+.byline {
+  font-family: var(--font-mono); font-size: var(--fs-label); letter-spacing: 0.04em;
+  color: var(--aubergine); margin: 0 0 10px;
+}
+.byline a { color: var(--aubergine); text-decoration: underline;
+  text-decoration-thickness: 1px; text-underline-offset: 2px; }
+.byline a:hover { color: var(--aubergine-lift); }
+
+/* compact meta: Serves · time · cook-count */
+.meta-line { font-family: var(--font-mono); font-size: 13px; color: var(--ink-soft); margin: 14px 0 0; }
+.meta-line .sep { color: var(--rule); margin: 0 2px; }
+
+/* category -> discreet mono "filing" labels (squared, not soft pills — reads as reference/index) */
+.cat-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; }
+.cat-tag {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--ink-soft); background: var(--card);
+  border: 1px solid var(--rule); border-radius: 3px; padding: 2px 7px;
+}
+
+/* the single finished-dish photo, framed with a quiet caption (top-right) */
+.dish-photo { margin: 0; width: clamp(132px, 22vw, 188px); flex-shrink: 0; }
+.dish-photo .frame {
+  display: block; border: 1px solid var(--paper-edge); padding: 5px; background: var(--card);
+  box-shadow: 0 1px 2px rgba(40,35,30,.08);
+}
+.dish-photo img { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; }
+.dish-photo figcaption {
+  font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.04em;
+  color: var(--ink-soft); text-align: center; margin-top: 6px;
+}
+
+@media (max-width: 520px) {
+  .masthead { grid-template-columns: 1fr; }            /* stack: photo below the title block */
+  .dish-photo { width: clamp(150px, 52vw, 210px); margin-top: 16px; }
+}
+
+/* no-photo on an EDITABLE recipe -> a calm "+ add a photo" affordance in the framed footprint
+   (links to the edit flow). Seed recipes with no photo collapse instead (decided in app.js). */
+.add-photo { display: block; text-decoration: none; color: var(--ink-soft); }
+.add-photo .frame {
+  display: grid; place-items: center; aspect-ratio: 4 / 3; padding: 0;
+  border: 1px dashed var(--rule); background: transparent; box-shadow: none;
+}
+.add-photo-mark { font-family: var(--font-serif); font-size: 30px; line-height: 1; color: var(--rule); }
+.add-photo:hover { color: var(--aubergine); }
+.add-photo:hover .frame { border-color: var(--aubergine); }
+.add-photo:hover .add-photo-mark, .add-photo:hover figcaption { color: var(--aubergine); }
+
+/* status tags (Made / To Make — the Paprika cook-tracking workaround) read quietest; all tags are
+   plain, non-clickable labels — tag-click-to-filter is R2 (browse redesign). */
+.cat-tag.status { background: transparent; border-style: dashed; opacity: 0.7; }
+
+/* Muted, within-palette category tints (driven by TAG_CATEGORY in app.js) — dusty tones that
+   harmonize with the warm paper + aubergine/oxblood, chosen to stay distinct even when several sit
+   together. Neutral (unlisted) tags keep the plain .cat-tag look above. */
+.cat-tag.cat-cuisine { color: #355F68; background: #E4ECEC; border-color: #C3D6D6; }  /* dusty teal      */
+.cat-tag.cat-main    { color: #54632F; background: #E9EDDC; border-color: #CFD8BC; }  /* dusty sage      */
+.cat-tag.cat-course  { color: #7C5E22; background: #EFE7CE; border-color: #DDCCA4; }  /* muted ochre     */
+.cat-tag.cat-bread   { color: #8C4F33; background: #EEE0D4; border-color: #DCC4AE; }  /* warm terracotta */
+.cat-tag.cat-dessert { color: #8C4A5B; background: #F0E2E5; border-color: #DEC5CB; }  /* dusty rose      */
+
+/* two-step delete confirmation (replaces the single browser confirm()) — calm, names the recipe */
+.delete-confirm { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.dc-msg { font-size: 14px; color: var(--ink-soft); }
+.dc-msg strong { color: var(--ink); font-weight: 600; }
+.btn.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+.btn.danger:hover { background: var(--danger); border-color: var(--danger); color: var(--paper); }
 .meta {
   list-style: none; display: flex; flex-wrap: wrap; gap: 26px;
   padding: 16px 0; margin: 0;
@@ -214,6 +293,7 @@ a:hover { color: var(--berry-lift); }
 }
 .rating { display: inline-flex; gap: 2px; }
 .star {
+  font: inherit;   /* use the design font, not the UA <button> system-sans (the ★ glyph leak) */
   background: none; border: none; cursor: pointer; padding: 0 1px;
   font-size: 24px; line-height: 1; color: var(--line);
   transition: color .12s, transform .12s;
@@ -467,6 +547,7 @@ a:hover { color: var(--berry-lift); }
 /* The pencil / delete control at the end of an editable line */
 .line-tools { margin-left: auto; display: flex; gap: 4px; flex-shrink: 0; }
 .icon-btn {
+  font: inherit;   /* design font, not the UA <button> system-sans (the ✎ / × glyph leak) */
   background: none; border: none; cursor: pointer;
   color: var(--ink-soft); font-size: 14px; padding: 0 4px; line-height: 1;
 }

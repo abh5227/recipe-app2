@@ -532,6 +532,96 @@ function setupHeadnote() {
   else dek.classList.remove("clamped");                              // short -> show full, no expander
 }
 
+// Masthead byline: the author / source, linked to source_url when present (aubergine mono kicker).
+function bylineHTML(r) {
+  if (!r.author) return "";
+  const who = r.source_url
+    ? `<a href="${esc(r.source_url)}" target="_blank" rel="noopener">${esc(r.author)}</a>`
+    : esc(r.author);
+  return `<p class="byline">${who}</p>`;
+}
+
+// Tag -> category: the starter vocabulary from the current 20 recipes (expanded in the 295 data
+// pass). Category drives a muted color (.cat-tag.cat-* in styles.css). Anything not listed falls
+// back to "neutral" (a plain label) so unknown/future tags degrade gracefully, never miscolored.
+// "status" (the Paprika cook-tracking workaround) keeps the quiet treatment and migrates out later.
+// To extend: add a `"tag": "category"` line here (and a .cat-tag.cat-<category> rule for a new one).
+const TAG_CATEGORY = {
+  // status
+  "made": "status", "to make": "status", "to-make": "status", "tomake": "status",
+  "to cook": "status", "want to make": "status",
+  // cuisine
+  "italian": "cuisine", "middle eastern": "cuisine", "indian": "cuisine", "southern": "cuisine",
+  "korean": "cuisine", "thai": "cuisine", "palestinian": "cuisine", "african": "cuisine",
+  // course
+  "appetizers": "course", "sides": "course", "desserts": "course",
+  // dessert dish-types (distinct from the "Desserts" course tag)
+  "cookies": "dessert", "cakes": "dessert", "ice cream": "dessert",
+  // bread
+  "bread": "bread",
+  // main-ingredient
+  "chicken": "main", "beef": "main", "pork": "main", "ground meat": "main", "beans": "main",
+  "vegetables": "main", "rice": "main", "chocolate": "main",
+  // neutral: "vegetarian" and anything unlisted
+};
+
+// Category -> discreet mono "filing" labels, tinted by category. Non-clickable for now
+// (tag-click-to-filter is the R2 browse redesign). neutral = plain; status = the quiet treatment.
+function tagsHTML(r) {
+  const tags = String(r.category || "").split("·").map((s) => s.trim()).filter(Boolean);
+  if (!tags.length) return "";
+  const html = tags.map((t) => {
+    const cat = TAG_CATEGORY[t.toLowerCase()] || "neutral";
+    const cls = cat === "neutral" ? "cat-tag"
+              : cat === "status"  ? "cat-tag status"
+              : `cat-tag cat-${cat}`;
+    return `<span class="${cls}">${esc(t)}</span>`;
+  }).join("");
+  return `<p class="cat-tags">${html}</p>`;
+}
+
+// Compact masthead meta: Serves · time · cook-count, with the calm "Not cooked yet" register.
+function metaLine(r, stats) {
+  const bits = [];
+  if (r.servings) bits.push(`Serves ${esc(r.servings)}`);
+  const time = r.total_time || r.cook_time || r.prep_time;
+  if (time) bits.push(esc(time));
+  bits.push(stats.cook_count ? `Cooked ${stats.cook_count}×` : "Not cooked yet");
+  return `<p class="meta-line">${bits.join(' <span class="sep">·</span> ')}</p>`;
+}
+
+// The single finished-dish photo (top-right of the masthead), framed with a quiet caption. No
+// image -> render nothing and the masthead collapses to a full-width title (no placeholder box);
+// a broken URL collapses the same way via onerror.
+function dishPhoto(r, editable) {
+  if (r.image) return `<figure class="dish-photo">
+    <span class="frame"><img src="/${esc(r.image)}" alt="${esc(r.name)}" loading="lazy"
+      onerror="this.closest('.masthead').classList.add('no-photo'); this.closest('.dish-photo').remove();"></span>
+    <figcaption>what it looks like</figcaption>
+  </figure>`;
+  // No image: an EDITABLE recipe gets a calm "+ add a photo" affordance in the framed footprint
+  // (links to the edit flow); a non-editable (seed) recipe returns "" so the masthead collapses.
+  if (editable) return `<a class="dish-photo add-photo" href="#/edit/${encodeURIComponent(r.id)}" aria-label="Add a photo">
+    <span class="frame"><span class="add-photo-mark">+</span></span>
+    <figcaption>add a photo</figcaption>
+  </a>`;
+  return "";
+}
+
+// The owner Edit/Delete row, and the inline two-step delete confirmation it swaps to. The
+// confirmation names the recipe and needs a deliberate second click (replaces a single confirm()).
+function ownerActionsHTML(r) {
+  return `<a class="btn ghost sm" href="#/edit/${encodeURIComponent(r.id)}">Edit recipe</a>
+          <button class="btn ghost sm" data-delete>Delete</button>`;
+}
+function deleteConfirmHTML(r) {
+  return `<span class="delete-confirm">
+    <span class="dc-msg">Delete <strong>${esc(r.name)}</strong>? This can't be undone.</span>
+    <button class="btn ghost sm danger" data-delete-confirm>Delete</button>
+    <button class="btn ghost sm" data-delete-cancel>Cancel</button>
+  </span>`;
+}
+
 async function renderRecipe(rid) {
   const data = await api("/api/recipes/" + encodeURIComponent(rid));
   view = { slug: rid, data, mode: "original", editingPos: null, addingOpen: false, scale: 1, units: "imperial" };
@@ -545,34 +635,22 @@ async function renderRecipe(rid) {
     catch (_) { INGREDIENT_LIST = []; }
   }
 
-  const meta = [
-    r.servings ? ["Serves", r.servings] : null,
-    r.prep_time ? ["Prep", r.prep_time] : null,
-    r.cook_time ? ["Cook", r.cook_time] : null,
-    r.total_time ? ["Total", r.total_time] : null,
-  ]
-    .filter(Boolean)
-    .map(([l, val]) => `<li><span class="label">${esc(l)}</span><span class="value">${esc(val)}</span></li>`)
-    .join("");
+  const photoSlot = dishPhoto(r, data.is_editable);
 
-  const sourceLine = r.author
-    ? `<p class="eyebrow">${r.source_url ? `<a href="${esc(r.source_url)}" target="_blank" rel="noopener">${esc(r.author)}</a>` : esc(r.author)}${r.category ? " · " + esc(r.category) : ""}</p>`
-    : (r.category ? `<p class="eyebrow">${esc(r.category)}</p>` : "");
-
-  const owner = data.is_editable
-    ? `<div class="owner-actions">
-         <a class="btn ghost sm" href="#/edit/${encodeURIComponent(r.id)}">Edit recipe</a>
-         <button class="btn ghost sm" data-delete>Delete</button>
-       </div>`
-    : "";
+  const owner = data.is_editable ? `<div class="owner-actions">${ownerActionsHTML(r)}</div>` : "";
 
   app.innerHTML = `
     <a class="back" href="#/">← All recipes</a>
-    ${photo(r, "hero")}
-    ${sourceLine}
-    <h1 class="recipe-title">${esc(r.name)}</h1>
-    ${r.descr ? `<div class="headnote"><p class="dek clamped">${esc(r.descr)}</p><button class="dek-more" data-dek-toggle hidden>more</button></div>` : ""}
-    ${meta ? `<ul class="meta">${meta}</ul>` : ""}
+    <header class="masthead${photoSlot ? "" : " no-photo"}">
+      <div class="masthead-text">
+        ${bylineHTML(r)}
+        <h1 class="recipe-title">${esc(r.name)}</h1>
+        ${r.descr ? `<div class="headnote"><p class="dek clamped">${esc(r.descr)}</p><button class="dek-more" data-dek-toggle hidden>more</button></div>` : ""}
+        ${metaLine(r, data.stats)}
+        ${tagsHTML(r)}
+      </div>
+      ${photoSlot}
+    </header>
     <div class="stats" data-rid="${esc(r.id)}">${statsInner(data.stats)}</div>
     ${owner}
     <div class="recipe-cols">
@@ -641,9 +719,8 @@ async function deleteAddition(addId) {
   applyChanges(await sendJSON("DELETE", `${changeBase()}/additions/${addId}`));
 }
 
-async function handleDelete() {
-  const name = view.data.recipe.name;
-  if (!confirm(`Delete “${name}” and its ratings and cook history? This can't be undone.`)) return;
+// The actual delete, run only after the inline two-step confirmation (data-delete-confirm).
+async function doDelete() {
   const res = await sendJSON("DELETE", "/api/recipes/" + encodeURIComponent(view.slug));
   if (res.ok) location.hash = "#/";
   else alert((res.data && res.data.error) || "Couldn't delete the recipe.");
@@ -972,7 +1049,19 @@ document.addEventListener("click", (e) => {
 
   // recipe-detail interactions: app-recipe delete + the per-person change layers
   if (view) {
-    if (e.target.closest("[data-delete]")) { handleDelete(); return; }
+    // Delete: a deliberate two-step — first click swaps to an inline confirm that names the
+    // recipe; only data-delete-confirm actually deletes (data-delete-cancel restores the row).
+    if (e.target.closest("[data-delete]")) {
+      const oa = e.target.closest(".owner-actions");
+      if (oa) oa.innerHTML = deleteConfirmHTML(view.data.recipe);
+      return;
+    }
+    if (e.target.closest("[data-delete-cancel]")) {
+      const oa = e.target.closest(".owner-actions");
+      if (oa) oa.innerHTML = ownerActionsHTML(view.data.recipe);
+      return;
+    }
+    if (e.target.closest("[data-delete-confirm]")) { doDelete(); return; }
 
     // scale control: re-scale every displayed quantity
     const scale = e.target.closest("[data-scale]");
