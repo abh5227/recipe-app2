@@ -1,0 +1,13 @@
+-- 014_cook_log_source.sql
+-- Provenance on cook_log, so seeded/provisional cooks are distinguishable from real app-logged ones.
+--
+--   'app'            (default) — a cook you logged in the app: a confirmed, real cook date.
+--   'paprika-import'           — a cook SEEDED from the Paprika "Made" tag, dated from the recipe's
+--                                Paprika 'created' timestamp. A real date, but a PROVISIONAL stand-in
+--                                for the true cook date — to be corrected later (then flipped to 'app').
+--
+-- Existing rows backfill to 'app' (they're real app-logged cooks). This migration is SCHEMA ONLY:
+-- the 9 seed rows are inserted by scripts/seed_made_cooks.py (a one-off backfill on the live DB),
+-- NOT here — app-tier data must stay out of the rebuildable migrate+seed path (migrations run
+-- before any import, so the app-tier recipe ids don't exist yet at migrate time).
+ALTER TABLE cook_log ADD COLUMN source TEXT NOT NULL DEFAULT 'app';

@@ -307,6 +307,7 @@ a:hover { color: var(--berry-lift); }
 .star:hover { transform: scale(1.15); color: var(--amber); }
 .star:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; border-radius: 3px; }
 .cook-summary { color: var(--ink-soft); font-size: 15px; }
+.cook-summary .approx { opacity: 0.8; font-style: italic; }   /* provisional (import-seeded) cook date — unconfirmed, reuses the ~/.approx family */
 .cook-actions { display: inline-flex; gap: 8px; margin-left: auto; }
 .btn {
   font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap;

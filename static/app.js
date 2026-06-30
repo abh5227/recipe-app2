@@ -91,18 +91,25 @@ function starsHTML(rating) {
   return out;
 }
 
+// The cook-summary line. A provisional last-cook date (a seeded Paprika-import date, not yet a
+// confirmed cook) renders soft — the "~" + .approx family from the ledger — so unconfirmed dates
+// stand out at a glance for later correction. Returns HTML; the dynamic date is escaped.
 function cookSummary(stats) {
   if (!stats.cook_count) return "Not cooked yet";
   const times = stats.cook_count === 1 ? "once" : `${stats.cook_count} times`;
   const last = formatDate(stats.last_cooked);
-  return `Cooked ${times}${last ? ` · last on ${last}` : ""}`;
+  if (!last) return `Cooked ${times}`;
+  const lastClause = stats.last_cooked_provisional
+    ? `<span class="approx">~ last on ${esc(last)}</span>`
+    : `last on ${esc(last)}`;
+  return `Cooked ${times} · ${lastClause}`;
 }
 
 // The inner contents of the stats bar on a recipe page (re-rendered after each change).
 function statsInner(stats) {
   return `
     <div class="rating" role="group" aria-label="Your rating">${starsHTML(stats.rating)}</div>
-    <span class="cook-summary">${esc(cookSummary(stats))}</span>
+    <span class="cook-summary">${cookSummary(stats)}</span>
     <span class="cook-actions">
       <button class="btn" data-cook>Cooked it</button>
       ${stats.cook_count ? `<button class="btn ghost" data-uncook>Undo</button>` : ""}
