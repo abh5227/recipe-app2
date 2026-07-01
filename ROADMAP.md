@@ -663,6 +663,46 @@ Answers "what should I cook" with a single decisive pick, not a list.
 - *See also: Phase 18 (analytics) — shares cook_log; Phase 13e (meal planner) — the natural
   next step once you have a single-pick recommender.*
 
+### Recipe recommendation — bandit framing + honest limitations (research; P21)
+
+Capstone/thesis-adjacent research framing of the recommender problem — **not a near-term feature**.
+Companion to **Phase 19** (the pragmatic single-pick recommender); this entry records the
+multi-armed-bandit framing that was explored and, more importantly, why it does *not* transfer to
+this app as-is.
+
+- **Origin:** surfaced alongside a separate RL-course (CS5180) project reproducing the
+  Auer/Cesa-Bianchi/Fischer multi-armed bandit algorithms (UCB1 etc.). **That bandit reproduction
+  and its simulated-recipe recommender are coursework (separate repo) — NOT part of this app.** This
+  entry is only about a potential *real* recommender feature here.
+- **The idea:** the app already has the two ingredients a bandit recommender needs — recipes
+  (**arms**) and a cook signal (`cook_log` = did the user actually cook it = **reward**) — so "learn
+  which recipes to surface from whether they get cooked" sits naturally on the existing data, and
+  ties to the app's IR/recommender thread (capstone interest).
+
+**Honest caveats (why this is NOT a quick feature):**
+
+- **Cold start is the killer.** ~295 recipes, one user cooking a handful of times a week = extremely
+  sparse data. A plain multi-armed bandit over hundreds of arms needs many pulls per arm to
+  converge; one person's dinner cadence will basically never give a MAB enough signal. The bandit
+  math that works in simulation (many seeds, 2000 rounds) does not transfer to one real user.
+- **Stationarity.** A user's tastes drift; standard UCB assumes fixed reward distributions.
+- **Independence.** Similar recipes are correlated (cook one Thai curry → likely cook another);
+  plain MAB ignores this.
+
+**Realistic paths (if pursued):**
+
+- **Near-term / pragmatic — heuristics, not a bandit:** recommend by tag affinity, cook frequency,
+  recency, ingredient overlap. No convergence problem; fits sparse single-user data. *(This is
+  essentially Phase 19's transparent weighted score — start there.)*
+- **Ambitious / research — contextual / feature-based:** a recipe + user feature approach addresses
+  correlation and cold-start better than a plain MAB, but it's substantially more complex and only
+  makes sense with enough data. **Capstone/thesis territory** (ties to the IR / ML-on-recipe-data
+  thread, the King Arthur ingredient ontology, prior RAG work) — not an app feature.
+
+- **Cost:** a real recommender is large + data-dependent; a simple heuristic version is moderate
+  (≈ Phase 19). **Benefit:** surfaces relevant recipes — but only worthwhile once there's enough
+  usage data and a clear approach (heuristic first; bandit/contextual only if justified).
+
 ### AI Recipe Generation (new)
 
 A capable LLM (via API) generates **novel** recipes through RAG — grounded in our structured
@@ -767,6 +807,26 @@ value reads.
   numbers (188 mL, not 187 1/2 mL), but a small one can still show a fraction ("1/2 kg"). Proper
   per-unit handling lands with the metric/imperial toggle (1b).
 
+## Delight / easter eggs
+
+Pure-delight extras — low-stakes, **do after the core R1 work is solid** (reward-yourself items).
+
+### Hidden "photo of Theo" easter egg (the dev's dog)
+
+A hidden, **unsignposted** trigger surfaces a **random** photo of Theo (the dog) — a private bit of
+joy, deliberately *not* a feature.
+
+- **Trigger:** genuinely hidden / unlabeled — a tiny easy-to-miss-but-clickable glyph, or the
+  "Chef's Choice" wordmark itself. NOT a labeled button (the whole point is that it isn't
+  signposted).
+- **Reveal:** Theo appears as a small **framed snapshot** — a polaroid/photo tucked into the
+  cookbook (reuse the existing framed-photo treatment, perhaps slightly rotated), fitting the
+  used-cookbook aesthetic — NOT a generic modal/popup.
+- **Photos:** a small set of Theo images in `static/` (e.g. `static/theo/`), random pick via
+  `Math.random()`. Public repo is fine (just dog photos).
+- **Scope:** trivial — a hidden click handler + a few images + a small framed reveal.
+- **Cost:** trivial. **Benefit:** makes a personal app feel personal.
+
 ## Known limitations & tech debt
 
 Things that are actually *wrong* in edge cases (not just cosmetic), plus deferred cleanups —
@@ -814,6 +874,17 @@ worth knowing before they bite. None of the limitations occur in the current rec
   so a liquid isn't later converted as weight (28.35 g/oz). Decline over guess — normalize
   only when the ingredient is confidently a liquid, else flag. (See the Matching principle
   and the Ingredient-line data model note.)
+
+- **Orphaned ingredient asterisks (import).** Web recipes (e.g. King Arthur) often footnote
+  ingredients — `half-and-half*`, `cocoa, Dutch-process or natural*` — where the footnote text lives
+  on the website but is **not captured by Paprika**, so the ingredient name imports with a trailing
+  `*` pointing to a note that exists nowhere (not in Paprika's `notes`/`directions`, and not
+  recoverable). Only King Arthur has this (2 ingredients) in the current 20, but it will recur at
+  295 scale. **Handling:** STRIP a trailing orphaned `*` from an ingredient name when the recipe has
+  **no note/footnote it could reference** (the marker promises a footnote that doesn't exist → just
+  noise). The footnote text is unrecoverable (absent from the source), so there's nothing to link it
+  to. Consistent with decline-over-guess: strip only when there's demonstrably no note to point to.
+  (King Arthur's 2 asterisks are left as-is for now — cosmetic, one recipe, not worth a one-off fix.)
 
 - **Preferred-units-on-import (future, nice-to-have).** When importing a recipe
   (Phase 15/16), convert quantities into the user's preferred unit system, defaultable by
