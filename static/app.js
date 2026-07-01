@@ -132,11 +132,19 @@ function statsInner(stats) {
     </span>`;
 }
 
+// Reserved R2 wear signal: mirror the recipe's cook count onto the page root as the --cook-count
+// custom property so Round 2 can scale a wear/patina effect from it. Unread in R1; kept in sync
+// wherever the count changes so it never goes stale.
+function setCookCount(el, count) {
+  el.style.setProperty("--cook-count", String(count));
+}
+
 async function updateStats(el, path, body) {
   try {
     const s = await postJSON(path, body);
     if (view && view.data) view.data.stats = s;   // keep cached stats fresh so the cook-gate reads the new cook_count
     el.innerHTML = statsInner(s);
+    setCookCount(app, s.cook_count);   // sync the reserved wear signal from the refreshed stats
   } catch (_) {
     /* leave the bar as-is if the write fails */
   }
@@ -255,6 +263,8 @@ function figCell(cls, text, inlineStyle) {
 // One ledger amount-cell for a line: the amount, with the gram estimate stacked as a muted sub-line
 // beneath it when present (chart-known volume over 2 tbsp) — nothing emitted otherwise, so weightless
 // rows reserve no column and names stay aligned (Option B2). Replaces the old metric/imperial toggle.
+// R2 hook: this .amount-cell (and its addressable .qty) is the reserved strike target — Round 2
+// will strike the printed amount and set the edited value beside it in the hand color. No R1 treatment.
 function ledgerCells(qty, gramsPerMl, inlineStyle) {
   const weight = weightText(qty, gramsPerMl, view.scale);
   return `<span class="amount-cell">` +
@@ -561,7 +571,9 @@ function renderStepRow(row) {
       ? `<span class="step-qty">${esc(toUnicodeFractions(abbrevUnits(scaleQty(s.text, view.scale))))}</span>`
       : linkify(s.text)))
     .join("");
-  return `<li class="step">${html}</li>`;
+  // .step-body wraps the step content inside li.step — the reserved attach point for future
+  // per-step photos and R2 step-notes. Inert in R1 (a bare block that fills the same box).
+  return `<li class="step"><div class="step-body">${html}</div></li>`;
 }
 
 // Long headnotes clamp to 3 lines + a "more" expander; short ones show in full. Measured after
@@ -668,6 +680,7 @@ async function renderRecipe(rid) {
   const data = await api("/api/recipes/" + encodeURIComponent(rid));
   view = { slug: rid, data, mode: "original", editingPos: null, addingOpen: false, scale: 1, pendingRating: null };
   app.className = "page recipe-view";
+  setCookCount(app, data.stats.cook_count);   // reserved R2 wear signal on the recipe root
   const r = data.recipe;
 
   // Seed recipes let people add ingredients to their version, so load the library
