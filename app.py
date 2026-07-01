@@ -580,9 +580,18 @@ def in_season(month=None):
 
 @app.route("/api/recipes/<rid>/cooked", methods=["POST"])
 def log_cook(rid):
-    """Record that you cooked this today (or on an optional given date)."""
+    """Record that you cooked this today (or on an optional given past date). A supplied
+    date must be a real YYYY-MM-DD calendar date, not in the future; source stays 'app'
+    (a backdated cook is still a real logged cook)."""
     payload = request.get_json(silent=True) or {}
     cooked_on = payload.get("date")  # optional 'YYYY-MM-DD'; otherwise defaults to today
+    if cooked_on is not None:
+        try:
+            supplied = datetime.date.fromisoformat(cooked_on)
+        except (ValueError, TypeError):
+            return jsonify({"error": "date must be a real date in YYYY-MM-DD form"}), 400
+        if supplied > datetime.date.today():
+            return jsonify({"error": "cook date cannot be in the future"}), 400
     with db() as c:
         if c.execute("SELECT 1 FROM recipes WHERE id = ?", (rid,)).fetchone() is None:
             return jsonify({"error": "recipe not found"}), 404

@@ -123,13 +123,33 @@ function statsInner(stats) {
   } else {
     middle = `<span class="cook-summary">${cookSummary(stats)}</span>`;
   }
+  const backdateOpen = view ? view.backdateOpen : false;
+  const backdate = backdateOpen
+    ? `<span class="backdate" role="group" aria-label="Log a cook on a past date">
+         <input type="date" class="backdate-date" max="${todayISO()}" aria-label="Cook date">
+         <button class="btn ghost sm" data-backdate-save>Log</button>
+         <button class="btn ghost sm" data-backdate-cancel>Cancel</button>
+         <span class="backdate-error" aria-live="polite"></span>
+       </span>`
+    : "";
   return `
     <div class="rating" role="group" aria-label="Your rating">${starsHTML(starFill)}</div>
     ${middle}
     <span class="cook-actions">
       <button class="btn" data-cook>Cooked it</button>
+      <button class="btn ghost sm" data-backdate-toggle aria-expanded="${backdateOpen}"
+              title="Log a cook on a past date">on a date…</button>
       ${stats.cook_count ? `<button class="btn ghost" data-uncook>Undo</button>` : ""}
-    </span>`;
+    </span>
+    ${backdate}`;
+}
+
+// Today's date as YYYY-MM-DD in LOCAL time — used for the backdate input's `max` guard.
+// (Note: this is a different clock from the /cooked no-date insert, which uses SQLite
+// date('now') in UTC; on this local single-user machine they agree in practice.)
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
 // Reserved R2 wear signal: mirror the recipe's cook count onto the page root as the --cook-count
@@ -1116,6 +1136,35 @@ document.addEventListener("click", (e) => {
     }
     if (e.target.closest("[data-cook]"))   { if (view) view.pendingRating = null; updateStats(stats, `/api/recipes/${rid}/cooked`, {}); return; }
     if (e.target.closest("[data-uncook]")) { if (view) view.pendingRating = null; updateStats(stats, `/api/recipes/${rid}/uncook`, {}); return; }
+    if (e.target.closest("[data-backdate-toggle]")) {
+      if (view) view.backdateOpen = !view.backdateOpen;
+      stats.innerHTML = statsInner(view ? view.data.stats : { cook_count: 0 });
+      if (view && view.backdateOpen) stats.querySelector(".backdate-date")?.focus();
+      return;
+    }
+    if (e.target.closest("[data-backdate-cancel]")) {
+      if (view) view.backdateOpen = false;
+      stats.innerHTML = statsInner(view ? view.data.stats : { cook_count: 0 });
+      return;
+    }
+    if (e.target.closest("[data-backdate-save]")) {
+      const input = stats.querySelector(".backdate-date");
+      const errEl = stats.querySelector(".backdate-error");
+      const date = input ? input.value : "";
+      if (!date) { if (errEl) errEl.textContent = "Pick a date."; return; }
+      (async () => {
+        const { ok, data } = await sendJSON("POST", `/api/recipes/${rid}/cooked`, { date });
+        if (ok) {
+          if (view && view.data) view.data.stats = data;
+          if (view) view.backdateOpen = false;
+          stats.innerHTML = statsInner(data);
+          setCookCount(app, data.cook_count);
+        } else if (errEl) {
+          errEl.textContent = (data && data.error) || "Could not log that date.";
+        }
+      })();
+      return;
+    }
   }
 
   // headnote "more" / "less" expander (long imported descriptions)

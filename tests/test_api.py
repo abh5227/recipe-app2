@@ -137,6 +137,39 @@ def test_provisional_marker_tracks_non_app_source(kitchen):
     assert confirmed["last_cooked_provisional"] is False
 
 
+def test_cooked_with_valid_past_date(kitchen):
+    # a real past date logs a cook ON that date, still a real 'app' cook
+    s = kitchen.client.post("/api/recipes/gai-yang/cooked", json={"date": "2024-05-01"}).get_json()
+    assert s["cook_count"] == 1
+    with kitchen.conn() as c:
+        row = c.execute("SELECT cooked_on, source FROM cook_log WHERE recipe_id='gai-yang'").fetchone()
+    assert row["cooked_on"] == "2024-05-01" and row["source"] == "app"
+
+
+def test_cooked_future_date_rejected(kitchen):
+    # the backend is the real gate (the input's max is bypassable): 400 AND nothing inserted
+    r = kitchen.client.post("/api/recipes/gai-yang/cooked", json={"date": "2999-01-01"})
+    assert r.status_code == 400
+    assert kitchen.count("cook_log", "recipe_id='gai-yang'") == 0
+
+
+def test_cooked_malformed_date_rejected(kitchen):
+    r = kitchen.client.post("/api/recipes/gai-yang/cooked", json={"date": "not-a-date"})
+    assert r.status_code == 400
+    assert kitchen.count("cook_log", "recipe_id='gai-yang'") == 0
+
+
+def test_cooked_no_date_logs_today(kitchen):
+    # unchanged behavior: no date -> the cook_log default date('now') (UTC, matching the insert)
+    import datetime
+    today_utc = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+    s = kitchen.client.post("/api/recipes/gai-yang/cooked", json={}).get_json()
+    assert s["cook_count"] == 1
+    with kitchen.conn() as c:
+        row = c.execute("SELECT cooked_on FROM cook_log WHERE recipe_id='gai-yang'").fetchone()
+    assert row["cooked_on"] == today_utc
+
+
 def test_cooked_and_rated(kitchen):
     # one atomic call logs a cook AND sets the rating
     s = kitchen.client.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 5}).get_json()
