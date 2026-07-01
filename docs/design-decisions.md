@@ -11,7 +11,7 @@ or build against the wrong intent.
 - **The verified-clean 15** (the real data Round 1 is designed against, incl. the
   `convert_to_grams` flag) is in [docs/import-reference-15.md](import-reference-15.md).
 
-Status: **Round 1 in progress** (Stages A–C built; D–E pending). Nothing here is rendered on real
+Status: **Round 1 in progress** (Stages A–D built; **Stage E in progress**). Nothing here is rendered on real
 data beyond Round 1's scope — see the R1/R2 boundary below.
 
 ---
@@ -120,9 +120,11 @@ and, for long imported blurbs, truncated to ~3 lines with a **"more"** expander 
 ingredients fast). **Graceful empty state:** when there's no photo, the slot collapses and the title
 block takes the full width — no placeholder box.
 
-### Control strip — the one "this is an app" affordance
+### Control strip + vitals/history zone — the "this is an app" affordances
 
-**Scale ½× · 1× · 2× · custom** (the old 3× preset dropped, a custom field added) **+ the rating.**
+- **Scale** ½× · 1× · 2× · custom (3× dropped; the custom field is a plain type-and-apply input, no stepper).
+- **Vitals + history zone:** Serves · time and the cook/rating history are consolidated below the masthead into one zone (the masthead stays pure identity). A single hairline marks the masthead↔vitals seam; a quiet facts line (Serves · time) sits over the history tier (stars · cook status · Cooked-it/Undo), all in the tags' compact metadata register.
+- **Cook-gated rating:** a rating requires a cook — a star on an uncooked recipe opens an inline "Mark cooked & rate?" confirm handled by a **combined cook-and-rate endpoint** (one transaction); on a cooked recipe a star rates directly. **Undo to zero cooks also clears the rating** (rating ⟺ cooked, both ways). Provisional/seeded cook dates show a **`~` marker** (shared with the estimated-weight treatment).
 
 ### The handwritten edit treatment (Round 2)
 
@@ -150,9 +152,13 @@ only.**
 
 ### Reserve-not-build (R1 architects for R2 so it isn't a retrofit)
 
-Defined or structured in R1, but **not rendered on real data**: the `--hand` color token (earthy; was `--oxblood`), the
-`--font-hand` token, the reserved right **`--hand-gutter`** (0 in R1), a **step-body wrapper** so
-inline step-photos can attach later, and a **strike-able amount cell**.
+Defined or structured in R1, but **not rendered on real data** — each reserved with its actual mechanism:
+
+- **`--hand`** / **`--font-hand`** — the hand color + pen-hand font tokens, declared and unused (the hand font is not loaded in R1).
+- **`--hand-gutter`** — the reserved right margin, wired into the recipe reading column's `max-width` at **0** in R1.
+- **The amount cell** — the ledger's `.amount-cell` (addressable `.qty` inside) is the R2 **strike target**: R2 strikes the printed value and sets the edited value beside it in the hand color.
+- **The step-body wrapper** — each method step's body is wrapped in **`.step-body`** inside `li.step`, the attach point for future per-step photos and R2 step-notes.
+- **The `--cook-count` wear signal** — the recipe root (`.page.recipe-view`) carries an inline **`--cook-count`** custom property (the recipe's cook count, kept live on cook/undo); unread in R1, so R2 can scale a wear/patina effect without re-plumbing the count.
 
 ### Staged R1 implementation plan (per-stage commits, suite green at each)
 
