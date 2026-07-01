@@ -64,3 +64,25 @@ def make_kitchen(tmp_path):
 
     build_db.build()                       # apply migrations + load seed content
     return Kitchen(db, app.app.test_client())
+
+
+def write_paprika_archive(path, recipes, malformed=()):
+    """Write a `.paprikarecipes` fixture archive for the reader/runner tests.
+
+    `recipes` is a list of raw Paprika-shape dicts, written as gzip-compressed JSON
+    `NNN.paprikarecipe` entries in stable numeric-name order (so slug minting is
+    deterministic). `malformed` is a list of entry NAMES (each must end in
+    `.paprikarecipe` so iter_entries yields it) written as plain non-gzip bytes, which
+    iter_entries must report as an error rather than crash on. Returns `path`."""
+    import gzip
+    import json
+    import zipfile
+
+    path = Path(path)
+    with zipfile.ZipFile(path, "w") as zf:
+        for i, rec in enumerate(recipes):
+            zf.writestr("%03d.paprikarecipe" % i,
+                        gzip.compress(json.dumps(rec).encode("utf-8")))
+        for name in malformed:
+            zf.writestr(name, b"not-gzip-not-json")   # decompress -> raises -> reported as err
+    return path

@@ -18,22 +18,31 @@ BACKUP_DIR = BASE_DIR / "backups"
 KEEP = 30  # keep the most recent N backups; older ones are pruned
 
 
-def main():
-    if not DB.exists():
-        print(f"No database to back up yet ({DB}). Run build_db.py first.")
-        sys.exit(1)
-
-    BACKUP_DIR.mkdir(exist_ok=True)
+def create_backup(db=DB, backup_dir=BACKUP_DIR, keep=KEEP):
+    """Copy `db` to a timestamped file in `backup_dir`, prune to the newest `keep`, and
+    return the destination Path. Raises FileNotFoundError if `db` doesn't exist — the
+    import runner treats that as an ABORT-before-writing signal (never import without a
+    fresh backup). Does the side effect and returns; prints nothing (main() reports)."""
+    db, backup_dir = Path(db), Path(backup_dir)
+    if not db.exists():
+        raise FileNotFoundError(f"No database to back up: {db}")
+    backup_dir.mkdir(exist_ok=True)
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    dest = BACKUP_DIR / f"recipes-{stamp}.db"
-    shutil.copy2(DB, dest)
-    print(f"Backed up to {dest}")
-
-    # prune oldest backups beyond KEEP, so the folder doesn't grow forever
-    backups = sorted(BACKUP_DIR.glob("recipes-*.db"))
-    for old in backups[:-KEEP]:
+    dest = backup_dir / f"recipes-{stamp}.db"
+    shutil.copy2(db, dest)
+    # prune oldest backups beyond `keep`, so the folder doesn't grow forever
+    for old in sorted(backup_dir.glob("recipes-*.db"))[:-keep]:
         old.unlink()
-        print(f"Pruned old backup {old.name}")
+    return dest
+
+
+def main():
+    try:
+        dest = create_backup()
+    except FileNotFoundError as e:
+        print(f"{e}. Run build_db.py first.")
+        sys.exit(1)
+    print(f"Backed up to {dest}")
 
 
 if __name__ == "__main__":
