@@ -123,6 +123,20 @@ def test_cook_log(kitchen):
     assert after_uncook["cook_count"] == 0
 
 
+def test_provisional_marker_tracks_non_app_source(kitchen):
+    # any non-app cook source (e.g. the forthcoming 'rating-inferred') renders provisional...
+    with kitchen.conn() as c:
+        c.execute("INSERT INTO cook_log (recipe_id, cooked_on, source) VALUES (?, ?, ?)",
+                  ("gai-yang", "2025-01-01", "rating-inferred"))
+    inferred = kitchen.client.get("/api/recipes/gai-yang").get_json()["stats"]
+    assert inferred["last_cooked_provisional"] is True
+
+    # ...while a real app-logged cook (via the endpoint) stays confirmed
+    kitchen.client.post("/api/recipes/aloo-gobhi/cooked", json={})
+    confirmed = kitchen.client.get("/api/recipes/aloo-gobhi").get_json()["stats"]
+    assert confirmed["last_cooked_provisional"] is False
+
+
 def test_cooked_and_rated(kitchen):
     # one atomic call logs a cook AND sets the rating
     s = kitchen.client.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 5}).get_json()

@@ -55,9 +55,10 @@ def slugify(name):
 def recipe_stats(c, rid):
     """Derive the cooking stats for a recipe from the log + ratings tables.
     cook_count and last_cooked are computed, never stored, so they can't drift.
-    last_cooked_provisional flags that the most-recent cook is a seeded/import-derived date
-    (source='paprika-import'), not a confirmed app-logged cook — so the UI can mark it (the
-    '~'/.approx treatment) as a date still to be corrected."""
+    last_cooked_provisional flags that the most-recent cook is provisional — ANY non-app cook
+    source (e.g. 'paprika-import', 'rating-inferred'), i.e. a seeded/inferred date rather than
+    a confirmed app-logged cook — so the UI can mark it (the '~'/.approx treatment) as a date
+    still to be corrected."""
     count = c.execute(
         "SELECT COUNT(*) AS n FROM cook_log WHERE recipe_id = ?", (rid,)
     ).fetchone()["n"]
@@ -69,7 +70,7 @@ def recipe_stats(c, rid):
     return {
         "cook_count": count,
         "last_cooked": last["cooked_on"] if last else None,                  # None if never cooked
-        "last_cooked_provisional": bool(last and last["source"] == "paprika-import"),
+        "last_cooked_provisional": bool(last and last["source"] != "app"),
         "rating": rating_row["rating"] if rating_row else None,
     }
 
