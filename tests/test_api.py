@@ -123,6 +123,31 @@ def test_cook_log(kitchen):
     assert after_uncook["cook_count"] == 0
 
 
+def test_cooked_and_rated(kitchen):
+    # one atomic call logs a cook AND sets the rating
+    s = kitchen.client.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 5}).get_json()
+    assert s["cook_count"] == 1 and s["rating"] == 5
+    # invalid rating -> 400
+    assert kitchen.client.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 9}).status_code == 400
+    # unknown recipe -> 404
+    assert kitchen.client.post("/api/recipes/nope/cooked-and-rated", json={"rating": 3}).status_code == 404
+
+
+def test_undo_to_zero_clears_rating(kitchen):
+    # cook + rate, then undo back to 0 -> rating cleared (never uncooked-but-rated)
+    kitchen.client.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 5})
+    s = kitchen.client.post("/api/recipes/gai-yang/uncook", json={}).get_json()
+    assert s["cook_count"] == 0 and s["rating"] is None
+
+
+def test_undo_with_cooks_remaining_keeps_rating(kitchen):
+    # two cooks + a rating; undo one -> still cooked, rating stands
+    kitchen.client.post("/api/recipes/gai-yang/cooked", json={})
+    kitchen.client.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 4})
+    s = kitchen.client.post("/api/recipes/gai-yang/uncook", json={}).get_json()
+    assert s["cook_count"] == 1 and s["rating"] == 4
+
+
 def test_uncook_nonexistent_is_404(kitchen):
     assert kitchen.client.post("/api/recipes/does-not-exist/uncook", json={}).status_code == 404
 

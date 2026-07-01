@@ -93,7 +93,7 @@ body {
     radial-gradient(55% 45% at 10% 96%, rgba(78,75,36,0.06), transparent 60%),
     linear-gradient(180deg, #f3ecdc, #ece4d0);
   border: 1px solid var(--paper-edge);
-  border-radius: 3px;
+  border-radius: 8px;   /* softened page edge (adjustable — reviewing 6 / 8 / 10) */
   box-shadow: 0 1px 1px rgba(40,35,30,.05), 0 16px 44px -14px rgba(40,35,30,.16);
 }
 
@@ -304,10 +304,15 @@ a:hover { color: var(--berry-lift); }
   transition: color .12s, transform .12s;
 }
 .star.on { color: var(--amber); }
+/* hover-preview: while hovering the rating, stars read outline by default and 1..N fill gold */
+.rating.previewing .star { color: var(--line); }
+.rating.previewing .star.preview { color: var(--amber); }
 .star:hover { transform: scale(1.15); color: var(--amber); }
 .star:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; border-radius: 3px; }
 .cook-summary { color: var(--ink-soft); font-size: 15px; }
 .cook-summary .approx { opacity: 0.8; font-style: italic; }   /* provisional (import-seeded) cook date — unconfirmed, reuses the ~/.approx family */
+.rate-hint { color: var(--ink-soft); font-size: 14px; font-style: italic; }   /* uncooked + unrated: a quiet nudge */
+.cook-rate-confirm { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 14px; }   /* inline cook-gate confirm */
 .cook-actions { display: inline-flex; gap: 8px; margin-left: auto; }
 .btn {
   font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap;
@@ -525,21 +530,20 @@ a:hover { color: var(--berry-lift); }
 
 /* Quantity scaler + metric/imperial toggle beside the Ingredients heading */
 .ing-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
-.scale-control, .units-control { display: flex; gap: 4px; align-items: center; }
-.scale-control button, .units-control button {
-  font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
-  padding: 3px 9px; border-radius: 999px;
+.scale-control { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }  /* wrap so a long custom value / the servings span never overflow the row */
+.scale-control button {
+  font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+  padding: 4px 11px; border-radius: 999px;
   border: 1px solid var(--line); background: transparent; color: var(--ink-soft);
   transition: background .15s, color .15s, border-color .15s;
 }
-.scale-control button:hover, .units-control button:hover { color: var(--ink); border-color: var(--ink-soft); }
-.scale-control button.on, .units-control button.on { background: var(--btn-fill); color: var(--card); border-color: var(--btn-fill); }
-.scale-control button:focus-visible, .units-control button:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
-.scale-servings { font-size: 12px; color: var(--ink-soft); margin-left: 6px; white-space: nowrap; }
+.scale-control button:hover { color: var(--ink); border-color: var(--ink-soft); }
+.scale-control button.on { background: var(--btn-fill); color: var(--card); border-color: var(--btn-fill); }  /* active = the brown anchor, matching "Cooked it" */
+.scale-control button:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
 .grams-note { margin: 10px 0 0; font-size: 13px; font-style: italic; color: var(--ink-soft); }
 /* Phase 1d: custom multiplier input + scaled step quantities */
 .scale-custom {
-  font: inherit; font-size: 12px; width: 70px; padding: 3px 9px; border-radius: 999px;
+  font: inherit; font-size: 13px; width: 4.5rem; padding: 4px 10px; border-radius: 999px;
   border: 1px solid var(--line); background: transparent; color: var(--ink-soft);
 }
 .scale-custom:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }

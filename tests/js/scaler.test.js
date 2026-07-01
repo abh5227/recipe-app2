@@ -80,7 +80,7 @@ test("counts scale to whole numbers, never fractions", () => {
 test("count-nouns round; bare counts scale; min-1 clamp", () => {
   assert.equal(s.displayQty("4 cloves", null, 1.5, "imperial"), "6 cloves");
   assert.equal(s.displayQty("8", null, 2, "imperial"), "16");
-  assert.equal(s.displayQty("2 medium", null, 0.1, "imperial"), "1 medium"); // min 1, not 0
+  assert.equal(s.displayQty("2 medium", null, 0.1, "imperial"), "~1 medium"); // 0.2 -> clamped up to ~1
 });
 
 test("counts round in metric mode too, and pass through at x1", () => {
@@ -187,6 +187,13 @@ test("amountText: scaled volume in canonical units, unicode; counts + dual", () 
   assert.equal(s.amountText("1 can", 2), "2 can");             // count
   assert.equal(s.amountText("2 lb / 1 kg", 2), "4 lb / 2 kg"); // dual passes through scaled
   assert.equal(s.amountText("", 2), "");
+});
+
+test("amountText: a count clamped up from <1 is marked ~ (approximate family)", () => {
+  assert.equal(s.amountText("1 egg", 0.4), "~1 egg");        // 0.4 -> shown 1, true amount is less
+  assert.equal(s.amountText("2 medium", 0.1), "~1 medium");  // 0.2 -> 1, ~
+  assert.equal(s.amountText("4 cloves", 0.5), "2 cloves");   // 2.0 -> not clamped, no ~
+  assert.equal(s.amountText("1 egg", 1), "1 egg");           // factor 1 -> unchanged, no ~
 });
 
 test("weightText: gram estimate for volume + density + > 2 tbsp, else ''", () => {

@@ -147,14 +147,17 @@
   // Scale a countable amount, rounding to a whole number (min 1). Left as authored at factor 1.
   function scaleCount(qty, factor) {
     if (!(factor > 0) || factor === 1) return qty;
-    let found = false;
+    let found = false, clampedUp = false;
     const out = normalizeFractions(String(qty)).replace(AMOUNT_TOKEN, (token) => {
       const n = tokenToNumber(token);
       if (!isFinite(n)) return token;
       found = true;
-      return String(Math.max(1, Math.round(n * factor)));
+      const scaled = n * factor;
+      if (scaled > 0 && scaled < 1) clampedUp = true;   // true amount < 1, shown as a clamped-up 1
+      return String(Math.max(1, Math.round(scaled)));
     });
-    return found ? out : qty;
+    if (!found) return qty;
+    return clampedUp ? "~" + out : out;   // "~1 egg" — honest that the true amount is less than 1
   }
 
   // Reduce an amount to a single {value, unit}, combining a same-unit "+"-compound

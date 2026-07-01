@@ -105,11 +105,27 @@ function cookSummary(stats) {
   return `Cooked ${times} · ${lastClause}`;
 }
 
-// The inner contents of the stats bar on a recipe page (re-rendered after each change).
+// The inner contents of the stats bar (re-rendered after each change). Three rating states:
+//   • cooked            -> stars to the committed rating + the cook-summary; a star click rates directly.
+//   • uncooked + unrated -> outline stars + a quiet "Log a cook to rate" hint.
+//   • pending-confirm    -> a star was clicked while uncooked: stars held at the chosen rating + an
+//     inline "Mark cooked & rate?" confirm (the cook-gate). Yes -> cooked-and-rated; Cancel -> back.
 function statsInner(stats) {
+  const pending = view ? view.pendingRating : null;
+  const starFill = pending || stats.rating;            // hold the chosen rating during the confirm
+  let middle;
+  if (pending) {
+    middle = `<span class="cook-rate-confirm">Mark cooked &amp; rate?
+      <button class="btn ghost sm" data-cook-rate-confirm>Yes</button>
+      <button class="btn ghost sm" data-cook-rate-cancel>Cancel</button></span>`;
+  } else if (!stats.cook_count && !stats.rating) {
+    middle = `<span class="rate-hint">Log a cook to rate</span>`;
+  } else {
+    middle = `<span class="cook-summary">${cookSummary(stats)}</span>`;
+  }
   return `
-    <div class="rating" role="group" aria-label="Your rating">${starsHTML(stats.rating)}</div>
-    <span class="cook-summary">${cookSummary(stats)}</span>
+    <div class="rating" role="group" aria-label="Your rating">${starsHTML(starFill)}</div>
+    ${middle}
     <span class="cook-actions">
       <button class="btn" data-cook>Cooked it</button>
       ${stats.cook_count ? `<button class="btn ghost" data-uncook>Undo</button>` : ""}
@@ -118,7 +134,9 @@ function statsInner(stats) {
 
 async function updateStats(el, path, body) {
   try {
-    el.innerHTML = statsInner(await postJSON(path, body));
+    const s = await postJSON(path, body);
+    if (view && view.data) view.data.stats = s;   // keep cached stats fresh so the cook-gate reads the new cook_count
+    el.innerHTML = statsInner(s);
   } catch (_) {
     /* leave the bar as-is if the write fails */
   }
@@ -221,10 +239,9 @@ async function renderHome() {
 
 /* ---------- recipe view ---------- */
 
-/* Quantity scaling / unit conversion (Phase 1a-1d + smart-Metric).
-   The pure logic + constants now live in static/scaler.js, loaded as a global before
-   this file (and unit-tested under Node, tests/js/). app.js keeps the DOM/rendering and
-   passes view.scale / view.units into displayQty() and scaleQty(). */
+/* Quantity scaling (Phase 1a-1d). The pure logic + constants live in static/scaler.js, loaded as a
+   global before this file (and unit-tested under Node, tests/js/). app.js keeps the DOM/rendering
+   and passes view.scale into the scaler's amount/weight formatters. */
 
 // One ledger figure cell — the amount or the weight, mono + tabular. A leading "~" (an estimated
 // weight, or a humane-rounded amount) earns the shared "approx" treatment. inlineStyle carries a
@@ -248,15 +265,19 @@ function ledgerCells(qty, gramsPerMl, inlineStyle) {
 
 // Does any non-heading ingredient produce a weight at the current scale? Drives the weight column's
 // presence — a recipe with no convertible volumes shows no empty gram gutter.
-function anyWeights() {
+// True if any ledger value renders with a "~" at the current scale — an estimated weight, a
+// humane-rounded amount, or a count rounded up from <1. Drives the approximate-value footnote.
+function anyApprox() {
   return view.data.ingredients.some((row) =>
-    !row.is_heading && weightText(row.qty, row.grams_per_ml, view.scale) !== "");
+    !row.is_heading &&
+    (amountText(row.qty, view.scale).includes("~") ||
+     weightText(row.qty, row.grams_per_ml, view.scale).includes("~")));
 }
 
-// A quiet caption for the estimated-weight "~", shown only when the ledger has a weight column.
-function weightNote() {
-  return anyWeights()
-    ? `<p class="grams-note">~ weights are estimated from volume; weigh for precision.</p>`
+// A quiet caption for the unified "~" family (estimates, humane rounding, rounded-up counts).
+function approxNote() {
+  return anyApprox()
+    ? `<p class="grams-note">~ an estimate, rounded, or rounded up from a smaller amount — weigh or measure for precision.</p>`
     : "";
 }
 
@@ -269,19 +290,15 @@ function servingsBase() {
 
 // The scale control shown beside the Ingredients heading.
 function scaleControl() {
-  const options = [[0.5, "\u00bd\u00d7"], [1, "1\u00d7"], [2, "2\u00d7"], [3, "3\u00d7"]];
+  const options = [[0.5, "\u00bd\u00d7"], [1, "1\u00d7"], [2, "2\u00d7"]];   // 3\u00d7 dropped; custom covers the rest
   const buttons = options
     .map(([v, label]) => `<button data-scale="${v}" class="${view.scale === v ? "on" : ""}">${label}</button>`)
     .join("");
   // Custom multiplier \u2014 any positive number. Shows the current factor when it isn't a preset.
   const isPreset = options.some(([v]) => v === view.scale);
   const customVal = isPreset ? "" : String(view.scale);
-  const custom = `<input class="scale-custom" type="number" min="0" step="0.25" inputmode="decimal" placeholder="custom\u00d7" aria-label="Custom multiplier" value="${customVal}">`;
-  const base = servingsBase();
-  const servings = (base && view.scale !== 1)
-    ? `<span class="scale-servings">${formatAmount(base * view.scale)} servings</span>`
-    : "";
-  return `<div class="scale-control" role="group" aria-label="Scale quantities">${buttons}${custom}${servings}</div>`;
+  const custom = `<input class="scale-custom" type="text" inputmode="decimal" placeholder="custom\u00d7" aria-label="Custom multiplier" value="${customVal}">`;
+  return `<div class="scale-control" role="group" aria-label="Scale quantities">${buttons}${custom}</div>`;
 }
 
 // Look up a person record / their saved changes by id.
@@ -481,7 +498,7 @@ function ingredientsSectionInner(view) {
     return `
       <div class="col-head"><h2 class="col-title">Ingredients</h2><div class="ing-controls">${scaleControl()}</div></div>
       <ul class="ingredient-list">${rows}</ul>
-      ${weightNote()}
+      ${approxNote()}
       <p class="hint">Tap any highlighted ingredient to see when it's in season and where it grows.</p>`;
   }
 
@@ -509,7 +526,7 @@ function ingredientsSectionInner(view) {
     ${viewSelector(view)}
     <ul class="ingredient-list">${rows}</ul>
     ${isPersonView ? addControl(view) : ""}
-    ${weightNote()}
+    ${approxNote()}
     <p class="hint">${hint}</p>`;
 }
 
@@ -522,6 +539,14 @@ function rerenderIngredients() {
 function rerenderSteps() {
   const el = document.getElementById("steps-list");
   if (el) el.innerHTML = view.data.steps.map(renderStepRow).join("");
+}
+
+// The masthead serving count reflects the current scale, but the masthead isn't rebuilt on rescale —
+// so update just that number when the factor changes.
+function rerenderServings() {
+  const el = document.querySelector(".serves-count");
+  const base = servingsBase();
+  if (el && base) el.textContent = formatAmount(base * view.scale);
 }
 
 // Render a step. Non-heading steps arrive as tagged spans (Phase 1d): "scale" spans are
@@ -597,13 +622,13 @@ function tagsHTML(r) {
   return `<p class="cat-tags">${html}</p>`;
 }
 
-// Compact masthead meta: Serves · time · cook-count, with the calm "Not cooked yet" register.
-function metaLine(r, stats) {
+// Compact masthead meta: Serves · time — recipe facts only (cook status lives in the stats bar).
+function metaLine(r) {
   const bits = [];
-  if (r.servings) bits.push(`Serves ${esc(r.servings)}`);
+  const base = servingsBase();   // numeric yield only, shown scaled to the current factor
+  if (base) bits.push(`Serves <span class="serves-count">${formatAmount(base * view.scale)}</span>`);
   const time = r.total_time || r.cook_time || r.prep_time;
   if (time) bits.push(esc(time));
-  bits.push(stats.cook_count ? `Cooked ${stats.cook_count}×` : "Not cooked yet");
   return `<p class="meta-line">${bits.join(' <span class="sep">·</span> ')}</p>`;
 }
 
@@ -641,7 +666,7 @@ function deleteConfirmHTML(r) {
 
 async function renderRecipe(rid) {
   const data = await api("/api/recipes/" + encodeURIComponent(rid));
-  view = { slug: rid, data, mode: "original", editingPos: null, addingOpen: false, scale: 1 };
+  view = { slug: rid, data, mode: "original", editingPos: null, addingOpen: false, scale: 1, pendingRating: null };
   app.className = "page recipe-view";
   const r = data.recipe;
 
@@ -663,7 +688,7 @@ async function renderRecipe(rid) {
         ${bylineHTML(r)}
         <h1 class="recipe-title">${esc(r.name)}</h1>
         ${r.descr ? `<div class="headnote"><p class="dek clamped">${esc(r.descr)}</p><button class="dek-more" data-dek-toggle hidden>more</button></div>` : ""}
-        ${metaLine(r, data.stats)}
+        ${metaLine(r)}
         ${tagsHTML(r)}
       </div>
       ${photoSlot}
@@ -1050,10 +1075,32 @@ document.addEventListener("click", (e) => {
   const stats = e.target.closest(".stats");
   if (stats) {
     const rid = encodeURIComponent(stats.dataset.rid);
+    const cookCount = (view && view.data.stats) ? view.data.stats.cook_count : 0;
     const rate = e.target.closest("[data-rate]");
-    if (rate) { updateStats(stats, `/api/recipes/${rid}/rating`, { rating: Number(rate.dataset.rate) }); return; }
-    if (e.target.closest("[data-cook]"))   { updateStats(stats, `/api/recipes/${rid}/cooked`, {}); return; }
-    if (e.target.closest("[data-uncook]")) { updateStats(stats, `/api/recipes/${rid}/uncook`, {}); return; }
+    if (rate) {
+      const n = Number(rate.dataset.rate);
+      if (cookCount >= 1) {                       // already cooked -> rate directly, no confirm
+        if (view) view.pendingRating = null;
+        updateStats(stats, `/api/recipes/${rid}/rating`, { rating: n });
+      } else {                                    // uncooked -> gate: hold the rating, ask to confirm a cook
+        if (view) view.pendingRating = n;
+        stats.innerHTML = statsInner(view ? view.data.stats : { cook_count: 0 });
+      }
+      return;
+    }
+    if (e.target.closest("[data-cook-rate-confirm]")) {
+      const n = view ? view.pendingRating : null;
+      if (view) view.pendingRating = null;
+      updateStats(stats, `/api/recipes/${rid}/cooked-and-rated`, { rating: n });
+      return;
+    }
+    if (e.target.closest("[data-cook-rate-cancel]")) {
+      if (view) view.pendingRating = null;
+      stats.innerHTML = statsInner(view ? view.data.stats : { cook_count: 0 });
+      return;
+    }
+    if (e.target.closest("[data-cook]"))   { if (view) view.pendingRating = null; updateStats(stats, `/api/recipes/${rid}/cooked`, {}); return; }
+    if (e.target.closest("[data-uncook]")) { if (view) view.pendingRating = null; updateStats(stats, `/api/recipes/${rid}/uncook`, {}); return; }
   }
 
   // headnote "more" / "less" expander (long imported descriptions)
@@ -1086,6 +1133,7 @@ document.addEventListener("click", (e) => {
       view.scale = parseFloat(scale.dataset.scale);
       rerenderIngredients();
       rerenderSteps();
+      rerenderServings();
       return;
     }
 
@@ -1167,6 +1215,7 @@ document.addEventListener("change", (e) => {
     view.scale = n > 0 ? n : 1;
     rerenderIngredients();
     rerenderSteps();
+    rerenderServings();
     return;
   }
   const link = e.target.closest(".af-link");
@@ -1176,6 +1225,23 @@ document.addEventListener("change", (e) => {
     const opt = link.options[link.selectedIndex];
     text.value = opt ? opt.textContent : "";
   }
+});
+
+// Hover-preview the rating: fill stars 1..N while hovering, restore the committed/pending fill on
+// leave. Pure visual — the click handler does the rating/gating; touch devices have no hover.
+document.addEventListener("mouseover", (e) => {
+  const star = e.target.closest(".rating [data-rate]");
+  if (!star) return;
+  const rating = star.closest(".rating");
+  const n = Number(star.dataset.rate);
+  rating.classList.add("previewing");
+  rating.querySelectorAll(".star").forEach((s, i) => s.classList.toggle("preview", i < n));
+});
+document.addEventListener("mouseout", (e) => {
+  const rating = e.target.closest(".rating");
+  if (!rating || rating.contains(e.relatedTarget)) return;   // ignore star->star moves; clear on a real leave
+  rating.classList.remove("previewing");
+  rating.querySelectorAll(".star").forEach((s) => s.classList.remove("preview"));
 });
 
 window.addEventListener("hashchange", route);

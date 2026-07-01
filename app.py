@@ -595,7 +595,10 @@ def log_cook(rid):
 
 @app.route("/api/recipes/<rid>/uncook", methods=["POST"])
 def undo_cook(rid):
-    """Remove the most recent cook entry — for fixing an accidental tap."""
+    """Remove the most recent cook entry — for fixing an accidental tap. If this returns the recipe
+    to uncooked (cook_count -> 0), also clear its rating in the same transaction, so we never leave
+    an uncooked-but-rated recipe (the inconsistency the cook-gate prevents). If other cooks remain,
+    the rating stands — you've still cooked it."""
     with db() as c:
         if c.execute("SELECT 1 FROM recipes WHERE id = ?", (rid,)).fetchone() is None:
             return jsonify({"error": "recipe not found"}), 404
@@ -604,6 +607,11 @@ def undo_cook(rid):
         ).fetchone()
         if last:
             c.execute("DELETE FROM cook_log WHERE id = ?", (last["id"],))
+            remaining = c.execute(
+                "SELECT COUNT(*) AS n FROM cook_log WHERE recipe_id = ?", (rid,)
+            ).fetchone()["n"]
+            if remaining == 0:
+                c.execute("DELETE FROM ratings WHERE recipe_id = ?", (rid,))   # back to uncooked -> drop the rating
         stats = recipe_stats(c, rid)
     return jsonify(stats)
 
@@ -618,6 +626,28 @@ def set_rating(rid):
     with db() as c:
         if c.execute("SELECT 1 FROM recipes WHERE id = ?", (rid,)).fetchone() is None:
             return jsonify({"error": "recipe not found"}), 404
+        c.execute(
+            """INSERT INTO ratings (recipe_id, rating, rated_on)
+               VALUES (?, ?, datetime('now'))
+               ON CONFLICT(recipe_id) DO UPDATE SET rating = excluded.rating, rated_on = excluded.rated_on""",
+            (rid, rating),
+        )
+        stats = recipe_stats(c, rid)
+    return jsonify(stats)
+
+
+@app.route("/api/recipes/<rid>/cooked-and-rated", methods=["POST"])
+def log_cook_and_rate(rid):
+    """Atomically log a cook (today; source defaults to 'app' — a real confirmed cook) AND set the
+    rating, in one transaction. The cook-gated 'Mark cooked & rate?' path; returns recipe_stats."""
+    payload = request.get_json(silent=True) or {}
+    rating = payload.get("rating")
+    if rating not in (1, 2, 3, 4, 5):
+        return jsonify({"error": "rating must be an integer from 1 to 5"}), 400
+    with db() as c:
+        if c.execute("SELECT 1 FROM recipes WHERE id = ?", (rid,)).fetchone() is None:
+            return jsonify({"error": "recipe not found"}), 404
+        c.execute("INSERT INTO cook_log (recipe_id) VALUES (?)", (rid,))
         c.execute(
             """INSERT INTO ratings (recipe_id, rating, rated_on)
                VALUES (?, ?, datetime('now'))
