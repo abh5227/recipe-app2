@@ -99,10 +99,10 @@ function cookSummary(stats) {
   const times = stats.cook_count === 1 ? "once" : `${stats.cook_count} times`;
   const last = formatDate(stats.last_cooked);
   if (!last) return `Cooked ${times}`;
-  const lastClause = stats.last_cooked_provisional
-    ? `<span class="approx">~ last on ${esc(last)}</span>`
-    : `last on ${esc(last)}`;
-  return `Cooked ${times} · ${lastClause}`;
+  const dateClause = stats.last_cooked_provisional
+    ? `<span class="approx">~ ${esc(last)}</span>`     // provisional (import-seeded) date, kept soft
+    : esc(last);
+  return `Cooked ${times} <span class="sep">·</span> ${dateClause}`;
 }
 
 // The inner contents of the stats bar (re-rendered after each change). Three rating states:
@@ -688,12 +688,14 @@ async function renderRecipe(rid) {
         ${bylineHTML(r)}
         <h1 class="recipe-title">${esc(r.name)}</h1>
         ${r.descr ? `<div class="headnote"><p class="dek clamped">${esc(r.descr)}</p><button class="dek-more" data-dek-toggle hidden>more</button></div>` : ""}
-        ${metaLine(r)}
         ${tagsHTML(r)}
       </div>
       ${photoSlot}
     </header>
-    <div class="stats" data-rid="${esc(r.id)}">${statsInner(data.stats)}</div>
+    <div class="vitals">
+      ${metaLine(r)}
+      <div class="stats" data-rid="${esc(r.id)}">${statsInner(data.stats)}</div>
+    </div>
     ${owner}
     <div class="recipe-cols">
       <section id="ing-section">${ingredientsSectionInner(view)}</section>

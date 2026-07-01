@@ -217,9 +217,10 @@ a:hover { color: var(--berry-lift); }
   text-decoration-thickness: 1px; text-underline-offset: 2px; }
 .byline a:hover { color: var(--green-lift); }
 
-/* compact meta: Serves · time · cook-count */
-.meta-line { font-family: var(--font-mono); font-size: 13px; color: var(--ink-soft); margin: 14px 0 0; }
-.meta-line .sep { color: var(--rule); margin: 0 2px; }
+/* facts tier of the vitals block — tag-rhyming quiet data (echoes .cat-tag's register): small,
+   tracked, tabular figures, muted. Borrows the tags' sensibility, not their chip shape. */
+.meta-line { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; letter-spacing: 0.06em; color: var(--ink-soft); margin: 0 0 10px; }
+.sep { color: var(--rule); margin: 0 3px; }   /* faint field divider — binds the fragments into one line */
 
 /* category -> discreet mono "filing" labels (squared, not soft pills — reads as reference/index) */
 .cat-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; }
@@ -290,11 +291,14 @@ a:hover { color: var(--berry-lift); }
 }
 .meta .value { font-family: var(--display); font-size: 19px; }
 
-/* ---------- Rating + cooking stats ---------- */
+/* ---------- Vitals + history zone (below the masthead) ---------- */
+/* One fine hairline at the masthead↔vitals seam (A) — the ONLY rule in the zone. Facts recede,
+   history leads (B) via spacing + type, not a second rule; the "Ingredients" heading below handles
+   the vitals↔ledger seam. */
+.vitals { border-top: 1px solid var(--rule-soft); padding-top: 14px; margin: 16px 0 0; }
 .stats {
   display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px;
-  margin: 22px 0 2px; padding: 14px 0;
-  border-bottom: 1px solid var(--line-soft);
+  margin: 0; padding: 0;
 }
 .rating { display: inline-flex; gap: 2px; }
 .star {
@@ -309,7 +313,7 @@ a:hover { color: var(--berry-lift); }
 .rating.previewing .star.preview { color: var(--amber); }
 .star:hover { transform: scale(1.15); color: var(--amber); }
 .star:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; border-radius: 3px; }
-.cook-summary { color: var(--ink-soft); font-size: 15px; }
+.cook-summary { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; letter-spacing: 0.06em; color: var(--ink-soft); }   /* history tier: same tag register, a touch larger than facts; stars + button lead */
 .cook-summary .approx { opacity: 0.8; font-style: italic; }   /* provisional (import-seeded) cook date — unconfirmed, reuses the ~/.approx family */
 .rate-hint { color: var(--ink-soft); font-size: 14px; font-style: italic; }   /* uncooked + unrated: a quiet nudge */
 .cook-rate-confirm { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 14px; }   /* inline cook-gate confirm */
