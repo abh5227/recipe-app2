@@ -613,15 +613,62 @@ def undo_cook(rid):
         if c.execute("SELECT 1 FROM recipes WHERE id = ?", (rid,)).fetchone() is None:
             return jsonify({"error": "recipe not found"}), 404
         last = c.execute(
-            "SELECT id FROM cook_log WHERE recipe_id = ? ORDER BY id DESC LIMIT 1", (rid,)
+            "SELECT id, cooked_on, source FROM cook_log WHERE recipe_id = ? ORDER BY id DESC LIMIT 1", (rid,)
         ).fetchone()
+        undone = None   # what this undo removed, so a one-shot redo can reverse exactly it
         if last:
             c.execute("DELETE FROM cook_log WHERE id = ?", (last["id"],))
             remaining = c.execute(
                 "SELECT COUNT(*) AS n FROM cook_log WHERE recipe_id = ?", (rid,)
             ).fetchone()["n"]
+            cleared_rating = None
             if remaining == 0:
+                rr = c.execute("SELECT rating FROM ratings WHERE recipe_id = ?", (rid,)).fetchone()
+                cleared_rating = rr["rating"] if rr else None
                 c.execute("DELETE FROM ratings WHERE recipe_id = ?", (rid,))   # back to uncooked -> drop the rating
+            undone = {"cooked_on": last["cooked_on"], "source": last["source"], "cleared_rating": cleared_rating}
+        stats = recipe_stats(c, rid)
+    return jsonify({**stats, "undone": undone})
+
+
+COOK_SOURCES = ("app", "paprika-import", "rating-inferred")
+
+
+@app.route("/api/recipes/<rid>/redo-cook", methods=["POST"])
+def redo_cook(rid):
+    """Restore a cook that /uncook just removed — the SAME cooked_on and source (not a new
+    today's cook), and optionally re-set a rating the undo cleared. Makes the redo arrow a
+    faithful one-shot reversal of that specific undo. /cooked and /uncook are unchanged.
+    All client-supplied inputs are validated (real non-future date; known source; rating in
+    range) and nothing is written on bad input."""
+    payload = request.get_json(silent=True) or {}
+    cooked_on = payload.get("cooked_on")
+    source = payload.get("source")
+    rating = payload.get("rating")   # optional: only when the undo cleared a rating
+    try:
+        restored = datetime.date.fromisoformat(cooked_on) if cooked_on else None
+    except (ValueError, TypeError):
+        restored = None
+    if restored is None:
+        return jsonify({"error": "cooked_on must be a real date in YYYY-MM-DD form"}), 400
+    if restored > datetime.date.today():
+        return jsonify({"error": "cook date cannot be in the future"}), 400
+    if source not in COOK_SOURCES:
+        return jsonify({"error": "unknown cook source"}), 400
+    if rating is not None and rating not in (1, 2, 3, 4, 5):
+        return jsonify({"error": "rating must be an integer from 1 to 5"}), 400
+    with db() as c:
+        if c.execute("SELECT 1 FROM recipes WHERE id = ?", (rid,)).fetchone() is None:
+            return jsonify({"error": "recipe not found"}), 404
+        c.execute("INSERT INTO cook_log (recipe_id, cooked_on, source) VALUES (?, ?, ?)",
+                  (rid, cooked_on, source))
+        if rating is not None:
+            c.execute(
+                """INSERT INTO ratings (recipe_id, rating, rated_on)
+                   VALUES (?, ?, datetime('now'))
+                   ON CONFLICT(recipe_id) DO UPDATE SET rating = excluded.rating, rated_on = excluded.rated_on""",
+                (rid, rating),
+            )
         stats = recipe_stats(c, rid)
     return jsonify(stats)
 

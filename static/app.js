@@ -98,11 +98,12 @@ function cookSummary(stats) {
   if (!stats.cook_count) return "Not cooked yet";
   const times = stats.cook_count === 1 ? "once" : `${stats.cook_count} times`;
   const last = formatDate(stats.last_cooked);
-  if (!last) return `Cooked ${times}`;
+  const line1 = `<span class="cook-times">Cooked ${times}</span>`;
+  if (!last) return line1;                             // cooked but no date -> just the count line
   const dateClause = stats.last_cooked_provisional
     ? `<span class="approx">~ ${esc(last)}</span>`     // provisional (import-seeded) date, kept soft
     : esc(last);
-  return `Cooked ${times} <span class="sep">·</span> ${dateClause}`;
+  return `${line1}<span class="cook-last">Last cooked ${dateClause}</span>`;   // two stacked lines, no separator
 }
 
 // The inner contents of the stats bar (re-rendered after each change). Three rating states:
@@ -113,23 +114,38 @@ function cookSummary(stats) {
 function statsInner(stats) {
   const pending = view ? view.pendingRating : null;
   const starFill = pending || stats.rating;            // hold the chosen rating during the confirm
-  let middle;
+  // The middle slot (between stars and buttons) is one of: the cook-gate confirm, the two-line
+  // cook-summary (once cooked), or the quiet "log a cook to rate" nudge.
+  let middle = "";
   if (pending) {
     middle = `<span class="cook-rate-confirm">Mark cooked &amp; rate?
       <button class="btn ghost sm" data-cook-rate-confirm>Yes</button>
       <button class="btn ghost sm" data-cook-rate-cancel>Cancel</button></span>`;
-  } else if (!stats.cook_count && !stats.rating) {
+  } else if (stats.cook_count) {
+    middle = `<p class="cook-summary">${cookSummary(stats)}</p>`;
+  } else if (!stats.rating) {
     middle = `<span class="rate-hint">Log a cook to rate</span>`;
-  } else {
-    middle = `<span class="cook-summary">${cookSummary(stats)}</span>`;
   }
+  // Redo is a one-shot: the Undo / Redo pair shows ONLY in the window right after an undo
+  // (view.undoneCook set); any other action clears it and we fall back to the plain "Undo".
+  const undone = view ? view.undoneCook : null;
+  let undoControls = "";
+  if (undone) {
+    undoControls = `<span class="cook-redo">
+      <button class="btn ghost sm" data-uncook${stats.cook_count ? "" : " disabled"}>Undo</button>
+      <button class="btn ghost sm" data-redo>Redo</button>
+    </span>`;
+  } else if (stats.cook_count) {
+    undoControls = `<button class="btn ghost sm" data-uncook>Undo</button>`;
+  }
+  // The soft inset cook block: stars + middle + cook buttons, stacked.
   return `
     <div class="rating" role="group" aria-label="Your rating">${starsHTML(starFill)}</div>
     ${middle}
     <span class="cook-actions">
       <button class="btn" data-cook>Cooked it</button>
       <button class="btn alt" data-backdate-open title="Log a cook on a past date">Log a past cook</button>
-      ${stats.cook_count ? `<button class="btn ghost" data-uncook>Undo</button>` : ""}
+      ${undoControls}
     </span>`;
 }
 
@@ -149,6 +165,7 @@ function setCookCount(el, count) {
 }
 
 async function updateStats(el, path, body) {
+  if (view) view.undoneCook = null;   // any stats-mutating action (cook / rate / confirm) ends the one-shot redo window
   try {
     const s = await postJSON(path, body);
     if (view && view.data) view.data.stats = s;   // keep cached stats fresh so the cook-gate reads the new cook_count
@@ -313,9 +330,12 @@ function scaleControl() {
   const buttons = options
     .map(([v, label]) => `<button data-scale="${v}" class="${view.scale === v ? "on" : ""}">${label}</button>`)
     .join("");
-  // Custom multiplier \u2014 any positive number. Shows the current factor when it isn't a preset.
+  // Custom multiplier \u2014 any positive number. When an active custom factor is set, the field shows
+  // its COMMITTED display form "N\u00d7" (right-aligned, reads like the preset pills); on focus it strips
+  // to a bare number for editing (see the focusin handler). type=text is deliberate: the control is
+  // rebuilt via innerHTML on scale change, and type=number got destroyed mid-interaction.
   const isPreset = options.some(([v]) => v === view.scale);
-  const customVal = isPreset ? "" : String(view.scale);
+  const customVal = isPreset ? "" : `${view.scale}\u00d7`;
   const custom = `<input class="scale-custom" type="text" inputmode="decimal" placeholder="custom\u00d7" aria-label="Custom multiplier" value="${customVal}">`;
   return `<div class="scale-control" role="group" aria-label="Scale quantities">${buttons}${custom}</div>`;
 }
@@ -515,7 +535,7 @@ function ingredientsSectionInner(view) {
   if (!view.data.is_seed) {
     const rows = view.data.ingredients.map(plainRow).join("");
     return `
-      <div class="col-head"><h2 class="col-title">Ingredients</h2><div class="ing-controls">${scaleControl()}</div></div>
+      <div class="col-head"><h2 class="col-title">Ingredients</h2></div>
       <ul class="ingredient-list">${rows}</ul>
       ${approxNote()}
       <p class="hint">Tap any highlighted ingredient to see when it's in season and where it grows.</p>`;
@@ -541,7 +561,7 @@ function ingredientsSectionInner(view) {
   const isPersonView = view.mode !== "original" && view.mode !== "compare";
 
   return `
-    <div class="col-head"><h2 class="col-title">Ingredients</h2><div class="ing-controls">${scaleControl()}</div></div>
+    <div class="col-head"><h2 class="col-title">Ingredients</h2></div>
     ${viewSelector(view)}
     <ul class="ingredient-list">${rows}</ul>
     ${isPersonView ? addControl(view) : ""}
@@ -552,6 +572,14 @@ function ingredientsSectionInner(view) {
 function rerenderIngredients() {
   const el = document.getElementById("ing-section");
   if (el) el.innerHTML = ingredientsSectionInner(view);
+}
+
+// The scaler now lives in the vitals (its own #scaler-host), decoupled from the ingredients
+// rebuild — so refresh JUST that host on a scale change to move the active pill / reflect the
+// custom value. Targets only #scaler-host; never the .stats/cook-block, so redo/cook state is untouched.
+function rerenderScaler() {
+  const el = document.getElementById("scaler-host");
+  if (el) el.innerHTML = scaleControl();
 }
 
 // Re-render the method steps so tagged "scale" quantities reflect the current factor.
@@ -643,14 +671,21 @@ function tagsHTML(r) {
   return `<p class="cat-tags">${html}</p>`;
 }
 
-// Compact masthead meta: Serves · time — recipe facts only (cook status lives in the stats bar).
+// Minimal inline icons for the masthead meta — a man+woman figure pair (servings) and a clock
+// (time), both --ink-soft via CSS. Hand-drawn paths, no icon library.
+const META_FIG = `<svg class="meta-ico fig" viewBox="0 0 30 24" aria-hidden="true"><circle cx="9" cy="6" r="3"/><path d="M4.5 20 a4.5 4.5 0 0 1 9 0"/><circle cx="21" cy="6" r="3"/><path d="M21 9 L17.2 20 H24.8 Z"/></svg>`;
+const META_CLOCK = `<svg class="meta-ico clk" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7.5"/><path d="M12 9 V13 L15 15"/><path d="M9.5 3 H14.5"/></svg>`;
+
+// Compact masthead meta: servings + time — recipe facts only (cook status lives in the stats bar).
+// Icon + value; the serving count stays scaled to the current factor (updated by rerenderServings).
 function metaLine(r) {
-  const bits = [];
-  const base = servingsBase();   // numeric yield only, shown scaled to the current factor
-  if (base) bits.push(`Serves <span class="serves-count">${formatAmount(base * view.scale)}</span>`);
+  const items = [];
+  const base = servingsBase();
+  if (base) items.push(`<span class="meta-item">${META_FIG}<span>Serves <span class="serves-count meta-val">${formatAmount(base * view.scale)}</span></span></span>`);
   const time = r.total_time || r.cook_time || r.prep_time;
-  if (time) bits.push(esc(time));
-  return `<p class="meta-line">${bits.join(' <span class="sep">·</span> ')}</p>`;
+  if (time) items.push(`<span class="meta-item">${META_CLOCK}<span class="meta-val">${esc(time)}</span></span>`);
+  if (!items.length) return "";
+  return `<p class="meta-line">${items.join("")}</p>`;
 }
 
 // The single finished-dish photo (top-right of the masthead), framed with a quiet caption. No
@@ -675,7 +710,7 @@ function dishPhoto(r, editable) {
 // confirmation names the recipe and needs a deliberate second click (replaces a single confirm()).
 function ownerActionsHTML(r) {
   return `<a class="btn ghost sm" href="#/edit/${encodeURIComponent(r.id)}">Edit recipe</a>
-          <button class="btn ghost sm" data-delete>Delete</button>`;
+          <button class="btn danger-soft sm" data-delete>Delete recipe</button>`;
 }
 function deleteConfirmHTML(r) {
   return `<span class="delete-confirm">
@@ -687,7 +722,7 @@ function deleteConfirmHTML(r) {
 
 async function renderRecipe(rid) {
   const data = await api("/api/recipes/" + encodeURIComponent(rid));
-  view = { slug: rid, data, mode: "original", editingPos: null, addingOpen: false, scale: 1, pendingRating: null };
+  view = { slug: rid, data, mode: "original", editingPos: null, addingOpen: false, scale: 1, pendingRating: null, undoneCook: null };
   app.className = "page recipe-view";
   setCookCount(app, data.stats.cook_count);   // reserved R2 wear signal on the recipe root
   const r = data.recipe;
@@ -716,9 +751,10 @@ async function renderRecipe(rid) {
     </header>
     <div class="vitals">
       ${metaLine(r)}
-      <div class="stats" data-rid="${esc(r.id)}">${statsInner(data.stats)}</div>
+      <div class="scaler-line" id="scaler-host">${scaleControl()}</div>
+      <div class="stats cook-block" data-rid="${esc(r.id)}">${statsInner(data.stats)}</div>
+      ${owner}
     </div>
-    ${owner}
     <div class="recipe-cols">
       <section id="ing-section">${ingredientsSectionInner(view)}</section>
       <section>
@@ -1283,6 +1319,7 @@ async function submitBackdate() {
   if (!iso) { errEl.textContent = "Pick or type a date first."; return; }
   const { ok, data } = await sendJSON("POST", `/api/recipes/${backdateRid}/cooked`, { date: iso });
   if (ok) {
+    if (view) view.undoneCook = null;   // logging a (backdated) cook ends any redo window
     if (view && view.data) view.data.stats = data;
     const statsEl = backdateStats;
     closeBackdate();
@@ -1314,7 +1351,7 @@ document.addEventListener("click", (e) => {
         if (view) view.pendingRating = null;
         updateStats(stats, `/api/recipes/${rid}/rating`, { rating: n });
       } else {                                    // uncooked -> gate: hold the rating, ask to confirm a cook
-        if (view) view.pendingRating = n;
+        if (view) { view.pendingRating = n; view.undoneCook = null; }   // rating is another action -> ends redo window
         stats.innerHTML = statsInner(view ? view.data.stats : { cook_count: 0 });
       }
       return;
@@ -1326,13 +1363,42 @@ document.addEventListener("click", (e) => {
       return;
     }
     if (e.target.closest("[data-cook-rate-cancel]")) {
-      if (view) view.pendingRating = null;
+      if (view) { view.pendingRating = null; view.undoneCook = null; }
       stats.innerHTML = statsInner(view ? view.data.stats : { cook_count: 0 });
       return;
     }
     if (e.target.closest("[data-cook]"))   { if (view) view.pendingRating = null; updateStats(stats, `/api/recipes/${rid}/cooked`, {}); return; }
-    if (e.target.closest("[data-uncook]")) { if (view) view.pendingRating = null; updateStats(stats, `/api/recipes/${rid}/uncook`, {}); return; }
+    if (e.target.closest("[data-uncook]")) {
+      if (view) view.pendingRating = null;
+      (async () => {
+        const { ok, data } = await sendJSON("POST", `/api/recipes/${rid}/uncook`, {});
+        if (!ok) return;
+        if (view && view.data) view.data.stats = data;
+        // remember exactly what was removed so Redo can restore it (this OPENS the one-shot redo window)
+        if (view) view.undoneCook = data.undone ? { rid: stats.dataset.rid, ...data.undone } : null;
+        stats.innerHTML = statsInner(data);
+        setCookCount(app, data.cook_count);
+      })();
+      return;
+    }
+    if (e.target.closest("[data-redo]")) {
+      const u = view ? view.undoneCook : null;
+      if (!u || u.rid !== stats.dataset.rid) return;   // guard: never redo against the wrong recipe
+      (async () => {
+        const body = { cooked_on: u.cooked_on, source: u.source };
+        if (u.cleared_rating != null) body.rating = u.cleared_rating;   // restore only if the undo cleared one
+        const { ok, data } = await sendJSON("POST", `/api/recipes/${rid}/redo-cook`, body);
+        if (!ok) return;
+        if (view) view.undoneCook = null;              // redo consumed -> back to plain "Undo"
+        if (view && view.data) view.data.stats = data;
+        stats.innerHTML = statsInner(data);
+        setCookCount(app, data.cook_count);
+      })();
+      return;
+    }
     if (e.target.closest("[data-backdate-open]")) {
+      if (view) view.undoneCook = null;                // opening the modal ends the redo window
+      stats.innerHTML = statsInner(view ? view.data.stats : { cook_count: 0 });   // repaint now so the Undo/Redo pair collapses to plain "Undo"
       openBackdate(rid, stats, e.target.closest("[data-backdate-open]"));
       return;
     }
@@ -1369,6 +1435,7 @@ document.addEventListener("click", (e) => {
       rerenderIngredients();
       rerenderSteps();
       rerenderServings();
+      rerenderScaler();      // scaler lives in the vitals now — refresh its own host (active pill)
       return;
     }
 
@@ -1442,6 +1509,10 @@ document.addEventListener("keydown", (e) => {
     closeBackdate(); return;                             // …a second closes the modal
   }
   if (e.key === "Escape" && !panel.hidden) { closePanel(); return; }
+  // Enter commits the custom multiplier (blur → focusout handler reformats to "N×" + applies scale)
+  if (e.key === "Enter" && e.target.classList && e.target.classList.contains("scale-custom")) {
+    e.preventDefault(); e.target.blur(); return;
+  }
   // Enter saves / Escape cancels while editing a line's quantity
   if (view && view.editingPos != null && e.target.classList && e.target.classList.contains("le-qty")) {
     if (e.key === "Enter") { e.preventDefault(); saveLineEdit(view.editingPos); }
@@ -1449,20 +1520,35 @@ document.addEventListener("keydown", (e) => {
   }
 });
 
+// Custom multiplier: any positive number scales both ingredients and steps; 0 / negative / blank /
+// non-numeric falls back to ×1. rerenderScaler() re-renders the field in its committed "N×" display
+// form (or empty if we fell back to a preset). parseFloat tolerates the "×", so it stays parseable.
+function commitCustomScale(el) {
+  const n = parseFloat(el.value);
+  view.scale = n > 0 ? n : 1;
+  rerenderIngredients();
+  rerenderSteps();
+  rerenderServings();
+  rerenderScaler();
+}
+// The custom field reads like the preset pills: committed = "N×" (rendered by scaleControl); on focus
+// it strips to a bare number for editing; typing is digits + one-kind decimal only; blur commits.
+document.addEventListener("focusin", (e) => {
+  const el = e.target.closest(".scale-custom");
+  if (el) el.value = el.value.replace(/[^\d.]/g, "");   // drop the "×" so the number edits cleanly
+});
+document.addEventListener("input", (e) => {
+  const el = e.target.closest(".scale-custom");
+  if (el) el.value = el.value.replace(/[^\d.]/g, "");   // digits + decimal point only while editing
+});
+document.addEventListener("focusout", (e) => {
+  const el = e.target.closest(".scale-custom");
+  if (el && view) commitCustomScale(el);                // blur commits + reformats to "N×"
+});
+
 // In the add-ingredient form, picking a library ingredient pre-fills the text box with
 // its name — but only when the box is empty, so a custom label is never clobbered.
 document.addEventListener("change", (e) => {
-  // Custom multiplier: any positive number scales both ingredients and steps; 0 / negative /
-  // blank / non-numeric falls back to ×1 (consistent with the 1a scaler).
-  const custom = e.target.closest(".scale-custom");
-  if (custom && view) {
-    const n = parseFloat(custom.value);
-    view.scale = n > 0 ? n : 1;
-    rerenderIngredients();
-    rerenderSteps();
-    rerenderServings();
-    return;
-  }
   const link = e.target.closest(".af-link");
   if (!link) return;
   const text = document.querySelector(".af-text");

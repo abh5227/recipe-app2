@@ -1,3 +1,14 @@
+/* Inter — self-hosted (static/fonts/inter.woff2), variable weight, so the app works OFFLINE.
+   Used for metadata/secondary text (byline, tags, serves/time, cook-summary, button labels);
+   the recipe title + ledger stay on the serif. */
+@font-face {
+  font-family: "Inter";
+  font-style: normal;
+  font-weight: 100 900;              /* variable range — covers 400/500/600 we use */
+  font-display: swap;
+  src: url("fonts/inter.woff2") format("woff2");
+}
+
 :root {
   /* ===== "used cookbook" design tokens (Round 1 — clean state) ===== */
 
@@ -30,6 +41,7 @@
   --font-serif: "Spectral", Georgia, "Times New Roman", serif;
   --font-title: var(--font-serif);   /* one-line swap point (Newsreader / Fraunces) — decided by eye after Stage A/B */
   --font-mono:  var(--font-serif);   /* RETIRED (Option C): one Spectral voice — alias kept so the figure/label rules resolve */
+  --font-sans:  "Inter", system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;   /* metadata/secondary text (Version 3) */
   --font-hand:  "Caveat", "Kalam", cursive;   /* Round 2 — token reserved, font not loaded yet */
 
   --fs-title:    clamp(28px, 4vw, 38px);   /* reduced so long titles stay ~2 lines, not ~4 */
@@ -210,7 +222,7 @@ a:hover { color: var(--berry-lift); }
 
 /* byline = author / source, green kicker (linked to source_url) */
 .byline {
-  font-family: var(--font-mono); font-size: var(--fs-label); letter-spacing: 0.04em;
+  font-family: var(--font-sans); font-size: var(--fs-label); letter-spacing: 0.08em; font-weight: 600;
   color: var(--green); margin: 0 0 10px;
 }
 .byline a { color: var(--green); text-decoration: underline;
@@ -219,8 +231,15 @@ a:hover { color: var(--berry-lift); }
 
 /* facts tier of the vitals block — tag-rhyming quiet data (echoes .cat-tag's register): small,
    tracked, tabular figures, muted. Borrows the tags' sensibility, not their chip shape. */
-.meta-line { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 11px; letter-spacing: 0.06em; color: var(--ink-soft); margin: 0 0 10px; }
-.sep { color: var(--rule); margin: 0 3px; }   /* faint field divider — binds the fragments into one line */
+/* serves/time — icon + value, sans, quiet; stays above the inset cook block */
+.meta-line { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; font-family: var(--font-sans);
+  font-size: 13.5px; color: var(--ink-soft); margin: 0 0 16px; }
+.meta-item { display: inline-flex; align-items: center; gap: 7px; }
+.meta-ico { stroke: var(--ink-soft); fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.meta-ico.fig { width: 26px; height: 15px; }
+.meta-ico.clk { width: 15px; height: 15px; }
+.meta-val { color: var(--ink); font-weight: 600; }   /* the facts (4 · 40 min) land; icons + "Serves" stay quiet */
+.serves-count { font-variant-numeric: tabular-nums; }
 
 /* category -> discreet mono "filing" labels (squared, not soft pills — reads as reference/index) */
 .cat-tags { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; }
@@ -295,31 +314,34 @@ a:hover { color: var(--berry-lift); }
 /* One fine hairline at the masthead↔vitals seam (A) — the ONLY rule in the zone. Facts recede,
    history leads (B) via spacing + type, not a second rule; the "Ingredients" heading below handles
    the vitals↔ledger seam. */
-.vitals { border-top: 1px solid var(--rule-soft); padding-top: 14px; margin: 16px 0 0; }
-.stats {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 14px 18px;
-  margin: 0; padding: 0;
+.vitals { border-top: 1px solid var(--rule-soft); padding-top: 18px; margin: 16px 0 0; }
+/* the soft inset cook block: stars + cook-summary + cook buttons, grouped as one unit */
+.cook-block {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 13px;
+  margin: 0; background: var(--card); border: 1px solid var(--rule-soft);
+  border-radius: 12px; padding: 20px 22px;
 }
+.cook-redo { display: inline-flex; gap: 6px; }  /* the Undo / Redo text pair — shown only in the post-undo window */
 .rating { display: inline-flex; gap: 2px; }
 .star {
   font: inherit;   /* use the design font, not the UA <button> system-sans (the ★ glyph leak) */
   background: none; border: none; cursor: pointer; padding: 0 1px;
-  font-size: 24px; line-height: 1; color: var(--line);
+  font-size: 20px; line-height: 1; color: var(--line);   /* set rating reads as "set", not shouting */
   transition: color .12s, transform .12s;
 }
-.star.on { color: var(--amber); }
+.star.on { color: var(--amber); opacity: 0.92; }
 /* hover-preview: while hovering the rating, stars read outline by default and 1..N fill gold */
 .rating.previewing .star { color: var(--line); }
 .rating.previewing .star.preview { color: var(--amber); }
 .star:hover { transform: scale(1.15); color: var(--amber); }
 .star:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; border-radius: 3px; }
-.cook-summary { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: 12px; letter-spacing: 0.06em; color: var(--ink-soft); }   /* history tier: same tag register, a touch larger than facts; stars + button lead */
+.cook-summary { display: flex; flex-direction: column; gap: 2px; margin: 0; font-family: var(--font-sans); font-size: 12.5px; letter-spacing: 0.01em; color: var(--ink-soft); }   /* history recedes: smaller + lighter, sans */
 .cook-summary .approx { opacity: 0.8; font-style: italic; }   /* provisional (import-seeded) cook date — unconfirmed, reuses the ~/.approx family */
-.rate-hint { color: var(--ink-soft); font-size: 14px; font-style: italic; }   /* uncooked + unrated: a quiet nudge */
-.cook-rate-confirm { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 14px; }   /* inline cook-gate confirm */
-.cook-actions { display: inline-flex; gap: 8px; margin-left: auto; }
+.rate-hint { font-family: var(--font-sans); color: var(--ink-soft); font-size: 13px; font-style: italic; }   /* uncooked + unrated: a quiet nudge */
+.cook-rate-confirm { display: inline-flex; align-items: center; gap: 8px; font-family: var(--font-sans); color: var(--ink-soft); font-size: 13.5px; }   /* inline cook-gate confirm */
+.cook-actions { display: inline-flex; gap: 8px; flex-wrap: wrap; }   /* left-aligned inside the inset block */
 .btn {
-  font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap;
+  font-family: var(--font-sans); font-size: 14px; cursor: pointer; white-space: nowrap;   /* button labels in the metadata sans (Version 3) */
   padding: 7px 16px; border-radius: 999px;
   border: 1px solid var(--btn-fill); background: var(--btn-fill); color: var(--card);
   transition: background .15s, border-color .15s, color .15s;
@@ -329,6 +351,14 @@ a:hover { color: var(--berry-lift); }
 .btn.ghost:hover { color: var(--ink); border-color: var(--ink-soft); background: var(--paper); }
 .btn.alt { background: var(--berry); border-color: var(--berry); color: var(--card); }   /* olive companion action (e.g. "Log a past cook") */
 .btn.alt:hover { background: var(--green-lift); border-color: var(--green-lift); }
+/* soft danger: gently destructive AT REST (desaturated brick text + a soft danger-tinted border),
+   deepening to the full brick fill on hover (recipe Delete) */
+.btn.danger-soft {
+  background: transparent;
+  color: color-mix(in srgb, var(--danger) 78%, var(--ink-soft));
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--rule-soft));
+}
+.btn.danger-soft:hover { background: var(--danger); border-color: var(--danger); color: var(--paper); }
 .btn:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
 
 .rc-stats { font-size: 13px; color: var(--amber); margin: 5px 0 0; letter-spacing: 1px; }
@@ -578,7 +608,7 @@ a:hover { color: var(--berry-lift); }
 
 .tags { display: flex; flex-wrap: wrap; gap: 8px; }
 .tag {
-  font-size: 13px; padding: 5px 12px; border: 1px solid var(--line);
+  font-family: var(--font-sans); font-size: 12.5px; padding: 5px 12px; border: 1px solid var(--line);
   border-radius: 999px; color: var(--ink-soft); background: var(--paper);
 }
 .pairs { margin: 0; color: var(--ink); font-size: 15.5px; }
@@ -616,7 +646,8 @@ a:hover { color: var(--berry-lift); }
 
 /* Small button variant + edit/delete row on app recipes */
 .btn.sm { font-size: 13px; padding: 5px 12px; }
-.owner-actions { display: flex; gap: 8px; margin: 6px 0 0; }
+/* recipe-management zone: separated from the cook block by a faint hairline + generous space */
+.owner-actions { display: flex; gap: 8px; margin: 20px 0 0; padding-top: 20px; border-top: 1px solid var(--rule-soft); }
 
 /* A column heading that can carry an action button on the right.
    Wraps the same underline the bare .col-title has, so they look identical. */
@@ -626,11 +657,11 @@ a:hover { color: var(--berry-lift); }
 }
 .col-head .col-title { border-bottom: none; padding-bottom: 0; margin: 0; }
 
-/* Quantity scaler + metric/imperial toggle beside the Ingredients heading */
-.ing-controls { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+/* Quantity scaler — now on its own line in the vitals, under the serves/time row */
+.scaler-line { margin: 0 0 16px; }
 .scale-control { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }  /* wrap so a long custom value / the servings span never overflow the row */
 .scale-control button {
-  font: inherit; font-size: 13px; cursor: pointer; white-space: nowrap;
+  font-family: var(--font-sans); font-size: 13px; cursor: pointer; white-space: nowrap;   /* sans, matching the V3 metadata around it */
   padding: 4px 11px; border-radius: 999px;
   border: 1px solid var(--line); background: transparent; color: var(--ink-soft);
   transition: background .15s, color .15s, border-color .15s;
@@ -641,8 +672,9 @@ a:hover { color: var(--berry-lift); }
 .grams-note { margin: 10px 0 0; font-size: 13px; font-style: italic; color: var(--ink-soft); }
 /* Phase 1d: custom multiplier input + scaled step quantities */
 .scale-custom {
-  font: inherit; font-size: 13px; width: 4.5rem; padding: 4px 10px; border-radius: 999px;
+  font-family: var(--font-sans); font-size: 13px; width: 4.5rem; padding: 4px 10px; border-radius: 999px;
   border: 1px solid var(--line); background: transparent; color: var(--ink-soft);
+  text-align: right;   /* committed "N×" hugs the right, reading like the preset pills */
 }
 .scale-custom:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
 .step-qty { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }

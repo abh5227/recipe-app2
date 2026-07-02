@@ -199,6 +199,75 @@ def test_uncook_nonexistent_is_404(kitchen):
     assert kitchen.client.post("/api/recipes/does-not-exist/uncook", json={}).status_code == 404
 
 
+def test_uncook_reports_removed_cook_and_cleared_rating(kitchen):
+    # undo the only cook + its rating -> response reports exactly what it removed (for a redo)
+    kitchen.client.post("/api/recipes/gai-yang/cooked", json={"date": "2024-05-01"})
+    kitchen.client.post("/api/recipes/gai-yang/rating", json={"rating": 5})
+    u = kitchen.client.post("/api/recipes/gai-yang/uncook", json={}).get_json()["undone"]
+    assert u["cooked_on"] == "2024-05-01" and u["source"] == "app" and u["cleared_rating"] == 5
+
+
+def test_uncook_undone_no_cleared_rating_when_cooks_remain(kitchen):
+    # a second cook + rating; undo one -> rating survived, so cleared_rating is None
+    kitchen.client.post("/api/recipes/gai-yang/cooked", json={})
+    kitchen.client.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 4})
+    u = kitchen.client.post("/api/recipes/gai-yang/uncook", json={}).get_json()["undone"]
+    assert u["source"] == "app" and u["cleared_rating"] is None
+
+
+def test_redo_readds_exact_cooked_on_and_source(kitchen):
+    r = kitchen.client.post("/api/recipes/gai-yang/redo-cook",
+                            json={"cooked_on": "2024-11-16", "source": "rating-inferred"}).get_json()
+    assert r["cook_count"] == 1
+    with kitchen.conn() as c:
+        row = c.execute("SELECT cooked_on, source FROM cook_log WHERE recipe_id='gai-yang'").fetchone()
+    assert row["cooked_on"] == "2024-11-16" and row["source"] == "rating-inferred"   # non-app source round-trips
+
+
+def test_redo_restores_rating_only_when_given(kitchen):
+    # with rating -> restored
+    s = kitchen.client.post("/api/recipes/gai-yang/redo-cook",
+                            json={"cooked_on": "2024-05-01", "source": "app", "rating": 5}).get_json()
+    assert s["cook_count"] == 1 and s["rating"] == 5
+    # without rating on a fresh recipe -> cook added, no rating
+    s2 = kitchen.client.post("/api/recipes/aloo-gobhi/redo-cook",
+                             json={"cooked_on": "2024-05-01", "source": "app"}).get_json()
+    assert s2["cook_count"] == 1 and s2["rating"] is None
+
+
+def test_undo_then_redo_round_trips_cook_and_rating(kitchen):
+    # the full one-shot: cook+rate -> uncook (clears both) -> redo the reported cook -> both restored
+    kitchen.client.post("/api/recipes/gai-yang/cooked", json={"date": "2024-05-01"})
+    kitchen.client.post("/api/recipes/gai-yang/rating", json={"rating": 5})
+    u = kitchen.client.post("/api/recipes/gai-yang/uncook", json={}).get_json()
+    assert u["cook_count"] == 0 and u["rating"] is None
+    body = {"cooked_on": u["undone"]["cooked_on"], "source": u["undone"]["source"],
+            "rating": u["undone"]["cleared_rating"]}
+    s = kitchen.client.post("/api/recipes/gai-yang/redo-cook", json=body).get_json()
+    assert s["cook_count"] == 1 and s["rating"] == 5
+
+
+def test_redo_bad_source_400_inserts_nothing(kitchen):
+    r = kitchen.client.post("/api/recipes/gai-yang/redo-cook",
+                            json={"cooked_on": "2024-05-01", "source": "bogus"})
+    assert r.status_code == 400
+    assert kitchen.count("cook_log", "recipe_id='gai-yang'") == 0
+
+
+def test_redo_future_date_400_inserts_nothing(kitchen):
+    r = kitchen.client.post("/api/recipes/gai-yang/redo-cook",
+                            json={"cooked_on": "2999-01-01", "source": "app"})
+    assert r.status_code == 400
+    assert kitchen.count("cook_log", "recipe_id='gai-yang'") == 0
+
+
+def test_redo_malformed_date_400_inserts_nothing(kitchen):
+    r = kitchen.client.post("/api/recipes/gai-yang/redo-cook",
+                            json={"cooked_on": "nope", "source": "app"})
+    assert r.status_code == 400
+    assert kitchen.count("cook_log", "recipe_id='gai-yang'") == 0
+
+
 def test_deleting_recipe_clears_its_stats(kitchen):
     # deletion relies on ON DELETE CASCADE to remove the recipe's rating + cook history
     cl = kitchen.client
