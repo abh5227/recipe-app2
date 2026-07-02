@@ -319,6 +319,18 @@ direction — palette, type, the R1/R2 boundary, the punch-list — in
 - **Round 2 (deferred — needs real accruing data):** the handwritten **edit/note layer** (earthy hand color),
   the **wear/patina** deepening with cook count, the populated compare/version display, and the
   **list/browse page redesign** (the scale/browsing review, after the ~295 import).
+- **Method step check-off (R2 use-layer).** Each step's number becomes a **checkbox**; checking it
+  **crosses out** that step and marks it done — a live cooking aid. **Session-only** (ephemeral
+  front-end state, clears on refresh; no persistence/backend — a "where am I now" aid, not stale
+  marks carried over from past cooks). **Cook-log link:** when **all** steps are checked, **offer**
+  to log a cook (a nudge, not automatic) — completing every step in a live session signals it was
+  just cooked; ties into the existing "Cooked it" flow. Belongs to the R2 personal layer (same family
+  as the handwritten edits + cook-count wear) — the marks should read as *yours*, drawing on the
+  reserved `--hand` hooks, not system UI. Refines **P2·2b** (check off steps while cooking) with a
+  decided design. *Open (resolve at build):* the touch/mobile affordance — hover doesn't exist on a
+  phone at the stove, arguably the **primary** case, so design a touch-first reveal/toggle — one-click
+  vs hover-to-reveal, keyboard/a11y, whether crossed-out steps stay put or recede, and the cook-log
+  offer's exact form (and whether re-unchecking retracts it).
 - **App rename pending:** "Seasonal Kitchen" → **"Chef's Choice"** across UI + docs (decided; not
   yet applied — see design-decisions.md).
 
@@ -428,6 +440,18 @@ out. Optionally record how long it **actually** took (feeds time calibration, Ph
   Phase 19 recommender's saved-mood preference would also use. Build that store once for all
   three. Niche (irrelevant to most savory cooking) — keep it an optional field, not a
   prominent feature.
+- **5e — Per-cook ratings → displayed average (significant; own design pass).** Move from one rating
+  per **recipe** to one rating per **cook**; the recipe's displayed stars become the **average**
+  across cooks (cook it 3×, rate those 3/4/5 → shows 4; each cook keeps its own score). Fits the
+  used-cookbook idea — the rating becomes a record of experience over time (dialing a recipe in), not
+  a static verdict. **Substantial, hence future:** (a) **data model** — the rating attaches to a
+  `cook_log` row, not the recipe (schema change / migration); (b) **ripples through what was just
+  built** — the redo feature, the cook-gate, the "undo clears the rating when cook_count hits zero"
+  invariant, and `/cooked-and-rated` all assume **one rating per recipe**, so this unwinds that
+  coupling; (c) **migration** of the existing ~117 recipe-level ratings to the per-cook model (attach
+  each to which cook?); (d) **display/UX** — showing an average (halves? — a granular-rating display
+  choice), rating a specific cook, whether the cook log shows each cook's score, editing a past cook's
+  rating. Needs its own real design pass when tackled.
 
 ### Analytics Dashboard (P18)
 
@@ -871,6 +895,14 @@ worth knowing before they bite. None of the limitations occur in the current rec
   discretionary from per-item ranges is itself an ambiguity problem; revisit later, don't force
   it at parse time.
 
+- **Fractional counts for divisible ingredients (scaling).** The scaler humane-rounds counts to
+  whole numbers, but some ingredients divide fine (½ an onion, ½ a pepper, ½ a lemon) while others
+  don't (½ an egg, ½ a can). Allow fractional counts where sensible instead of always rounding up.
+  *Open design question:* how does the app know which divide? — a per-ingredient **"divisible"**
+  property (a natural field-guide attribute — the entry carries the flag; see Ingredient Enrichment,
+  Phase 12), a heuristic, or a manual override. Connects to the field-guide work; sibling to the
+  per-item range-scaling note above (both are "not all counts scale the same way").
+
 - **Bare "oz" on liquids (import).** Scraped recipes often write fluid ounces as bare "oz". On a
   known-liquid ingredient the importer should normalize "oz" → "fl oz" (or flag for review),
   so a liquid isn't later converted as weight (28.35 g/oz). Decline over guess — normalize
@@ -887,6 +919,18 @@ worth knowing before they bite. None of the limitations occur in the current rec
   noise). The footnote text is unrecoverable (absent from the source), so there's nothing to link it
   to. Consistent with decline-over-guess: strip only when there's demonstrably no note to point to.
   (King Arthur's 2 asterisks are left as-is for now — cosmetic, one recipe, not worth a one-off fix.)
+
+- **Source-formatting artifacts on pre-formatted steps (import).** Some imported recipes (e.g. the
+  potato paratha) carry the source's **own** step numbering verbatim in the step text
+  (`1. MAKE THE DOUGH:`), sometimes ALL-CAPS — and the app **also** renders its own circled step
+  number, so the number doubles (① + "1."). Frame broadly as *source-formatting artifacts*: the
+  leading "N." is the visible one, but such recipes often have siblings (all-caps headers, trailing
+  colons) worth one cleanup pass together. **When tackled:** FIRST a read-only check of what's
+  actually **stored** (is the "1." in the step text? is the all-caps stored, or a CSS
+  `text-transform`?), then choose **data-cleanup-at-import** (cleaner long-term — the importer strips
+  it so future imports are clean, plus a one-time pass over the ~295 existing) vs **strip-at-render**
+  (non-destructive). Safe strip: a leading integer + `.`/`)` + whitespace at the very start of a step
+  — almost always leftover ordinal numbering. Same category as the orphaned-asterisk cleanup above.
 
 - **Preferred-units-on-import (future, nice-to-have).** When importing a recipe
   (Phase 15/16), convert quantities into the user's preferred unit system, defaultable by
