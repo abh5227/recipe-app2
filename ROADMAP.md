@@ -123,7 +123,9 @@ the throwaway tests used so far.
 
 Shared machinery: a parser that reads a quantity string into a number + unit.
 
-- **1a — Scaler.** Scale quantities (×0.5, ×2, "serves N"). *(done — ingredient quantities only)*
+- **1a — Scaler.** Scale quantities (×0.5, ×2, "serves N"). *(done — ingredient quantities only;
+  the scaler now lives in the vitals beside Serves-N and updates the serving count live. Still
+  multiplier-based — the type-a-target "Serves-N scaling" below remains future.)*
 - **1b — Metric/imperial toggle.** Fixed-factor conversions: volume↔volume, weight↔weight. *(done)*
 - **1c — Volume↔weight (King Arthur table).** *(done)* Ingredient-specific ("1 cup flour" → "120 g");
   adds a per-ingredient weight field (g per cup/tbsp) from the King Arthur Baking table.

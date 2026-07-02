@@ -65,7 +65,7 @@ import_cleanup.py          Phase 15 import — source-agnostic cleanup core: str
 import_write.py            Phase 15 import — maps a cleaned recipe to DB rows (source='app', uid-dedup, review queue).
 study/         superseded Paprika HTML-export study tools (read-only; the native pipeline replaced them; kept as fallback).
 recipes.db     the generated database (binary; don't hand-edit; git-ignored).
-static/        index.html (page shell) · styles.css (the look) · app.js (renders it)
+static/        index.html (page shell) · styles.css (the look) · app.js (renders it) · fonts/ (self-hosted Inter, the metadata sans — so metadata renders offline)
 tests/         pytest suite; builds a throwaway DB per test (see Tests below).
 requirements.txt      / requirements-dev.txt   runtime (flask) and test (pytest) deps.
 OVERVIEW.md    a two-minute orientation to the project (start here).

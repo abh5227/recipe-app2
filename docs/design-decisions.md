@@ -84,16 +84,23 @@ paper/brown).
 So the two structural jobs are now **green = the printed structure** and **the earthy hand color =
 the user's layer**, with **brown** carrying the body text and the primary control.
 
-### Type — one Spectral voice (mono dropped)
+### Type — Spectral serif + a metadata sans (Version 3; mono still dropped)
 
-- **Spectral** (transitional serif) — the **single text face**: title, body, ingredient names, step
-  text, AND the ledger's tabular figures + labels. **IBM Plex Mono was dropped** (Option C): instead
-  of a second font, amounts/labels are distinguished from prose by **treatment** — `tabular-nums`,
-  size, muted color, letter-spacing/uppercase — not a different typeface. (`--font-mono` is retired
-  to an alias of `--font-serif` so existing figure/label rules still resolve.)
+- **Spectral** (transitional serif) carries the **content voice**: recipe title, ingredient names,
+  step text, and the ledger's tabular figures + labels. IBM Plex Mono stays dropped — ledger
+  amounts/labels are still distinguished by **treatment** (`tabular-nums`, size, muted color), not a
+  mono face (`--font-mono` remains an alias of `--font-serif`).
+- **Inter** (self-hosted, `--font-sans`) carries the **metadata voice** (Version 3): byline, category
+  tags, serves/time, the two-line cook-summary, and button labels. Rationale: one serif left metadata
+  and actions competing at a single weight; a crisp humanist sans lets **metadata/history recede**
+  while the serif holds title + content — clearer hierarchy, still calm. A scoped revision of the
+  earlier Option C "one voice": one **content** face, one **metadata** face — not a return to mono.
+- **Offline:** Inter is bundled at `static/fonts/inter.woff2` (variable weight; `@font-face` in
+  styles.css). **Spectral is still Google-Fonts-loaded** (index.html), so offline the *title* falls
+  back to Georgia/serif while metadata stays local (see caveats).
 - **A pen-like hand** (Caveat / Kalam) — the Round-2 user layer; **reserved**, not loaded in R1.
 - **Masthead title face** — `--font-title` remains the one-line swap point (Spectral / Newsreader /
-  Fraunces); largely moot under the one-voice direction, kept for flexibility.
+  Fraunces), kept for flexibility.
 
 ### Layout — single-column (required, not just aesthetic)
 
@@ -122,9 +129,41 @@ block takes the full width — no placeholder box.
 
 ### Control strip + vitals/history zone — the "this is an app" affordances
 
-- **Scale** ½× · 1× · 2× · custom (3× dropped; the custom field is a plain type-and-apply input, no stepper).
-- **Vitals + history zone:** Serves · time and the cook/rating history are consolidated below the masthead into one zone (the masthead stays pure identity). A single hairline marks the masthead↔vitals seam; a quiet facts line (Serves · time) sits over the history tier (stars · cook status · Cooked-it/Undo), all in the tags' compact metadata register.
-- **Cook-gated rating:** a rating requires a cook — a star on an uncooked recipe opens an inline "Mark cooked & rate?" confirm handled by a **combined cook-and-rate endpoint** (one transaction); on a cooked recipe a star rates directly. **Undo to zero cooks also clears the rating** (rating ⟺ cooked, both ways). Provisional/seeded cook dates show a **`~` marker** (shared with the estimated-weight treatment).
+- **Layout (Hybrid 2b):** below the masthead + a hairline, a quiet **serves/time** line, then a soft
+  **inset cook block** (`.cook-block` — lighter `--card`, `--rule-soft` border, rounded, inset pad)
+  grouping star rating + two-line cook-summary + cook buttons as one unit; a second faint hairline
+  separates the manage zone (**Edit recipe** / **Delete recipe**). Left-aligned; no uppercase labels,
+  no vertical dividers.
+- **Serves/time — icon + value:** a man+woman figure pair before "Serves N" and a clock before the
+  time (inline SVG, `--ink-soft`); the **values are emphasized** (`--ink`, heavier) while icons and
+  the "Serves" label stay quiet.
+- **Scaler in the vitals:** ½× · 1× · 2× · custom moved out of the ingredients area onto its **own
+  line in the vitals**, under serves/time, so the **serving number updates live where you adjust it**.
+  It drives `view.scale`; serves-count and ingredient/step amounts recompute off it. A scale change
+  re-renders only ingredients/steps/serves-count/scaler-host — **never the cook block** — so redo/cook
+  state is undisturbed. The **custom field shows its committed factor as "N×"** (right-aligned, like
+  the presets); focus strips it to a bare number to edit. (`type=text` is deliberate: the control is
+  rebuilt on scale change and `type=number` got destroyed mid-interaction.)
+- **Rating:** softened stars (a set rating reads "set", not shouting). Cook-gated as before — a star
+  on an uncooked recipe opens the inline "Mark cooked & rate?" confirm (combined cook-and-rate
+  endpoint, one transaction); undo-to-zero clears the rating. Provisional/seeded dates keep the `~`.
+- **Delete recipe:** relabeled to mirror "Edit recipe"; **subtle-red at rest** (desaturated brick
+  text with a soft border, via `color-mix`) deepening to the full danger fill on hover.
+
+### Cook history — summary, backdating, and one-shot redo
+
+- **Cook-summary:** two stacked lines — "Cooked N times" / "Last cooked [date]" (no separator);
+  provisional/seeded dates keep the `~`/`.approx` treatment.
+- **Backdated cook:** "Log a past cook" logs a cook on a chosen date (`source` stays `app`); validated
+  server-side (real calendar date, not future).
+- **Undo / Redo — a faithful one-shot.** Undo removes the most-recent cook; the control then shows a
+  **text** "Undo" / "Redo" pair (words, not glyphs). Redo restores the **exact** undone cook (same
+  `cooked_on` + `source`) and, **only if that undo cleared a rating**, restores the rating too —
+  re-adding the **cook before the rating** so the never-uncooked-but-rated invariant holds. The window
+  is one-shot: **any other action clears it** (opening the backdate modal repaints the bar so the pair
+  collapses). `/uncook` **reports what it removed** (`undone: {cooked_on, source, cleared_rating}`) and
+  `/redo-cook` restores it — necessary because the last-**inserted** cook (what undo removes) is not
+  the last-**by-date** after a backdated cook, so the client can't infer it.
 
 ### The handwritten edit treatment (Round 2)
 
@@ -206,6 +245,13 @@ be **one** visual treatment, not three ad-hoc ones (decided in D, applied across
   imported 15 are app-tier, with the **form-edit** path but **not** the per-person annotation layer.
   Applying the hand layer to the imports requires extending that model to app-tier recipes (or
   unifying the two), and deciding how "edit the canonical recipe" and "annotate by hand" coexist.
+
+## Recorded caveats (Version 3 / vitals bundle)
+
+- **`color-mix()`** powers the subtle-red Delete (`.btn.danger-soft`) — a modern-browser dependency;
+  fine for this local single-user app; swap to literal tokens if broader support is ever needed.
+- **Spectral is CDN-loaded** while Inter is self-hosted, so offline only the *title* serif falls back
+  to Georgia. Bundling Spectral locally is the follow-up for full-offline fidelity.
 
 ## Open questions
 
