@@ -123,25 +123,14 @@ function statsInner(stats) {
   } else {
     middle = `<span class="cook-summary">${cookSummary(stats)}</span>`;
   }
-  const backdateOpen = view ? view.backdateOpen : false;
-  const backdate = backdateOpen
-    ? `<span class="backdate" role="group" aria-label="Log a cook on a past date">
-         <input type="date" class="backdate-date" max="${todayISO()}" aria-label="Cook date">
-         <button class="btn ghost sm" data-backdate-save>Log</button>
-         <button class="btn ghost sm" data-backdate-cancel>Cancel</button>
-         <span class="backdate-error" aria-live="polite"></span>
-       </span>`
-    : "";
   return `
     <div class="rating" role="group" aria-label="Your rating">${starsHTML(starFill)}</div>
     ${middle}
     <span class="cook-actions">
       <button class="btn" data-cook>Cooked it</button>
-      <button class="btn ghost sm" data-backdate-toggle aria-expanded="${backdateOpen}"
-              title="Log a cook on a past date">on a date…</button>
+      <button class="btn alt" data-backdate-open title="Log a cook on a past date">Log a past cook</button>
       ${stats.cook_count ? `<button class="btn ghost" data-uncook>Undo</button>` : ""}
-    </span>
-    ${backdate}`;
+    </span>`;
 }
 
 // Today's date as YYYY-MM-DD in LOCAL time — used for the backdate input's `max` guard.
@@ -1100,6 +1089,213 @@ function closePanel() {
   if (lastTrigger) lastTrigger.focus();
 }
 
+/* ---------- Backdate-a-cook modal ---------- */
+// Reuses the shared .scrim as its backdrop (the ingredient panel uses the same element; only
+// one dialog is ever open at a time). A hand-built calendar + an MM/DD/YYYY type field share
+// one selected date; the app stores YYYY-MM-DD, so we convert at the edges.
+const backdateModal = document.querySelector(".backdate-modal");
+const BD_MONTHS = ["January", "February", "March", "April", "May", "June",
+                   "July", "August", "September", "October", "November", "December"];
+const BD_DOW = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
+let backdateTrigger = null;   // the button that opened it (focus returns here)
+let backdateStats = null;     // the .stats element to re-render on a successful log
+let backdateRid = null;
+let bdCal = null;             // the live calendar controller
+let bdYearPopClose = null;    // close() of the open year popover (Escape routes through it), else null
+
+const isoToDisplay = (iso) => { const [y, m, d] = iso.split("-"); return `${m}/${d}/${y}`; };
+function displayToISO(s) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec((s || "").trim());
+  if (!m) return null;
+  const mo = Number(m[1]), da = Number(m[2]), yr = Number(m[3]);
+  const iso = `${yr}-${String(mo).padStart(2, "0")}-${String(da).padStart(2, "0")}`;
+  // reject non-real dates (e.g. 02/31/2024) by round-tripping through Date
+  const dt = new Date(yr, mo - 1, da);
+  if (dt.getFullYear() !== yr || dt.getMonth() !== mo - 1 || dt.getDate() !== da) return null;
+  return iso;
+}
+
+// A vanilla month calendar. onPick(iso) fires when a day is chosen. Future days are disabled;
+// month + year are jumpable via <select>s (year never past the current year; a future month in
+// the current year is clamped back), plus ‹ › month stepping.
+function makeBackdateCalendar(hostEl, onPick) {
+  const today = todayISO();                       // 'YYYY-MM-DD', local (reused helper)
+  const [ty, tm] = today.split("-").map(Number);  // today's year, month (1-12)
+  let viewY = ty, viewM = tm - 1;                 // viewM is 0-based
+  let selectedISO = null;
+
+  const clampView = () => { if (viewY === ty && viewM > tm - 1) viewM = tm - 1; };  // never past current month
+  const BD_MIN_Y = 1990;
+
+  function setYear(y) {                        // used by both year-popover paths (grid + typed)
+    viewY = Math.max(BD_MIN_Y, Math.min(ty, y));
+    clampView();
+    render();                                  // rebuilds the header, so the popover closes with it
+  }
+  function yearCells() {
+    let out = "";
+    for (let y = ty; y >= BD_MIN_Y; y--) {
+      out += `<button class="bd-year-cell${y === viewY ? " on" : ""}" data-y="${y}">${y}</button>`;
+    }
+    return out;
+  }
+  function render() {
+    clampView();
+    const startDow = new Date(viewY, viewM, 1).getDay();
+    const daysInMonth = new Date(viewY, viewM + 1, 0).getDate();
+    let cells = BD_DOW.map((d) => `<div class="bd-dow">${d}</div>`).join("");
+    for (let i = 0; i < startDow; i++) cells += `<button class="bd-day empty" tabindex="-1" disabled></button>`;
+    for (let day = 1; day <= daysInMonth; day++) {
+      const iso = `${viewY}-${String(viewM + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      const cls = ["bd-day"];
+      if (iso === selectedISO) cls.push("sel");
+      if (iso === today) cls.push("today");
+      cells += `<button class="${cls.join(" ")}" data-iso="${iso}"${iso > today ? " disabled" : ""}>${day}</button>`;
+    }
+    const nextDisabled = (viewY >= ty && viewM >= tm - 1);   // can't step into a future month
+    hostEl.innerHTML = `
+      <div class="bd-cal-head">
+        <span class="bd-monthnav">
+          <button class="bd-nav" data-nav="-1" aria-label="Previous month">‹</button>
+          <span class="bd-month-label">${BD_MONTHS[viewM]}</span>
+          <button class="bd-nav" data-nav="1"${nextDisabled ? " disabled" : ""} aria-label="Next month">›</button>
+        </span>
+        <span class="bd-year-anchor">
+          <button class="bd-yearpill" aria-haspopup="true" aria-expanded="false">${viewY} ▾</button>
+          <span class="bd-year-pop" role="dialog" aria-label="Choose year">
+            <input class="bd-year-input" type="text" inputmode="numeric" maxlength="4"
+                   value="${viewY}" aria-label="Jump to year">
+            <div class="bd-year-grid">${yearCells()}</div>
+          </span>
+        </span>
+      </div>
+      <div class="bd-grid">${cells}</div>`;
+    hostEl.querySelectorAll("[data-nav]").forEach((b) => b.onclick = () => {
+      if (b.disabled) return;
+      viewM += Number(b.dataset.nav);
+      if (viewM < 0) { viewM = 11; viewY--; } else if (viewM > 11) { viewM = 0; viewY++; }
+      if (viewY < BD_MIN_Y) { viewY = BD_MIN_Y; viewM = 0; }
+      if (viewY > ty) { viewY = ty; viewM = tm - 1; }
+      render();
+    });
+    hostEl.querySelectorAll(".bd-day[data-iso]").forEach((b) => b.onclick = () => {
+      if (b.disabled) return;
+      selectedISO = b.dataset.iso; render(); onPick(selectedISO);
+    });
+    wireYearPopover(hostEl, setYear);
+  }
+  render();
+  return {
+    getSelected: () => selectedISO,
+    setSelected(iso, moveView) {
+      selectedISO = iso;
+      if (moveView && iso) { const [y, m] = iso.split("-").map(Number); viewY = y; viewM = m - 1; }
+      render();
+    },
+  };
+}
+
+// Wire the year pill + popover of a freshly-rendered calendar header. Both ways in — the grid
+// and the typed year — call setYear(), which re-renders (closing the popover with it). Handles
+// open/close, scroll-to-selection, click-outside, and exposes close() via bdYearPopClose so the
+// modal's Escape can close the popover first (a second Escape then closes the modal).
+function wireYearPopover(hostEl, setYear) {
+  const pill = hostEl.querySelector(".bd-yearpill");
+  const pop = hostEl.querySelector(".bd-year-pop");
+  const input = hostEl.querySelector(".bd-year-input");
+  if (!pill || !pop) return;
+  const shownYear = () => pill.textContent.replace(/\D/g, "");
+  let onDocClick = null;
+  function close() {
+    pop.classList.remove("open");
+    pill.setAttribute("aria-expanded", "false");
+    if (onDocClick) { document.removeEventListener("click", onDocClick); onDocClick = null; }
+    if (bdYearPopClose === close) bdYearPopClose = null;
+  }
+  function open() {
+    pop.classList.add("open");
+    pill.setAttribute("aria-expanded", "true");
+    pop.querySelector(".bd-year-cell.on")?.scrollIntoView({ block: "center" });
+    input.focus(); input.select();
+    onDocClick = () => close();
+    setTimeout(() => { if (onDocClick) document.addEventListener("click", onDocClick); }, 0); // skip opening click
+    bdYearPopClose = close;
+  }
+  const choose = (y) => { close(); setYear(y); };   // close first (drops the doc listener), then re-render
+  const commit = () => {
+    // Ignore the blur that fires when render() tears down the focused year-input (a deferred
+    // teardown-blur would otherwise re-commit a stale value and snap the view back — the popover
+    // is already closed by then, so a real commit can only happen while it's open).
+    if (!pop.classList.contains("open")) return;
+    const y = parseInt(input.value, 10);
+    const cur = new Date().getFullYear();
+    if (!isNaN(y) && y >= 1990 && y <= cur) choose(y);
+    else input.value = shownYear();                 // out-of-range -> revert to the shown year
+  };
+  pill.addEventListener("click", (e) => { e.stopPropagation(); pop.classList.contains("open") ? close() : open(); });
+  pop.addEventListener("click", (e) => e.stopPropagation());
+  input.addEventListener("input", () => { input.value = input.value.replace(/[^0-9]/g, ""); });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); commit(); } });
+  input.addEventListener("blur", commit);
+  hostEl.querySelectorAll(".bd-year-cell").forEach((b) => {
+    b.addEventListener("mousedown", (e) => e.preventDefault());  // keep input focus -> no premature blur-commit
+    b.onclick = () => choose(Number(b.dataset.y));
+  });
+}
+
+function openBackdate(rid, statsEl, trigger) {
+  backdateRid = rid;
+  backdateStats = statsEl;
+  backdateTrigger = trigger || null;
+  const typed = backdateModal.querySelector("[data-bd-typed]");
+  const errEl = backdateModal.querySelector("[data-bd-error]");
+  errEl.textContent = "";
+  typed.value = "";
+  bdCal = makeBackdateCalendar(backdateModal.querySelector("[data-bd-cal]"),
+    (iso) => { typed.value = isoToDisplay(iso); errEl.textContent = ""; });
+  typed.oninput = () => {
+    errEl.textContent = "";
+    const iso = displayToISO(typed.value);
+    if (iso && iso <= todayISO()) bdCal.setSelected(iso, true);
+  };
+  scrim.hidden = false;
+  backdateModal.hidden = false;
+  requestAnimationFrame(() => {
+    scrim.classList.add("open");
+    backdateModal.classList.add("open");
+  });
+  backdateModal.querySelector("[data-backdate-close]").focus();
+}
+
+function closeBackdate() {
+  scrim.classList.remove("open");
+  backdateModal.classList.remove("open");
+  setTimeout(() => {
+    scrim.hidden = true;
+    backdateModal.hidden = true;
+  }, 260);
+  if (backdateTrigger && document.contains(backdateTrigger)) backdateTrigger.focus();
+}
+
+async function submitBackdate() {
+  const errEl = backdateModal.querySelector("[data-bd-error]");
+  const iso = bdCal ? bdCal.getSelected() : null;
+  if (!iso) { errEl.textContent = "Pick or type a date first."; return; }
+  const { ok, data } = await sendJSON("POST", `/api/recipes/${backdateRid}/cooked`, { date: iso });
+  if (ok) {
+    if (view && view.data) view.data.stats = data;
+    const statsEl = backdateStats;
+    closeBackdate();
+    if (statsEl) {
+      statsEl.innerHTML = statsInner(data);
+      setCookCount(app, data.cook_count);
+      statsEl.querySelector("[data-backdate-open]")?.focus();
+    }
+  } else {
+    errEl.textContent = (data && data.error) || "Could not log that date.";
+  }
+}
+
 /* ---------- events ---------- */
 // One click listener for the whole page (instead of attaching one to every button,
 // which is impossible here since the buttons are rebuilt constantly). When any click
@@ -1136,33 +1332,8 @@ document.addEventListener("click", (e) => {
     }
     if (e.target.closest("[data-cook]"))   { if (view) view.pendingRating = null; updateStats(stats, `/api/recipes/${rid}/cooked`, {}); return; }
     if (e.target.closest("[data-uncook]")) { if (view) view.pendingRating = null; updateStats(stats, `/api/recipes/${rid}/uncook`, {}); return; }
-    if (e.target.closest("[data-backdate-toggle]")) {
-      if (view) view.backdateOpen = !view.backdateOpen;
-      stats.innerHTML = statsInner(view ? view.data.stats : { cook_count: 0 });
-      if (view && view.backdateOpen) stats.querySelector(".backdate-date")?.focus();
-      return;
-    }
-    if (e.target.closest("[data-backdate-cancel]")) {
-      if (view) view.backdateOpen = false;
-      stats.innerHTML = statsInner(view ? view.data.stats : { cook_count: 0 });
-      return;
-    }
-    if (e.target.closest("[data-backdate-save]")) {
-      const input = stats.querySelector(".backdate-date");
-      const errEl = stats.querySelector(".backdate-error");
-      const date = input ? input.value : "";
-      if (!date) { if (errEl) errEl.textContent = "Pick a date."; return; }
-      (async () => {
-        const { ok, data } = await sendJSON("POST", `/api/recipes/${rid}/cooked`, { date });
-        if (ok) {
-          if (view && view.data) view.data.stats = data;
-          if (view) view.backdateOpen = false;
-          stats.innerHTML = statsInner(data);
-          setCookCount(app, data.cook_count);
-        } else if (errEl) {
-          errEl.textContent = (data && data.error) || "Could not log that date.";
-        }
-      })();
+    if (e.target.closest("[data-backdate-open]")) {
+      openBackdate(rid, stats, e.target.closest("[data-backdate-open]"));
       return;
     }
   }
@@ -1258,8 +1429,18 @@ document.addEventListener("click", (e) => {
   }
 });
 closeBtn.addEventListener("click", closePanel);
-scrim.addEventListener("click", closePanel);
+// The scrim backs both dialogs; close whichever is open (only one ever is).
+scrim.addEventListener("click", () => {
+  if (!panel.hidden) closePanel();
+  else if (backdateModal && !backdateModal.hidden) closeBackdate();
+});
+backdateModal.querySelector("[data-backdate-close]").addEventListener("click", closeBackdate);
+backdateModal.querySelector("[data-backdate-log]").addEventListener("click", submitBackdate);
 document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && backdateModal && !backdateModal.hidden) {
+    if (bdYearPopClose) { bdYearPopClose(); return; }   // first Escape closes the year popover…
+    closeBackdate(); return;                             // …a second closes the modal
+  }
   if (e.key === "Escape" && !panel.hidden) { closePanel(); return; }
   // Enter saves / Escape cancels while editing a line's quantity
   if (view && view.editingPos != null && e.target.classList && e.target.classList.contains("le-qty")) {

@@ -48,6 +48,31 @@
     </div>
   </aside>
 
+  <!-- Backdate-a-cook modal (centered on the shared .scrim; filled/wired by app.js) -->
+  <div class="backdate-modal" role="dialog" aria-modal="true" aria-labelledby="bd-title" hidden>
+    <button class="panel-close" data-backdate-close aria-label="Close">&times;</button>
+    <h2 class="bd-title" id="bd-title">Log a past cook</h2>
+    <p class="bd-hint">Upload a past cook to help keep track of your progress…</p>
+    <div class="bd-cols">
+      <div class="bd-left">
+        <div class="bd-cal" data-bd-cal></div>
+        <input type="text" class="bd-typed" data-bd-typed placeholder="MM/DD/YYYY"
+               inputmode="numeric" autocomplete="off" aria-label="Cook date (MM/DD/YYYY)">
+      </div>
+      <div class="bd-right">
+        <div class="bd-photo" aria-hidden="true">
+          <span class="bd-photo-ico">&oplus;</span>
+          <span class="bd-photo-lbl">add a photo</span>
+          <span class="bd-photo-cap">(photo — coming soon)</span>
+        </div>
+      </div>
+    </div>
+    <div class="bd-actions">
+      <button class="btn alt" data-backdate-log>Log this cook</button>
+      <span class="bd-error" data-bd-error aria-live="polite"></span>
+    </div>
+  </div>
+
   <script src="scaler.js"></script>
   <script src="app.js"></script>
 </body>

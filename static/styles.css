@@ -318,14 +318,6 @@ a:hover { color: var(--berry-lift); }
 .rate-hint { color: var(--ink-soft); font-size: 14px; font-style: italic; }   /* uncooked + unrated: a quiet nudge */
 .cook-rate-confirm { display: inline-flex; align-items: center; gap: 8px; color: var(--ink-soft); font-size: 14px; }   /* inline cook-gate confirm */
 .cook-actions { display: inline-flex; gap: 8px; margin-left: auto; }
-/* Backdate a cook: a secondary inline reveal beside "Cooked it" (the app's first date input). */
-.backdate { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.backdate-date {
-  font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 999px;
-  border: 1px solid var(--line); background: transparent; color: var(--ink-soft);
-}
-.backdate-date:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
-.backdate-error { color: var(--danger); font-size: 13px; font-style: italic; }
 .btn {
   font: inherit; font-size: 14px; cursor: pointer; white-space: nowrap;
   padding: 7px 16px; border-radius: 999px;
@@ -335,6 +327,8 @@ a:hover { color: var(--berry-lift); }
 .btn:hover { background: var(--btn-fill-lift); border-color: var(--btn-fill-lift); }
 .btn.ghost { background: transparent; color: var(--ink-soft); border-color: var(--line); }
 .btn.ghost:hover { color: var(--ink); border-color: var(--ink-soft); background: var(--paper); }
+.btn.alt { background: var(--berry); border-color: var(--berry); color: var(--card); }   /* olive companion action (e.g. "Log a past cook") */
+.btn.alt:hover { background: var(--green-lift); border-color: var(--green-lift); }
 .btn:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
 
 .rc-stats { font-size: 13px; color: var(--amber); margin: 5px 0 0; letter-spacing: 1px; }
@@ -465,6 +459,98 @@ a:hover { color: var(--berry-lift); }
 }
 .panel-close:hover { color: var(--ink); border-color: var(--ink-soft); }
 .panel-close:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
+
+/* ---------- Backdate-a-cook modal (centered on the shared .scrim) ---------- */
+.backdate-modal {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -46%);
+  width: min(720px, 96vw); max-height: 92vh; overflow-y: auto; z-index: 50;
+  background: var(--card); border: 1px solid var(--paper-edge); border-radius: 16px;
+  box-shadow: 0 18px 54px rgba(31,42,32,0.24); padding: 32px 36px 28px;
+  opacity: 0; transition: opacity .22s ease, transform .26s cubic-bezier(.2,.7,.2,1);
+}
+.backdate-modal.open { opacity: 1; transform: translate(-50%, -50%); }
+.backdate-modal[hidden] { display: none; }
+.bd-title { margin: 0 0 4px; font-size: 25px; font-weight: 600; }
+.bd-hint { margin: 0 0 22px; color: var(--ink-soft); font-style: italic; font-size: 15.5px; }
+.bd-cols { display: grid; grid-template-columns: 1.7fr 1fr; gap: 30px; align-items: start; }
+.bd-left { min-width: 0; }
+
+.bd-cal { border: 1px solid var(--rule-soft); border-radius: 12px; padding: 16px; background: var(--paper); }
+.bd-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 8px; }
+.bd-monthnav { display: inline-flex; align-items: center; gap: 6px; }
+.bd-month-label { font-size: 17px; font-weight: 600; min-width: 4.6em; text-align: center; }
+.bd-nav {
+  width: 34px; height: 34px; border-radius: 50%; border: 1px solid var(--line);
+  background: var(--paper); color: var(--ink-soft); cursor: pointer; font-size: 18px; line-height: 1;
+}
+.bd-nav:hover:not(:disabled) { color: var(--ink); border-color: var(--ink-soft); }
+.bd-nav:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* combined year control: a pill that opens one popover with a typed field + a browse grid */
+.bd-year-anchor { position: relative; display: inline-block; }
+.bd-yearpill {
+  font: inherit; font-size: 16px; font-weight: 600; color: var(--ink);
+  background: var(--card); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; cursor: pointer;
+}
+.bd-yearpill:hover { border-color: var(--ink-soft); }
+.bd-yearpill:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
+.bd-year-pop {
+  position: absolute; top: calc(100% + 8px); right: 0; z-index: 60;
+  background: var(--card); border: 1px solid var(--paper-edge); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(31,42,32,0.20); padding: 10px; display: none; width: 232px; max-height: 220px; overflow-y: auto;
+}
+.bd-year-pop.open { display: block; }
+.bd-year-input {
+  font: inherit; font-size: 15px; font-weight: 600; text-align: center; width: 100%;
+  color: var(--ink); background: var(--paper); border: 1px solid var(--line); border-radius: 999px;
+  padding: 5px 10px; margin-bottom: 8px; letter-spacing: 0.04em;
+}
+.bd-year-input:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
+.bd-year-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.bd-year-cell {
+  font: inherit; font-size: 14px; color: var(--ink); background: transparent;
+  border: 1px solid transparent; border-radius: 8px; padding: 7px 6px; cursor: pointer;
+}
+.bd-year-cell:hover { background: var(--paper); border-color: var(--line); }
+.bd-year-cell.on { background: var(--berry); color: var(--card); border-color: var(--berry); }
+.bd-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.bd-dow { text-align: center; font-size: 11px; letter-spacing: 0.06em; color: var(--ink-soft); padding: 4px 0; }
+.bd-day {
+  font: inherit; font-size: 15px; min-width: 40px; min-height: 44px; aspect-ratio: 1;
+  display: flex; align-items: center; justify-content: center;
+  background: transparent; color: var(--ink); border: 1px solid transparent; border-radius: 12px; cursor: pointer;
+  transition: background .12s, color .12s, border-color .12s;
+}
+.bd-day:hover:not(:disabled) { background: var(--card); border-color: var(--line); }
+.bd-day.today { border-color: var(--ochre); color: var(--ochre); }
+.bd-day.sel { background: var(--berry); color: var(--card); border-color: var(--berry); }
+.bd-day:disabled { color: var(--line); cursor: not-allowed; }
+.bd-day.empty { visibility: hidden; cursor: default; }
+
+.bd-typed {
+  font: inherit; font-size: 16px; margin-top: 16px; width: 100%; text-align: center; letter-spacing: 0.04em;
+  padding: 9px 16px; border-radius: 999px; border: 1px solid var(--line); background: var(--paper); color: var(--ink);
+}
+.bd-typed:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
+
+/* photo placeholder — visual only, matches the masthead dashed "add a photo" idiom */
+.bd-photo {
+  border: 2px dashed var(--line); border-radius: 12px; background: var(--paper);
+  min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; padding: 20px 16px; text-align: center; color: var(--ink-soft);
+}
+.bd-photo-ico { font-size: 34px; line-height: 1; opacity: 0.55; }
+.bd-photo-lbl { font-size: 14px; }
+.bd-photo-cap { font-size: 12px; font-style: italic; opacity: 0.8; }
+
+.bd-actions { display: flex; align-items: center; gap: 14px; margin-top: 24px; }
+.bd-error { color: var(--danger); font-size: 13px; font-style: italic; min-height: 1.2em; }
+
+@media (max-width: 640px) {
+  .backdate-modal { padding: 24px 20px; width: 94vw; }
+  .bd-cols { grid-template-columns: 1fr; gap: 18px; }   /* calendar/date on top, photo below */
+  .bd-photo { min-height: 150px; }
+}
 
 .panel-kicker {
   font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
