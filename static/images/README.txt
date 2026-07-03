@@ -1,5 +1,12 @@
 Put recipe photos in this folder.
 
+NOTE: the imported recipes' hero photos are generated here by
+scripts/backfill_photos.py, which extracts the full-size dish photos from the
+Paprika archive, resizes them (long edge 1600px), and saves images/<slug>.jpg.
+Those .jpg files are git-ignored (regenerable from the archive) — so on a fresh
+clone the imported photos are absent until you re-run the backfill, not lost.
+Re-run any time:  python3 scripts/backfill_photos.py --dry-run  (then without --dry-run)
+
 Each recipe looks for a file named after its id (the slug), as set in seed.py:
 
     images/mussakhan.jpg

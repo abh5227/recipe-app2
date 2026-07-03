@@ -1,1 +1,2 @@
 pytest
+pillow   # scripts/backfill_photos.py only (resize Paprika dish photos); not an app runtime dep
