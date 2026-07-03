@@ -642,7 +642,24 @@ a:hover { color: var(--berry-lift); }
 
 /* Masthead now holds the "+ New recipe" button on the right */
 .site-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
+.site-head-actions { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
 .new-recipe { white-space: nowrap; }
+
+/* ---- Test-recipe tier (scratch recipes; a removable bridge feature) ----
+   Marker is a quiet warm "draft" note (amber/ochre family), never --danger — restrained on purpose:
+   a badge + a soft tint that read as a scratch mark, not an alert. */
+.test-badge {
+  font-family: var(--font-sans); font-size: 10px; font-weight: 600; letter-spacing: 0.12em;
+  text-transform: uppercase; padding: 1px 7px; border-radius: 999px; vertical-align: middle; white-space: nowrap;
+  color: var(--ochre);
+  background: color-mix(in srgb, var(--amber) 15%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--amber) 38%, var(--line));
+}
+.recipe-card.is-test { background: color-mix(in srgb, var(--amber) 7%, var(--card)); border-radius: 8px; padding-left: 10px; }
+.masthead.is-test { background: color-mix(in srgb, var(--amber) 6%, var(--paper)); border: 1px solid color-mix(in srgb, var(--amber) 28%, var(--line)); border-radius: 12px; padding: 14px 16px; }
+.test-toggle { flex-direction: row; align-items: center; gap: 8px; }
+.test-toggle input { width: auto; }
+.test-toggle em { color: var(--ink-soft); font-size: 12px; font-style: italic; }
 
 /* Small button variant + edit/delete row on app recipes */
 .btn.sm { font-size: 13px; padding: 5px 12px; }

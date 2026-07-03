@@ -232,7 +232,10 @@ async function renderHome() {
         .join("")
     : `<p class="season-none">Nothing in the library is flagged for ${esc(monthName)} yet.</p>`;
 
-  const cards = recipes
+  // Test (scratch) recipes sink to the bottom; real recipes keep their normal order. A stable sort
+  // (partition by is-test) preserves the API's existing name order within each group.
+  const ordered = [...recipes].sort((a, b) => (a.source === "test") - (b.source === "test"));
+  const cards = ordered
     .map((r) => {
       const bits = [r.author, r.category, r.servings ? `Serves ${r.servings}` : null]
         .filter(Boolean)
@@ -243,10 +246,11 @@ async function renderHome() {
       const statsLine = stars || count
         ? `<p class="rc-stats">${stars}${stars && count ? '<span class="dot">·</span>' : ""}${count}</p>`
         : "";
-      return `<a class="recipe-card" href="#/recipe/${encodeURIComponent(r.id)}">
+      const isTest = r.source === "test";
+      return `<a class="recipe-card${isTest ? " is-test" : ""}" href="#/recipe/${encodeURIComponent(r.id)}">
                 ${photo(r, "thumb")}
                 <div class="rc-body">
-                  <p class="rc-name">${esc(r.name)}</p>
+                  <p class="rc-name">${esc(r.name)}${isTest ? ` <span class="test-badge">Test</span>` : ""}</p>
                   <p class="rc-meta">${bits}</p>
                   ${statsLine}
                 </div>
@@ -254,13 +258,18 @@ async function renderHome() {
     })
     .join("");
 
+  const testCount = recipes.filter((r) => r.source === "test").length;
+  const bulkTest = testCount
+    ? `<span id="test-bulk"><button class="btn danger-soft sm" data-delete-test>Delete ${testCount} test recipe${testCount > 1 ? "s" : ""}</button></span>`
+    : "";
+
   app.innerHTML = `
     <div class="site-head">
       <div>
         <h1 class="site-title">Chef's Choice</h1>
         <p class="site-sub">Field notes from the kitchen — recipes, and what goes in them.</p>
       </div>
-      <a class="btn new-recipe" href="#/new">+ New recipe</a>
+      <div class="site-head-actions">${bulkTest}<a class="btn new-recipe" href="#/new">+ New recipe</a></div>
     </div>
     <div class="season-rail">
       <h2>In season now — ${esc(monthName)}</h2>
@@ -740,10 +749,10 @@ async function renderRecipe(rid) {
 
   app.innerHTML = `
     <a class="back" href="#/">← All recipes</a>
-    <header class="masthead${photoSlot ? "" : " no-photo"}">
+    <header class="masthead${photoSlot ? "" : " no-photo"}${data.is_test ? " is-test" : ""}">
       <div class="masthead-text">
         ${bylineHTML(r)}
-        <h1 class="recipe-title">${esc(r.name)}</h1>
+        <h1 class="recipe-title">${esc(r.name)}${data.is_test ? ` <span class="test-badge">Test</span>` : ""}</h1>
         ${r.descr ? `<div class="headnote"><p class="dek clamped">${esc(r.descr)}</p><button class="dek-more" data-dek-toggle hidden>more</button></div>` : ""}
         ${tagsHTML(r)}
       </div>
@@ -932,6 +941,7 @@ async function renderForm(mode, slug) {
         <label class="field span2"><span>Image path (optional, e.g. images/my-recipe.jpg)</span><input id="f-image" value="${esc(pre.image || "")}"></label>
         <label class="field span2"><span>Description</span><textarea id="f-descr" rows="2">${esc(pre.descr || "")}</textarea></label>
         <label class="field span2"><span>Note (optional)</span><textarea id="f-notes" rows="2">${esc(pre.notes || "")}</textarea></label>
+        ${mode === "create" ? `<label class="field span2 test-toggle"><input type="checkbox" id="f-test"> <span>Make this a test recipe <em>— a scratch recipe you can bulk-delete later (can't be changed after creating)</em></span></label>` : ""}
       </div>
 
       <div class="editor-block">
@@ -1002,6 +1012,7 @@ function gatherPayload() {
     servings: val("f-servings"), prep_time: val("f-prep"), cook_time: val("f-cook"),
     total_time: val("f-total"), image: val("f-image"), descr: val("f-descr"),
     notes: val("f-notes"), ingredients: [], steps: [],
+    is_test: !!document.getElementById("f-test")?.checked,   // create-only; PUT ignores it
   };
 
   document.querySelectorAll("#ing-editor .ed-row").forEach((row) => {
@@ -1339,6 +1350,23 @@ async function submitBackdate() {
 // happens, we look at what was clicked — e.target.closest("X") finds the nearest
 // matching element at or above the click — and act on the first kind we recognize.
 document.addEventListener("click", (e) => {
+  // Bulk-delete all test recipes (home header) — inline two-step confirm, like the recipe delete.
+  const bulk = document.getElementById("test-bulk");
+  if (e.target.closest("[data-delete-test]")) {
+    bulk.innerHTML = `<span class="delete-confirm">Delete all test recipes?
+      <button class="btn ghost sm danger" data-delete-test-confirm>Delete all</button>
+      <button class="btn ghost sm" data-delete-test-cancel>Cancel</button></span>`;
+    return;
+  }
+  if (e.target.closest("[data-delete-test-cancel]")) { renderHome(); return; }
+  if (e.target.closest("[data-delete-test-confirm]")) {
+    (async () => {
+      const { ok } = await sendJSON("DELETE", "/api/test-recipes", null);
+      if (ok) renderHome();
+    })();
+    return;
+  }
+
   // rating / cooking actions live inside the stats bar on a recipe page
   const stats = e.target.closest(".stats");
   if (stats) {

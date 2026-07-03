@@ -31,6 +31,11 @@ app = Flask(__name__, static_folder=str(BASE_DIR / "static"), static_url_path=""
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 31_536_000   # 1 year
 DB = BASE_DIR / "recipes.db"
 
+# Recipe source tiers the app may edit/delete. 'test' is the scratch/throwaway tier (a removable
+# bridge feature — production would use separate dev/staging DBs); 'seed' stays read-only (edit in
+# seed.py). Keeping the set in one place holds the create / edit / delete gates in sync.
+EDITABLE_SOURCES = ("app", "test")
+
 
 def db():
     # Open a fresh connection to the database file.
@@ -270,15 +275,16 @@ def create_recipe():
             return jsonify({
                 "error": f"a recipe named \u201c{clean['name']}\u201d already exists — please pick a different name"
             }), 409
+        source = "test" if payload.get("is_test") else "app"   # only ever 'app' | 'test' from create
         c.execute(
             """INSERT INTO recipes
                (id, name, author, source_url, category, servings, prep_time,
                 cook_time, total_time, descr, notes, image, created_at, source)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, 'app')""",
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (slug, clean["name"], payload.get("author"), payload.get("source_url"),
              payload.get("category"), payload.get("servings"), payload.get("prep_time"),
              payload.get("cook_time"), payload.get("total_time"), payload.get("descr"),
-             payload.get("notes"), payload.get("image"), now_utc()),
+             payload.get("notes"), payload.get("image"), now_utc(), source),
         )
         write_recipe_rows(c, slug, clean)
     return jsonify({"id": slug}), 201
@@ -344,8 +350,9 @@ def get_recipe(rid):
             "stats": stats,
             "people": people,
             "changes": changes,
-            "is_editable": r["source"] == "app",       # app recipes get edit/delete
+            "is_editable": r["source"] in EDITABLE_SOURCES,   # app + test recipes get edit/delete
             "is_seed": r["source"] == "seed",           # seed recipes get the change layers
+            "is_test": r["source"] == "test",           # scratch tier — gets the visible test marker
         }
     )
 
@@ -358,7 +365,7 @@ def update_recipe(rid):
         row = c.execute("SELECT source FROM recipes WHERE id = ?", (rid,)).fetchone()
         if row is None:
             return jsonify({"error": "recipe not found"}), 404
-        if row["source"] != "app":
+        if row["source"] not in EDITABLE_SOURCES:
             return jsonify({"error": "this recipe is from seed.py and is read-only here — edit it in seed.py"}), 403
         clean, err = validate_recipe_payload(c, payload)
         if err:
@@ -395,10 +402,20 @@ def delete_recipe(rid):
         row = c.execute("SELECT source FROM recipes WHERE id = ?", (rid,)).fetchone()
         if row is None:
             return jsonify({"error": "recipe not found"}), 404
-        if row["source"] != "app":
+        if row["source"] not in EDITABLE_SOURCES:
             return jsonify({"error": "seed recipes can't be deleted here — remove them from seed.py"}), 403
         c.execute("DELETE FROM recipes WHERE id = ?", (rid,))
     return jsonify({"deleted": rid})
+
+
+@app.route("/api/test-recipes", methods=["DELETE"])
+def delete_test_recipes():
+    """Delete ALL test-tier recipes at once (their children cascade via ON DELETE CASCADE).
+    Inherently safe — matches only source='test', never app/seed. Sibling namespace to
+    /api/recipes/<rid> so it can't be shadowed by a recipe slugged 'test'."""
+    with db() as c:
+        n = c.execute("DELETE FROM recipes WHERE source = 'test'").rowcount
+    return jsonify({"deleted": n})
 
 
 # ---- per-person change layers (seed recipes only) ----

@@ -53,6 +53,50 @@ def test_create_edit_delete_app_recipe(kitchen):
     assert kitchen.client.get(f"/api/recipes/{rid}").status_code == 404
 
 
+# ---- test-recipe tier (scratch recipes; source='test') ----
+
+def test_create_as_test_sets_source_test(kitchen):
+    rid = kitchen.client.post("/api/recipes", json={
+        "name": "Scratch One", "ingredients": [], "steps": [], "is_test": True,
+    }).get_json()["id"]
+    with kitchen.conn() as c:
+        assert c.execute("SELECT source FROM recipes WHERE id=?", (rid,)).fetchone()["source"] == "test"
+    d = kitchen.client.get(f"/api/recipes/{rid}").get_json()
+    assert d["is_test"] is True and d["is_editable"] is True and d["is_seed"] is False
+
+
+def test_create_without_flag_is_app(kitchen):
+    rid = kitchen.client.post("/api/recipes", json={"name": "Normal One", "ingredients": [], "steps": []}).get_json()["id"]
+    with kitchen.conn() as c:
+        assert c.execute("SELECT source FROM recipes WHERE id=?", (rid,)).fetchone()["source"] == "app"
+    assert kitchen.client.get(f"/api/recipes/{rid}").get_json()["is_test"] is False
+
+
+def test_gate_parity_test_editable_deletable_seed_not(kitchen):
+    # a test recipe edits + deletes like an app recipe...
+    rid = kitchen.client.post("/api/recipes", json={"name": "Scratch Two", "ingredients": [], "steps": [], "is_test": True}).get_json()["id"]
+    assert kitchen.client.put(f"/api/recipes/{rid}", json={"name": "Scratch Two", "ingredients": [], "steps": ["go"]}).status_code == 200
+    assert kitchen.client.delete(f"/api/recipes/{rid}").status_code == 200
+    # ...while seed stays read-only for BOTH edit and delete (gate parity)
+    assert kitchen.client.put("/api/recipes/gai-yang", json={"name": "x", "ingredients": [], "steps": []}).status_code == 403
+    assert kitchen.client.delete("/api/recipes/gai-yang").status_code == 403
+
+
+def test_bulk_delete_removes_only_test_and_cascades(kitchen):
+    t = kitchen.client.post("/api/recipes", json={"name": "Scratch T", "ingredients": [], "steps": [], "is_test": True}).get_json()["id"]
+    a = kitchen.client.post("/api/recipes", json={"name": "Keep A", "ingredients": [], "steps": []}).get_json()["id"]
+    kitchen.client.post(f"/api/recipes/{t}/cooked-and-rated", json={"rating": 5})   # give the test recipe a cook + rating
+    assert kitchen.count("cook_log", f"recipe_id='{t}'") == 1
+
+    resp = kitchen.client.delete("/api/test-recipes")
+    assert resp.status_code == 200 and resp.get_json()["deleted"] == 1
+
+    assert kitchen.client.get(f"/api/recipes/{t}").status_code == 404        # test recipe gone
+    assert kitchen.count("cook_log", f"recipe_id='{t}'") == 0                # children cascaded
+    assert kitchen.client.get(f"/api/recipes/{a}").status_code == 200        # app recipe untouched
+    assert kitchen.count("recipes", "source='seed'") == 5                    # seed untouched
+
+
 def test_edit_preserves_unchanged_harvested_grams(kitchen):
     # The create path writes NULL grams; set grams/secondary_measure directly to simulate an
     # imported recipe. These are PLAIN lines (created via {qty, text}) -> label=NULL with the name
