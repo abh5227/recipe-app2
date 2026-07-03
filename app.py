@@ -16,7 +16,7 @@ import re
 import sqlite3
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, request
 
 from weights import build_index, match_weight
 from stepscale import api_spans
@@ -24,6 +24,11 @@ from stepscale import api_spans
 # Anchor everything to this file's folder so the app runs from any directory.
 BASE_DIR = Path(__file__).resolve().parent
 app = Flask(__name__, static_folder=str(BASE_DIR / "static"), static_url_path="")
+# Static assets cache for a year — SAFE because the "/" shell stamps each with a ?v=<mtime> that
+# changes on edit (see home()). Standard fingerprint-and-cache: fresh on a normal refresh in dev,
+# no needless re-downloads in production. (The shell itself stays no-cache, so it always re-emits
+# the current ?v=.)
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 31_536_000   # 1 year
 DB = BASE_DIR / "recipes.db"
 
 
@@ -214,9 +219,25 @@ def write_recipe_rows(c, rid, clean, preserve=None):
             )
 
 
+def _asset_version(name):
+    """Cache-bust token from the file's mtime — changes automatically whenever it's edited."""
+    try:
+        return str(int((BASE_DIR / "static" / name).stat().st_mtime))
+    except OSError:
+        return "0"
+
+
 @app.route("/")
 def home():
-    return send_from_directory(app.static_folder, "index.html")
+    # Serve the shell with a per-asset ?v=<mtime> so a normal refresh always gets the current file
+    # (no hard-refresh in dev), while the assets themselves cache for a year (production-correct).
+    html = (BASE_DIR / "static" / "index.html").read_text(encoding="utf-8")
+    for asset in ("styles.css", "scaler.js", "app.js"):
+        html = html.replace(f'"{asset}"', f'"{asset}?v={_asset_version(asset)}"')
+    resp = app.make_response(html)
+    resp.headers["Content-Type"] = "text/html; charset=utf-8"
+    resp.headers["Cache-Control"] = "no-cache"   # the shell always revalidates → always fresh ?v=
+    return resp
 
 
 @app.route("/api/recipes")
