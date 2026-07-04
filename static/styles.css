@@ -779,7 +779,8 @@ a:hover { color: var(--berry-lift); }
 /* Small button variant + edit/delete row on app recipes */
 .btn.sm { font-size: 13px; padding: 5px 12px; }
 /* recipe-management zone: separated from the cook block by a faint hairline + generous space */
-.owner-actions { display: flex; gap: 8px; margin: 20px 0 0; padding-top: 20px; border-top: 1px solid var(--rule-soft); }
+.owner-actions { display: flex; gap: 8px; margin: 20px 0 0; padding-top: 20px; border-top: 1px solid var(--rule-soft); flex-wrap: wrap; }
+.btn.copy-test { color: var(--ink-soft); }   /* "Copy as test" reads quieter — a removable dev-sandbox action */
 
 /* A column heading that can carry an action button on the right.
    Wraps the same underline the bare .col-title has, so they look identical. */

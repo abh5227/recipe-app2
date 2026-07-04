@@ -754,6 +754,8 @@ function dishPhoto(r, editable) {
 function ownerActionsHTML(r) {
   return `<button class="btn ghost sm" data-inline-edit-enter>✎ Edit</button>
           <a class="btn ghost sm" href="#/edit/${encodeURIComponent(r.id)}">Edit form</a>
+          <button class="btn ghost sm" data-copy>Copy</button>
+          <button class="btn ghost sm copy-test" data-copy-test>Copy as test</button>
           <button class="btn danger-soft sm" data-delete>Delete recipe</button>`;
 }
 function deleteConfirmHTML(r) {
@@ -1066,6 +1068,14 @@ async function doDelete() {
   const res = await sendJSON("DELETE", "/api/recipes/" + encodeURIComponent(view.slug));
   if (res.ok) location.hash = "#/";
   else alert((res.data && res.data.error) || "Couldn't delete the recipe.");
+}
+
+// Copy the open recipe (content only; the copy starts with zero cooks + no rating — the server
+// resets the accruing layer). isTest -> a removable test-tier copy. Lands on the new copy.
+async function doCopy(isTest) {
+  const res = await sendJSON("POST", `/api/recipes/${encodeURIComponent(view.slug)}/copy`, { is_test: !!isTest });
+  if (res.ok && res.data && res.data.id) location.hash = "#/recipe/" + encodeURIComponent(res.data.id);
+  else alert((res.data && res.data.error) || "Couldn't copy the recipe.");
 }
 
 /* ---------- create / edit form ---------- */
@@ -1690,6 +1700,10 @@ document.addEventListener("click", (e) => {
       return;
     }
     if (e.target.closest("[data-delete-confirm]")) { doDelete(); return; }
+
+    // copy the recipe (a clean duplicate) — plain, or as a removable test-tier copy
+    if (e.target.closest("[data-copy-test]")) { doCopy(true); return; }
+    if (e.target.closest("[data-copy]")) { doCopy(false); return; }
 
     // scale control: re-scale every displayed quantity
     const scale = e.target.closest("[data-scale]");

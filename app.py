@@ -408,6 +408,58 @@ def delete_recipe(rid):
     return jsonify({"deleted": rid})
 
 
+def _unique_copy_id(c, base_name):
+    """Mint a distinguishable name + unique slug for a duplicate: '<name> (copy)', then
+    '<name> (copy 2)', '(copy 3)', … bumping until the slug is free. Returns (name, slug)."""
+    n = 1
+    while True:
+        name = base_name + (" (copy)" if n == 1 else f" (copy {n})")
+        slug = slugify(name)
+        if slug and not c.execute("SELECT 1 FROM recipes WHERE id = ?", (slug,)).fetchone():
+            return name, slug
+        n += 1
+
+
+@app.route("/api/recipes/<rid>/copy", methods=["POST"])
+def copy_recipe(rid):
+    """Duplicate a recipe's CONTENT into a new recipe, resetting the accruing layer to zero.
+    `is_test` picks the tier (test vs app). The copy starts with no cooks and no rating for free:
+    cook_count/last_cooked are DERIVED from cook_log and rating lives in the ratings table — we
+    copy neither. Content (incl. import-harvested grams/secondary_measure) is carried by a direct
+    row-copy; uid/hash are import identity and left NULL (uid is UNIQUE-indexed — copying it throws)."""
+    is_test = bool((request.get_json(silent=True) or {}).get("is_test"))   # thin, self-contained flag
+    with db() as c:
+        src = c.execute("SELECT * FROM recipes WHERE id = ?", (rid,)).fetchone()
+        if src is None:
+            return jsonify({"error": "recipe not found"}), 404
+        new_name, new_id = _unique_copy_id(c, src["name"])
+        c.execute(
+            """INSERT INTO recipes
+               (id, name, author, source_url, category, servings, prep_time, cook_time,
+                total_time, descr, notes, image, created_at, source, uid, hash)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL)""",
+            (new_id, new_name, src["author"], src["source_url"], src["category"], src["servings"],
+             src["prep_time"], src["cook_time"], src["total_time"], src["descr"], src["notes"],
+             src["image"], now_utc(), "test" if is_test else "app"),
+        )
+        # Direct row-copy: carries all content INCL. harvested grams/secondary_measure (write_recipe_rows
+        # would NULL those). cook_log / ratings / import_flags / per-person tables are deliberately NOT
+        # copied — that's what makes the copy start clean.
+        c.execute(
+            """INSERT INTO recipe_ingredients
+               (recipe_id, position, is_heading, qty, ingredient_id, label, note, raw_text, grams, secondary_measure)
+               SELECT ?, position, is_heading, qty, ingredient_id, label, note, raw_text, grams, secondary_measure
+               FROM recipe_ingredients WHERE recipe_id = ? ORDER BY position""",
+            (new_id, rid),
+        )
+        c.execute(
+            """INSERT INTO recipe_steps (recipe_id, position, is_heading, text)
+               SELECT ?, position, is_heading, text FROM recipe_steps WHERE recipe_id = ? ORDER BY position""",
+            (new_id, rid),
+        )
+    return jsonify({"id": new_id}), 201
+
+
 @app.route("/api/test-recipes", methods=["DELETE"])
 def delete_test_recipes():
     """Delete ALL test-tier recipes at once (their children cascade via ON DELETE CASCADE).

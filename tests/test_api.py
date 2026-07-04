@@ -339,3 +339,96 @@ def test_ingredients_and_in_season(kitchen):
     sm = kitchen.client.get("/api/in-season/6").get_json()
     assert sm["month"] == 6
     assert isinstance(sm["ingredients"], list)
+
+
+# ---- copy recipe ----
+
+def _make_source(kitchen):
+    """An app recipe with a heading, a library-linked line, a plain line, and a [[link]] step + heading."""
+    return kitchen.client.post("/api/recipes", json={
+        "name": "Copy Source", "author": "Chef A", "source_url": "http://ex.com",
+        "category": "Dinner · Quick", "servings": "4", "prep_time": "5 min", "cook_time": "20 min",
+        "descr": "a desc", "notes": "a note",
+        "ingredients": [
+            {"heading": "SAUCE"},
+            {"qty": "2", "item": "carrot", "label": "carrots", "note": "diced"},
+            {"qty": "1 cup", "text": "water"},
+        ],
+        "steps": ["Grate [[carrot]].", {"heading": "TO SERVE"}, "Plate it."],
+    }).get_json()["id"]
+
+
+def test_copy_carries_content_and_resets_accruing(kitchen):
+    src = _make_source(kitchen)
+    kitchen.client.post(f"/api/recipes/{src}/cooked-and-rated", json={"rating": 5})   # give it a cook + rating
+    assert kitchen.count("cook_log", f"recipe_id='{src}'") == 1
+
+    resp = kitchen.client.post(f"/api/recipes/{src}/copy", json={"is_test": False})
+    assert resp.status_code == 201
+    new_id = resp.get_json()["id"]
+    assert new_id == "copy-source-copy"
+
+    d = kitchen.client.get(f"/api/recipes/{new_id}").get_json()
+    r = d["recipe"]
+    assert r["name"] == "Copy Source (copy)"
+    assert (r["author"], r["source_url"], r["category"], r["servings"], r["cook_time"], r["descr"], r["notes"]) == \
+        ("Chef A", "http://ex.com", "Dinner · Quick", "4", "20 min", "a desc", "a note")
+    assert d["is_test"] is False and d["is_editable"] is True and d["is_seed"] is False
+
+    ings = d["ingredients"]
+    assert any(i["is_heading"] and i["raw_text"] == "SAUCE" for i in ings)                                  # heading carried
+    assert any(i.get("ingredient_id") == "carrot" and i["label"] == "carrots" and i["note"] == "diced" for i in ings)  # link carried
+    assert any((not i["is_heading"]) and i["raw_text"] == "water" for i in ings)                            # plain line carried
+    steps = d["steps"]
+    assert any(s["text"] == "Grate [[carrot]]." for s in steps)                                            # [[link]] verbatim
+    assert any(s["is_heading"] and s["text"] == "TO SERVE" for s in steps)                                  # step heading carried
+
+    # accruing layer reset (for free — no child rows copied)
+    assert d["stats"]["cook_count"] == 0 and d["stats"]["rating"] is None
+    assert kitchen.count("cook_log", f"recipe_id='{new_id}'") == 0
+    assert kitchen.count("ratings", f"recipe_id='{new_id}'") == 0
+    # uid/hash NULL (import identity not copied)
+    assert kitchen.count("recipes", f"id='{new_id}' AND uid IS NULL AND hash IS NULL") == 1
+    # original keeps its cook + rating
+    assert kitchen.client.get(f"/api/recipes/{src}").get_json()["stats"]["cook_count"] == 1
+
+
+def test_copy_bumps_slug_on_second_copy(kitchen):
+    src = _make_source(kitchen)
+    first = kitchen.client.post(f"/api/recipes/{src}/copy", json={}).get_json()["id"]
+    second = kitchen.client.post(f"/api/recipes/{src}/copy", json={}).get_json()["id"]
+    assert first == "copy-source-copy"
+    assert second == "copy-source-copy-2"
+    assert kitchen.client.get(f"/api/recipes/{second}").get_json()["recipe"]["name"] == "Copy Source (copy 2)"
+
+
+def test_copy_as_test_sets_source_test(kitchen):
+    src = _make_source(kitchen)
+    new_id = kitchen.client.post(f"/api/recipes/{src}/copy", json={"is_test": True}).get_json()["id"]
+    d = kitchen.client.get(f"/api/recipes/{new_id}").get_json()
+    assert d["is_test"] is True and d["is_editable"] is True
+
+
+def test_copy_defaults_to_app_source(kitchen):
+    src = _make_source(kitchen)
+    new_id = kitchen.client.post(f"/api/recipes/{src}/copy", json={}).get_json()["id"]
+    assert kitchen.client.get(f"/api/recipes/{new_id}").get_json()["is_test"] is False
+
+
+def test_copy_carries_harvested_grams(kitchen):
+    # harvested weights are CONTENT and must survive the direct row-copy (write_recipe_rows would NULL them)
+    src = kitchen.client.post("/api/recipes", json={
+        "name": "Weighted", "ingredients": [{"qty": "1 cup", "text": "flour"}], "steps": ["mix"],
+    }).get_json()["id"]
+    with kitchen.conn() as c:
+        c.execute("UPDATE recipe_ingredients SET grams = 120, secondary_measure = '120 g' "
+                  "WHERE recipe_id = ? AND is_heading = 0", (src,))
+    new_id = kitchen.client.post(f"/api/recipes/{src}/copy", json={}).get_json()["id"]
+    with kitchen.conn() as c:
+        row = c.execute("SELECT grams, secondary_measure FROM recipe_ingredients "
+                        "WHERE recipe_id = ? AND is_heading = 0", (new_id,)).fetchone()
+    assert row["grams"] == 120 and row["secondary_measure"] == "120 g"
+
+
+def test_copy_missing_recipe_404(kitchen):
+    assert kitchen.client.post("/api/recipes/does-not-exist/copy", json={}).status_code == 404
