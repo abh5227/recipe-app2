@@ -248,6 +248,70 @@ a:hover { color: var(--berry-lift); }
   box-shadow: 0 1px 2px rgba(40,35,30,.06), 0 16px 40px -18px rgba(40,35,30,.22);   /* lifts off the paper */
 }
 
+/* ---------- inline recipe editor (Stage 1: mode toggle + scalar fields) ---------- */
+/* keep the masthead edit fields clear of the Polaroid (right zone); min-height makes the following
+   full-width description block start BELOW the photo rather than beside/under it. */
+.detail-card.editing .masthead-text { padding-right: 264px; min-height: 190px; }
+@media (max-width: 680px) { .detail-card.editing .masthead-text { padding-right: 0; min-height: 0; } }
+/* description in edit mode: its own full-width block below the masthead (roomy, auto-growing) */
+.ie-descr-wrap { margin: 0 0 14px; }
+/* "Mark up the page" (Option 3): editable fields keep their reading typography — a faint dashed
+   baseline signals "editable line" at rest, a whisper of tint on hover, and a soft rounded lift on
+   focus (like writing on a note). No uppercase labels, no bordered boxes. */
+.ie { font: inherit; color: inherit; background: transparent; border: none;
+  border-bottom: 1px dashed color-mix(in srgb, var(--ink-soft) 45%, transparent); border-radius: 0;
+  padding: 1px 2px; margin: 0 -2px; outline: none; caret-color: var(--berry); }
+.ie::placeholder { color: var(--ink-soft); opacity: 0.5; font-style: italic; }
+.detail-card.editing .ie:hover { background: color-mix(in srgb, var(--berry) 5%, transparent); border-radius: 5px 5px 0 0; }
+.detail-card.editing .ie:focus { border-bottom-color: transparent; background: var(--card); border-radius: 7px;
+  box-shadow: 0 0 0 1px var(--paper-edge), 0 6px 16px -8px rgba(40,35,30,.28); padding: 5px 8px; margin: 0 -8px; }
+.ie-title, .ie-byline, .ie-num, .ie-prose, .ie-tag-new { field-sizing: content; }   /* auto-size to content where supported */
+
+/* .ie-line: wrapping single-logical-line textarea (title, author) — soft-wraps + auto-grows, no scrollbar */
+.ie-line { resize: none; overflow: hidden; }
+.ie-byline { display: block; width: 100%; margin: 0 0 6px; font-family: var(--font-sans); font-size: var(--fs-label); letter-spacing: 0.08em; font-weight: 600; color: var(--green); }
+/* .ie-util: utility field with no reading counterpart (source link) — minimal, faint, full-width single-line */
+.ie-util { display: block; width: 100%; margin: 0 0 10px; font-family: var(--font-sans); font-size: 12px; color: var(--ink-soft); }
+.ie-title { font-family: var(--font-serif); font-size: 30px; font-weight: 600; line-height: 1.1; display: block; width: 100%; margin: 2px 0 12px; }
+/* category as discrete editable chips — chips match reading's .cat-tag; the adder is a dashed "+ tag" */
+.ie-cat-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 2px 0 12px; }
+.ie-tagchip { display: inline-flex; align-items: center; gap: 5px; font-family: var(--font-mono); font-size: 11px;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-soft); background: var(--card);
+  border: 1px solid var(--rule); border-radius: 3px; padding: 2px 5px 2px 7px; }
+.ie-tag-x { border: none; background: none; color: var(--ink-soft); cursor: pointer; font-size: 13px; line-height: 1; padding: 0 1px; opacity: 0.55; }
+.ie-tag-x:hover { color: var(--danger); opacity: 1; }
+.ie-tag-new { font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--green); background: transparent; border: 1px dashed color-mix(in srgb, var(--green) 45%, var(--line));
+  border-radius: 3px; padding: 2px 7px; outline: none; width: 9ch; caret-color: var(--berry); }
+.ie-tag-new::placeholder { color: var(--green); opacity: 0.7; text-transform: none; letter-spacing: 0; }
+.ie-tag-new:focus { border-style: solid; border-color: var(--berry); background: var(--card); }
+.ie-prose { font-family: var(--font-serif); font-style: italic; font-size: var(--fs-headnote); line-height: 1.7; color: var(--ink-soft); display: block; width: 100%; resize: none; }
+.ie-vitals { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-family: var(--font-sans); font-size: 13.5px; color: var(--ink-soft); margin: 6px 0 12px; }
+.ie-vlabel { font-family: var(--font-sans); font-size: 13.5px; color: var(--ink-soft); }
+.ie-dot { opacity: 0.4; }
+/* short inline meta fields auto-grow to fit their value (field-sizing) — no fixed width to clip it;
+   min-width keeps an empty field (e.g. Total) a clean, clickable dashed target. */
+.ie-num { font-family: var(--font-sans); font-size: 13.5px; font-weight: 600; color: var(--ink); min-width: 3ch; text-align: right; }
+/* gentler focus-lift than the block fields, so a focused inline field doesn't clip or shove the meta line */
+.detail-card.editing .ie-num:focus { padding: 2px 6px; margin: 0 -2px;
+  box-shadow: 0 0 0 1px var(--paper-edge), 0 4px 10px -6px rgba(40,35,30,.25); }
+.ie-noterow { display: flex; align-items: baseline; gap: 8px; margin: 0 0 10px; }
+.ie-noterow .ie-note { flex: 1; }
+.ie-note-block { margin-top: 20px; }   /* the note sits at the bottom (after steps), like reading */
+.stats.locked { opacity: 0.45; pointer-events: none; }   /* cook/rate disabled while editing */
+
+/* floating Save/Cancel bar — always visible in edit mode, clear of the straddling Polaroid */
+.inline-save-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 22px; z-index: 60;
+  display: flex; gap: 12px; align-items: center; font-family: var(--font-sans); font-size: 13px;
+  background: var(--card); border: 1px solid var(--paper-edge); border-radius: 12px;
+  padding: 10px 14px 10px 16px; box-shadow: 0 10px 30px -8px rgba(40,35,30,.4); }
+.inline-editing-label { font-weight: 600; color: var(--ink); }
+.inline-editing-label::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  background: var(--amber); margin-right: 7px; vertical-align: middle;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--amber) 25%, transparent); }
+.inline-dirty { color: var(--amber); font-weight: 600; }
+.inline-error { color: var(--danger); font-weight: 600; }
+
 /* byline = author / source, green kicker (linked to source_url) */
 .byline {
   font-family: var(--font-sans); font-size: var(--fs-label); letter-spacing: 0.08em; font-weight: 600;

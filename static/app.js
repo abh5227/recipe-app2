@@ -752,7 +752,8 @@ function dishPhoto(r, editable) {
 // The owner Edit/Delete row, and the inline two-step delete confirmation it swaps to. The
 // confirmation names the recipe and needs a deliberate second click (replaces a single confirm()).
 function ownerActionsHTML(r) {
-  return `<a class="btn ghost sm" href="#/edit/${encodeURIComponent(r.id)}">Edit recipe</a>
+  return `<button class="btn ghost sm" data-inline-edit-enter>✎ Edit</button>
+          <a class="btn ghost sm" href="#/edit/${encodeURIComponent(r.id)}">Edit form</a>
           <button class="btn danger-soft sm" data-delete>Delete recipe</button>`;
 }
 function deleteConfirmHTML(r) {
@@ -765,10 +766,10 @@ function deleteConfirmHTML(r) {
 
 async function renderRecipe(rid) {
   const data = await api("/api/recipes/" + encodeURIComponent(rid));
-  view = { slug: rid, data, mode: "original", editingPos: null, addingOpen: false, scale: 1, pendingRating: null, undoneCook: null };
+  view = { slug: rid, data, mode: "original", editingPos: null, addingOpen: false, scale: 1,
+           pendingRating: null, undoneCook: null, editMode: false, draft: null, dirty: false };
   app.className = "page recipe-view";
   setCookCount(app, data.stats.cook_count);   // reserved R2 wear signal on the recipe root
-  const r = data.recipe;
 
   // Seed recipes let people add ingredients to their version, so load the library
   // now to fill the "link to an ingredient" picker in the add form.
@@ -776,48 +777,235 @@ async function renderRecipe(rid) {
     try { INGREDIENT_LIST = await api("/api/ingredients"); }
     catch (_) { INGREDIENT_LIST = []; }
   }
+  paintRecipe();
+}
 
+// Paint the recipe page in the current mode (reading vs inline-edit) from `view` — no re-fetch, so
+// toggling edit mode is instant. Reading reads view.data; edit reads the buffered view.draft (a deep
+// copy), so edits are discarded on Cancel and only committed to the server (and to view.data) on Save.
+// The Polaroid assembly (photoSlot) stays a SIBLING of the .detail-card so it keeps straddling the edge.
+function paintRecipe() {
+  const editing = !!view.editMode;
+  const data = view.data;                        // fetched payload (source flags: is_editable/is_seed/…)
+  const src = editing ? view.draft : view.data;  // where displayed field VALUES come from
+  const r = src.recipe;
   const photoSlot = dishPhoto(r, data.is_editable);
+  const owner = (data.is_editable && !editing) ? `<div class="owner-actions">${ownerActionsHTML(data.recipe)}</div>` : "";
 
-  const owner = data.is_editable ? `<div class="owner-actions">${ownerActionsHTML(r)}</div>` : "";
+  const mastheadInner = editing
+    ? mastheadEditHTML(r)
+    : `${photoSlot ? `<div class="photo-reserve" aria-hidden="true"></div>` : ""}
+        ${bylineHTML(r)}
+        <h1 class="recipe-title">${esc(r.name)}${data.is_test ? ` <span class="test-badge">Test</span>` : ""}</h1>
+        ${tagsHTML(r)}
+        ${r.descr ? `<div class="headnote"><p class="dek clamped">${esc(r.descr)}</p><button class="dek-more" data-dek-toggle hidden>more</button></div>` : ""}`;
 
-  // The recipe content lives inside an inner card (.detail-card) so the Polaroid has a real top edge
-  // to straddle and the clip.back can tuck behind it. The Polaroid assembly (photoSlot) is a SIBLING
-  // of the card inside .recipe-stage — not inside the masthead — so its z-layers straddle the card
-  // edge. The ← back-link stays outside/above the card.
+  const vitalsInner = editing
+    ? `${vitalsEditHTML(r)}<div class="stats cook-block locked" data-rid="${esc(r.id)}" aria-disabled="true">${statsInner(data.stats)}</div>`
+    : `${metaLine(r)}
+        <div class="scaler-line" id="scaler-host">${scaleControl()}</div>
+        <div class="stats cook-block" data-rid="${esc(r.id)}">${statsInner(data.stats)}</div>
+        ${owner}`;
+
+  // Stage 1: ingredients & steps stay DISPLAY-ONLY in edit mode (rendered from the draft, no scaler,
+  // no edit affordances) and round-trip unchanged on Save. Discrete inline editing lands in Stage 2/3.
+  const ingSection = editing ? editIngredientsHTML() : ingredientsSectionInner(view);
+  const steps = (editing ? view.draft.steps : data.steps).map(renderStepRow).join("");
+
   app.innerHTML = `
     <a class="back" href="#/">← All recipes</a>
     <div class="recipe-stage${photoSlot ? "" : " no-photo"}">
       ${photoSlot}
-      <div class="detail-card">
+      <div class="detail-card${editing ? " editing" : ""}">
         <header class="masthead${data.is_test ? " is-test" : ""}">
-          <div class="masthead-text">
-            ${photoSlot ? `<div class="photo-reserve" aria-hidden="true"></div>` : ""}
-            ${bylineHTML(r)}
-            <h1 class="recipe-title">${esc(r.name)}${data.is_test ? ` <span class="test-badge">Test</span>` : ""}</h1>
-            ${tagsHTML(r)}
-            ${r.descr ? `<div class="headnote"><p class="dek clamped">${esc(r.descr)}</p><button class="dek-more" data-dek-toggle hidden>more</button></div>` : ""}
-          </div>
+          <div class="masthead-text">${mastheadInner}</div>
         </header>
-        <div class="vitals">
-          ${metaLine(r)}
-          <div class="scaler-line" id="scaler-host">${scaleControl()}</div>
-          <div class="stats cook-block" data-rid="${esc(r.id)}">${statsInner(data.stats)}</div>
-          ${owner}
-        </div>
+        ${editing ? ieDescrHTML(r) : ""}
+        <div class="vitals">${vitalsInner}</div>
         <div class="recipe-cols">
-          <section id="ing-section">${ingredientsSectionInner(view)}</section>
+          <section id="ing-section">${ingSection}</section>
           <section>
             <h2 class="col-title">Method</h2>
-            <ol class="steps" id="steps-list">${data.steps.map(renderStepRow).join("")}</ol>
-            ${r.notes ? `<div class="notes"><strong>Note.</strong> ${esc(r.notes)}</div>` : ""}
+            <ol class="steps" id="steps-list">${steps}</ol>
+            ${editing ? ieNoteHTML(r) : (r.notes ? `<div class="notes"><strong>Note.</strong> ${esc(r.notes)}</div>` : "")}
           </section>
         </div>
       </div>
-    </div>`;
+    </div>
+    ${editing ? inlineSaveBarHTML() : ""}`;
 
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(setupHeadnote);
-  else setupHeadnote();
+  if (!editing) {   // edit mode bypasses the description clamp (no .dek); reading keeps it
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(setupHeadnote);
+    else setupHeadnote();
+  }
+}
+
+/* ---------- inline recipe editor — Stage 1: mode toggle, buffered draft, scalar fields ---------- */
+
+// "Mark up the page" (Option 3): scalar fields as real inputs (NOT contenteditable — the f.value
+// buffer machinery is unchanged), but styled to KEEP their reading typography with no labels/boxes —
+// just a faint dashed baseline at rest and a soft lift on focus. Reads the RAW draft values. Sits in
+// the masthead's left column (.editing reserves the Polaroid's right zone in CSS).
+function mastheadEditHTML(r) {
+  return `
+    <textarea class="ie ie-byline ie-line" data-inline-edit-field="author" rows="1" placeholder="author / source" aria-label="Author or source">${esc(r.author || "")}</textarea>
+    <input class="ie ie-util" data-inline-edit-field="source_url" value="${esc(r.source_url || "")}" placeholder="+ source link" aria-label="Source link">
+    <textarea class="ie ie-title ie-line" data-inline-edit-field="name" rows="1" placeholder="Recipe title" aria-label="Recipe title">${esc(r.name || "")}</textarea>
+    <div class="ie-cat-row" id="ie-cat-row">${catRowHTML()}</div>`;
+}
+
+// Description gets its OWN full-width block in edit mode (below the masthead, clear of the Polaroid) —
+// roomy to type into, rather than pinned into the narrow reserved-column flow. Reading keeps its
+// narrow-beside-then-wide float wrap.
+function ieDescrHTML(r) {
+  return `<div class="ie-descr-wrap"><textarea class="ie ie-prose" data-inline-edit-field="descr" rows="4" placeholder="Add a description…" aria-label="Description">${esc(r.descr || "")}</textarea></div>`;
+}
+
+// Category tags as discrete chips (stored as one "·"-delimited string — a UI-only split/join, no schema
+// change). Add/remove mutate view.draft.recipe.category and re-render ONLY the chip row (#ie-cat-row),
+// so other fields keep their focus. The new-tag input buffers locally and commits on Enter/blur.
+function catTags() {
+  return String(view.draft.recipe.category || "").split("·").map((s) => s.trim()).filter(Boolean);
+}
+function catRowHTML() {
+  const chips = catTags().map((t, i) =>
+    `<span class="ie-tagchip">${esc(t)}<button type="button" class="ie-tag-x" data-inline-edit-rmtag data-tag-i="${i}" aria-label="Remove ${esc(t)}">×</button></span>`
+  ).join("");
+  return `${chips}<input class="ie-tag-new" placeholder="+ tag" aria-label="Add a tag">`;
+}
+function renderCatRow() {
+  const row = document.getElementById("ie-cat-row");
+  if (row) row.innerHTML = catRowHTML();
+}
+function addTag(text) {
+  const t = (text || "").trim();
+  if (!t) return false;
+  const arr = catTags(); arr.push(t);
+  view.draft.recipe.category = arr.join(" · ");
+  markDirty();
+  return true;
+}
+function removeTag(i) {
+  const arr = catTags(); arr.splice(i, 1);
+  view.draft.recipe.category = arr.join(" · ");
+  markDirty();
+  renderCatRow();
+}
+// Add the typed tag, clear the input, re-render the row; on Enter keep the adder open + focused so
+// several tags can be added in a row. el.value is cleared BEFORE re-render so the ensuing blur (the
+// detached input) can't double-add.
+function commitNewTag(el, keepOpen) {
+  if (!addTag(el.value)) return;
+  el.value = "";
+  renderCatRow();
+  if (keepOpen) { const n = document.querySelector(".ie-tag-new"); if (n) n.focus(); }
+}
+
+// Servings / times read like the reading meta line ("Serves 4 · Prep …"), just editable; note + image
+// path sit below. Inline lowercase words, never uppercase form labels.
+function vitalsEditHTML(r) {
+  const num = (field, label, val) => {
+    const sz = Math.max(4, String(val || "").length + 2);   // fallback width for browsers without field-sizing
+    return `<span class="ie-vlabel">${label}</span><input class="ie ie-num" data-inline-edit-field="${field}" value="${esc(val || "")}" size="${sz}" aria-label="${label}">`;
+  };
+  return `<div class="ie-vitals">
+      ${num("servings", "Serves", r.servings)}<span class="ie-dot">·</span>
+      ${num("prep_time", "Prep", r.prep_time)}<span class="ie-dot">·</span>
+      ${num("cook_time", "Cook", r.cook_time)}<span class="ie-dot">·</span>
+      ${num("total_time", "Total", r.total_time)}
+    </div>`;
+}
+
+// The note edits at the BOTTOM (after the steps), mirroring reading's closing "Note. …" block.
+function ieNoteHTML(r) {
+  return `<div class="ie-noterow ie-note-block"><span class="ie-vlabel">Note</span><textarea class="ie ie-prose ie-note" data-inline-edit-field="notes" rows="2" placeholder="A private note…">${esc(r.notes || "")}</textarea></div>`;
+}
+// (Image path is intentionally NOT editable here — real photo upload is the next feature; the recipe's
+// existing image round-trips unchanged on save via draftPayload.)
+
+function editIngredientsHTML() {
+  return `<div class="col-head"><h2 class="col-title">Ingredients</h2></div>
+    <ul class="ingredient-list">${view.draft.ingredients.map(plainRow).join("")}</ul>
+    <p class="hint">Editing ingredients inline arrives next — for now they're shown as-is and saved unchanged.</p>`;
+}
+
+function inlineSaveBarHTML() {
+  return `<div class="inline-save-bar" role="group" aria-label="Editing recipe">
+    <span class="inline-editing-label">Editing</span>
+    <span class="inline-dirty"${view.dirty ? "" : " hidden"}>• Unsaved changes</span>
+    <span class="inline-error" hidden></span>
+    <button class="btn sm" data-inline-edit-save>Save changes</button>
+    <button class="btn ghost sm" data-inline-edit-cancel>Cancel</button>
+  </div>`;
+}
+
+function enterEditMode() {
+  if (!view || !view.data.is_editable || view.editMode) return;
+  view.draft = structuredClone(view.data);   // buffered copy — all edits mutate this, never view.data
+  view.editMode = true;
+  view.dirty = false;
+  view.scale = 1;                             // edit at raw 1× (scaler is hidden in edit mode)
+  view.undoneCook = null;                     // entering edit is "another action" -> end the one-shot redo
+  paintRecipe();                              // repaints stats (statsInner reads undoneCook) -> Redo collapses to Undo
+}
+
+// Discard the buffer and return to reading (Cancel). Save has its own path.
+function exitEditMode() {
+  view.editMode = false; view.draft = null; view.dirty = false; view.scale = 1;
+  paintRecipe();
+}
+
+// First buffer mutation flips the "unsaved" indicator — WITHOUT re-rendering (keeps input focus/caret).
+function markDirty() {
+  if (!view || !view.editMode || view.dirty) return;
+  view.dirty = true;
+  const ind = document.querySelector(".inline-dirty");
+  if (ind) ind.hidden = false;
+}
+
+// Convert the draft (DB row shape) back into the PUT payload shape write_recipe_rows expects. Stage 1
+// sends ingredients/steps through unchanged; the scalar fields carry the edits.
+function ingToPayload(x) {
+  if (x.is_heading) return { heading: x.raw_text || "" };
+  if (x.ingredient_id) return { qty: x.qty || "", item: x.ingredient_id, label: x.label || x.raw_text || "", note: x.note || "" };
+  return { qty: x.qty || "", text: x.label || x.raw_text || "" };
+}
+function stepToPayload(x) { return x.is_heading ? { heading: x.text || "" } : (x.text || ""); }
+function draftPayload() {
+  const r = view.draft.recipe;
+  const t = (v) => (v == null ? "" : String(v).trim());
+  const oneLine = (v) => t(v).replace(/[\r\n]+/g, " ");   // .ie-line fields wrap visually but stay one logical line
+  return {
+    name: oneLine(r.name), author: oneLine(r.author), source_url: t(r.source_url), category: t(r.category),
+    servings: t(r.servings), prep_time: t(r.prep_time), cook_time: t(r.cook_time), total_time: t(r.total_time),
+    image: t(r.image), descr: t(r.descr), notes: t(r.notes),
+    ingredients: view.draft.ingredients.map(ingToPayload),
+    steps: view.draft.steps.map(stepToPayload),
+  };
+}
+
+async function saveInlineEdit() {
+  const errEl = document.querySelector(".inline-error");
+  const showErr = (m) => { if (errEl) { errEl.textContent = m; errEl.hidden = false; } };
+  const payload = draftPayload();
+  if (!payload.name) { showErr("A name is required."); return; }
+  const { ok, data } = await sendJSON("PUT", "/api/recipes/" + encodeURIComponent(view.slug), payload);
+  if (!ok) { showErr((data && data.error) || "Couldn't save."); return; }
+  view.data = view.draft;   // draft becomes the source of truth; ingredients/steps were round-tripped
+  view.editMode = false; view.draft = null; view.dirty = false; view.scale = 1;
+  paintRecipe();
+}
+
+// Sub-dispatch for the inline editor's own click actions (namespaced data-inline-edit-*), kept out of
+// the big document click handler's branches. Returns true when it handled the event.
+function handleInlineEdit(e) {
+  if (!view) return false;
+  if (e.target.closest("[data-inline-edit-enter]"))  { enterEditMode(); return true; }
+  if (e.target.closest("[data-inline-edit-cancel]")) { exitEditMode(); return true; }
+  if (e.target.closest("[data-inline-edit-save]"))   { saveInlineEdit(); return true; }
+  const rmtag = e.target.closest("[data-inline-edit-rmtag]");
+  if (rmtag) { removeTag(Number(rmtag.dataset.tagI)); return true; }
+  return false;
 }
 
 // ---- saving per-person changes (everything goes through the change endpoints) ----
@@ -1393,6 +1581,9 @@ async function submitBackdate() {
 // happens, we look at what was clicked — e.target.closest("X") finds the nearest
 // matching element at or above the click — and act on the first kind we recognize.
 document.addEventListener("click", (e) => {
+  // Inline recipe editor: enter / save / cancel (namespaced data-inline-edit-*). Handled first.
+  if (handleInlineEdit(e)) return;
+
   // Bulk-delete all test recipes (home header) — inline two-step confirm, like the recipe delete.
   const bulk = document.getElementById("test-bulk");
   if (e.target.closest("[data-delete-test]")) {
@@ -1413,6 +1604,7 @@ document.addEventListener("click", (e) => {
   // rating / cooking actions live inside the stats bar on a recipe page
   const stats = e.target.closest(".stats");
   if (stats) {
+    if (view && view.editMode) return;   // cook/rate is disabled while editing (stats shown locked)
     const rid = encodeURIComponent(stats.dataset.rid);
     const cookCount = (view && view.data.stats) ? view.data.stats.cook_count : 0;
     const rate = e.target.closest("[data-rate]");
@@ -1580,6 +1772,18 @@ document.addEventListener("keydown", (e) => {
     closeBackdate(); return;                             // …a second closes the modal
   }
   if (e.key === "Escape" && !panel.hidden) { closePanel(); return; }
+  // Inline editor "+ tag": Enter adds the tag and keeps the adder open; Escape clears + blurs.
+  if (view && view.editMode && e.target.classList && e.target.classList.contains("ie-tag-new")) {
+    if (e.key === "Enter") { e.preventDefault(); commitNewTag(e.target, true); }
+    else if (e.key === "Escape") { e.target.value = ""; e.target.blur(); }
+    return;
+  }
+  // .ie-line fields (title, author) soft-wrap for display but are ONE logical line — swallow Enter so
+  // they can't gain a hard newline (newlines are also stripped on save as a backstop).
+  if (view && view.editMode && e.key === "Enter" && e.target.classList && e.target.classList.contains("ie-line")) {
+    e.preventDefault();
+    return;
+  }
   // Enter commits the custom multiplier (blur → focusout handler reformats to "N×" + applies scale)
   if (e.key === "Enter" && e.target.classList && e.target.classList.contains("scale-custom")) {
     e.preventDefault(); e.target.blur(); return;
@@ -1610,9 +1814,18 @@ document.addEventListener("focusin", (e) => {
 });
 document.addEventListener("input", (e) => {
   const el = e.target.closest(".scale-custom");
-  if (el) el.value = el.value.replace(/[^\d.]/g, "");   // digits + decimal point only while editing
+  if (el) { el.value = el.value.replace(/[^\d.]/g, ""); return; }   // digits + decimal point only while editing
+  // Inline editor: buffer the scalar field into the draft ONLY — never re-render here, or the input
+  // would lose focus/caret mid-typing. Re-render happens solely on mode/save/cancel.
+  const f = e.target.closest("[data-inline-edit-field]");
+  if (f && view && view.editMode && view.draft) {
+    view.draft.recipe[f.dataset.inlineEditField] = f.value;
+    markDirty();
+  }
 });
 document.addEventListener("focusout", (e) => {
+  const nt = e.target.closest(".ie-tag-new");
+  if (nt && view && view.editMode) { commitNewTag(nt, false); return; }   // blur commits a typed-but-unadded tag
   const el = e.target.closest(".scale-custom");
   if (el && view) commitCustomScale(el);                // blur commits + reformats to "N×"
 });
@@ -1646,5 +1859,25 @@ document.addEventListener("mouseout", (e) => {
   rating.querySelectorAll(".star").forEach((s) => s.classList.remove("preview"));
 });
 
-window.addEventListener("hashchange", route);
+// Dirty-state navigation guard: route() rebuilds `view` from a fresh fetch on any hash change (the
+// ← All recipes link, browser back, any #/ nav), which would silently discard an unsaved edit buffer.
+// Prompt first; if kept, restore the hash and leave the edit session intact.
+let inlineNavSuppress = false;
+function onHashChange() {
+  if (inlineNavSuppress) { inlineNavSuppress = false; return; }   // our own hash-restore — ignore
+  if (view && view.editMode && view.dirty) {
+    if (!confirm("Discard unsaved changes?")) {
+      inlineNavSuppress = true;
+      location.hash = "#/recipe/" + encodeURIComponent(view.slug);   // put the hash back (suppressed above)
+      return;                                                        // keep editing; do not re-route
+    }
+    view.editMode = false; view.draft = null; view.dirty = false;    // discard, then route on through
+  }
+  route();
+}
+window.addEventListener("hashchange", onHashChange);
+// Full page unload / reload / tab-close with unsaved edits → native browser confirm.
+window.addEventListener("beforeunload", (e) => {
+  if (view && view.editMode && view.dirty) { e.preventDefault(); e.returnValue = ""; }
+});
 route();
