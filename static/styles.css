@@ -8,6 +8,15 @@
   font-display: swap;
   src: url("fonts/inter.woff2") format("woff2");
 }
+/* Caveat — self-hosted (static/fonts/caveat.woff2), variable weight, offline-ready like Inter.
+   The reserved --font-hand: used for the Polaroid caption strip (typed-caption feature, next). */
+@font-face {
+  font-family: "Caveat";
+  font-style: normal;
+  font-weight: 400 700;              /* variable range — covers 400/600 we use */
+  font-display: swap;
+  src: url("fonts/caveat.woff2") format("woff2");
+}
 
 :root {
   /* ===== "used cookbook" design tokens (Round 1 — clean state) ===== */
@@ -17,6 +26,7 @@
   --paper:      #EFE8D6;   /* page solid fill / fallback; .page.recipe-view paints a warm gradient + patina */
   --paper-edge: #E0D7C1;   /* warm hairline on the card edge */
   --card:       #FBF6EA;   /* a hair-raised warm inset surface (drawer, notes, form fields) */
+  --polaroid:   #FCFBF4;   /* warm-white instant-photo frame (dish-photo Polaroid hero) */
 
   /* ink */
   --ink:        #523823;   /* warm rich brown body text (#4A3220 button family, a hair warmer; ~8.5:1 on paper, AAA) */
@@ -96,7 +106,7 @@ body {
 .page.recipe-view {
   max-width: calc(var(--page-measure) + var(--hand-gutter));
   margin: clamp(0px, 4vw, 40px) auto;
-  padding: clamp(28px, 5vw, 64px);
+  padding: clamp(20px, 3.5vw, 40px);   /* paper frame around the inner recipe card + back-link */
   /* warm paper with depth: a tan linear base + two faint patina radials (brown top-right,
      olive bottom-left) — paper, not a flat screen fill. */
   background-color: var(--paper);
@@ -213,12 +223,22 @@ a:hover { color: var(--berry-lift); }
 .dek-more[hidden] { display: none; }
 
 /* ---------- Masthead (Stage B): byline · title · headnote · meta · tags + framed photo ---------- */
-.masthead {
-  display: grid; grid-template-columns: 1fr auto; gap: clamp(16px, 3vw, 28px);
-  align-items: start; margin: 0 0 6px;
+.masthead { position: relative; margin: 0 0 6px; }
+.masthead-text { min-width: 0; padding-right: 260px; }        /* reserve the top-right zone for the Polaroid */
+.recipe-stage.no-photo .masthead-text { padding-right: 0; }  /* no photo -> the title block takes full width */
+
+/* ---------- recipe-detail inner card — gives the Polaroid a real top edge to straddle/clip over ----------
+   The card (z2) is an opaque surface the clip.back (z1) tucks behind; the Polaroid + clips are SIBLINGS
+   of the card inside .recipe-stage, so the straddle/tuck reads. The card is the --card surface lifted
+   off the paper page, matching the approved preview. */
+.recipe-stage { position: relative; }
+.detail-card {
+  position: relative; z-index: 2; padding: clamp(22px, 4vw, 48px);
+  background: var(--card);
+  border: 1px solid var(--paper-edge);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(40,35,30,.06), 0 16px 40px -18px rgba(40,35,30,.22);   /* lifts off the paper */
 }
-.masthead.no-photo { grid-template-columns: 1fr; }   /* no photo -> the title block takes full width */
-.masthead-text { min-width: 0; }                      /* long titles wrap instead of overflowing the grid */
 
 /* byline = author / source, green kicker (linked to source_url) */
 .byline {
@@ -249,35 +269,58 @@ a:hover { color: var(--berry-lift); }
   border: 1px solid var(--rule); border-radius: 3px; padding: 2px 7px;
 }
 
-/* the single finished-dish photo, framed with a quiet caption (top-right) */
-.dish-photo { margin: 0; width: clamp(116px, 16vw, 150px); flex-shrink: 0; }
-.dish-photo.add-photo { width: clamp(92px, 12vw, 116px); }   /* empty affordance claims less width so a long title isn't squeezed */
-.dish-photo .frame {
-  display: block; border: 1px solid var(--paper-edge); padding: 5px; background: var(--card);
-  box-shadow: 0 1px 2px rgba(40,35,30,.08);
-}
-.dish-photo img { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; }
-.dish-photo figcaption {
-  font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.04em;
-  color: var(--ink-soft); text-align: center; margin-top: 6px;
+/* the finished-dish photo as a Polaroid that STRADDLES the masthead's top edge (top pokes above into
+   the page paper, lower rests on it), held by a brass paperclip clipped over the edge on the right.
+   Ported from the approved preview. No image -> the no-photo options below; a broken URL collapses
+   via the <img> onerror (adds .no-photo, removes .dish-photo). */
+.dish-photo { position: absolute; top: 0; right: 0; width: 260px; }   /* the stage; children position against it */
+.clip-defs { position: absolute; width: 0; height: 0; }
+
+.polaroid-wrap { position: absolute; right: 30px; top: -58px; z-index: 4; margin: 0;
+  transform: rotate(-2.5deg); transform-origin: top right;
+  filter: drop-shadow(-1px 2px 3px rgba(31,42,32,.30))       /* grounding shadow: softer where it floats above */
+          drop-shadow(-2px 7px 12px rgba(31,42,32,.18))
+          drop-shadow(-3px 13px 22px rgba(31,42,32,.10)); }
+.polaroid { display: block; background: var(--polaroid); padding: 11px 11px 0; border-radius: 3px; width: 224px; }
+.polaroid .photo { display: block; width: 202px; height: 202px; object-fit: cover;
+  background: #e6e0d0; box-shadow: 0 0 0 1px rgba(31,42,32,.06) inset; }
+.polaroid .strip { display: block; height: 54px; padding: 8px 4px 10px; }   /* thick bottom; empty until the caption feature */
+/* reserved for the typed-caption feature (strip is empty for now) */
+.polaroid .cap  { font-family: var(--font-hand); font-size: 19px; line-height: 1; color: #4b4636; }
+.polaroid .date { font-family: var(--font-sans); font-size: 10px; letter-spacing: .04em; color: var(--ink-soft); }
+
+/* tighter contact shadow where the Polaroid meets the page, along the masthead's top edge */
+.edge-contact { position: absolute; right: 34px; top: -2px; width: 214px; height: 14px; z-index: 3;
+  background: radial-gradient(80% 100% at 50% 0%, rgba(31,42,32,.20), transparent 70%);
+  transform: rotate(-2.5deg); transform-origin: top right; filter: blur(2px); }
+
+/* Take A brass clip: threads the edge on the right, top leaning toward the top-right corner.
+   FRONT copy (z5) pins the photo; BACK copy (z1) peeks a few px to thread over the edge. */
+.clip { position: absolute; width: 34px; height: 86px; }
+.clip.front { right: 18px; top: -40px; z-index: 5; transform: rotate(10deg);
+  filter: drop-shadow(-0.5px 1.5px 1.4px rgba(31,42,32,.34)); }
+.clip.back  { right: 15px; top: -40px; z-index: 1; transform: rotate(10deg);
+  filter: drop-shadow(0 1px 1px rgba(31,42,32,.22)); }
+
+@media (max-width: 680px) {
+  /* stacked layout: reclaim full width; the Polaroid drops below the title (no straddle — there's no
+     masthead top edge to straddle when stacked), sitting within its own reserved block. */
+  .masthead-text { padding-right: 0; }
+  .dish-photo { position: relative; width: 260px; height: 300px; margin: 20px auto 0; top: auto; right: auto; }
+  .polaroid-wrap { top: 40px; }
+  .edge-contact { top: 42px; }
+  .clip.front, .clip.back { top: 58px; }
 }
 
-@media (max-width: 520px) {
-  .masthead { grid-template-columns: 1fr; }            /* stack: photo below the title block */
-  .dish-photo { width: clamp(150px, 52vw, 210px); margin-top: 16px; }
-}
-
-/* no-photo on an EDITABLE recipe -> a calm "+ add a photo" affordance in the framed footprint
-   (links to the edit flow). Seed recipes with no photo collapse instead (decided in app.js). */
-.add-photo { display: block; text-decoration: none; color: var(--ink-soft); }
-.add-photo .frame {
-  display: grid; place-items: center; aspect-ratio: 4 / 3; padding: 0;
-  border: 1px dashed var(--rule); background: transparent; box-shadow: none;
-}
-.add-photo-mark { font-family: var(--font-serif); font-size: 30px; line-height: 1; color: var(--rule); }
-.add-photo:hover { color: var(--green); }
-.add-photo:hover .frame { border-color: var(--green); }
-.add-photo:hover .add-photo-mark, .add-photo:hover figcaption { color: var(--green); }
+/* no-photo on an EDITABLE recipe: an empty clipped Polaroid inviting a photo (links to the edit flow).
+   Seed recipes with no photo collapse to a full-width title instead (decided in app.js: dishPhoto ""). */
+.polaroid-empty { text-decoration: none; color: var(--ink-soft); }
+.polaroid-empty .photo { display: grid; place-items: center; align-content: center; gap: 4px;
+  background: var(--card); border: 1px dashed var(--rule); box-shadow: none; }
+.add-photo-mark { font-family: var(--font-serif); font-size: 34px; line-height: 1; color: var(--rule); }
+.add-label { font-family: var(--font-sans); font-size: 12px; letter-spacing: .04em; }
+.polaroid-empty:hover .photo { border-color: var(--green); }
+.polaroid-empty:hover .add-photo-mark, .polaroid-empty:hover .add-label { color: var(--green); }
 
 /* status tags (Made / To Make — the Paprika cook-tracking workaround) read quietest; all tags are
    plain, non-clickable labels — tag-click-to-filter is R2 (browse redesign). */

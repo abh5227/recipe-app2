@@ -697,22 +697,56 @@ function metaLine(r) {
   return `<p class="meta-line">${items.join("")}</p>`;
 }
 
-// The single finished-dish photo (top-right of the masthead), framed with a quiet caption. No
-// image -> render nothing and the masthead collapses to a full-width title (no placeholder box);
-// a broken URL collapses the same way via onerror.
+// Take A brass clip (ported verbatim from the approved preview). Gem proportions; three stacked
+// strokes make a round wire that catches light: underside shadow, gradient body, specular ridge.
+const CLIP_CFG = { grad: "brassA", bodyW: 2.4, glint: "#fffdf2", glintW: 0.85, glintO: 0.92, shadow: "#2e2206", shadowO: 0.45 };
+function clipRects(stroke, w) {
+  return `<rect x="6" y="5" width="22" height="76" rx="11" fill="none" stroke="${stroke}" stroke-width="${w}" stroke-linejoin="round"/>`
+       + `<rect x="11" y="22" width="12" height="53" rx="6" fill="none" stroke="${stroke}" stroke-width="${w}" stroke-linejoin="round"/>`;
+}
+function clipWire(c) {
+  return `<g transform="translate(0.5,0.8)" opacity="${c.shadowO}">${clipRects(c.shadow, c.bodyW + 0.2)}</g>`
+       + `<g>${clipRects("url(#" + c.grad + ")", c.bodyW)}</g>`
+       + `<g transform="translate(-0.5,-0.8)" opacity="${c.glintO}">${clipRects(c.glint, c.glintW)}</g>`;
+}
+function clipSvg(cls) { return `<svg class="clip ${cls}" viewBox="0 0 34 86" aria-hidden="true">${clipWire(CLIP_CFG)}</svg>`; }
+function clipDefs() {
+  return `<svg class="clip-defs" width="0" height="0" aria-hidden="true"><defs>
+    <linearGradient id="brassA" x1="0.08" y1="0" x2="0.92" y2="0.15">
+      <stop offset="0" stop-color="#4a3708"/><stop offset=".18" stop-color="#8f6f1e"/>
+      <stop offset=".40" stop-color="#f6ebc0"/><stop offset=".50" stop-color="#e6cd7d"/>
+      <stop offset=".62" stop-color="#b8902f"/><stop offset=".82" stop-color="#6f5314"/>
+      <stop offset="1" stop-color="#3d2e07"/></linearGradient></defs></svg>`;
+}
+
+// The finished-dish photo (top-right of the masthead) as a Polaroid straddling the recipe card's top
+// edge, held by a brass clip. The strip is empty for now (the typed caption is a separate feature).
+// No image: an EDITABLE recipe gets an empty clipped Polaroid "+ add a photo" affordance (links to the
+// edit flow); a non-editable (seed) recipe returns "" so the masthead collapses to a full-width title.
+// A broken URL collapses via the <img> onerror (adds .no-photo to the stage, removes the Polaroid).
 function dishPhoto(r, editable) {
-  if (r.image) return `<figure class="dish-photo">
-    <span class="frame"><img src="/${esc(r.image)}" alt="${esc(r.name)}" loading="lazy"
-      onerror="this.closest('.masthead').classList.add('no-photo'); this.closest('.dish-photo').remove();"></span>
-    <figcaption>what it looks like</figcaption>
-  </figure>`;
-  // No image: an EDITABLE recipe gets a calm "+ add a photo" affordance in the framed footprint
-  // (links to the edit flow); a non-editable (seed) recipe returns "" so the masthead collapses.
-  if (editable) return `<a class="dish-photo add-photo" href="#/edit/${encodeURIComponent(r.id)}" aria-label="Add a photo">
-    <span class="frame"><span class="add-photo-mark">+</span></span>
-    <figcaption>add a photo</figcaption>
+  if (r.image) return `<div class="dish-photo polaroid-hero">
+    ${clipDefs()}
+    ${clipSvg("back")}
+    <div class="edge-contact"></div>
+    <figure class="polaroid-wrap"><span class="polaroid">
+      <img class="photo" src="/${esc(r.image)}" alt="${esc(r.name)}" loading="lazy"
+        onerror="this.closest('.recipe-stage').classList.add('no-photo'); this.closest('.dish-photo').remove();">
+      <span class="strip"></span>
+    </span></figure>
+    ${clipSvg("front")}
+  </div>`;
+  if (editable) return `<a class="dish-photo polaroid-hero polaroid-empty" href="#/edit/${encodeURIComponent(r.id)}" aria-label="Add a photo">
+    ${clipDefs()}
+    ${clipSvg("back")}
+    <div class="edge-contact"></div>
+    <span class="polaroid-wrap"><span class="polaroid">
+      <span class="photo"><span class="add-photo-mark">+</span><span class="add-label">add a photo</span></span>
+      <span class="strip"></span>
+    </span></span>
+    ${clipSvg("front")}
   </a>`;
-  return "";
+  return "";   // seed recipe with no photo: collapse (seed recipes aren't editable — no dead add link)
 }
 
 // The owner Edit/Delete row, and the inline two-step delete confirmation it swaps to. The
@@ -747,30 +781,38 @@ async function renderRecipe(rid) {
 
   const owner = data.is_editable ? `<div class="owner-actions">${ownerActionsHTML(r)}</div>` : "";
 
+  // The recipe content lives inside an inner card (.detail-card) so the Polaroid has a real top edge
+  // to straddle and the clip.back can tuck behind it. The Polaroid assembly (photoSlot) is a SIBLING
+  // of the card inside .recipe-stage — not inside the masthead — so its z-layers straddle the card
+  // edge. The ← back-link stays outside/above the card.
   app.innerHTML = `
     <a class="back" href="#/">← All recipes</a>
-    <header class="masthead${photoSlot ? "" : " no-photo"}${data.is_test ? " is-test" : ""}">
-      <div class="masthead-text">
-        ${bylineHTML(r)}
-        <h1 class="recipe-title">${esc(r.name)}${data.is_test ? ` <span class="test-badge">Test</span>` : ""}</h1>
-        ${r.descr ? `<div class="headnote"><p class="dek clamped">${esc(r.descr)}</p><button class="dek-more" data-dek-toggle hidden>more</button></div>` : ""}
-        ${tagsHTML(r)}
-      </div>
+    <div class="recipe-stage${photoSlot ? "" : " no-photo"}">
       ${photoSlot}
-    </header>
-    <div class="vitals">
-      ${metaLine(r)}
-      <div class="scaler-line" id="scaler-host">${scaleControl()}</div>
-      <div class="stats cook-block" data-rid="${esc(r.id)}">${statsInner(data.stats)}</div>
-      ${owner}
-    </div>
-    <div class="recipe-cols">
-      <section id="ing-section">${ingredientsSectionInner(view)}</section>
-      <section>
-        <h2 class="col-title">Method</h2>
-        <ol class="steps" id="steps-list">${data.steps.map(renderStepRow).join("")}</ol>
-        ${r.notes ? `<div class="notes"><strong>Note.</strong> ${esc(r.notes)}</div>` : ""}
-      </section>
+      <div class="detail-card">
+        <header class="masthead${data.is_test ? " is-test" : ""}">
+          <div class="masthead-text">
+            ${bylineHTML(r)}
+            <h1 class="recipe-title">${esc(r.name)}${data.is_test ? ` <span class="test-badge">Test</span>` : ""}</h1>
+            ${r.descr ? `<div class="headnote"><p class="dek clamped">${esc(r.descr)}</p><button class="dek-more" data-dek-toggle hidden>more</button></div>` : ""}
+            ${tagsHTML(r)}
+          </div>
+        </header>
+        <div class="vitals">
+          ${metaLine(r)}
+          <div class="scaler-line" id="scaler-host">${scaleControl()}</div>
+          <div class="stats cook-block" data-rid="${esc(r.id)}">${statsInner(data.stats)}</div>
+          ${owner}
+        </div>
+        <div class="recipe-cols">
+          <section id="ing-section">${ingredientsSectionInner(view)}</section>
+          <section>
+            <h2 class="col-title">Method</h2>
+            <ol class="steps" id="steps-list">${data.steps.map(renderStepRow).join("")}</ol>
+            ${r.notes ? `<div class="notes"><strong>Note.</strong> ${esc(r.notes)}</div>` : ""}
+          </section>
+        </div>
+      </div>
     </div>`;
 
   if (document.fonts && document.fonts.ready) document.fonts.ready.then(setupHeadnote);
