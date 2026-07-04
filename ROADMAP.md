@@ -331,6 +331,12 @@ direction — palette, type, the R1/R2 boundary, the punch-list — in
   phone at the stove, arguably the **primary** case, so design a touch-first reveal/toggle — one-click
   vs hover-to-reveal, keyboard/a11y, whether crossed-out steps stay put or recede, and the cook-log
   offer's exact form (and whether re-unchecking retracts it).
+- **Inline "mark up the page" recipe editor.** Replaces the admin-style form with in-place editing on
+  the recipe page (edit-mode toggle + explicit Save + buffered draft; every field follows the
+  reading-mode-parity principle + four field-kinds — see design-decisions.md). **Stage 1 built**
+  (scalar/masthead fields; ingredients & steps display-only). Later stages: ingredients inline → steps
+  inline → reorder → polish (validation, source_url, image upload). Old form (`renderForm`) kept as
+  fallback until complete, then retired.
 - **App rename pending:** "Seasonal Kitchen" → **"Chef's Choice"** across UI + docs (decided; not
   yet applied — see design-decisions.md).
 

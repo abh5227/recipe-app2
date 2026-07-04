@@ -246,12 +246,83 @@ be **one** visual treatment, not three ad-hoc ones (decided in D, applied across
   Applying the hand layer to the imports requires extending that model to app-tier recipes (or
   unifying the two), and deciding how "edit the canonical recipe" and "annotate by hand" coexist.
 
+## The inline recipe editor ("mark up the page")
+
+The recipe **edit** experience is being rebuilt from a separate admin-style form into **in-place
+editing on the real recipe page**: an **✎ Edit** toggle flips the reading page into edit mode and
+the same masthead/ledger/steps become editable where they sit. The old form (`renderForm`, the
+`#/edit/…` route) is **kept as a fallback** until the inline editor is complete, then retired.
+
+**Interaction model** (chosen after a try-able prototype of the alternatives):
+- **Edit-mode toggle + explicit Save** (`view.editMode`; a floating Save/Cancel bar). Not
+  click-to-edit-one-field, not autosave — a deliberate reading↔editing switch, safe to make many
+  changes in, then commit together.
+- **Buffered draft.** Entering edit deep-copies the recipe (`view.draft = structuredClone(view.data)`);
+  **all edits mutate the draft, never `view.data`**. Save PUTs the draft and commits it; Cancel
+  discards it (zero-risk revert).
+- **Dual-mode via one renderer.** `renderRecipe` was split into fetch + **`paintRecipe()`**, which
+  paints reading **or** edit from `view` (no re-fetch). Edit mode uses **sub-renderers that read the
+  RAW authored fields** — deliberately **not** making the reading spans editable, because the reading
+  view is **scaled / volume→weight-converted / `[[…]]`-markup-stripped**, so editing must bind to the
+  raw source, not the cooked display. Entering edit forces `view.scale = 1` (scaler hidden) and
+  bypasses the description clamp.
+- **Focus-preserving buffering.** Text edits write to the draft on **`input` only, with no re-render**
+  (re-rendering on a keystroke would drop focus/caret); the page repaints only on structural/mode
+  changes.
+- **Dirty-state navigation guard.** Hash routing rebuilds `view` from a fresh fetch on any hash
+  change, so an unsaved buffer would be silently lost — a **`hashchange` guard** (← link, back button,
+  any `#/` nav) prompts "Discard unsaved changes?" and restores the hash if declined; **`beforeunload`**
+  covers reload/close.
+- Actions are namespaced **`data-inline-edit-*`**, sub-dispatched ahead of the main click handler.
+
+**Core principle — every edit field behaves like its reading-mode counterpart:** same typography,
+wrapping and shape, just editable — **no uppercase form labels, no bordered boxes**. The affordance
+("Option 3", chosen from a look-preview) is a **faint dashed baseline at rest**, a whisper of tint on
+hover, and a **soft rounded lift on focus** (like writing on a note). Fields route through **four
+kinds** so edit mode is consistent by construction:
+
+| kind | behavior | fields |
+|---|---|---|
+| **`.ie-line`** | wrapping, auto-growing **single logical line** (soft-wrap; Enter swallowed; newlines stripped on save) | title, author/byline |
+| **`.ie-prose`** | wrapping, auto-growing multi-line (hard newlines allowed) | description, note |
+| **`.ie-num`** | short inline, reading-meta register (right-aligned; auto-grows to fit) | servings, prep, cook, total |
+| **`.ie-util`** | minimal, faint, full-width single-line (no reading counterpart) | source URL |
+
+**Field-level decisions:**
+- **Tags** edit as **discrete chips** (× to remove, "+ tag" to add), re-joined to the stored
+  **`·`-delimited `category` string** on save — a UI-only split/join, no schema change.
+- **Image path is NOT editable inline** — deferred to the upcoming **photo-upload** feature (which
+  wires the Polaroid "+ add a photo" to a real upload). A raw `images/slug.jpg` field is the exact
+  form-y stopgap we're eliminating; the existing image **round-trips untouched** from the draft on
+  save, so nothing is lost.
+- **Note** renders at the **bottom** (after the steps), matching the reading "Note. …" block.
+- **Description** is **full-width** in edit mode (the reading narrow-then-wide float is relaxed) — a
+  rectangular textarea can't cleanly hug the tilted Polaroid, and a wide field is better to type in;
+  it clears the photo via a masthead `min-height`.
+
+**Stage 1 (built):** the **scalar / masthead fields** (title, author, source_url, category/tags,
+servings, times, description, note). **Ingredients and steps stay display-only** in edit mode
+(rendered from the draft, round-tripped unchanged on save); their discrete inline editing
+(add/remove/**reorder** — the data model already supports order via `position`) lands in later stages.
+**Backend untouched** — the existing `PUT /api/recipes/<id>` already full-replaces rows from the
+payload and preserves harvested grams for unchanged lines.
+
+This is the **"edit the canonical recipe"** path — distinct from the R2 **handwritten annotation
+layer** (struck-print + hand color) and from the seed-only per-person change model (see the
+architectural tension above).
+
 ## Recorded caveats (Version 3 / vitals bundle)
 
 - **`color-mix()`** powers the subtle-red Delete (`.btn.danger-soft`) — a modern-browser dependency;
   fine for this local single-user app; swap to literal tokens if broader support is ever needed.
 - **Spectral is CDN-loaded** while Inter is self-hosted, so offline only the *title* serif falls back
   to Georgia. Bundling Spectral locally is the follow-up for full-offline fidelity.
+- **`field-sizing: content`** auto-grows the inline edit fields (title/author/prose/meta) to their
+  content — a modern-browser dependency (same class as `color-mix()`), with a **`size`-attribute
+  fallback** on the short meta fields so they don't balloon where unsupported.
+- **Free-text time values** (`prep_time`/`cook_time`/`total_time`) are edited **as-is** (the whole
+  `"5 min"` / `"1 hr 15 min"` / `"overnight"` string), not split into number + unit — the stored
+  format is free text, so a number-only field would break non-`min` values.
 
 ## Open questions
 
