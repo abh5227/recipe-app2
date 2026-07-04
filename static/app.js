@@ -792,10 +792,11 @@ async function renderRecipe(rid) {
       <div class="detail-card">
         <header class="masthead${data.is_test ? " is-test" : ""}">
           <div class="masthead-text">
+            ${photoSlot ? `<div class="photo-reserve" aria-hidden="true"></div>` : ""}
             ${bylineHTML(r)}
             <h1 class="recipe-title">${esc(r.name)}${data.is_test ? ` <span class="test-badge">Test</span>` : ""}</h1>
-            ${r.descr ? `<div class="headnote"><p class="dek clamped">${esc(r.descr)}</p><button class="dek-more" data-dek-toggle hidden>more</button></div>` : ""}
             ${tagsHTML(r)}
+            ${r.descr ? `<div class="headnote"><p class="dek clamped">${esc(r.descr)}</p><button class="dek-more" data-dek-toggle hidden>more</button></div>` : ""}
           </div>
         </header>
         <div class="vitals">

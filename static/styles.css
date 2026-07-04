@@ -205,10 +205,11 @@ a:hover { color: var(--berry-lift); }
 /* Headnote (imported description) — subordinate to the title and capped so the ingredients stay
    near the top. Long ones clamp to 3 lines with a "more" expander (wired in app.js); short ones
    show in full (the clamp is removed after measuring); none render nothing. */
-.headnote { max-width: 60ch; margin: 0 0 20px; }
+.headnote { margin: 14px 0 20px; }   /* top gap: breathing room between the tags and the description.
+                                        no max-width: the float governs the narrow-beside / full-below wrap */
 .dek {
   font-family: var(--font-serif); font-style: italic; font-weight: 400;
-  font-size: var(--fs-headnote); line-height: 1.5; color: var(--ink-soft);
+  font-size: var(--fs-headnote); line-height: 1.7; color: var(--ink-soft);   /* airier for long descriptions */
   margin: 0;
 }
 .dek.clamped {
@@ -224,8 +225,15 @@ a:hover { color: var(--berry-lift); }
 
 /* ---------- Masthead (Stage B): byline · title · headnote · meta · tags + framed photo ---------- */
 .masthead { position: relative; margin: 0 0 6px; }
-.masthead-text { min-width: 0; padding-right: 260px; }        /* reserve the top-right zone for the Polaroid */
-.recipe-stage.no-photo .masthead-text { padding-right: 0; }  /* no photo -> the title block takes full width */
+.masthead-text { min-width: 0; }
+.masthead-text::after { content: ""; display: block; clear: both; }   /* contain the description float */
+
+/* The description wraps around the Polaroid: a transparent float-spacer reserves the Polaroid's bounding
+   box (+ breathing room clear of the ~2.5° tilt and the clip poking out), so the dek runs narrow beside
+   the photo, then expands to full card width once it passes the spacer's bottom. Only the description
+   wraps — byline/title/tags are short and sit top-left beside the photo. */
+.photo-reserve { float: right; width: 210px; height: 159px; margin: 0 0 16px 22px; }   /* ~1 line-height (16px×1.7) shorter -> text opens to full width one row earlier */
+.recipe-stage.no-photo .photo-reserve { display: none; }   /* no photo / broken img -> description full width */
 
 /* ---------- recipe-detail inner card — gives the Polaroid a real top edge to straddle/clip over ----------
    The card (z2) is an opaque surface the clip.back (z1) tucks behind; the Polaroid + clips are SIBLINGS
@@ -305,7 +313,7 @@ a:hover { color: var(--berry-lift); }
 @media (max-width: 680px) {
   /* stacked layout: reclaim full width; the Polaroid drops below the title (no straddle — there's no
      masthead top edge to straddle when stacked), sitting within its own reserved block. */
-  .masthead-text { padding-right: 0; }
+  .photo-reserve { display: none; }   /* no float wrap when stacked — description is full width */
   .dish-photo { position: relative; width: 260px; height: 300px; margin: 20px auto 0; top: auto; right: auto; }
   .polaroid-wrap { top: 40px; }
   .edge-contact { top: 42px; }
