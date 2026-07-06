@@ -281,16 +281,23 @@ yet — the scaler (`scaler.js`/`stepscale.py`) keeps operating on the recombine
 Refactoring it to consume the structured fields is **deferred as an optional Stage 5**, done only if
 unit conversion/filtering later hits friction on string-parsing.
 
-**Staged plan.** **1 (done):** schema + backfill. **2 (done):** seed/import split. **3 (next):** backend
-read/write threads `unit`. **4:** editor UI (a `quantity` field + a unit control). **5
+**Staged plan.** **1 (done):** schema + backfill. **2 (done):** seed/import split. **3 (done):** the
+write path threads `unit` — `write_recipe_rows` re-derives `quantity`/`unit` via `split_qty(qty)` on
+every write (create, edit, per-person), and the copy endpoint carries them; the split is now **durable
+across edits/copies/creates**. **4 (next):** editor UI (a `quantity` field + a unit control). **5
 (optional/deferred):** scaler consumes structured fields.
 
-**⚠️ Stage-3 carry-forward (must close in Stage 3).** The PUT full-replaces a recipe's ingredient rows
-via `ingToPayload` → `write_recipe_rows`, **which don't yet carry `quantity`/`unit`** — so editing a
-recipe today **NULLs its split** for that recipe until re-backfilled. Non-breaking now (nothing reads
-the columns), and the backfill is idempotent (a re-runnable stopgap), but **Stage 3 must thread `unit`
-through the write path** — either the editor sends `quantity`/`unit`, or (belt-and-suspenders)
-`write_recipe_rows` re-derives them via `split_qty(qty)` on write.
+**Stage-3 carry-forward — ✅ closed in Stage 3.** The PUT full-replaces a recipe's ingredient rows via
+`write_recipe_rows`, which *used to* write only `qty` → editing a recipe NULLed its `quantity`/`unit`
+until re-backfilled. **Resolved:** `write_recipe_rows` now **re-derives `quantity`/`unit` via
+`split_qty(qty)`** in the linked and plain branches (headings stay NULL), and the copy `INSERT…SELECT`
+carries them — so create, edit, per-person writes, and copies all persist the split, consistent with
+`qty`. This is **option (b), shaped as the ELSE branch of a hybrid**: `qty` is authoritative now and the
+split is derived from it (client sends only `qty` today). **Stage 4** will add the **IF branch** — when
+the editor sends explicit `quantity`/`unit`, the server uses them and recombines
+`qty = quantity + " " + unit` — flipping authority to structured `quantity`+`unit` (Model B) without
+reworking Stage 3. The scaler stays untouched (still reads `qty`, kept valid by the derive); the read
+path was already carrying the split (GET `SELECT *` + `structuredClone`), so Stage 3 was write-side only.
 
 ## The inline recipe editor ("mark up the page")
 

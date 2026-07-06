@@ -338,14 +338,16 @@ direction — palette, type, the R1/R2 boundary, the punch-list — in
   fields; lossless heading-toggle; discard-empties + refetch on save). **Steps display-only (Stage 3)**;
   **reorder Stage 4**. Then polish (validation, source_url, image upload). Old form (`renderForm`)
   kept as fallback until complete, then retired.
-- **Qty/unit split** (structured `quantity` + `unit` for conversion + filtering). **Stages 1–2 done** —
+- **Qty/unit split** (structured `quantity` + `unit` for conversion + filtering). **Stages 1–3 done** —
   additive nullable `quantity`+`unit` columns (migration 015) alongside the untouched free-text `qty`;
   a lossless split (`import_cleanup.split_qty`, 0 recombine mismatches over 3,425 rows); an idempotent
-  Python backfill of the persistent app rows (`scripts/backfill_qty_unit.py`), plus seed/import split.
-  The **scaler is untouched** (still operates on recombined `qty`). **Next: Stage 3** (thread `unit`
-  through backend read/write — and close the edit-NULLs-the-split carry-forward: the PUT full-replaces
-  rows without `quantity`/`unit` today), **Stage 4** (editor quantity field + unit control), **Stage 5
-  optional** (scaler consumes structured fields, only if string-parsing hits friction).
+  Python backfill of the persistent app rows (`scripts/backfill_qty_unit.py`), plus seed/import split;
+  and **Stage 3 — the write path now threads `unit`** (`write_recipe_rows` re-derives `quantity`/`unit`
+  on every write; the copy endpoint carries them), so **editing a recipe no longer NULLs its split**
+  (durable across edits/copies/creates). The **scaler is untouched** (still operates on recombined
+  `qty`). **Next: Stage 4** (editor UI — a `quantity` field + a unit control; flips authority to
+  structured `quantity`+`unit`, server recombines `qty`), **Stage 5 optional** (scaler consumes
+  structured fields, only if string-parsing hits friction).
 - **App rename pending:** "Seasonal Kitchen" → **"Chef's Choice"** across UI + docs (decided; not
   yet applied — see design-decisions.md).
 
