@@ -933,10 +933,116 @@ function ieNoteHTML(r) {
 // (Image path is intentionally NOT editable here — real photo upload is the next feature; the recipe's
 // existing image round-trips unchanged on save via draftPayload.)
 
+// Stage 2: ingredients editable inline in the ledger. A SEPARATE raw-field path (not plainRow /
+// ledgerCells / lineBodyHTML — those are the cooked reading path). Each draft ingredient renders as
+// an editable row reading RAW fields; the display name is label‖raw_text and edits write to `label`
+// (the convention ingToPayload reads). Kept fully separate from the seed line-editor.
+const ING_GRIP = `<svg viewBox="0 0 9 14" class="grip-ico" aria-hidden="true"><g fill="currentColor"><circle cx="2" cy="2" r="1.3"/><circle cx="7" cy="2" r="1.3"/><circle cx="2" cy="7" r="1.3"/><circle cx="7" cy="7" r="1.3"/><circle cx="2" cy="12" r="1.3"/><circle cx="7" cy="12" r="1.3"/></g></svg>`;
+const ING_SECT = `<svg viewBox="0 0 16 16" class="sect-ico" aria-hidden="true"><line x1="3" y1="4" x2="13" y2="4"/><line x1="3" y1="8" x2="10" y2="8"/><line x1="3" y1="12" x2="12" y2="12"/></svg>`;
+const ING_TRASH = `<svg viewBox="0 0 16 16" class="ic-trash" aria-hidden="true"><path d="M3 4.5h10"/><path d="M6.5 4.5V3h3v1.5"/><path d="M4.5 4.5l.6 8.5a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.5"/><path d="M7 7v4M9 7v4"/></svg>`;
+const ING_NOTEPLUS = `<svg viewBox="0 0 22 16" class="ic-note" aria-hidden="true"><path d="M3 2.5h10v7.5l-3 3.5H3z"/><path d="M13 10h-3v3.5"/><path d="M18 4v5M15.5 6.5h5"/></svg>`;
+const ING_NOTE = `<svg viewBox="0 0 16 16" class="ic-note-sm" aria-hidden="true"><path d="M3 2.5h10v7.5l-3 3.5H3z"/><path d="M13 10h-3v3.5"/></svg>`;
+
+// Hover-revealed row-actions: a divider, then grip · heading-toggle (icon+word) · fenced red trash.
+// The divider + cluster are hidden at rest and slide in on hover/focus-within (link + note-icon stay).
+function editIngRowTools(i, isHeading) {
+  const word = isHeading ? "ingredient" : "heading";
+  const tip = isHeading ? "Make this an ingredient line" : "Make this a section heading";
+  return `<span class="divider" aria-hidden="true"></span><span class="rtools">
+    <span class="rbtn grip" title="Reorder (coming soon)" aria-hidden="true">${ING_GRIP}</span>
+    <button type="button" class="rbtn" data-inline-edit-toggle-ing data-i="${i}" title="${tip}">${ING_SECT}<span class="lbl">${word}</span></button>
+    <button type="button" class="rbtn rm" data-inline-edit-rm-ing data-i="${i}" title="Remove" aria-label="Remove">${ING_TRASH}</button>
+  </span>`;
+}
+// A raw-field editable cell — the OVERLAY approach: a real <textarea> is the edit surface (plain-text
+// paste, clean value/caret — no contenteditable), with a display <div> overlaid that ellipsis-truncates
+// the value at REST (a textarea can't show "…"; a div can). On focus the textarea shows through and wraps
+// taller (Option B). Buffered via .value on input with no re-render; the overlay text is mirrored from the
+// textarea on blur (see the focusout handler). spellcheck off to avoid squiggles on ingredient text.
+function ieCell(key, i, val, cls, ph) {
+  const v = esc(val || "");
+  return `<span class="ie-ov"><textarea class="ie ${cls}" data-inline-edit-ing="${key}" data-i="${i}" rows="1" placeholder="${esc(ph)}" aria-label="${esc(ph)}" spellcheck="false">${v}</textarea><span class="ie-disp ${cls}" aria-hidden="true">${v}</span></span>`;
+}
+function editIngRowHTML(x, i) {
+  if (x.is_heading) {
+    return `<li class="erow group-row">
+      ${ieCell("heading", i, headingText(x), "e-heading", "Section heading")}
+      <span class="tail">${editIngRowTools(i, true)}</span>
+    </li>`;
+  }
+  const name = x.label || x.raw_text || "";
+  let linkBit;
+  if (x.ingredient_id) {
+    const g = INGREDIENT_LIST.find((it) => it.id === x.ingredient_id);
+    linkBit = `<span class="linkchip">🔗 ${esc(g ? g.name : x.ingredient_id)}<button type="button" class="lx" data-inline-edit-unlink data-i="${i}" title="Unlink" aria-label="Unlink">×</button></span>`;
+  } else {
+    linkBit = `<select class="linksel" data-inline-edit-linksel data-i="${i}" aria-label="Link to a library ingredient"><option value="">🔗 link</option>${ingOptions("")}</select>`;
+  }
+  // Empty note -> a compact sticky-note+ icon in the row; a present (or just-opened) note renders BELOW.
+  const noteOpen = !!((x.note && x.note.trim()) || x._noteOpen);
+  const noteIcon = noteOpen ? "" : `<button type="button" class="note-add" data-inline-edit-addnote data-i="${i}" title="Add a note" aria-label="Add a note">${ING_NOTEPLUS}</button>`;
+  const main = `<li class="erow${noteOpen ? " has-note" : ""}">
+    ${ieCell("qty", i, x.qty, "e-qty", "qty")}
+    ${ieCell("name", i, name, "e-name", "ingredient")}
+    <span class="tail">${linkBit}${noteIcon}${editIngRowTools(i, false)}</span>
+  </li>`;
+  if (!noteOpen) return main;
+  const below = `<li class="note-row"><span></span><span class="note-below"><span class="n-ico" aria-hidden="true">${ING_NOTE}</span>${ieCell("note", i, x.note, "e-note", "add a note…")}</span></li>`;
+  return main + below;
+}
 function editIngredientsHTML() {
+  const rows = view.draft.ingredients;
+  const body = rows.length
+    ? `<ul class="ingredient-list edit">${rows.map(editIngRowHTML).join("")}</ul>`
+    : `<p class="edit-empty">No ingredients yet.</p>`;
   return `<div class="col-head"><h2 class="col-title">Ingredients</h2></div>
-    <ul class="ingredient-list">${view.draft.ingredients.map(plainRow).join("")}</ul>
-    <p class="hint">Editing ingredients inline arrives next — for now they're shown as-is and saved unchanged.</p>`;
+    ${body}
+    <div class="ing-adders">
+      <button type="button" class="adder" data-inline-edit-add-ing>+ add ingredient</button>
+      <button type="button" class="adder head" data-inline-edit-add-head>+ section heading</button>
+    </div>`;
+}
+
+// The ONE section re-render for structural actions (add / remove / heading-toggle / link — and Stage 4
+// reorder later). Targets #ing-section only. Kept separate from the seed's rerenderIngredients().
+// Text keystrokes NEVER call this (they buffer to the draft with no re-render — see the input handler).
+function rerenderEditIngredients() {
+  const el = document.getElementById("ing-section");
+  if (el) el.innerHTML = editIngredientsHTML();
+}
+function focusIngField(i, key) {
+  const el = document.querySelector(`[data-inline-edit-ing="${key}"][data-i="${i}"]`);
+  if (el) { el.focus(); if (el.select) el.select(); }
+}
+function addIngredient(isHeading) {
+  const arr = view.draft.ingredients;
+  arr.push(isHeading ? { is_heading: 1, heading: "", qty: "", label: "", note: "", ingredient_id: null, raw_text: "" }
+                     : { is_heading: 0, qty: "", label: "", note: "", ingredient_id: null, raw_text: "" });
+  markDirty(); rerenderEditIngredients();
+  focusIngField(arr.length - 1, isHeading ? "heading" : "qty");
+}
+function removeIngredient(i) { view.draft.ingredients.splice(i, 1); markDirty(); rerenderEditIngredients(); }
+function toggleIngredientHeading(i) {
+  toggleRowType(view.draft.ingredients[i]);   // lossless in-place flip (Option A1; see ingredient-row.js)
+  markDirty(); rerenderEditIngredients();
+  focusIngField(i, view.draft.ingredients[i].is_heading ? "heading" : "name");
+}
+function unlinkIngredient(i) { view.draft.ingredients[i].ingredient_id = null; markDirty(); rerenderEditIngredients(); focusIngField(i, "name"); }
+function linkIngredient(i, id) {
+  const row = view.draft.ingredients[i];
+  row.ingredient_id = id;
+  if (!(row.label || "").trim()) {                       // seed the name from the library if blank
+    const g = INGREDIENT_LIST.find((it) => it.id === id);
+    row.label = g ? g.name : id;
+  }
+  markDirty(); rerenderEditIngredients(); focusIngField(i, "name");
+}
+// Reveal the below-row note field for a row with no note yet (transient _noteOpen — never saved). Not a
+// content change on its own, so no markDirty until the user actually types into the note.
+function addNote(i) {
+  view.draft.ingredients[i]._noteOpen = true;
+  rerenderEditIngredients();
+  focusIngField(i, "note");
 }
 
 function inlineSaveBarHTML() {
@@ -957,6 +1063,12 @@ function enterEditMode() {
   view.scale = 1;                             // edit at raw 1× (scaler is hidden in edit mode)
   view.undoneCook = null;                     // entering edit is "another action" -> end the one-shot redo
   paintRecipe();                              // repaints stats (statsInner reads undoneCook) -> Redo collapses to Undo
+  // The ingredient link-select needs the library; it's otherwise only pre-loaded for seed recipes.
+  if (!INGREDIENT_LIST.length) {
+    api("/api/ingredients")
+      .then((list) => { INGREDIENT_LIST = list; if (view && view.editMode) rerenderEditIngredients(); })
+      .catch(() => {});
+  }
 }
 
 // Discard the buffer and return to reading (Cancel). Save has its own path.
@@ -976,9 +1088,10 @@ function markDirty() {
 // Convert the draft (DB row shape) back into the PUT payload shape write_recipe_rows expects. Stage 1
 // sends ingredients/steps through unchanged; the scalar fields carry the edits.
 function ingToPayload(x) {
-  if (x.is_heading) return { heading: x.raw_text || "" };
-  if (x.ingredient_id) return { qty: x.qty || "", item: x.ingredient_id, label: x.label || x.raw_text || "", note: x.note || "" };
-  return { qty: x.qty || "", text: x.label || x.raw_text || "" };
+  const oneLine = (v) => (v || "").replace(/[\r\n]+/g, " ");   // name is a .ie-line (soft-wrap only) — no hard newlines
+  if (x.is_heading) return { heading: oneLine(x.heading || x.label || x.raw_text) };   // dedicated field, back-compat fallbacks
+  if (x.ingredient_id) return { qty: x.qty || "", item: x.ingredient_id, label: oneLine(x.label || x.raw_text), note: x.note || "" };
+  return { qty: x.qty || "", text: oneLine(x.label || x.raw_text), note: x.note || "" };   // notes persist on plain rows too
 }
 function stepToPayload(x) { return x.is_heading ? { heading: x.text || "" } : (x.text || ""); }
 function draftPayload() {
@@ -989,7 +1102,7 @@ function draftPayload() {
     name: oneLine(r.name), author: oneLine(r.author), source_url: t(r.source_url), category: t(r.category),
     servings: t(r.servings), prep_time: t(r.prep_time), cook_time: t(r.cook_time), total_time: t(r.total_time),
     image: t(r.image), descr: t(r.descr), notes: t(r.notes),
-    ingredients: view.draft.ingredients.map(ingToPayload),
+    ingredients: nonEmptyRows(view.draft.ingredients).map(ingToPayload),   // drop blank rows the user left WIP
     steps: view.draft.steps.map(stepToPayload),
   };
 }
@@ -999,11 +1112,15 @@ async function saveInlineEdit() {
   const showErr = (m) => { if (errEl) { errEl.textContent = m; errEl.hidden = false; } };
   const payload = draftPayload();
   if (!payload.name) { showErr("A name is required."); return; }
-  const { ok, data } = await sendJSON("PUT", "/api/recipes/" + encodeURIComponent(view.slug), payload);
+  const slug = view.slug;
+  const { ok, data } = await sendJSON("PUT", "/api/recipes/" + encodeURIComponent(slug), payload);
   if (!ok) { showErr((data && data.error) || "Couldn't save."); return; }
-  view.data = view.draft;   // draft becomes the source of truth; ingredients/steps were round-tripped
-  view.editMode = false; view.draft = null; view.dirty = false; view.scale = 1;
-  paintRecipe();
+  // Re-fetch the CANONICAL saved recipe rather than keeping the unfiltered draft: the payload dropped
+  // blank rows and normalized headings (text -> raw_text), so view.data must reflect the server, not
+  // the draft shape (which still holds WIP blanks + the dedicated `heading` field). This lands us back
+  // in reading mode with exactly what was saved.
+  try { await renderRecipe(slug); }
+  catch (_) { showErr("Saved — but couldn't refresh the view. Reload to see it."); }
 }
 
 // Sub-dispatch for the inline editor's own click actions (namespaced data-inline-edit-*), kept out of
@@ -1015,6 +1132,17 @@ function handleInlineEdit(e) {
   if (e.target.closest("[data-inline-edit-save]"))   { saveInlineEdit(); return true; }
   const rmtag = e.target.closest("[data-inline-edit-rmtag]");
   if (rmtag) { removeTag(Number(rmtag.dataset.tagI)); return true; }
+  // Stage 2 — ingredient structural actions (all re-render the section via rerenderEditIngredients)
+  if (e.target.closest("[data-inline-edit-add-ing]"))  { addIngredient(false); return true; }
+  if (e.target.closest("[data-inline-edit-add-head]")) { addIngredient(true); return true; }
+  const rmi = e.target.closest("[data-inline-edit-rm-ing]");
+  if (rmi) { removeIngredient(Number(rmi.dataset.i)); return true; }
+  const tgi = e.target.closest("[data-inline-edit-toggle-ing]");
+  if (tgi) { toggleIngredientHeading(Number(tgi.dataset.i)); return true; }
+  const unl = e.target.closest("[data-inline-edit-unlink]");
+  if (unl) { unlinkIngredient(Number(unl.dataset.i)); return true; }
+  const ani = e.target.closest("[data-inline-edit-addnote]");
+  if (ani) { addNote(Number(ani.dataset.i)); return true; }
   return false;
 }
 
@@ -1800,8 +1928,22 @@ document.addEventListener("keydown", (e) => {
     else if (e.key === "Escape") { e.target.value = ""; e.target.blur(); }
     return;
   }
-  // .ie-line fields (title, author) soft-wrap for display but are ONE logical line — swallow Enter so
-  // they can't gain a hard newline (newlines are also stripped on save as a backstop).
+  // Ingredient value fields (qty/name/note/heading textareas): Enter commits + closes (blur — the value
+  // is already buffered continuously via input→draft), Escape reverts this field to its focus-time
+  // snapshot (iePreEdit, captured on focusin) and closes. Neither inserts a newline. Blur is fine — it
+  // doesn't re-render (focusout just mirrors the value into the overlay).
+  if (view && view.editMode && e.target.dataset && e.target.dataset.inlineEditIng) {
+    if (e.key === "Enter") { e.preventDefault(); e.target.blur(); return; }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      const ta = e.target;
+      ta.value = iePreEdit;
+      const row = view.draft && view.draft.ingredients[Number(ta.dataset.i)];
+      if (row) writeIngField(row, ta.dataset.inlineEditIng, iePreEdit);   // restore draft to the snapshot
+      ta.blur();
+      return;
+    }
+  }
   if (view && view.editMode && e.key === "Enter" && e.target.classList && e.target.classList.contains("ie-line")) {
     e.preventDefault();
     return;
@@ -1843,6 +1985,15 @@ document.addEventListener("input", (e) => {
   if (f && view && view.editMode && view.draft) {
     view.draft.recipe[f.dataset.inlineEditField] = f.value;
     markDirty();
+    return;
+  }
+  // Stage 2 — buffer an ingredient field into the draft row (NO re-render → focus/caret preserved).
+  const ing = e.target.closest("[data-inline-edit-ing]");
+  if (ing && view && view.editMode && view.draft) {
+    const row = view.draft.ingredients[Number(ing.dataset.i)];
+    if (!row) return;
+    writeIngField(row, ing.dataset.inlineEditIng, ing.value);   // real <textarea> -> draft (shared w/ Esc-revert)
+    markDirty();
   }
 });
 document.addEventListener("focusout", (e) => {
@@ -1850,11 +2001,54 @@ document.addEventListener("focusout", (e) => {
   if (nt && view && view.editMode) { commitNewTag(nt, false); return; }   // blur commits a typed-but-unadded tag
   const el = e.target.closest(".scale-custom");
   if (el && view) commitCustomScale(el);                // blur commits + reformats to "N×"
+  // Overlay field: on blur, mirror the textarea's value into its ellipsis display div so the resting
+  // (truncated) state reflects the edit. Not a re-render — just the sibling overlay's text.
+  const iet = e.target.closest("textarea[data-inline-edit-ing]");
+  if (iet) { const d = iet.parentElement.querySelector(".ie-disp"); if (d) d.textContent = iet.value; }
+});
+// Snapshot a field's value when it gains focus, so Escape can revert it to exactly this (see keydown).
+let iePreEdit = "";
+document.addEventListener("focusin", (e) => {
+  const ta = e.target.closest("textarea[data-inline-edit-ing]");
+  if (ta && view && view.editMode) iePreEdit = ta.value;
+});
+// Overlay caret fix: the resting display div is one line while the textarea wraps on focus, so letting a
+// click fall through hit-tests against the wrong (reflowed) layout and drops the caret in the wrong spot.
+// Instead we OWN the click: read the caret offset from the display div's own (one-line) text via
+// caretPositionFromPoint, then focus the textarea and place the caret there. (Once focused, the overlay
+// is hidden and further clicks hit the textarea natively.)
+function caretOffsetFromPoint(x, y) {
+  if (document.caretPositionFromPoint) {
+    const p = document.caretPositionFromPoint(x, y);
+    return p ? p.offset : null;
+  }
+  if (document.caretRangeFromPoint) {
+    const r = document.caretRangeFromPoint(x, y);
+    return r ? r.startOffset : null;
+  }
+  return null;
+}
+document.addEventListener("mousedown", (e) => {
+  if (!(view && view.editMode)) return;
+  const disp = e.target.closest(".ie-disp");
+  if (!disp) return;
+  const ta = disp.parentElement.querySelector("textarea[data-inline-edit-ing]");
+  if (!ta) return;
+  e.preventDefault();                                   // take over focus + caret placement from the browser
+  const off = caretOffsetFromPoint(e.clientX, e.clientY);
+  ta.focus();
+  if (off != null) { const n = Math.min(off, ta.value.length); ta.setSelectionRange(n, n); }
 });
 
 // In the add-ingredient form, picking a library ingredient pre-fills the text box with
 // its name — but only when the box is empty, so a custom label is never clobbered.
 document.addEventListener("change", (e) => {
+  // Stage 2 — link an ingredient row to the library (structural: sets ingredient_id + re-renders)
+  const linksel = e.target.closest("[data-inline-edit-linksel]");
+  if (linksel && view && view.editMode && view.draft) {
+    if (linksel.value) linkIngredient(Number(linksel.dataset.i), linksel.value);
+    return;
+  }
   const link = e.target.closest(".af-link");
   if (!link) return;
   const text = document.querySelector(".af-text");

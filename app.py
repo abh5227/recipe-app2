@@ -238,7 +238,7 @@ def home():
     # Serve the shell with a per-asset ?v=<mtime> so a normal refresh always gets the current file
     # (no hard-refresh in dev), while the assets themselves cache for a year (production-correct).
     html = (BASE_DIR / "static" / "index.html").read_text(encoding="utf-8")
-    for asset in ("styles.css", "scaler.js", "app.js"):
+    for asset in ("styles.css", "scaler.js", "ingredient-row.js", "app.js"):
         html = html.replace(f'"{asset}"', f'"{asset}?v={_asset_version(asset)}"')
     resp = app.make_response(html)
     resp.headers["Content-Type"] = "text/html; charset=utf-8"

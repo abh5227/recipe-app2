@@ -454,3 +454,12 @@ def test_put_ingredient_shape_roundtrips(kitchen):
     # a note on a PLAIN (unlinked) line must persist too — not just linked lines
     assert any((not i["is_heading"]) and i["ingredient_id"] is None
                and (i["label"] or i["raw_text"]) == "water" and i["note"] == "filtered" for i in ings)
+
+
+def test_put_rejects_unknown_ingredient_link(kitchen):
+    # linking a row to a non-library id must 400 (surfaced in the inline-error bar on the client)
+    rid = kitchen.client.post("/api/recipes", json={"name": "Bad Link", "ingredients": [], "steps": []}).get_json()["id"]
+    resp = kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Bad Link", "ingredients": [{"qty": "1", "item": "not_a_real_ingredient", "label": "x"}], "steps": [],
+    })
+    assert resp.status_code == 400
