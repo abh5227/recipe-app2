@@ -432,3 +432,25 @@ def test_copy_carries_harvested_grams(kitchen):
 
 def test_copy_missing_recipe_404(kitchen):
     assert kitchen.client.post("/api/recipes/does-not-exist/copy", json={}).status_code == 404
+
+
+def test_put_ingredient_shape_roundtrips(kitchen):
+    # the exact shape Stage-2 inline editing sends (draftPayload/ingToPayload): heading, a
+    # library-linked line with a note, and a plain line — all must survive PUT -> GET.
+    rid = kitchen.client.post("/api/recipes", json={"name": "Stage2 RT", "ingredients": [], "steps": []}).get_json()["id"]
+    put = kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Stage2 RT",
+        "ingredients": [
+            {"heading": "SAUCE"},
+            {"qty": "2", "item": "carrot", "label": "carrots", "note": "diced"},
+            {"qty": "1 cup", "text": "water", "note": "filtered"},
+        ],
+        "steps": ["Cook it."],
+    })
+    assert put.status_code == 200
+    ings = kitchen.client.get(f"/api/recipes/{rid}").get_json()["ingredients"]
+    assert any(i["is_heading"] and i["raw_text"] == "SAUCE" for i in ings)
+    assert any(i.get("ingredient_id") == "carrot" and i["label"] == "carrots" and i["note"] == "diced" for i in ings)
+    # a note on a PLAIN (unlinked) line must persist too — not just linked lines
+    assert any((not i["is_heading"]) and i["ingredient_id"] is None
+               and (i["label"] or i["raw_text"]) == "water" and i["note"] == "filtered" for i in ings)

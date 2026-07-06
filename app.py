@@ -204,10 +204,11 @@ def write_recipe_rows(c, rid, clean, preserve=None):
             )
         else:
             text = row.get("text", "") or ""
+            note = row.get("note") or ""
             grams, secondary = preserve.get(_preserve_key(row.get("qty"), text), (None, None))
             c.execute(
-                "INSERT INTO recipe_ingredients (recipe_id, position, qty, raw_text, grams, secondary_measure) VALUES (?,?,?,?,?,?)",
-                (rid, pos, row.get("qty"), text, grams, secondary),
+                "INSERT INTO recipe_ingredients (recipe_id, position, qty, raw_text, note, grams, secondary_measure) VALUES (?,?,?,?,?,?,?)",
+                (rid, pos, row.get("qty"), text, note, grams, secondary),
             )
 
     for pos, step in enumerate(clean["steps"]):

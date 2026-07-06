@@ -519,6 +519,10 @@ a:hover { color: var(--berry-lift); }
 .weight { font-size: 12px; line-height: 1.15; margin-top: 1px; }  /* gram estimate, tucked under the amount */
 .qty.approx, .weight.approx { opacity: 0.8; }   /* "~" estimated / humane-rounded — shared treatment */
 .iname { min-width: 0; }                          /* let long names wrap inside the 1fr column */
+/* a note: its own line beneath the ingredient, styled as a distinct secondary annotation (muted, italic,
+   smaller, slightly indented) — not part of the ingredient name. Applies to every reading-mode note. */
+.inote { display: block; margin-top: 1px; padding-left: 10px; font-family: var(--font-serif);
+  font-style: italic; font-size: 13px; line-height: 1.35; color: var(--ink-soft); }
 
 .steps { list-style: none; counter-reset: step; padding: 0; margin: 0; }
 .steps li.step {

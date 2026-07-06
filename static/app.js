@@ -358,18 +358,26 @@ function changesFor(pid) {
   return view.data.changes[pid] || { edits: {}, removes: [], additions: [] };
 }
 
+// A note rendered as a distinct secondary annotation on its OWN line below the ingredient (muted,
+// italic, smaller — see .inote). Applies to every reading-mode line, linked or plain.
+function readNote(row) {
+  return row.note && row.note.trim() ? `<span class="inote">${esc(row.note)}</span>` : "";
+}
 // The clickable-ingredient-or-plain-text body of a line (no quantity, no tools).
 function lineBodyHTML(row) {
   if (row.ingredient_id) {
     const label = row.label || row.raw_text || row.ingredient_id;
-    return `<button class="ingredient" data-item="${esc(row.ingredient_id)}">${esc(label)}</button>${row.note ? esc(row.note) : ""}`;
+    return `<button class="ingredient" data-item="${esc(row.ingredient_id)}">${esc(label)}</button>${readNote(row)}`;
   }
-  return esc(row.label || row.raw_text || "");
+  return `${esc(row.label || row.raw_text || "")}${readNote(row)}`;
 }
 
 // A plain ingredient line: used for the Original view and for app recipes.
 function plainRow(row) {
-  if (row.is_heading) return `<li class="group">${esc(row.raw_text)}</li>`;
+  // Guard (belt-and-suspenders): never render an empty row as a bare divider line, even if one somehow
+  // reaches the reading view — a heading with no text, or a line with no name, is skipped entirely.
+  if (row.is_heading) return (row.raw_text || "").trim() ? `<li class="group">${esc(row.raw_text)}</li>` : "";
+  if (!(row.label || row.raw_text || "").trim()) return "";
   return `<li>${ledgerCells(row.qty, row.grams_per_ml)}<span class="iname">${lineBodyHTML(row)}</span></li>`;
 }
 
@@ -377,8 +385,8 @@ function plainRow(row) {
 // view it carries a × to delete it; in Compare it's read-only.
 function additionRow(a, color, withDelete) {
   const body = a.ingredient_id
-    ? `<button class="ingredient" data-item="${esc(a.ingredient_id)}">${esc(a.label || a.raw_text || a.ingredient_id)}</button>${a.note ? esc(a.note) : ""}`
-    : esc(a.raw_text || "");
+    ? `<button class="ingredient" data-item="${esc(a.ingredient_id)}">${esc(a.label || a.raw_text || a.ingredient_id)}</button>${readNote(a)}`
+    : `${esc(a.raw_text || "")}${readNote(a)}`;
   const tools = withDelete
     ? `<span class="line-tools"><button class="icon-btn" data-del-add data-add="${a.id}" title="Remove this addition" aria-label="Remove this addition">\u00d7</button></span>`
     : "";
