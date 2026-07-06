@@ -378,3 +378,41 @@ def test_photo_only_flagged():
 def test_nothing_dropped_sections_kept():
     r = ic.clean_recipe(_norm(ingredient_lines=["a", "b", "c", "SAUCE:"]))
     assert len(r["ingredients"]) == 4                     # every line preserved, incl. the section
+
+
+# ------------------------------------------------- split_qty (qty -> quantity + unit, additive)
+import re as _re
+
+
+@pytest.mark.parametrize("qty, quantity, unit", [
+    ("2 tablespoons", "2", "tablespoons"),   # number + measuring unit
+    ("1 cup", "1", "cup"),
+    ("1 1/2 tsp", "1 1/2", "tsp"),           # mixed-fraction amount stays whole in quantity
+    ("2", "2", ""),                          # number only, no unit
+    ("1 1/2", "1 1/2", ""),
+    ("10 to 12", "10 to 12", ""),            # a unit-less range is still a number-only expression
+    ("", "", ""),                            # empty
+    (None, "", ""),                          # None qty
+    ("4 cloves", "4", "cloves"),             # count-noun becomes the unit
+    ("2 large", "2", "large"),
+    ("1 medium head", "1", "medium head"),
+    ("2 lb / 1 kg", "2 lb / 1 kg", ""),      # slash-dual: irreducible -> whole string, no unit
+    ("500 g / 1 lb", "500 g / 1 lb", ""),
+    ("3 + 2 tbsp", "3 + 2 tbsp", ""),        # compound: irreducible -> whole string
+    ("pinch", "pinch", ""),                  # no leading number -> whole string, no unit
+    ("to taste", "to taste", ""),
+])
+def test_split_qty_buckets(qty, quantity, unit):
+    assert ic.split_qty(qty) == (quantity, unit)
+
+
+@pytest.mark.parametrize("qty", [
+    "2 tablespoons", "1 cup", "1 1/2 tsp", "2", "1 1/2", "10 to 12", "", "4 cloves",
+    "2 large", "1 medium head", "2 lb / 1 kg", "500 g / 1 lb", "3 + 2 tbsp", "pinch", "to taste",
+])
+def test_split_qty_recombine_is_lossless(qty):
+    """The Option-B guarantee: quantity + ' ' + unit (whitespace-normalized) reconstructs qty,
+    so the additive split never loses or alters the original."""
+    quantity, unit = ic.split_qty(qty)
+    norm = (lambda s: _re.sub(r"\s+", " ", s or "").strip())
+    assert norm(f"{quantity} {unit}") == norm(qty)

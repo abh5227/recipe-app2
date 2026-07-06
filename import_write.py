@@ -111,10 +111,15 @@ def _ingredient_row(pos, line):
     ingredient_id stays NULL (linkage = later pass). grams + secondary_measure are the dual-measure
     capture (the weight and the volume); both are persisted (migrations 011/012)."""
     heading = line["kind"] == "section"
+    qty = None if heading else _qty_text(line)
     return {
         "position": pos,
         "is_heading": 1 if heading else 0,
-        "qty": None if heading else _qty_text(line),
+        "qty": qty,
+        # additive qty/unit split — the parts are ALREADY separate in the line dict pre-join, so no
+        # re-parse: quantity=amount, unit=unit (they recombine to `qty`). None when there is no qty.
+        "quantity": None if qty is None else (line.get("amount") or ""),
+        "unit": None if qty is None else (line.get("unit") or ""),
         "ingredient_id": None,                           # linkage = separate later pass
         "label": None if heading else (line["name"] or None),
         "note": None,                                    # name kept whole; no note split yet
@@ -223,10 +228,10 @@ def commit_plan(conn, plan):
     for row in plan["ingredients"]:
         conn.execute(
             """INSERT INTO recipe_ingredients
-               (recipe_id, position, is_heading, qty, ingredient_id, label, note, raw_text, grams,
-                secondary_measure)
-               VALUES (?,?,?,?,?,?,?,?,?,?)""",
-            (r["id"], row["position"], row["is_heading"], row["qty"],
+               (recipe_id, position, is_heading, qty, quantity, unit, ingredient_id, label, note,
+                raw_text, grams, secondary_measure)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (r["id"], row["position"], row["is_heading"], row["qty"], row["quantity"], row["unit"],
              row["ingredient_id"], row["label"], row["note"], row["raw_text"], row["grams"],
              row["secondary_measure"]))
     for row in plan["steps"]:

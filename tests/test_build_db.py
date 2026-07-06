@@ -2,7 +2,7 @@
 rebuild is idempotent and keeps referential integrity."""
 
 # Bump this when a migration is added.
-EXPECTED_MIGRATIONS = 14
+EXPECTED_MIGRATIONS = 15
 
 
 def test_all_migrations_applied(kitchen):
@@ -11,7 +11,27 @@ def test_all_migrations_applied(kitchen):
     assert len(files) == EXPECTED_MIGRATIONS
     assert files == sorted(files)                 # applied in filename order
     assert files[0].startswith("001")
-    assert files[-1].startswith("014")
+    assert files[-1].startswith("015")
+
+
+def test_seed_rows_get_qty_unit_split(kitchen):
+    """The seed load path splits qty -> quantity+unit on build (same rule as the app-row backfill),
+    so the rebuilt rows don't lose the split. qty stays as-is; quantity+unit recombine to it."""
+    import re
+    norm = (lambda s: re.sub(r"\s+", " ", s or "").strip())
+    with kitchen.conn() as c:
+        rows = c.execute(
+            "SELECT qty, quantity, unit FROM recipe_ingredients WHERE is_heading = 0"
+        ).fetchall()
+    assert rows
+    # every non-heading seed row got a non-NULL quantity, and quantity+unit recombines to qty
+    assert all(qn is not None for _q, qn, _u in rows)
+    assert all(norm(f"{qn} {u or ''}") == norm(q) for q, qn, u in rows)
+    shapes = {(q, qn, u) for q, qn, u in rows}
+    assert any(u == "tbsp" and qn == "2" for q, qn, u in shapes)               # number + unit
+    assert any(u == "cloves" for q, qn, u in shapes)                           # count-noun -> unit
+    assert any(q == "2 lb / 1 kg" and qn == "2 lb / 1 kg" and (u or "") == ""  # irreducible kept whole
+               for q, qn, u in shapes)
 
 
 def test_seed_counts(kitchen):

@@ -173,6 +173,50 @@ def parse_amount(line):
     return amount, value, unit, name, None
 
 
+# A count-noun / size descriptor left after a leading number ("cloves", "large", "medium head",
+# "large handfuls"): letters + spaces/hyphens only, no digits/operators/slashes. Distinguishes a
+# real count unit from irreducible trailing junk ("/ 1 kg", "+ 2 tbsp").
+_COUNTNOUN_RE = re.compile(r"^[A-Za-z][A-Za-z .\-]*$")
+
+
+def _norm_ws(s):
+    return re.sub(r"\s+", " ", s or "").strip()
+
+
+def split_qty(qty):
+    """Split a stored free-text `qty` into (quantity_expression, unit) for the additive qty/unit
+    columns — reusing parse_amount, so the DB backfill and the seed-load path split IDENTICALLY.
+
+      "2 tablespoons" -> ("2", "tablespoons")     number + measuring unit
+      "1 1/2"         -> ("1 1/2", "")            number only (no unit)
+      "2-3 cups"      -> ("2-3", "cups")          range keeps its expression in quantity
+      "4 cloves"      -> ("4", "cloves")          count-noun becomes the unit
+      "pinch"         -> ("pinch", "")            no leading number -> whole string, no unit
+      "2 lb / 1 kg"   -> ("2 lb / 1 kg", "")      slash-dual: irreducible -> whole string
+      "3 + 2 tbsp"    -> ("3 + 2 tbsp", "")       compound: irreducible -> whole string
+      ""              -> ("", "")                 empty
+
+    LOSSLESS BY CONSTRUCTION: quantity + " " + unit always recombines (whitespace-normalized) to
+    the original qty; any split that wouldn't reconstruct it falls back to the whole string with
+    unit="" rather than mis-structure. The original `qty` column is never touched by the caller."""
+    s = (qty or "").strip()
+    if not s:
+        return "", ""
+    amount, _value, unit, name, _rng = parse_amount(s)
+    name = (name or "").strip()
+    if not amount:
+        q, u = s, ""                                   # no leading number (pinch, to taste, …)
+    elif not name:
+        q, u = amount, unit                            # clean "number [unit]" or number-only
+    elif not unit and _COUNTNOUN_RE.match(name):
+        q, u = amount, name                            # count-noun -> unit ("4 cloves")
+    else:
+        q, u = s, ""                                   # trailing junk (dual/compound) -> keep whole
+    if _norm_ws(f"{q} {u}") != _norm_ws(s):            # safety: never mis-structure — recombine must hold
+        return s, ""
+    return q, u
+
+
 def _strip_secondary_measure(name):
     """Strip a LEADING secondary measure ('/ 6 g …') the primary-amount parse left at the
     front of the name on a dual-unit line. Returns (clean_name, stripped_fragment|None); only

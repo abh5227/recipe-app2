@@ -247,3 +247,20 @@ def test_commit_section_suggested_heading_and_mult_one(kitchen):
     assert rows[0]["is_heading"] == 1                        # "crust" promoted to a heading
     assert "section_suggested" in flags
     assert tuple(rows[1])[1:] == ("1 can", "condensed milk", 397.0)   # N=1 multiplier resolved
+
+
+def test_import_populates_quantity_unit():
+    """The import write splits qty into quantity+unit from the line dict's ALREADY-separate parts
+    (no re-parse): quantity=amount, unit=unit; they recombine to qty. None when there's no qty."""
+    import re
+    plan = _plan(_cleaned(ingredient_lines=[
+        "2 tbsp extra virgin olive oil", "1 cup flour", "salt",
+    ]))
+    rows = plan["ingredients"]
+    norm = (lambda s: re.sub(r"\s+", " ", s or "").strip())
+    for r in rows:                                           # recombine holds for every row
+        assert norm(f"{r['quantity'] or ''} {r['unit'] or ''}") == norm(r["qty"] or "")
+    olive = next(r for r in rows if "olive" in (r["raw_text"] or ""))
+    assert (olive["qty"], olive["quantity"], olive["unit"]) == ("2 tbsp", "2", "tbsp")
+    salt = next(r for r in rows if r["raw_text"] == "salt")  # no amount -> all None (no qty)
+    assert (salt["qty"], salt["quantity"], salt["unit"]) == (None, None, None)

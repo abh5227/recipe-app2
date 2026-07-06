@@ -21,6 +21,7 @@ from pathlib import Path
 
 from seed import INGREDIENTS, RECIPES, PEOPLE
 from migrate import migrate
+from import_cleanup import split_qty   # same qty->quantity+unit split as the app-row backfill
 from weights import (
     normalize, parse_reference_volume, build_index, match_weight, has_volume_unit,
 )
@@ -84,20 +85,22 @@ def _insert_lines_and_steps(conn, r):
                 (r["id"], pos, row["heading"]),
             )
         elif "item" in row:
+            quantity, unit = split_qty(row.get("qty"))   # additive split (qty stays as-is)
             conn.execute(
                 """INSERT INTO recipe_ingredients
-                   (recipe_id, position, qty, ingredient_id, label, note, raw_text)
-                   VALUES (?,?,?,?,?,?,?)""",
+                   (recipe_id, position, qty, quantity, unit, ingredient_id, label, note, raw_text)
+                   VALUES (?,?,?,?,?,?,?,?,?)""",
                 (
-                    r["id"], pos, row.get("qty"), row["item"],
+                    r["id"], pos, row.get("qty"), quantity, unit, row["item"],
                     row.get("label"), row.get("note"),
                     f"{row.get('qty','')} {row.get('label','')}{row.get('note','')}".strip(),
                 ),
             )
         else:  # plain text line
+            quantity, unit = split_qty(row.get("qty"))
             conn.execute(
-                "INSERT INTO recipe_ingredients (recipe_id, position, qty, raw_text) VALUES (?,?,?,?)",
-                (r["id"], pos, row.get("qty"), row.get("text", "")),
+                "INSERT INTO recipe_ingredients (recipe_id, position, qty, quantity, unit, raw_text) VALUES (?,?,?,?,?,?)",
+                (r["id"], pos, row.get("qty"), quantity, unit, row.get("text", "")),
             )
 
     for pos, step in enumerate(r["steps"]):
