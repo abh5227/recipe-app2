@@ -333,10 +333,11 @@ direction — palette, type, the R1/R2 boundary, the punch-list — in
   offer's exact form (and whether re-unchecking retracts it).
 - **Inline "mark up the page" recipe editor.** Replaces the admin-style form with in-place editing on
   the recipe page (edit-mode toggle + explicit Save + buffered draft; every field follows the
-  reading-mode-parity principle + four field-kinds — see design-decisions.md). **Stage 1 built**
-  (scalar/masthead fields; ingredients & steps display-only). Later stages: ingredients inline → steps
-  inline → reorder → polish (validation, source_url, image upload). Old form (`renderForm`) kept as
-  fallback until complete, then retired.
+  reading-mode-parity principle + four field-kinds — see design-decisions.md). **Stage 2 done** —
+  ingredients editable inline (edit qty/name/note, add/remove, headings, library-link/unlink; overlay
+  fields; lossless heading-toggle; discard-empties + refetch on save). **Steps display-only (Stage 3)**;
+  **reorder Stage 4**; **qty/unit split queued next** as its own effort. Then polish (validation,
+  source_url, image upload). Old form (`renderForm`) kept as fallback until complete, then retired.
 - **App rename pending:** "Seasonal Kitchen" → **"Chef's Choice"** across UI + docs (decided; not
   yet applied — see design-decisions.md).
 

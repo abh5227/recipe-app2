@@ -296,16 +296,59 @@ kinds** so edit mode is consistent by construction:
   form-y stopgap we're eliminating; the existing image **round-trips untouched** from the draft on
   save, so nothing is lost.
 - **Note** renders at the **bottom** (after the steps), matching the reading "Note. …" block.
+- **Ingredient notes vs. the recipe note.** The recipe-level **note** (headnote) is this Stage-1
+  `.ie-prose` field at the bottom. A **per-ingredient note** is separate: in edit mode it's the
+  collapsed sticky-note icon / below-row field; in **reading** mode notes now render as a **distinct
+  secondary annotation** — their own line **below** the ingredient (serif italic, muted, smaller,
+  indented via `.inote`), replacing the previous inline string-concat. This is a **general change: it
+  applies to every recipe's reading view** (linked, imported, and — newly visible — plain-row notes),
+  routed through a single `readNote()`.
 - **Description** is **full-width** in edit mode (the reading narrow-then-wide float is relaxed) — a
   rectangular textarea can't cleanly hug the tilted Polaroid, and a wide field is better to type in;
   it clears the photo via a masthead `min-height`.
 
 **Stage 1 (built):** the **scalar / masthead fields** (title, author, source_url, category/tags,
-servings, times, description, note). **Ingredients and steps stay display-only** in edit mode
-(rendered from the draft, round-tripped unchanged on save); their discrete inline editing
-(add/remove/**reorder** — the data model already supports order via `position`) lands in later stages.
-**Backend untouched** — the existing `PUT /api/recipes/<id>` already full-replaces rows from the
-payload and preserves harvested grams for unchanged lines.
+servings, times, description, recipe-note).
+
+**Stage 2 (built) — ingredients editable inline.** A **separate edit-mode path** in the ledger (not
+the seed line-editor; mutually exclusive by `source`): edit qty / name / note, add & remove lines, add
+& edit **section headings**, and **library-link / unlink**. Reuses the existing `PUT` — **backend
+untouched except one fix** (plain-row notes now persist; see caveats). **Steps remain display-only**
+(Stage 3); **reorder** is deferred to Stage 4 (the grip is a reserved "coming soon" affordance;
+`position` already supports it).
+
+- **Overlay value fields — why (not contenteditable).** Fields need to **truncate with "…" at rest**
+  *and* **wrap taller on focus** (Option B). Tested: **no single form element does both** — a
+  `<textarea>` ignores `text-overflow:ellipsis` (hard-clips, no "…"), and an `<input>` can't wrap.
+  Contenteditable does both but was **rejected earlier** (paste-HTML / caret / mangling risk).
+  Resolution: an **overlay** — a real `<textarea>` (the edit surface) with a plain display `<div>`
+  (`.ie-disp`) that ellipsis-truncates the value at rest and hides on focus. This is **paste-safe by
+  construction** (a textarea can't hold HTML) and **honors the earlier inputs-not-contenteditable
+  decision**. Click-to-focus: the overlay's `mousedown` maps the click to a caret offset via
+  **`caretPositionFromPoint`**, then focuses the textarea and sets the selection (a naive fall-through
+  hit-tests the wrong, reflowed layout). Blur mirrors the textarea value back into the overlay.
+- **Finalized layout (760px — decided AGAINST widening).** Compact one-line rows at rest: qty · name ·
+  link · collapsed **sticky-note icon**; the **grip · icon+word heading-toggle · fenced red trash**
+  cluster is **hidden, revealed on hover/focus** behind a divider (space reserved, so no shift). A
+  **fixed qty column** + `align-items:start` + matched `line-height` keeps names aligned on the first
+  line. A present note renders **on its own line below** the ingredient. The slim row fits at the
+  reading width, so edit mode **stays 760px** (no widen → no toggle jump, no Polaroid slide, no new
+  responsive floor).
+- **Lossless heading-toggle (Option A1).** Heading text lives in a **dedicated `heading` field** (never
+  shares `raw_text` with the name); ingredient fields (qty/label/note/link) stay **dormant** across a
+  toggle, so a round-trip restores them exactly.
+- **Discard-empties + refetch-canonical-after-save.** Save filters blank rows (`nonEmptyRows`) from the
+  payload; after a successful PUT the client **re-fetches canonical state** rather than adopting the
+  draft. Why: Stage 1 could set `view.data = view.draft` because the draft shape *was* the data shape —
+  Stage 2 **diverges** the shape (dedicated `heading`, `label`-as-name, transient `_noteOpen`), so
+  adopting the unfiltered draft would leave blanks and shape drift; a refetch is the source of truth.
+- **Keyboard.** In an ingredient field, **Enter commits + closes** (value is already buffered
+  continuously; just blur — no newline) and **Esc reverts** the field to its **focus-time snapshot**
+  and closes.
+
+Pure row transforms (toggle / heading-text / nonEmptyRows / writeIngField) live in
+`static/ingredient-row.js` (dual-export like `scaler.js`), unit-tested in node. **Backend** — the
+existing `PUT /api/recipes/<id>` full-replaces rows and preserves harvested grams for unchanged lines.
 
 This is the **"edit the canonical recipe"** path — distinct from the R2 **handwritten annotation
 layer** (struck-print + hand color) and from the seed-only per-person change model (see the
@@ -323,6 +366,11 @@ architectural tension above).
 - **Free-text time values** (`prep_time`/`cook_time`/`total_time`) are edited **as-is** (the whole
   `"5 min"` / `"1 hr 15 min"` / `"overnight"` string), not split into number + unit — the stored
   format is free text, so a number-only field would break non-`min` values.
+- **Overlay ingredient fields** depend on **`field-sizing: content`** (same class as the meta fields)
+  for the on-focus auto-grow, and on **`caretPositionFromPoint`/`caretRangeFromPoint`** for the
+  click→caret mapping on the display overlay — both fine for this local single-user app.
+- **Plain-row notes now persist:** the backend plain-row INSERT writes the `note` column (it already
+  existed) and `ingToPayload`'s plain branch sends `note`. Previously only *linked* rows saved a note.
 
 ## Open questions
 
