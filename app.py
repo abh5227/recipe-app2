@@ -175,6 +175,23 @@ def _preserve_key(qty, name):
     return ((qty or "").strip().lower(), (name or "").strip().lower())
 
 
+def _row_qty_parts(row):
+    """Resolve (qty, quantity, unit) for an ingredient write — the qty/unit-split hybrid.
+    IF the payload row carries explicit `quantity`/`unit` (the Stage-4 editor sends the structured
+    parts), they are authoritative and `qty` is their recombination — split_qty's inverse, a normal
+    combined string ("3 cups", "4 cloves", "pinch") the untouched scaler parses fine.
+    ELSE (Stage 3 / today's client, which sends only `qty`) `qty` is authored and `quantity`/`unit`
+    are derived from it via split_qty. Keyed off PRESENCE of the parts, so it stays dormant until a
+    client sends them (a normal edit is unchanged)."""
+    q, u = row.get("quantity"), row.get("unit")
+    if q is not None or u is not None:                 # IF: explicit structured parts -> recombine qty
+        quantity, unit = (q or ""), (u or "")
+        return (f"{quantity} {unit}").strip(), quantity, unit
+    qty = row.get("qty")                               # ELSE: authored qty -> derive the split
+    quantity, unit = split_qty(qty)
+    return qty, quantity, unit
+
+
 def write_recipe_rows(c, rid, clean, preserve=None):
     """(Re)write a recipe's ingredient lines and steps from a validated payload.
 
@@ -195,25 +212,26 @@ def write_recipe_rows(c, rid, clean, preserve=None):
         elif row.get("item"):
             label = row.get("label") or row["item"]
             note = row.get("note") or ""
-            grams, secondary = preserve.get(_preserve_key(row.get("qty"), label), (None, None))
-            # Stage 3: derive the structured split from qty so it survives the full-replace (else-branch
-            # of the eventual hybrid — the client sends only qty today; Stage 4 adds explicit parts).
-            quantity, unit = split_qty(row.get("qty"))
+            # Hybrid: recombine qty from explicit parts (Stage-4 editor) or derive the split from the
+            # authored qty (Stage 3). preserve/raw_text key off the RESOLVED qty (a recombined change
+            # correctly misses the preserve map, clearing stale grams).
+            qty, quantity, unit = _row_qty_parts(row)
+            grams, secondary = preserve.get(_preserve_key(qty, label), (None, None))
             c.execute(
                 """INSERT INTO recipe_ingredients
                    (recipe_id, position, qty, quantity, unit, ingredient_id, label, note, raw_text, grams, secondary_measure)
                    VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                (rid, pos, row.get("qty"), quantity, unit, row["item"], label, note,
-                 f"{row.get('qty','')} {label}{note}".strip(), grams, secondary),
+                (rid, pos, qty, quantity, unit, row["item"], label, note,
+                 f"{qty} {label}{note}".strip(), grams, secondary),
             )
         else:
             text = row.get("text", "") or ""
             note = row.get("note") or ""
-            grams, secondary = preserve.get(_preserve_key(row.get("qty"), text), (None, None))
-            quantity, unit = split_qty(row.get("qty"))   # Stage 3: derive the split (durable across edits)
+            qty, quantity, unit = _row_qty_parts(row)   # hybrid: recombine from parts, or derive from qty
+            grams, secondary = preserve.get(_preserve_key(qty, text), (None, None))
             c.execute(
                 "INSERT INTO recipe_ingredients (recipe_id, position, qty, quantity, unit, raw_text, note, grams, secondary_measure) VALUES (?,?,?,?,?,?,?,?,?)",
-                (rid, pos, row.get("qty"), quantity, unit, text, note, grams, secondary),
+                (rid, pos, qty, quantity, unit, text, note, grams, secondary),
             )
 
     for pos, step in enumerate(clean["steps"]):

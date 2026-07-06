@@ -535,3 +535,47 @@ def test_copy_carries_the_split(kitchen):
     garlic = next(i for i in ings if (i["label"] or i["raw_text"]) == "garlic")
     assert (flour["quantity"], flour["unit"]) == ("1", "cup")
     assert (garlic["quantity"], garlic["unit"]) == ("4", "cloves")
+
+
+# ------------------------------------------------- Stage 4A: dormant write-path IF branch (hybrid)
+def test_if_branch_recombines_qty_from_explicit_parts(kitchen):
+    """When a payload row carries explicit quantity+unit (what the Stage-4 editor will send), they are
+    authoritative and qty is their recombination (split_qty's inverse). Covers a normal unit, unit="",
+    and a count-noun."""
+    rid = kitchen.client.post("/api/recipes", json={
+        "name": "Explicit parts",
+        "ingredients": [
+            {"quantity": "3", "unit": "cups", "text": "flour"},   # normal -> "3 cups"
+            {"quantity": "pinch", "unit": "", "text": "salt"},    # unit "" -> just "pinch"
+            {"quantity": "4", "unit": "cloves", "text": "garlic"},# count-noun -> "4 cloves"
+        ],
+        "steps": ["go"],
+    }).get_json()["id"]
+    ings = kitchen.client.get(f"/api/recipes/{rid}").get_json()["ingredients"]
+    by = {(i["label"] or i["raw_text"]): i for i in ings}
+    assert (by["flour"]["qty"], by["flour"]["quantity"], by["flour"]["unit"]) == ("3 cups", "3", "cups")
+    assert (by["salt"]["qty"], by["salt"]["quantity"], by["salt"]["unit"]) == ("pinch", "pinch", "")
+    assert (by["garlic"]["qty"], by["garlic"]["quantity"], by["garlic"]["unit"]) == ("4 cloves", "4", "cloves")
+
+
+def test_else_branch_still_derives_from_qty_when_no_parts(kitchen):
+    """Regression / dormancy: a row with ONLY qty (no quantity/unit keys — today's client) still goes
+    through the ELSE branch and derives via split_qty. The IF branch is invisible until parts are sent."""
+    rid = kitchen.client.post("/api/recipes", json={
+        "name": "Qty only", "ingredients": [{"qty": "2 tablespoons", "text": "oil"}], "steps": ["go"],
+    }).get_json()["id"]
+    i = kitchen.client.get(f"/api/recipes/{rid}").get_json()["ingredients"][0]
+    assert (i["qty"], i["quantity"], i["unit"]) == ("2 tablespoons", "2", "tablespoons")   # derived, qty untouched
+
+
+def test_if_branch_recombined_qty_flows_into_raw_text(kitchen):
+    """A linked row synthesizes raw_text = "{qty} {label}{note}"; with explicit parts, the RECOMBINED
+    qty must flow into it correctly (raw_text stays valid)."""
+    rid = kitchen.client.post("/api/recipes", json={
+        "name": "Raw text",
+        "ingredients": [{"quantity": "2", "unit": "cups", "item": "carrot", "label": "carrots"}],
+        "steps": ["go"],
+    }).get_json()["id"]
+    i = kitchen.client.get(f"/api/recipes/{rid}").get_json()["ingredients"][0]
+    assert i["qty"] == "2 cups"
+    assert i["raw_text"] == "2 cups carrots"
