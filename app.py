@@ -20,6 +20,7 @@ from flask import Flask, jsonify, request
 
 from weights import build_index, match_weight
 from stepscale import api_spans
+from import_cleanup import split_qty   # shared qty->quantity+unit split (backfill/seed/import use it too)
 
 # Anchor everything to this file's folder so the app runs from any directory.
 BASE_DIR = Path(__file__).resolve().parent
@@ -195,20 +196,24 @@ def write_recipe_rows(c, rid, clean, preserve=None):
             label = row.get("label") or row["item"]
             note = row.get("note") or ""
             grams, secondary = preserve.get(_preserve_key(row.get("qty"), label), (None, None))
+            # Stage 3: derive the structured split from qty so it survives the full-replace (else-branch
+            # of the eventual hybrid — the client sends only qty today; Stage 4 adds explicit parts).
+            quantity, unit = split_qty(row.get("qty"))
             c.execute(
                 """INSERT INTO recipe_ingredients
-                   (recipe_id, position, qty, ingredient_id, label, note, raw_text, grams, secondary_measure)
-                   VALUES (?,?,?,?,?,?,?,?,?)""",
-                (rid, pos, row.get("qty"), row["item"], label, note,
+                   (recipe_id, position, qty, quantity, unit, ingredient_id, label, note, raw_text, grams, secondary_measure)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (rid, pos, row.get("qty"), quantity, unit, row["item"], label, note,
                  f"{row.get('qty','')} {label}{note}".strip(), grams, secondary),
             )
         else:
             text = row.get("text", "") or ""
             note = row.get("note") or ""
             grams, secondary = preserve.get(_preserve_key(row.get("qty"), text), (None, None))
+            quantity, unit = split_qty(row.get("qty"))   # Stage 3: derive the split (durable across edits)
             c.execute(
-                "INSERT INTO recipe_ingredients (recipe_id, position, qty, raw_text, note, grams, secondary_measure) VALUES (?,?,?,?,?,?,?)",
-                (rid, pos, row.get("qty"), text, note, grams, secondary),
+                "INSERT INTO recipe_ingredients (recipe_id, position, qty, quantity, unit, raw_text, note, grams, secondary_measure) VALUES (?,?,?,?,?,?,?,?,?)",
+                (rid, pos, row.get("qty"), quantity, unit, text, note, grams, secondary),
             )
 
     for pos, step in enumerate(clean["steps"]):
@@ -448,8 +453,8 @@ def copy_recipe(rid):
         # copied — that's what makes the copy start clean.
         c.execute(
             """INSERT INTO recipe_ingredients
-               (recipe_id, position, is_heading, qty, ingredient_id, label, note, raw_text, grams, secondary_measure)
-               SELECT ?, position, is_heading, qty, ingredient_id, label, note, raw_text, grams, secondary_measure
+               (recipe_id, position, is_heading, qty, quantity, unit, ingredient_id, label, note, raw_text, grams, secondary_measure)
+               SELECT ?, position, is_heading, qty, quantity, unit, ingredient_id, label, note, raw_text, grams, secondary_measure
                FROM recipe_ingredients WHERE recipe_id = ? ORDER BY position""",
             (new_id, rid),
         )

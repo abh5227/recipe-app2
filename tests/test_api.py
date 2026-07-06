@@ -454,6 +454,13 @@ def test_put_ingredient_shape_roundtrips(kitchen):
     # a note on a PLAIN (unlinked) line must persist too — not just linked lines
     assert any((not i["is_heading"]) and i["ingredient_id"] is None
                and (i["label"] or i["raw_text"]) == "water" and i["note"] == "filtered" for i in ings)
+    # Stage 3: quantity/unit are derived server-side on the write and persist through PUT -> GET
+    carrot = next(i for i in ings if i.get("ingredient_id") == "carrot")
+    assert (carrot["quantity"], carrot["unit"]) == ("2", "")            # number-only (linked)
+    water = next(i for i in ings if (i["label"] or i["raw_text"]) == "water")
+    assert (water["quantity"], water["unit"]) == ("1", "cup")           # number + unit (plain)
+    heading = next(i for i in ings if i["is_heading"])
+    assert heading["quantity"] is None and heading["unit"] is None      # heading -> no split
 
 
 def test_put_rejects_unknown_ingredient_link(kitchen):
@@ -463,3 +470,68 @@ def test_put_rejects_unknown_ingredient_link(kitchen):
         "name": "Bad Link", "ingredients": [{"qty": "1", "item": "not_a_real_ingredient", "label": "x"}], "steps": [],
     })
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------- Stage 3: qty/unit durable on write
+import re as _re
+from import_cleanup import split_qty as _split_qty
+
+
+def _norm(s):
+    return _re.sub(r"\s+", " ", s or "").strip()
+
+
+def test_edit_does_not_null_the_split(kitchen):
+    """The Stage-3 carry-forward closer: editing a recipe used to NULL quantity/unit (the write
+    full-replaces rows without them). Now they're re-derived on write, so they survive the edit and
+    still recombine to qty."""
+    rid = kitchen.client.post("/api/recipes", json={
+        "name": "Durable", "ingredients": [{"qty": "2 tablespoons", "text": "olive oil"}], "steps": ["go"],
+    }).get_json()["id"]
+    before = kitchen.client.get(f"/api/recipes/{rid}").get_json()["ingredients"][0]
+    assert (before["quantity"], before["unit"]) == ("2", "tablespoons")     # present on create
+    # edit an unrelated field, re-sending the same ingredient (exactly what the inline editor does)
+    put = kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Durable EDITED", "ingredients": [{"qty": "2 tablespoons", "text": "olive oil"}], "steps": ["go"],
+    })
+    assert put.status_code == 200
+    after = kitchen.client.get(f"/api/recipes/{rid}").get_json()["ingredients"][0]
+    assert (after["quantity"], after["unit"]) == ("2", "tablespoons")       # NOT nulled by the edit
+    assert _norm(f"{after['quantity']} {after['unit']}") == _norm(after["qty"])
+
+
+def test_write_derives_split_across_buckets(kitchen):
+    """After a write (create), each non-heading row's quantity/unit == split_qty(qty) across every
+    bucket; heading rows keep quantity/unit NULL."""
+    rows = [
+        {"heading": "SEC"},
+        {"qty": "2 tablespoons", "text": "oil"},     # number + unit
+        {"qty": "3", "text": "eggs"},                # number only
+        {"qty": "4 cloves", "text": "garlic"},       # count-noun -> unit
+        {"qty": "2 lb / 1 kg", "text": "chicken"},   # irreducible -> whole, unit ""
+    ]
+    rid = kitchen.client.post("/api/recipes", json={
+        "name": "Buckets", "ingredients": rows, "steps": ["go"]}).get_json()["id"]
+    ings = kitchen.client.get(f"/api/recipes/{rid}").get_json()["ingredients"]
+    for i in ings:
+        if i["is_heading"]:
+            assert i["quantity"] is None and i["unit"] is None
+        else:
+            q, u = _split_qty(i["qty"])
+            assert (i["quantity"], i["unit"]) == (q, u)
+            assert _norm(f"{i['quantity']} {i['unit']}") == _norm(i["qty"])
+
+
+def test_copy_carries_the_split(kitchen):
+    """A copy carries quantity/unit through the direct row-copy (source rows are already split), not NULL."""
+    src = kitchen.client.post("/api/recipes", json={
+        "name": "CopySplit",
+        "ingredients": [{"qty": "1 cup", "text": "flour"}, {"qty": "4 cloves", "text": "garlic"}],
+        "steps": ["go"],
+    }).get_json()["id"]
+    new_id = kitchen.client.post(f"/api/recipes/{src}/copy", json={}).get_json()["id"]
+    ings = kitchen.client.get(f"/api/recipes/{new_id}").get_json()["ingredients"]
+    flour = next(i for i in ings if (i["label"] or i["raw_text"]) == "flour")
+    garlic = next(i for i in ings if (i["label"] or i["raw_text"]) == "garlic")
+    assert (flour["quantity"], flour["unit"]) == ("1", "cup")
+    assert (garlic["quantity"], garlic["unit"]) == ("4", "cloves")
