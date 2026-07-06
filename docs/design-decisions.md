@@ -246,6 +246,52 @@ be **one** visual treatment, not three ad-hoc ones (decided in D, applied across
   Applying the hand layer to the imports requires extending that model to app-tier recipes (or
   unifying the two), and deciding how "edit the canonical recipe" and "annotate by hand" coexist.
 
+### Ingredient `qty` → structured `quantity` + `unit` (staged split)
+
+**Why.** The single free-text `qty` ("2 tablespoons") blocks the two things the ledger will need:
+**unit conversion** (metric/imperial, volume→weight) driven off a *known* unit, and
+**filtering/aggregation** by unit — neither of which a free-text field (or a free-text unit picker)
+can do reliably. So `qty` is being split into a structured **`quantity`** (amount expression) +
+**`unit`**.
+
+**Storage model — Option B, purely additive.** `qty` is kept **UNTOUCHED as source-of-truth** (still
+holds the joined string). Two **nullable** columns are *added* — `quantity` ("2", "1 1/2", "2-3", "4")
+and `unit` ("tablespoons", "", "cloves"). The split is **lossless by construction**: `quantity + " " +
+unit` (whitespace-normalized) reconstructs `qty` — verified **0 mismatches across 3,425 rows**; any row
+that wouldn't reconstruct falls back to the whole string in `quantity` with `unit=""` rather than
+mis-structure.
+
+**The split rule** (`import_cleanup.split_qty`, reused by the backfill, the seed-load path, and the
+import so all three split identically): number+measuring-unit → `("2","tablespoons")`; number-only →
+`("2","")`; empty → `("","")`; **count-nouns fold into the unit** (`"4 cloves"` → `("4","cloves")`);
+the ~5 **irreducibles** — slash-duals (`"2 lb / 1 kg"`), compounds (`"3 + 2 tbsp"`), and no-number text
+(`"pinch"`, `"to taste"`) — are **kept whole** with `unit=""`.
+
+**This is the repo's FIRST data-transforming change.** Unlike migrations 011/012 (which only *added*
+columns and let import fill them), 96% of `qty` data is `source='app'` — persistent in `recipes.db`,
+**not** regenerated on rebuild — so it needs a real backfill. Because `migrate.py` runs SQL only
+(`executescript`, can't call `parse_amount`), the split can't live in the migration: **migration 015
+adds the nullable columns; a separate idempotent Python backfill (`scripts/backfill_qty_unit.py`,
+guarded `WHERE quantity IS NULL`) transforms the persistent app rows**, while seed/test rows split on
+rebuild via `build_db`. Backfill distribution: **66.1% number+unit, 19.1% number-only, 14.8% empty, 0%
+irreducible-fallback**.
+
+**The scaler stays byte-for-byte identical (critical).** Nothing reads `quantity`/`unit` for display
+yet — the scaler (`scaler.js`/`stepscale.py`) keeps operating on the recombined `qty`, untouched.
+Refactoring it to consume the structured fields is **deferred as an optional Stage 5**, done only if
+unit conversion/filtering later hits friction on string-parsing.
+
+**Staged plan.** **1 (done):** schema + backfill. **2 (done):** seed/import split. **3 (next):** backend
+read/write threads `unit`. **4:** editor UI (a `quantity` field + a unit control). **5
+(optional/deferred):** scaler consumes structured fields.
+
+**⚠️ Stage-3 carry-forward (must close in Stage 3).** The PUT full-replaces a recipe's ingredient rows
+via `ingToPayload` → `write_recipe_rows`, **which don't yet carry `quantity`/`unit`** — so editing a
+recipe today **NULLs its split** for that recipe until re-backfilled. Non-breaking now (nothing reads
+the columns), and the backfill is idempotent (a re-runnable stopgap), but **Stage 3 must thread `unit`
+through the write path** — either the editor sends `quantity`/`unit`, or (belt-and-suspenders)
+`write_recipe_rows` re-derives them via `split_qty(qty)` on write.
+
 ## The inline recipe editor ("mark up the page")
 
 The recipe **edit** experience is being rebuilt from a separate admin-style form into **in-place
@@ -371,6 +417,9 @@ architectural tension above).
   click→caret mapping on the display overlay — both fine for this local single-user app.
 - **Plain-row notes now persist:** the backend plain-row INSERT writes the `note` column (it already
   existed) and `ingToPayload`'s plain branch sends `note`. Previously only *linked* rows saved a note.
+- **The ingredient `SELECT` is `SELECT *`** (app.py), so the added `quantity`/`unit` columns now appear
+  in the recipe GET response. Harmless — the client reads only `qty` for display/scaling and ignores
+  them — but noted so it's a conscious surface (and because a future column add is likewise auto-exposed).
 
 ## Open questions
 

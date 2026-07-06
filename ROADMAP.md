@@ -336,8 +336,16 @@ direction — palette, type, the R1/R2 boundary, the punch-list — in
   reading-mode-parity principle + four field-kinds — see design-decisions.md). **Stage 2 done** —
   ingredients editable inline (edit qty/name/note, add/remove, headings, library-link/unlink; overlay
   fields; lossless heading-toggle; discard-empties + refetch on save). **Steps display-only (Stage 3)**;
-  **reorder Stage 4**; **qty/unit split queued next** as its own effort. Then polish (validation,
-  source_url, image upload). Old form (`renderForm`) kept as fallback until complete, then retired.
+  **reorder Stage 4**. Then polish (validation, source_url, image upload). Old form (`renderForm`)
+  kept as fallback until complete, then retired.
+- **Qty/unit split** (structured `quantity` + `unit` for conversion + filtering). **Stages 1–2 done** —
+  additive nullable `quantity`+`unit` columns (migration 015) alongside the untouched free-text `qty`;
+  a lossless split (`import_cleanup.split_qty`, 0 recombine mismatches over 3,425 rows); an idempotent
+  Python backfill of the persistent app rows (`scripts/backfill_qty_unit.py`), plus seed/import split.
+  The **scaler is untouched** (still operates on recombined `qty`). **Next: Stage 3** (thread `unit`
+  through backend read/write — and close the edit-NULLs-the-split carry-forward: the PUT full-replaces
+  rows without `quantity`/`unit` today), **Stage 4** (editor quantity field + unit control), **Stage 5
+  optional** (scaler consumes structured fields, only if string-parsing hits friction).
 - **App rename pending:** "Seasonal Kitchen" → **"Chef's Choice"** across UI + docs (decided; not
   yet applied — see design-decisions.md).
 
