@@ -338,16 +338,17 @@ direction — palette, type, the R1/R2 boundary, the punch-list — in
   fields; lossless heading-toggle; discard-empties + refetch on save). **Steps display-only (Stage 3)**;
   **reorder Stage 4**. Then polish (validation, source_url, image upload). Old form (`renderForm`)
   kept as fallback until complete, then retired.
-- **Qty/unit split** (structured `quantity` + `unit` for conversion + filtering). **Stages 1–3 done** —
-  additive nullable `quantity`+`unit` columns (migration 015) alongside the untouched free-text `qty`;
-  a lossless split (`import_cleanup.split_qty`, 0 recombine mismatches over 3,425 rows); an idempotent
-  Python backfill of the persistent app rows (`scripts/backfill_qty_unit.py`), plus seed/import split;
-  and **Stage 3 — the write path now threads `unit`** (`write_recipe_rows` re-derives `quantity`/`unit`
-  on every write; the copy endpoint carries them), so **editing a recipe no longer NULLs its split**
-  (durable across edits/copies/creates). The **scaler is untouched** (still operates on recombined
-  `qty`). **Next: Stage 4** (editor UI — a `quantity` field + a unit control; flips authority to
-  structured `quantity`+`unit`, server recombines `qty`), **Stage 5 optional** (scaler consumes
-  structured fields, only if string-parsing hits friction).
+- **Qty/unit split** (structured `quantity` + `unit` for conversion + filtering). **Stages 1–4 done** —
+  additive nullable columns (migration 015) beside the untouched `qty`; a lossless split
+  (`import_cleanup.split_qty`, 0 mismatches over 3,425 rows); an idempotent app-row backfill
+  (`scripts/backfill_qty_unit.py`) + seed/import split; the write path threads `unit` (recombine on
+  write, durable); and **Stage 4 — the editor** splits qty into a **quantity field + unit combobox**,
+  flipping authority to structured quantity+unit (editor sends parts, server recombines `qty`). Wider
+  edit mode (1000px; reading stays 760px), icon-only link, name font matched to the measurement size,
+  on-save unit canonicalization. The **scaler stays untouched** (size/count words are datalist
+  suggestions only, kept out of the measure recognizers). **Stage 5 optional/deferred** (scaler consumes
+  structured fields, only if string-parsing hits friction). **Next: the name→unit backfill** — move
+  size/count descriptors from ~255 rows' names into the unit field (its own diagnostic/preview/tests).
 - **App rename pending:** "Seasonal Kitchen" → **"Chef's Choice"** across UI + docs (decided; not
   yet applied — see design-decisions.md).
 

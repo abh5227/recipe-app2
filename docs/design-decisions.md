@@ -282,10 +282,12 @@ Refactoring it to consume the structured fields is **deferred as an optional Sta
 unit conversion/filtering later hits friction on string-parsing.
 
 **Staged plan.** **1 (done):** schema + backfill. **2 (done):** seed/import split. **3 (done):** the
-write path threads `unit` — `write_recipe_rows` re-derives `quantity`/`unit` via `split_qty(qty)` on
-every write (create, edit, per-person), and the copy endpoint carries them; the split is now **durable
-across edits/copies/creates**. **4 (next):** editor UI (a `quantity` field + a unit control). **5
-(optional/deferred):** scaler consumes structured fields.
+write path threads `unit` (`write_recipe_rows` re-derives on every write; copy carries them; durable
+across edits/copies/creates). **4 (done):** the **editor UI** — the qty cell splits into a **quantity
+field + unit combobox**, and the payload sends explicit `quantity`+`unit`, so **authority flipped to
+structured quantity+unit (Model B)**: the editor sends the parts and the server (sub-step A's IF branch)
+recombines `qty`. The split is now **user-editable end-to-end**. **5 (optional/deferred):** scaler
+consumes the structured fields (only if string-parsing later hits friction).
 
 **Stage-3 carry-forward — ✅ closed in Stage 3.** The PUT full-replaces a recipe's ingredient rows via
 `write_recipe_rows`, which *used to* write only `qty` → editing a recipe NULLed its `quantity`/`unit`
@@ -298,6 +300,35 @@ the editor sends explicit `quantity`/`unit`, the server uses them and recombines
 `qty = quantity + " " + unit` — flipping authority to structured `quantity`+`unit` (Model B) without
 reworking Stage 3. The scaler stays untouched (still reads `qty`, kept valid by the derive); the read
 path was already carrying the split (GET `SELECT *` + `structuredClone`), so Stage 3 was write-side only.
+
+**Stage 4 — the two-field editor (built).** The ingredient row's amount cell is now an **amount zone**:
+a **quantity** field (the `ieCell` overlay — truncate-at-rest, expand-on-focus for long fallbacks) at
+2.8rem + a **unit** field (`<input list="ie-units">`) at 4.5rem, then name (grows) + trailing controls.
+The shared **`#ie-units` datalist** offers **measuring + size + count** suggestions (`tsp…kg`,
+`small/medium/large`, `clove/sprig/…`), **flat-ordered** (measuring→size→count) because `<optgroup>`
+isn't reliably rendered inside a datalist; suggestions only — **free-text still works**. **A3:** when the
+unit is empty *and* the quantity is a whole-string fallback (letters/slash/plus — "pinch", "2 lb / 1 kg"),
+the quantity **spans** the zone and the empty unit box is dropped; a bare number keeps the unit box (so a
+unit can still be added). **On-save canonicalization:** `canonicalizeUnit` (reuses the scaler's
+`UNIT_ABBREV` + lowercases) means the editor **shows and stores the short unit** ("tablespoons"→"tbsp");
+reading already abbreviated, so no backfill and **no plural fold**; size/count words pass through
+unchanged. **Wider edit mode:** `.page.recipe-view.editing` widens to **1000px** (reading stays 760px) so
+names breathe; no width transition yet. **Icon-only link:** the unlinked control is the bare **🔗**
+(tooltip + hover); the linked state keeps the pill. **Font-match:** the ingredient name is **15px**
+(`--fs-amount`) in both reading and edit (size only — colours unchanged, so reading still differentiates
+name vs. muted amount).
+
+**Critical constraint held:** the scaler's **scaling/parsing logic is untouched** — only
+`canonicalizeUnit` was added. Size/count words are **datalist suggestions only**, deliberately kept **out
+of `MEASURE_UNIT_RE`/`_SCALE_UNITS`**, so the scaler keeps treating them as **counts** (round to whole on
+scaling). Scaling+editing is **safe**: scale is display-only, and entering edit resets to 1× and binds to
+the un-scaled originals (verified).
+
+**Next effort — the name→unit backfill (separate).** ~255 existing rows carry a size/count descriptor
+**stuck in the name** ("1 medium onion" → name "medium onion", unit empty). Moving those into the unit
+field is its **own effort** (its own diagnostic/preview/tests — `split_qty` can't do it, as it swallows
+the whole name), **not** part of Stage 4. Until then, those rows keep the descriptor in the name with an
+empty unit box (expected).
 
 ## The inline recipe editor ("mark up the page")
 
