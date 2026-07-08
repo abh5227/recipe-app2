@@ -796,6 +796,9 @@ async function renderRecipe(rid) {
 // The Polaroid assembly (photoSlot) stays a SIBLING of the .detail-card so it keeps straddling the edge.
 function paintRecipe() {
   const editing = !!view.editMode;
+  // Stage 4: mark the PAGE element when editing so .page.recipe-view.editing widens to ~1000px (reading
+  // stays 760px). Re-applied on every paint, so the toggle enter/exit updates the width.
+  app.className = "page recipe-view" + (editing ? " editing" : "");
   const data = view.data;                        // fetched payload (source flags: is_editable/is_seed/…)
   const src = editing ? view.draft : view.data;  // where displayed field VALUES come from
   const r = src.recipe;
@@ -963,6 +966,26 @@ function ieCell(key, i, val, cls, ph) {
   const v = esc(val || "");
   return `<span class="ie-ov"><textarea class="ie ${cls}" data-inline-edit-ing="${key}" data-i="${i}" rows="1" placeholder="${esc(ph)}" aria-label="${esc(ph)}" spellcheck="false">${v}</textarea><span class="ie-disp ${cls}" aria-hidden="true">${v}</span></span>`;
 }
+// The UNIT field: a plain <input> backed by the shared #ie-units datalist (suggestions, NOT closed —
+// free-text count-nouns/textual still work). Short, so no overlay/caret machinery. Displays the
+// canonical short form; buffers to draft.unit (canonicalized again on save in ingToPayload).
+function unitCell(i, val) {
+  return `<input class="ie e-unit" list="ie-units" data-inline-edit-ing="unit" data-i="${i}" value="${esc(canonicalizeUnit(val))}" placeholder="unit" aria-label="Unit" spellcheck="false">`;
+}
+// A3: the amount zone spans to one wide field (no unit box) ONLY for a whole-string fallback — a
+// non-empty quantity carrying letters/slash/plus ("pinch", "2 lb / 1 kg", "3 + 2 tbsp") where a unit
+// makes no sense. A pure number/fraction/range with an empty unit (a count, or a new row) keeps the
+// unit box so a unit can still be added.
+function amountSpans(quantity, unit) {
+  if (unit && String(unit).trim()) return false;
+  const q = String(quantity == null ? "" : quantity).trim();
+  return q !== "" && /[a-zA-Z/+]/.test(q);
+}
+function amountZoneHTML(x, i) {
+  const span = amountSpans(x.quantity, x.unit);
+  const qty = ieCell("quantity", i, x.quantity, "e-qty", "qty");
+  return `<span class="amount-zone${span ? " no-unit" : ""}">${qty}${span ? "" : unitCell(i, x.unit)}</span>`;
+}
 function editIngRowHTML(x, i) {
   if (x.is_heading) {
     return `<li class="erow group-row">
@@ -976,13 +999,13 @@ function editIngRowHTML(x, i) {
     const g = INGREDIENT_LIST.find((it) => it.id === x.ingredient_id);
     linkBit = `<span class="linkchip">🔗 ${esc(g ? g.name : x.ingredient_id)}<button type="button" class="lx" data-inline-edit-unlink data-i="${i}" title="Unlink" aria-label="Unlink">×</button></span>`;
   } else {
-    linkBit = `<select class="linksel" data-inline-edit-linksel data-i="${i}" aria-label="Link to a library ingredient"><option value="">🔗 link</option>${ingOptions("")}</select>`;
+    linkBit = `<select class="linksel" data-inline-edit-linksel data-i="${i}" title="Link to a library ingredient" aria-label="Link to a library ingredient"><option value="">🔗</option>${ingOptions("")}</select>`;
   }
   // Empty note -> a compact sticky-note+ icon in the row; a present (or just-opened) note renders BELOW.
   const noteOpen = !!((x.note && x.note.trim()) || x._noteOpen);
   const noteIcon = noteOpen ? "" : `<button type="button" class="note-add" data-inline-edit-addnote data-i="${i}" title="Add a note" aria-label="Add a note">${ING_NOTEPLUS}</button>`;
   const main = `<li class="erow${noteOpen ? " has-note" : ""}">
-    ${ieCell("qty", i, x.qty, "e-qty", "qty")}
+    ${amountZoneHTML(x, i)}
     ${ieCell("name", i, name, "e-name", "ingredient")}
     <span class="tail">${linkBit}${noteIcon}${editIngRowTools(i, false)}</span>
   </li>`;
@@ -995,7 +1018,16 @@ function editIngredientsHTML() {
   const body = rows.length
     ? `<ul class="ingredient-list edit">${rows.map(editIngRowHTML).join("")}</ul>`
     : `<p class="edit-empty">No ingredients yet.</p>`;
+  // One shared datalist for every unit combobox — SUGGESTIONS ONLY (free-text still works). Ordered
+  // measuring → size → count for scannability (<optgroup> isn't reliably rendered inside <datalist>,
+  // so a flat sensibly-ordered list). NB: the size/count words are suggestions HERE ONLY — they are
+  // deliberately NOT in the scaler's measure recognizer, so the scaler keeps treating them as counts.
+  const units = ["tsp", "tbsp", "cup", "g", "oz", "lb", "ml", "litre", "kg",   // measuring
+                 "small", "medium", "large",                                    // size
+                 "clove", "sprig", "stalk", "knob", "bunch", "can", "slice", "pinch"];  // count
+  const datalist = `<datalist id="ie-units">${units.map((u) => `<option value="${u}">`).join("")}</datalist>`;
   return `<div class="col-head"><h2 class="col-title">Ingredients</h2></div>
+    ${datalist}
     ${body}
     <div class="ing-adders">
       <button type="button" class="adder" data-inline-edit-add-ing>+ add ingredient</button>
@@ -1016,10 +1048,10 @@ function focusIngField(i, key) {
 }
 function addIngredient(isHeading) {
   const arr = view.draft.ingredients;
-  arr.push(isHeading ? { is_heading: 1, heading: "", qty: "", label: "", note: "", ingredient_id: null, raw_text: "" }
-                     : { is_heading: 0, qty: "", label: "", note: "", ingredient_id: null, raw_text: "" });
+  arr.push(isHeading ? { is_heading: 1, heading: "", qty: "", quantity: "", unit: "", label: "", note: "", ingredient_id: null, raw_text: "" }
+                     : { is_heading: 0, qty: "", quantity: "", unit: "", label: "", note: "", ingredient_id: null, raw_text: "" });
   markDirty(); rerenderEditIngredients();
-  focusIngField(arr.length - 1, isHeading ? "heading" : "qty");
+  focusIngField(arr.length - 1, isHeading ? "heading" : "quantity");
 }
 function removeIngredient(i) { view.draft.ingredients.splice(i, 1); markDirty(); rerenderEditIngredients(); }
 function toggleIngredientHeading(i) {
@@ -1090,8 +1122,12 @@ function markDirty() {
 function ingToPayload(x) {
   const oneLine = (v) => (v || "").replace(/[\r\n]+/g, " ");   // name is a .ie-line (soft-wrap only) — no hard newlines
   if (x.is_heading) return { heading: oneLine(x.heading || x.label || x.raw_text) };   // dedicated field, back-compat fallbacks
-  if (x.ingredient_id) return { qty: x.qty || "", item: x.ingredient_id, label: oneLine(x.label || x.raw_text), note: x.note || "" };
-  return { qty: x.qty || "", text: oneLine(x.label || x.raw_text), note: x.note || "" };   // notes persist on plain rows too
+  // Stage 4 (B): send the STRUCTURED parts — quantity + canonical unit. The server (sub-step A's IF
+  // branch) recombines qty = quantity + " " + unit, so qty is omitted. Authority is now quantity+unit.
+  const quantity = oneLine(x.quantity);
+  const unit = canonicalizeUnit(x.unit);
+  if (x.ingredient_id) return { quantity, unit, item: x.ingredient_id, label: oneLine(x.label || x.raw_text), note: x.note || "" };
+  return { quantity, unit, text: oneLine(x.label || x.raw_text), note: x.note || "" };
 }
 function stepToPayload(x) { return x.is_heading ? { heading: x.text || "" } : (x.text || ""); }
 function draftPayload() {
@@ -2007,9 +2043,11 @@ document.addEventListener("focusout", (e) => {
   if (iet) { const d = iet.parentElement.querySelector(".ie-disp"); if (d) d.textContent = iet.value; }
 });
 // Snapshot a field's value when it gains focus, so Escape can revert it to exactly this (see keydown).
+// Any ingredient field (the quantity/name/note textareas AND the unit <input>), so Esc-revert works
+// on the unit combobox too — not just the overlay textareas.
 let iePreEdit = "";
 document.addEventListener("focusin", (e) => {
-  const ta = e.target.closest("textarea[data-inline-edit-ing]");
+  const ta = e.target.closest("[data-inline-edit-ing]");
   if (ta && view && view.editMode) iePreEdit = ta.value;
 });
 // Overlay caret fix: the resting display div is one line while the textarea wraps on focus, so letting a

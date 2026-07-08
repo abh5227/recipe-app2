@@ -228,6 +228,14 @@
     return s;
   }
 
+  // Canonicalize a bare UNIT to its short lowercase form for the editor (reuses UNIT_ABBREV):
+  // "tablespoons" -> "tbsp", "Tbsp" -> "tbsp", "Cup" -> "cup" (cup/cups left as-is, already short),
+  // count-nouns/textual left as-is ("cloves" -> "cloves"), "" -> "". Editor-only — reading already
+  // abbreviates at display, and the scaler maps both long and short forms, so storage self-heals.
+  function canonicalizeUnit(u) {
+    return abbrevUnits(String(u == null ? "" : u)).trim().toLowerCase();
+  }
+
   // The ledger AMOUNT column: the authored quantity, scaled, in canonical units (the volume the
   // recipe was written in). Counts round to whole; dual-unit ("2 lb / 1 kg") passes through scaled.
   function amountText(qty, factor) {
@@ -258,6 +266,6 @@
     UNICODE_FRACTIONS, normalizeFractions, tokenToNumber, NICE_FRACTIONS, formatAmount, group,
     AMOUNT_TOKEN, scaleQty, collapseRange, UNIT_TO_ML, UNIT_TO_G, MEASURE_UNIT_RE, MEASURE_UNIT_RE_G,
     SPOON_MAX_ML, isCountAmount, scaleCount, parseAmount, toMetric, displayQty,
-    abbrevUnits, amountText, weightText, toUnicodeFractions,
+    abbrevUnits, canonicalizeUnit, amountText, weightText, toUnicodeFractions,
   };
 });

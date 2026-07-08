@@ -118,6 +118,10 @@ body {
   border-radius: 8px;   /* softened page edge (adjustable — reviewing 6 / 8 / 10) */
   box-shadow: 0 1px 1px rgba(40,35,30,.05), 0 16px 44px -14px rgba(40,35,30,.16);
 }
+/* Stage 4: EDIT mode widens the page to ~1000px so the two-field ingredient row (quantity + unit +
+   name + controls) isn't pinched — the extra width goes to the name column. Reading stays 760px.
+   (No max-width transition yet — feeling the raw toggle jump before deciding whether to ease it.) */
+.page.recipe-view.editing { max-width: calc(1000px + var(--hand-gutter)); }
 
 a { color: var(--berry); text-decoration: none; }
 a:hover { color: var(--berry-lift); }
@@ -301,20 +305,28 @@ a:hover { color: var(--berry-lift); }
 .ie-note-block { margin-top: 20px; }   /* the note sits at the bottom (after steps), like reading */
 .stats.locked { opacity: 0.45; pointer-events: none; }   /* cook/rate disabled while editing */
 
-/* ---------- Stage 2: inline ingredient editing — finalized layout (760px, NOT widened) ---------- */
-/* Option 4 cohesive row: FIXED qty column | name (grows to fill slack) | trailing group. The fixed qty
-   column keeps every name at the same left edge regardless of qty width. Rows are ONE line at rest;
-   long values truncate with "…" and expand (lift + wrap taller) on focus. */
-.ingredient-list.edit li.erow { grid-template-columns: 8rem 1fr auto; align-items: start; column-gap: 12px; }
+/* ---------- Stage 4: inline ingredient editing — two-field amount zone (reading stays 760px) ---------- */
+/* Cohesive row: [amount zone] | name (grows to fill slack) | trailing group. The amount zone is a
+   quantity + unit pair (two tight fixed sub-columns) so it reads as one amount unit AND keeps names
+   column-aligned across rows. Values are ONE line at rest; the quantity overlay truncates with "…" and
+   expands (lift + wrap taller) on focus. Edit mode widens the page to ~1000px (see .page.recipe-view.editing). */
+.ingredient-list.edit li.erow { grid-template-columns: calc(2.8rem + 4.5rem + 6px) 1fr auto; align-items: start; column-gap: 12px; padding: 8px 0; }
 .ingredient-list.edit li.erow.group-row { display: grid; grid-template-columns: 1fr auto; padding: 14px 0 6px; border-bottom: none; }
 .erow.has-note { border-bottom: none; padding-bottom: 2px; }        /* the below-note row carries the rule instead */
+/* Stage 4 (un-crowd): tighter amount zone (quantity 2.8rem + unit 4.5rem) reclaims ~1.7rem of name
+   width while normal values still fit at rest (numbers "2.6"/"1/2"; short units "tbsp"/"cups"/"litre"). */
+.erow .amount-zone { display: grid; grid-template-columns: 2.8rem 4.5rem; column-gap: 6px; align-items: start; }
+.erow .amount-zone.no-unit { grid-template-columns: 1fr; }          /* A3: quantity spans the zone, no unit box */
+/* the unit combobox: short plain <input> (no overlay); mono/tabular to sit with the quantity */
+.erow .e-unit { width: 100%; line-height: 24px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-amount); color: var(--ink); }
+.detail-card.editing .e-unit:focus { padding: 2px 6px; margin: 0 -2px; box-shadow: 0 0 0 1px var(--paper-edge), 0 4px 10px -6px rgba(40,35,30,.25); }
 /* Editable value cells — OVERLAY approach: a real <textarea> (edit surface) with a display <div> that
    ellipsis-truncates at REST (textareas can't show "…"; divs can). Font/color live on the field class
    (.e-*), applied to BOTH the textarea and its overlay so the two look identical when they swap. */
 .ie-ov { position: relative; display: block; min-width: 0; }
 .note-below .ie-ov { flex: 1 1 auto; }
 .erow .e-qty { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-amount); color: var(--ink); }
-.erow .e-name { font-family: var(--font-serif); color: var(--ink); }
+.erow .e-name { font-family: var(--font-serif); font-size: var(--fs-amount); color: var(--ink); }   /* name matches the measurement size (15px) */
 .erow .e-heading { font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--green); }
 .note-row .e-note { font-family: var(--font-sans); font-style: italic; font-size: 12.5px; color: var(--ink-soft); }
 /* the textarea: one line clamped behind the overlay at rest; auto-grows + wraps on focus (field-sizing) */
@@ -343,16 +355,21 @@ a:hover { color: var(--berry-lift); }
 .note-add:hover { opacity: 1; background: var(--paper); border-color: var(--line); color: var(--amber); }
 .ic-note { width: 20px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 /* a present note renders BELOW the ingredient — indented under the name, italic, clearly attached */
-.note-row { display: grid; grid-template-columns: 8rem 1fr; column-gap: 12px; padding: 0 0 6px; border-bottom: 1px solid var(--rule-soft); }
+/* first column matches the erow amount-zone width so the below-note aligns under the ingredient name */
+.note-row { display: grid; grid-template-columns: calc(2.8rem + 4.5rem + 6px) 1fr; column-gap: 12px; padding: 0 0 6px; border-bottom: 1px solid var(--rule-soft); }
 /* gap >= the note field's focus-lift left-bleed (margin:0 -8px) so the lifted edit box never overlaps the icon */
 .note-below { grid-column: 2 / -1; display: flex; align-items: baseline; gap: 9px; min-width: 0; }
 .note-below .n-ico { flex: 0 0 auto; color: var(--amber); opacity: 0.75; }
 .ic-note-sm { width: 12px; height: 12px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .note-below .e-note { flex: 1 1 auto; }
 /* library link: a quiet select when unlinked, a compact pill when linked */
-.linksel { font-family: var(--font-sans); font-size: 11.5px; color: var(--green); background: transparent;
-  border: 1px dashed transparent; border-radius: 6px; padding: 1px 4px; cursor: pointer; max-width: 12ch; }
-.linksel:hover, .linksel:focus { border-color: var(--line); background: var(--card); outline: none; }
+/* the link control is a native <select> showing just the 🔗 icon (icon-only). Strip its OS chevron
+   (appearance:none) so it reads as a calm icon button — the tooltip (title) + hover fill keep it
+   discoverable. Still fully functional: picking an option links the row. */
+.linksel { font-family: var(--font-sans); font-size: 13px; color: var(--green); background: transparent;
+  border: 1px solid transparent; border-radius: 7px; padding: 0 4px; height: 24px; cursor: pointer;
+  text-align: center; opacity: 0.55; -webkit-appearance: none; -moz-appearance: none; appearance: none; }
+.linksel:hover, .linksel:focus { opacity: 1; border-color: var(--line); background: var(--card); outline: none; }
 .linkchip { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-sans); font-size: 11px; font-weight: 600;
   color: var(--green); background: color-mix(in srgb, var(--green) 10%, var(--card)); border: 1px solid color-mix(in srgb, var(--green) 30%, var(--line)); border-radius: 999px; padding: 1px 4px 1px 8px; white-space: nowrap; }
 .linkchip .lx { border: none; background: none; color: var(--green); cursor: pointer; font-size: 13px; line-height: 1; padding: 0 1px; opacity: 0.6; }
@@ -599,7 +616,7 @@ a:hover { color: var(--berry-lift); }
 .qty { font-size: var(--fs-amount); }                             /* the amount — primary figure */
 .weight { font-size: 12px; line-height: 1.15; margin-top: 1px; }  /* gram estimate, tucked under the amount */
 .qty.approx, .weight.approx { opacity: 0.8; }   /* "~" estimated / humane-rounded — shared treatment */
-.iname { min-width: 0; }                          /* let long names wrap inside the 1fr column */
+.iname { min-width: 0; font-size: var(--fs-amount); }   /* name matches the amount size (15px); color unchanged (--ink vs muted amount still differentiates) */
 /* a note: its own line beneath the ingredient, styled as a distinct secondary annotation (muted, italic,
    smaller, slightly indented) — not part of the ingredient name. Applies to every reading-mode note. */
 .inote { display: block; margin-top: 1px; padding-left: 10px; font-family: var(--font-serif);

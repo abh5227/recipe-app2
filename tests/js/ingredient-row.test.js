@@ -87,3 +87,14 @@ test("writeIngField routes each key to the right field (name -> label); used by 
   writeIngField(row, "name", "olive oil");                 // revert to snapshot
   assert.equal(row.label, "olive oil");
 });
+
+test("writeIngField routes the Stage-4 structured keys: quantity -> row.quantity, unit -> row.unit", () => {
+  const row = { is_heading: 0, quantity: "", unit: "", label: "" };
+  writeIngField(row, "quantity", "1 1/2");
+  writeIngField(row, "unit", "cups");
+  assert.equal(row.quantity, "1 1/2");
+  assert.equal(row.unit, "cups");
+  // they don't bleed into qty/label
+  assert.equal(row.qty, undefined);
+  assert.equal(row.label, "");
+});

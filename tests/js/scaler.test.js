@@ -204,3 +204,26 @@ test("weightText: gram estimate for volume + density + > 2 tbsp, else ''", () =>
   assert.equal(s.weightText("1 cup", null, 1), "");       // no density
   assert.equal(s.weightText("1 can", GENERIC, 1), "");    // not a volume
 });
+
+test("canonicalizeUnit: long measuring units -> short lowercase; cup/count-nouns/empty unchanged", () => {
+  assert.equal(s.canonicalizeUnit("tablespoons"), "tbsp");
+  assert.equal(s.canonicalizeUnit("teaspoon"), "tsp");
+  assert.equal(s.canonicalizeUnit("grams"), "g");
+  assert.equal(s.canonicalizeUnit("ounces"), "oz");
+  assert.equal(s.canonicalizeUnit("pound"), "lb");
+  assert.equal(s.canonicalizeUnit("kilograms"), "kg");
+  assert.equal(s.canonicalizeUnit("Tbsp"), "tbsp");       // casing normalized
+  assert.equal(s.canonicalizeUnit("Cup"), "cup");         // cup lowercased, NOT folded to anything else
+  assert.equal(s.canonicalizeUnit("cups"), "cups");       // cups left as-is (not folded to cup)
+  assert.equal(s.canonicalizeUnit("cloves"), "cloves");   // count-noun untouched
+  assert.equal(s.canonicalizeUnit(""), "");
+  assert.equal(s.canonicalizeUnit(null), "");
+  // size-descriptors + count-nouns (the expanded datalist suggestions) pass through UNTOUCHED —
+  // never abbreviated, plurals never folded (scaler treats them as counts by their absence from
+  // the measure list; adding them to a measure recognizer would wrongly scale them to fractions).
+  for (const w of ["small", "medium", "large", "clove", "sprig", "stalk", "knob", "bunch", "can", "slice", "pinch"]) {
+    assert.equal(s.canonicalizeUnit(w), w);
+  }
+  assert.equal(s.canonicalizeUnit("clove"), "clove");     // singular unchanged
+  assert.equal(s.canonicalizeUnit("cloves"), "cloves");   // plural NOT folded to "clove"
+});
