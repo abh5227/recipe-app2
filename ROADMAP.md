@@ -354,6 +354,15 @@ direction — palette, type, the R1/R2 boundary, the punch-list — in
   (`split_leading_descriptor`) is a **pure, DB-free** function built **promotable** to a shared import
   helper. **Queued:** (a) **import-integration** — lift the recognizer into the import path (split
   descriptors at import time); (b) the deferred **66 trailing count-noun rows** ("garlic cloves").
+- **Heading detection + backfill done.** The importer now strips a whole-line wrapping emphasis pair
+  before the section test (`import_cleanup.strip_emphasis`), so bold colon-headings (`**Other
+  Ingredients:**`) are detected **and stored clean** — a heading-only change (ingredient "preserve
+  original line" contract untouched); scan-confirmed exactly 14 new detections, no collateral. A
+  standalone backfill (`scripts/backfill_headings.py`, backup→dry-run→`--apply`) promoted **32** existing
+  rows to headings (18 "For the X"/"To finish" already flagged suggest-section + 14 palak markdown
+  bold-colon). Detection biases to *ingredient* when ambiguous (a wrongly-promoted heading hides a real
+  ingredient), so **~11 ambiguous rows** (2 "X Ingredients", 1 italic, the section-word garnish/frosting
+  rows) are a **small manual to-do** via the editor heading-toggle.
 - **App rename pending:** "Seasonal Kitchen" → **"Chef's Choice"** across UI + docs (decided; not
   yet applied — see design-decisions.md).
 

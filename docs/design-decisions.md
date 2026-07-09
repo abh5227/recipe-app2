@@ -355,6 +355,37 @@ The backfill neither touches nor imports the scaler.
 path so scraped lines split descriptors at import (its own diagnostic); (2) the deferred **66 trailing
 count-noun rows** ("garlic cloves" — a trailing count, not a leading descriptor) are still out of scope.
 
+**Heading detection improved + backfill (done).** Section headings arrive from Paprika as untagged text
+lines (no structured marker), so detection is heuristic: `import_cleanup.is_section` promotes a no-amount
+line that is **colon-terminated or ALL-CAPS**. Two low-risk patterns were being missed. **(1) Detector
+fix (helps future imports):** a new `strip_emphasis(text)` drops a **matched leading+trailing emphasis
+pair** wrapping the whole line (`**`/`__`/`*`/`_`, regex `^(\*\*|__|\*|_)(.+?)\1$`); `classify_line` now
+tests `is_section(strip_emphasis(line))` and stores the **stripped** text, so a bold colon-heading
+`**Other Ingredients:**` is both **detected** and **stored clean** (`Other Ingredients:`). The strip is a
+**pre-step** — `is_section` is unchanged — and it's **heading-only**: `import_write` stores a heading's
+`raw_text` from the clean text, while the ingredient path's "preserve the original line" contract
+(`raw_text = line["raw"]`) is untouched (a trailing footnote like `salt*` or mid-line `**sifted**` has no
+wrapping pair, so it's never altered). A corpus scan confirmed the change newly-detects **exactly 14**
+rows and nothing else. **(2) Backfill (`scripts/backfill_headings.py`, backup→dry-run→`--apply`):**
+promoted **32** existing `is_heading=0` rows to headings (canonical shape: `is_heading=1`, `raw_text` =
+clean text, `label/quantity/unit/qty` NULL) — **18** "For the X"/"To finish" rows (already flagged
+`suggest section` at import) + **14** palak markdown bold-colon headings (`**…:**` → colon, `**`
+stripped). Idempotent re-run = 0.
+
+**Design rationale — bias to "ingredient".** Heading detection deliberately errs toward *ingredient* when
+ambiguous, because a wrongly-promoted heading makes a real ingredient **vanish from the list** (the
+asymmetric-worse error). So the backfill promoted **only high-confidence patterns** (the `for/to`
+suggestions + bold-colon) and **left ~11 ambiguous rows for manual review** via the editor heading-toggle:
+the **2 "X Ingredients"** rows (7287, 7295 — title-case, no colon), the italic `_Vanilla Cream Cheese
+Icing_` (3047), and the **section-word-ending** rows (`Chopped Parsley for Garnish`, `Fresh parsley for
+garnish`, `Pecorino … for Garnish`, `Brown Butter-Cream Cheese Frosting`, …) — about half of which are
+genuine ingredients, so a heuristic would eat them.
+
+**Shared, not duplicated:** `strip_emphasis` lives in `import_cleanup` and is imported by both the
+detector (import path) and the backfill, so they strip identically.
+
+**Remaining manual to-do:** hand-fix the ~11 rows above with the heading-toggle as recipes are touched.
+
 ## The inline recipe editor ("mark up the page")
 
 The recipe **edit** experience is being rebuilt from a separate admin-style form into **in-place
