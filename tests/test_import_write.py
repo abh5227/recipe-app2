@@ -101,6 +101,21 @@ def test_plan_keeps_every_line_incl_sections_and_flagged():
     assert rows[2]["qty"] is None                           # couldn't parse -> raw_text carries it
 
 
+def test_plan_bold_colon_heading_stored_clean():
+    # "**Other Ingredients:**" -> heading; raw_text drops the ** wrapper (reading renders raw_text)
+    rows = _plan(_cleaned(ingredient_lines=["**Other Ingredients:**", "2 tbsp oil"]))["ingredients"]
+    assert rows[0]["is_heading"] == 1
+    assert rows[0]["raw_text"] == "Other Ingredients:"       # clean, no markers
+    assert rows[0]["label"] is None
+
+
+def test_plan_ingredient_footnote_raw_text_preserved():
+    # a trailing-* footnote is an INGREDIENT; the original-line contract is intact (markers kept)
+    rows = _plan(_cleaned(ingredient_lines=["2 teaspoons salt*"]))["ingredients"]
+    assert rows[0]["is_heading"] == 0
+    assert rows[0]["raw_text"] == "2 teaspoons salt*"        # original preserved verbatim
+
+
 def test_plan_flagged_line_enters_review_queue():
     p = _plan(_cleaned(ingredient_lines=["2 x 6oz halibut fillets"], directions="Cook it."))
     line_flags = [f for f in p["review_flags"] if f["position"] is not None]

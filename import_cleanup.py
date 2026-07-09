@@ -149,6 +149,22 @@ def is_section(text):
     return any(c.isalpha() for c in t) and t == t.upper()
 
 
+# Markdown emphasis wrapping a WHOLE line ("**Other Ingredients:**", "_Vanilla Icing_"): a matched
+# pair of leading+trailing markers around the entire line. Stripped so a bold/italic colon-heading
+# is DETECTED and STORED clean. Only a WRAPPING pair matches — a trailing-only footnote ("salt*") or
+# mid-line emphasis ("2 cups **sifted** flour") has no matched leading+trailing wrap, so it is left
+# untouched. Backreference \1 requires the SAME marker on both ends.
+_EMPHASIS_WRAP = re.compile(r"^(\*\*|__|\*|_)(.+?)\1$")
+
+
+def strip_emphasis(text):
+    """Strip a matched pair of leading+trailing emphasis markers (** __ * _) wrapping the ENTIRE
+    line and return the inner text; no wrapping pair -> the (whitespace-stripped) text unchanged."""
+    t = (text or "").strip()
+    m = _EMPHASIS_WRAP.match(t)
+    return m.group(2).strip() if m else t
+
+
 def parse_amount(line):
     """Leading amount/unit/name split. Returns (amount_text, value, unit, name, range).
     range is (lo, hi) for "N–M"/"N to M", else None; value is None for a range."""
@@ -426,9 +442,15 @@ def classify_line(raw, section_hints=None):
             res["flag_reason"] = "'each' distributes one amount over several ingredients — review"
         return res
 
-    # 3. No amount, but a reliable section header (colon-terminated / ALL-CAPS).
-    if is_section(line):
+    # 3. No amount, but a reliable section header (colon-terminated / ALL-CAPS), possibly wrapped in
+    #    whole-line emphasis ("**Other Ingredients:**"). Strip the wrapper for BOTH the test and the
+    #    stored text (res["name"]), so the heading is detected AND stored clean — reading renders the
+    #    heading's raw_text and keys sections on it. A wrap with no colon/caps inside ("**Day 1**")
+    #    is NOT a section and falls through unchanged.
+    stripped = strip_emphasis(line)
+    if is_section(stripped):
         res["kind"] = "section"
+        res["name"] = stripped
         return res
 
     # 3b. No amount; matches a NARROW section signal (a common section word, or a same-recipe

@@ -83,6 +83,36 @@ def test_section_guard_amount_beats_colon_or_caps():
     assert ic.classify_line("2 EGGS")["kind"] == "ingredient"
 
 
+# ----------------------------------------------------------------- emphasis strip (markdown headings)
+def test_strip_emphasis_wrapping_pairs():
+    assert ic.strip_emphasis("**Other Ingredients:**") == "Other Ingredients:"
+    assert ic.strip_emphasis("**Day 1**") == "Day 1"
+    assert ic.strip_emphasis("_Vanilla Cream Cheese Icing_") == "Vanilla Cream Cheese Icing"
+    assert ic.strip_emphasis("__Bold Underscore:__") == "Bold Underscore:"
+
+
+def test_strip_emphasis_leaves_non_wraps_untouched():
+    assert ic.strip_emphasis("salt*") == "salt*"                       # trailing-only footnote, no pair
+    assert ic.strip_emphasis("plain flour") == "plain flour"            # no markers
+    assert ic.strip_emphasis("2 cups **sifted** flour") == "2 cups **sifted** flour"  # mid-line, no wrap
+
+
+def test_bold_colon_heading_detected_and_stored_clean():
+    # "**Other Ingredients:**" -> section via the stripped colon; the STORED text drops the markers
+    d = ic.classify_line("**Other Ingredients:**")
+    assert d["kind"] == "section" and d["name"] == "Other Ingredients:"
+
+
+def test_bold_without_colon_not_promoted():
+    # "**Day 1**" strips to "Day 1" — no colon, not ALL-CAPS -> NOT a section (stays flagged)
+    assert ic.classify_line("**Day 1**")["kind"] != "section"
+
+
+def test_trailing_footnote_stays_ingredient():
+    # a footnote asterisk is not a wrapping pair -> is_section never sees a stripped colon/caps
+    assert ic.classify_line("salt*")["kind"] != "section"
+
+
 # ----------------------------------------------------------------- grams harvest + guard
 def test_grams_harvest_simple():
     assert ic.classify_line("2 sticks (226 grams) unsalted butter")["grams_harvested"] == 226.0

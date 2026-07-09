@@ -123,7 +123,9 @@ def _ingredient_row(pos, line):
         "ingredient_id": None,                           # linkage = separate later pass
         "label": None if heading else (line["name"] or None),
         "note": None,                                    # name kept whole; no note split yet
-        "raw_text": line["raw"].strip(),                 # original line, ALWAYS preserved
+        # heading: the CLEAN section text (cleanup dropped any whole-line emphasis wrapper); ingredient:
+        # the original line, ALWAYS preserved (reading renders + keys sections on a heading's raw_text).
+        "raw_text": (line["name"] if heading else line["raw"].strip()),
         "grams": None if heading else line.get("grams_harvested"),       # the WEIGHT (captured)
         "secondary_measure": None if heading else line.get("secondary_measure"),  # the VOLUME
     }
