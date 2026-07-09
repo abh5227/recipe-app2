@@ -347,8 +347,13 @@ direction — palette, type, the R1/R2 boundary, the punch-list — in
   edit mode (1000px; reading stays 760px), icon-only link, name font matched to the measurement size,
   on-save unit canonicalization. The **scaler stays untouched** (size/count words are datalist
   suggestions only, kept out of the measure recognizers). **Stage 5 optional/deferred** (scaler consumes
-  structured fields, only if string-parsing hits friction). **Next: the name→unit backfill** — move
-  size/count descriptors from ~255 rows' names into the unit field (its own diagnostic/preview/tests).
+  structured fields, only if string-parsing hits friction). **Name→unit backfill done** — a standalone
+  backup→dry-run→`--apply` transform (`scripts/backfill_name_unit.py`) moved leading size/count
+  descriptors out of **272 rows'** names into the unit field (256 single-descriptor + 16 size+count
+  keeping the size), recombining `qty`; 7 rows flagged for manual handling. Its recognizer
+  (`split_leading_descriptor`) is a **pure, DB-free** function built **promotable** to a shared import
+  helper. **Queued:** (a) **import-integration** — lift the recognizer into the import path (split
+  descriptors at import time); (b) the deferred **66 trailing count-noun rows** ("garlic cloves").
 - **App rename pending:** "Seasonal Kitchen" → **"Chef's Choice"** across UI + docs (decided; not
   yet applied — see design-decisions.md).
 

@@ -324,11 +324,36 @@ of `MEASURE_UNIT_RE`/`_SCALE_UNITS`**, so the scaler keeps treating them as **co
 scaling). Scaling+editing is **safe**: scale is display-only, and entering edit resets to 1× and binds to
 the un-scaled originals (verified).
 
-**Next effort — the name→unit backfill (separate).** ~255 existing rows carry a size/count descriptor
-**stuck in the name** ("1 medium onion" → name "medium onion", unit empty). Moving those into the unit
-field is its **own effort** (its own diagnostic/preview/tests — `split_qty` can't do it, as it swallows
-the whole name), **not** part of Stage 4. Until then, those rows keep the descriptor in the name with an
-empty unit box (expected).
+**The name→unit backfill (done).** ~272 existing rows carried a size/count descriptor **stuck in the
+name** ("1 medium onion" → name "medium onion", unit empty). A standalone, idempotent data transform
+(`scripts/backfill_name_unit.py`; backup → dry-run → `--apply`) moved the descriptor into the empty
+**unit** field for the clean cases: **256 leading-single-descriptor** rows (+ optional "of": "Pinch of
+salt" → unit "pinch", name "salt") and **16 size+count** rows where the **size is kept** ("large cloves
+garlic" → unit "large cloves", name "garlic"). The recognizer declines (leaves the row alone) on
+**hyphen-compound** ("medium-to-large"), **intrinsic** ("medium-grain rice"), and **empty/paren-only**
+remainders. The `qty` recombine is **mandatory** — reading displays `qty`, not the `unit` column, so the
+descriptor is written into `qty = quantity + " " + unit` ("1" → "1 medium") or it would vanish from the
+ledger; `quantity`, `raw_text`, grams, and secondary_measure are left untouched. **7 rows were flagged
+for manual handling** and not transformed: hyphen-compound (4054), pre-mangled/merged-import (2648,
+5932), "or …" alternative (4597), and three empty/paren spice-cloves left as-is (2927, 4174, 7210).
+Idempotent re-run = 0 rows; all invariants (`qty == quantity+" "+unit`) pass; scaler sanity confirmed the
+moved words still scale as **counts** ("5 large cloves" ×2 → "10 large cloves").
+
+**Architectural note — the recognizer is promotable.** `split_leading_descriptor(name)` is a **pure,
+DB-free** function (plain string in, `(unit, name)`|`None` out — no sqlite/`conn`/`view`/row objects). It
+was built that way **deliberately**: the intent is to **lift it verbatim into a shared import helper**
+(alongside `import_cleanup.split_qty`) so future imports split descriptors **at import time**, rather than
+relying on re-running this backfill. The backfill-only review policy (pre-mangled/alternative flagging,
+the `KNOWN_MANGLED` force-flag) lives in the **caller**, not the recognizer, keeping the promotable core
+clean. This is a recorded **follow-on** (its own diagnostic).
+
+**Scaler constraint (held):** the moved descriptors go into `unit`/`qty` **only** and are still kept
+**out** of `MEASURE_UNIT_RE`/`_SCALE_UNITS`, so the scaler keeps treating them as counts (round to whole).
+The backfill neither touches nor imports the scaler.
+
+**Remaining follow-ons:** (1) **import-integration** — promote `split_leading_descriptor` into the import
+path so scraped lines split descriptors at import (its own diagnostic); (2) the deferred **66 trailing
+count-noun rows** ("garlic cloves" — a trailing count, not a leading descriptor) are still out of scope.
 
 ## The inline recipe editor ("mark up the page")
 
