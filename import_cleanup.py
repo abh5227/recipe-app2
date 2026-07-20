@@ -165,6 +165,48 @@ def strip_emphasis(text):
     return m.group(2).strip() if m else t
 
 
+# --- Extra amount-less section signals (section_signal, below) ---------------------------------- #
+# Four corpus-verified heading patterns beyond the colon/ALL-CAPS is_section. ALL are SAFE because
+# section_signal is only ever called on NO-AMOUNT lines (classify_line block 2 returns amount-bearing
+# lines as ingredients FIRST), so an amount-bearing "egg wash"/"filling"/etc. can never reach here —
+# the asymmetric-bad error (promoting a real ingredient so it vanishes from the list) is structurally
+# prevented. Each was checked false-positive-free across the whole corpus.
+_INGREDIENTS_WORD = re.compile(r"\bingredients?\b", re.I)   # Rule 1: a meta-word naming the list
+_DAY_N = re.compile(r"^\W*day\s+\d", re.I)                  # Rule 3: stage label ("Day 1", "**Day 3+**")
+# Rule 2: exact whole-line measurement-system labels (a units-variant block header).
+_UNIT_SYSTEM_LABELS = frozenset({
+    "metric", "imperial", "us", "us customary", "metric units", "imperial units", "us units",
+})
+# Rule 4: preparations MADE FROM the ingredients below and NEVER themselves an ingredient — so an
+# amount-less line that is/ends-in one is always a header, false-positive-free by construction.
+# Deliberately the PURELY-PREP core only: words that ALSO live in block 3b's _COMMON_SECTION_WORDS
+# (filling/glaze/topping/marinade/streusel) are left to _is_section_candidate, which has a ≤3-word
+# guard this guard-less ends-in match lacks ("spread the filling evenly" must not promote). Food words
+# ("sauce"/"potatoes"/"salsa"), count-nouns ("loaves"), and untested words (batter/roux/coating) excluded.
+_PREP_COMPONENTS = frozenset({"egg wash", "dredge", "sponge", "brine"})
+
+
+def section_signal(text):
+    """Is this (already emphasis-stripped, amount-less) line a section heading? True if the existing
+    is_section logic OR one of four corpus-verified patterns matches. Used by classify_line (block 3)
+    and the heading backfill; is_section itself is left pure (colon / ALL-CAPS only)."""
+    if is_section(text):                                   # colon-terminated / ALL-CAPS (short-circuit)
+        return True
+    t = text.strip()
+    if not t:
+        return False
+    if _INGREDIENTS_WORD.search(t):                        # Rule 1 — "X Ingredients" (meta-word)
+        return True
+    if t.lower() in _UNIT_SYSTEM_LABELS:                   # Rule 2 — unit-system label (exact line)
+        return True
+    if _DAY_N.match(t):                                    # Rule 3 — "Day N" stage label
+        return True
+    norm = t.lower().rstrip(":").strip()                   # Rule 4 — prep-component allowlist
+    if norm in _PREP_COMPONENTS or any(norm.endswith(" " + w) for w in _PREP_COMPONENTS):
+        return True                                        # whole-word end match ("Flour Dredge"); no mid-word hit
+    return False
+
+
 def parse_amount(line):
     """Leading amount/unit/name split. Returns (amount_text, value, unit, name, range).
     range is (lo, hi) for "N–M"/"N to M", else None; value is None for a range."""
@@ -442,13 +484,15 @@ def classify_line(raw, section_hints=None):
             res["flag_reason"] = "'each' distributes one amount over several ingredients — review"
         return res
 
-    # 3. No amount, but a reliable section header (colon-terminated / ALL-CAPS), possibly wrapped in
-    #    whole-line emphasis ("**Other Ingredients:**"). Strip the wrapper for BOTH the test and the
-    #    stored text (res["name"]), so the heading is detected AND stored clean — reading renders the
-    #    heading's raw_text and keys sections on it. A wrap with no colon/caps inside ("**Day 1**")
-    #    is NOT a section and falls through unchanged.
+    # 3. No amount, but a reliable section header — section_signal: colon-terminated / ALL-CAPS
+    #    (is_section) OR one of the 4 corpus-verified amount-less patterns ("X Ingredients", unit-system
+    #    label, "Day N", prep-component allowlist). Possibly wrapped in whole-line emphasis
+    #    ("**Other Ingredients:**", "**Day 1**"): strip the wrapper for BOTH the test and the stored
+    #    text (res["name"]), so the heading is detected AND stored clean — reading renders the heading's
+    #    raw_text and keys sections on it. The amount-less guard is free (block 2 already returned any
+    #    amount-bearing line as an ingredient).
     stripped = strip_emphasis(line)
-    if is_section(stripped):
+    if section_signal(stripped):
         res["kind"] = "section"
         res["name"] = stripped
         return res

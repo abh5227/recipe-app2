@@ -12,18 +12,22 @@ strip + is_section) and consults the import review queue; SQL can't. Mirrors scr
 backfill_name_unit.py and scripts/backfill_qty_unit.py.
 
 SCOPE — TWO high-confidence buckets only (the false-positive here is asymmetric-worse: a wrongly
-promoted ingredient VANISHES from the list). Verified in the heading diagnostic to be exactly 32
-rows; anything else stays for manual review (the editor heading-toggle):
-  Bucket A — for/to : rows FLAGGED in import_flags with a "section" suggestion ("For the X" /
-                      "To finish"-style). The importer already recognized the signal but declined
-                      to auto-promote; we now promote them.
-  Bucket B — markdown: rows wrapped in whole-line emphasis that, once stripped, are a reliable
-                      section header ("**Other Ingredients:**" -> "Other Ingredients:"). Detected
-                      by the same import_cleanup.strip_emphasis + is_section the detector fix uses.
+promoted ingredient VANISHES from the list); anything else stays for manual review (the editor
+heading-toggle):
+  Bucket A — for/to  : rows FLAGGED in import_flags with a "section" suggestion ("For the X" /
+                       "To finish"-style). The importer already recognized the signal but declined
+                       to auto-promote; we now promote them.
+  Bucket B — detector: rows whose (emphasis-stripped) text is a section per import_cleanup.
+                       section_signal — colon / ALL-CAPS, whole-line emphasis that strips to one
+                       ("**Other Ingredients:**" -> "Other Ingredients:"), or one of the 4 verified
+                       amount-less patterns ("X Ingredients", unit-system label, "Day N", prep
+                       allowlist {egg wash, dredge, sponge, brine}). Shares section_signal with the
+                       import detector.
 
-NOT promoted (left for manual review): the ~9 section-word-ending rows ("... for Garnish",
-"... Frosting") — half are real ingredients — and the 2 "X Ingredients" rows (title-case, no
-colon). Neither matches a bucket.
+NOT promoted (left for manual review, no matching bucket): the section-word-ending rows ("... for
+Garnish", "... Frosting" — half are real ingredients) and other one-offs (Pastina variant labels,
+"Cheddar Mashed Potatoes", "Salsa", "Meatballs", "Loaves", the italic "_Vanilla … Icing_", "Spice
+Mix"), plus the "Mix or Cajun seasoning" merge fragment.
 
 WHAT CHANGES for a promoted row (matching the canonical heading shape — cf. a natively-detected
 heading: is_heading=1, raw_text=text, label/quantity/unit/qty NULL): is_heading 0->1; raw_text =
@@ -45,7 +49,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE_DIR))
-from import_cleanup import is_section, strip_emphasis   # SAME strip + section test the detector uses
+from import_cleanup import section_signal, strip_emphasis   # SAME strip + section test the detector uses
 
 DB = BASE_DIR / "recipes.db"
 
@@ -59,10 +63,12 @@ def plan_heading(text, is_flagged_section):
     """PURE classifier: should this is_heading=0 row become a heading, and what CLEAN text does it
     store? Returns {"action":"auto","bucket":...,"text":clean} or {"action":"skip"}.
 
-      Bucket A (for/to) : the import review queue already suggested "section" for it.
-      Bucket B (markdown): whole-line emphasis that, stripped, is a reliable section (colon/caps)
-                           — but was NOT a section before stripping (so a bare "**Day 1**", which
-                           strips to a non-colon/non-caps line, is correctly NOT promoted).
+      Bucket A (for/to)  : the import review queue already suggested "section" for it.
+      Bucket B (detector): the (emphasis-stripped) text is a section per section_signal — colon /
+                           ALL-CAPS, whole-line emphasis that strips to one, or one of the 4 verified
+                           amount-less patterns ("X Ingredients", unit-system label, "Day N", prep
+                           allowlist). The is_heading=0 SQL guard means an already-promoted row is
+                           never re-selected, so no `not is_section` check is needed.
     """
     t = (text or "").strip()
     if not t:
@@ -70,8 +76,8 @@ def plan_heading(text, is_flagged_section):
     stripped = strip_emphasis(t)
     if is_flagged_section:
         return {"action": "auto", "bucket": "for/to", "text": stripped}
-    if is_section(stripped) and not is_section(t):
-        return {"action": "auto", "bucket": "markdown", "text": stripped}
+    if section_signal(stripped):
+        return {"action": "auto", "bucket": "detector", "text": stripped}
     return {"action": "skip", "reason": "no-bucket"}
 
 
@@ -96,7 +102,7 @@ def run(apply=False):
         "FROM recipe_ingredients WHERE is_heading = 0 AND (qty IS NULL OR qty = '')"
     ).fetchall()
 
-    auto = {"for/to": [], "markdown": []}
+    auto = {"for/to": [], "detector": []}
     for r in rows:
         p = plan_heading(_row_text(r), (r["recipe_id"], r["position"]) in flagged_section)
         if p["action"] == "auto":
@@ -107,10 +113,10 @@ def run(apply=False):
     mode = "APPLY" if apply else "DRY-RUN"
     print(f"[{mode}] heading backfill — candidates (is_heading=0, amount-less): {len(rows)}")
     print(f"  PROMOTE to heading: {total}   (Bucket A for/to = {len(auto['for/to'])}, "
-          f"Bucket B markdown = {len(auto['markdown'])})")
+          f"Bucket B detector = {len(auto['detector'])})")
 
     for bucket, title in (("for/to", "BUCKET A · for/to (import flagged suggest-section)"),
-                          ("markdown", "BUCKET B · markdown **…:** (emphasis stripped)")):
+                          ("detector", "BUCKET B · detector (section_signal: emphasis / X-Ingredients / unit / Day-N / prep)")):
         print(f"\n===== {title} =====")
         for r, p in auto[bucket]:
             print(f"  {r['id']:5d} | {r['recipe_id'][:40]} pos{r['position']}")

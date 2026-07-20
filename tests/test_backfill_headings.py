@@ -1,6 +1,7 @@
 """The heading backfill (scripts/backfill_headings.py) — promoting is_heading=0 rows that are really
-SECTION HEADINGS (two high-confidence buckets: for/to flagged rows + markdown **…:** rows). Tests the
-PURE classifier (plan_heading) + the DB promote/idempotency against a throwaway DB. No live-DB access."""
+SECTION HEADINGS (Bucket A: for/to flagged rows; Bucket B: detector via section_signal — emphasis /
+X-Ingredients / unit-system / Day-N / prep allowlist). Tests the PURE classifier (plan_heading) + the
+DB promote/idempotency against a throwaway DB. No live-DB access."""
 import importlib.util
 import sqlite3
 from pathlib import Path
@@ -32,24 +33,29 @@ def test_bucket_a_for_to_flagged():
 def test_bucket_b_markdown_colon_stripped():
     # whole-line bold wrapper -> stripped to a colon heading -> promote with the CLEAN text
     assert plan("**Other Ingredients:**", False) == {
-        "action": "auto", "bucket": "markdown", "text": "Other Ingredients:"}
+        "action": "auto", "bucket": "detector", "text": "Other Ingredients:"}
     assert plan("**Whole Spices:**", False)["text"] == "Whole Spices:"
 
 
-def test_bold_without_colon_not_promoted():
-    # "**Day 1**" strips to "Day 1" (no colon/caps) -> NOT a section -> skip
-    assert plan("**Day 1**", False)["action"] == "skip"
+def test_bucket_b_detector_new_rules():
+    # the 4 section_signal rules all route through Bucket B (detector)
+    assert plan("Italian Beef Ingredients", False)["bucket"] == "detector"     # Rule 1
+    assert plan("Metric", False)["bucket"] == "detector"                       # Rule 2
+    assert plan("**Day 1**", False) == {"action": "auto", "bucket": "detector", "text": "Day 1"}  # Rule 3
+    assert plan("Egg wash", False)["bucket"] == "detector"                     # Rule 4
+    assert plan("Flour Dredge", False)["bucket"] == "detector"                 # Rule 4 (ends-in)
 
 
-def test_section_word_ending_not_promoted():
-    # a section-word-ending line is NOT a bucket (left for manual review) — not flagged, not markdown
-    assert plan("Fresh parsley for garnish", False)["action"] == "skip"
-    assert plan("Brown Butter-Cream Cheese Frosting", False)["action"] == "skip"
+def test_bold_label_no_signal_not_promoted():
+    # a bold label matching no rule (no colon/caps/signal) -> skip
+    assert plan("**Some Label**", False)["action"] == "skip"
 
 
-def test_x_ingredients_not_promoted():
-    # "X Ingredients" (title-case, no colon, no wrapper, not flagged) -> manual review, not a bucket
-    assert plan("Italian Beef Ingredients", False)["action"] == "skip"
+def test_excluded_one_offs_not_promoted():
+    # section-word-ending + excluded food/count words stay for manual review (no matching bucket)
+    for t in ("Fresh parsley for garnish", "Brown Butter-Cream Cheese Frosting", "Loaves",
+              "Salsa", "Meatballs", "Cheddar Mashed Potatoes", "Spice Mix"):
+        assert plan(t, False)["action"] == "skip", t
 
 
 def test_empty_skipped():
@@ -71,36 +77,49 @@ def _make_db(path):
         [
             ("r1", 0, 0, None, "", "", "For the dal", "For the dal"),           # Bucket A (flagged below)
             ("r1", 1, 0, "1 cup", "1", "cup", "lentils", "1 cup lentils"),      # real ingredient -> keep
-            ("r2", 0, 0, "", "", "", None, "**Whole Spices:**"),               # Bucket B (markdown)
+            ("r2", 0, 0, "", "", "", None, "**Whole Spices:**"),               # detector (markdown colon)
             ("r2", 1, 0, None, "", "", "Fresh parsley for garnish", "Fresh parsley for garnish"),  # manual -> keep
             ("r2", 2, 1, None, None, None, None, "EXISTING HEADING:"),          # already a heading -> untouched
+            ("r3", 0, 0, "", "", "", None, "Italian Beef Ingredients"),        # detector Rule 1
+            ("r3", 1, 0, "", "", "", None, "**Day 1**"),                       # detector Rule 3 -> "Day 1"
+            ("r3", 2, 0, None, "", "", "Egg wash", "Egg wash"),                # detector Rule 4
+            ("r3", 3, 0, None, "", "", "Metric", "Metric"),                    # detector Rule 2
+            ("r3", 4, 0, None, "", "", "Loaves", "Loaves"),                    # EXCLUDED -> keep
+            ("r3", 5, 0, "2", "2", "", "eggs", "2 eggs"),                       # amount-bearing -> keep
         ])
     c.execute("INSERT INTO import_flags (recipe_id, position, flag, reason) VALUES (?,?,?,?)",
               ("r1", 0, "ambiguous_section", "no amount and not clearly a section — suggest section"))
     c.commit(); c.close()
 
 
-def test_apply_promotes_only_the_two_buckets(tmp_path):
+def test_apply_promotes_expected_and_leaves_the_rest(tmp_path):
     db = tmp_path / "t.db"; _make_db(db)
     mod = _load(db)
     mod.run(apply=True)
     c = sqlite3.connect(db); c.row_factory = sqlite3.Row
 
-    a = c.execute("SELECT * FROM recipe_ingredients WHERE recipe_id='r1' AND position=0").fetchone()
+    def row(rid, pos): return c.execute(
+        "SELECT * FROM recipe_ingredients WHERE recipe_id=? AND position=?", (rid, pos)).fetchone()
+
+    # for/to promoted, canonical shape
+    a = row("r1", 0)
     assert a["is_heading"] == 1 and a["raw_text"] == "For the dal"
     assert a["label"] is None and a["quantity"] is None and a["unit"] is None and a["qty"] is None
+    # detector rows promoted; markdown + Day-N stored CLEAN
+    assert row("r2", 0)["is_heading"] == 1 and row("r2", 0)["raw_text"] == "Whole Spices:"
+    assert row("r3", 0)["is_heading"] == 1 and row("r3", 0)["raw_text"] == "Italian Beef Ingredients"
+    assert row("r3", 1)["is_heading"] == 1 and row("r3", 1)["raw_text"] == "Day 1"    # ** stripped
+    assert row("r3", 2)["is_heading"] == 1 and row("r3", 2)["raw_text"] == "Egg wash"
+    assert row("r3", 3)["is_heading"] == 1 and row("r3", 3)["raw_text"] == "Metric"
 
-    b = c.execute("SELECT * FROM recipe_ingredients WHERE recipe_id='r2' AND position=0").fetchone()
-    assert b["is_heading"] == 1 and b["raw_text"] == "Whole Spices:"     # ** stripped, colon kept
-    assert b["label"] is None and b["qty"] is None
+    # NOT promoted: real ingredient, garnish, excluded "Loaves", amount-bearing "eggs", pre-existing heading
+    assert row("r1", 1)["is_heading"] == 0 and row("r1", 1)["qty"] == "1 cup"
+    assert row("r2", 1)["is_heading"] == 0
+    assert row("r3", 4)["is_heading"] == 0          # Loaves excluded
+    assert row("r3", 5)["is_heading"] == 0          # amount-bearing
 
-    # a real ingredient, a section-word line, and an existing heading are ALL untouched
-    ing = c.execute("SELECT * FROM recipe_ingredients WHERE label='lentils'").fetchone()
-    assert ing["is_heading"] == 0 and ing["qty"] == "1 cup"
-    manual = c.execute("SELECT * FROM recipe_ingredients WHERE label='Fresh parsley for garnish'").fetchone()
-    assert manual["is_heading"] == 0
-    total_headings = c.execute("SELECT COUNT(*) FROM recipe_ingredients WHERE is_heading=1").fetchone()[0]
-    assert total_headings == 3                                            # 2 promoted + 1 pre-existing
+    total = c.execute("SELECT COUNT(*) FROM recipe_ingredients WHERE is_heading=1").fetchone()[0]
+    assert total == 7                                # 6 promoted (1 for/to + 5 detector) + 1 pre-existing
     c.close()
 
 

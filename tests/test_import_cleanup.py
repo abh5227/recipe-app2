@@ -103,14 +103,94 @@ def test_bold_colon_heading_detected_and_stored_clean():
     assert d["kind"] == "section" and d["name"] == "Other Ingredients:"
 
 
-def test_bold_without_colon_not_promoted():
-    # "**Day 1**" strips to "Day 1" — no colon, not ALL-CAPS -> NOT a section (stays flagged)
-    assert ic.classify_line("**Day 1**")["kind"] != "section"
+def test_bold_without_colon_or_signal_not_promoted():
+    # a bold label with no colon/caps and matching no section_signal rule -> NOT a section
+    assert ic.classify_line("**Some Label**")["kind"] != "section"
 
 
 def test_trailing_footnote_stays_ingredient():
     # a footnote asterisk is not a wrapping pair -> is_section never sees a stripped colon/caps
     assert ic.classify_line("salt*")["kind"] != "section"
+
+
+# ----------------------------------------------------------------- section_signal (4 extra rules)
+def test_section_signal_rule1_ingredients_meta_word():
+    assert ic.section_signal("Italian Beef Ingredients")
+    assert ic.section_signal("Whole Wheat Ingredients")
+    assert ic.section_signal("Dry Ingredient")               # singular, whole-word
+    assert not ic.section_signal("flour")                    # a real ingredient word
+
+
+def test_section_signal_rule2_unit_system_label():
+    assert ic.section_signal("Metric")
+    assert ic.section_signal("Imperial")
+    assert ic.section_signal("US")                           # also caught by is_section caps — fine
+    assert ic.section_signal("US Customary")
+    assert not ic.section_signal("metallic")                 # not a unit-system word
+    assert not ic.section_signal("use metric measurements")  # not an exact whole-line label
+
+
+def test_section_signal_rule3_day_n():
+    assert ic.section_signal("Day 1")
+    assert ic.section_signal("Day 3+")
+    assert ic.section_signal(ic.strip_emphasis("**Day 1**"))  # stripped by caller
+    assert not ic.section_signal("Day of the Dead cake")     # "day" not followed by a digit
+    assert not ic.section_signal("Sunday 2 things")          # must START with "day"
+
+
+def test_section_signal_rule4_prep_allowlist():
+    # the purely-prep core: is / ends-in one of {egg wash, dredge, sponge, brine}
+    for w in ("Egg wash", "Flour Dredge", "sponge", "Brine", "Buttermilk Brine"):
+        assert ic.section_signal(w), w
+    # DROPPED from Rule 4 (overlap block 3b's section words) — NOT matched by the allowlist. They may
+    # still be caught by is_section IF colon/caps, but the bare title-case forms below are not.
+    for w in ("Glaze", "Marinade", "Streusel", "topping", "filling"):
+        assert not ic.section_signal(w), w
+    # NEGATIVES: excluded / untested / food-words that double as ingredients
+    for w in ("cheddar", "meatballs", "salsa", "loaves", "batter", "sauce", "potatoes"):
+        assert not ic.section_signal(w), w
+    # no mid-word / substring match
+    assert not ic.section_signal("dredgel")
+    assert not ic.section_signal("gladredge")
+
+
+def test_section_signal_falls_back_to_is_section():
+    assert ic.section_signal("SAUCE:")                        # colon
+    assert ic.section_signal("FOR THE PASTRY")                # ALL-CAPS
+    assert not ic.section_signal("chopped onion")             # neither
+
+
+def test_is_section_unchanged_by_new_rules():
+    # is_section stays PURE colon/caps — the 4 new rules live only in section_signal
+    assert ic.is_section("SAUCE:")
+    assert ic.is_section("FOR THE PASTRY")
+    assert not ic.is_section("Day 1")                         # section_signal True, but is_section False
+    assert not ic.is_section("Egg wash")
+    assert not ic.is_section("Italian Beef Ingredients")
+
+
+def test_day_n_stage_label_promoted_and_stored_clean():
+    # "**Day 1**" now promotes via Rule 3; stored clean (emphasis stripped)
+    d = ic.classify_line("**Day 1**")
+    assert d["kind"] == "section" and d["name"] == "Day 1"
+
+
+def test_x_ingredients_promoted():
+    d = ic.classify_line("Italian Beef Ingredients")
+    assert d["kind"] == "section" and d["name"] == "Italian Beef Ingredients"
+
+
+def test_amount_bearing_egg_wash_stays_ingredient():
+    # the KEY safety case: an amount-bearing "egg wash"/"filling" line never reaches section_signal
+    assert ic.classify_line("1 egg for egg wash")["kind"] == "ingredient"
+    assert ic.classify_line("½ cup canned pumpkin (not pumpkin pie filling)")["kind"] == "ingredient"
+
+
+def test_classify_step_unaffected_by_section_signal():
+    # steps call is_section (NOT section_signal) -> a "Day 1" / "Egg wash" step is NOT a heading
+    assert ic.classify_step("Day 1")[0] is False
+    assert ic.classify_step("Egg wash")[0] is False
+    assert ic.classify_step("FOR THE SAUCE:")[0] is True     # colon/caps still works for steps
 
 
 # ----------------------------------------------------------------- grams harvest + guard
