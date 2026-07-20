@@ -384,7 +384,44 @@ genuine ingredients, so a heuristic would eat them.
 **Shared, not duplicated:** `strip_emphasis` lives in `import_cleanup` and is imported by both the
 detector (import path) and the backfill, so they strip identically.
 
-**Remaining manual to-do:** hand-fix the ~11 rows above with the heading-toggle as recipes are touched.
+**Four detection rules — `section_signal` (done, follow-on).** Beyond the emphasis-strip, four
+corpus-verified amount-less patterns were added as a **shared helper `section_signal(text)` =
+`is_section(text)` OR** (1) **"X Ingredients"** — a whole-word `\bingredients?\b` meta-word naming the
+list; (2) **unit-system label** — an exact whole-line `metric`/`imperial`/`us`/… (a units-variant block
+header); (3) **"Day N"** — `^\W*day\s+\d` stage labels (e.g. sourdough `Day 1`/`Day 3+`); (4) a
+**prep-component allowlist** `{egg wash, dredge, sponge, brine}`. `classify_line` block 3 swapped its
+`is_section(stripped)` test for `section_signal(stripped)` (one line; still stores the stripped text).
+The backfill promoted **9** existing rows (7287/7295 "…Ingredients", 3014 "Metric", 3768/3771 "Day N",
+3022/3033 "Egg wash", 4199 "Flour Dredge", 5746 "Sponge"); idempotent re-run = 0.
+
+**Architecture — a shared helper, NOT a change to `is_section`.** The rules live in `section_signal`, and
+`is_section` stays the pure colon/ALL-CAPS predicate — **because `is_section` is also called by
+`classify_step`**, and these rules were verified only for *ingredient* lines. Keeping them in
+`section_signal` (called only from ingredient block 3) leaves step-parsing untouched. `section_signal` is
+defined once in `import_cleanup` and imported by both the import detector and `backfill_headings.py`
+(shared, not duplicated).
+
+**The prep-vs-food distinction (why the allowlist is safe).** The corpus draws a clean line:
+**preparations made *from* the ingredients below** (egg wash, dredge, sponge, brine — and
+glaze/marinade/streusel) are **only ever section headers**, never themselves an ingredient → safe to
+auto-detect when amount-less. **Foods that are also ingredients** (sauce, potatoes, salsa, meatballs,
+dough, crust) **collide** with real-ingredient usage (amount-bearing *and* amount-less) → not
+automatable, hand-toggle. Rule 4's allowlist is the **prep-only core**: the 5 words that overlap block
+3b's `_COMMON_SECTION_WORDS` (filling/glaze/topping/marinade/streusel) were **dropped** — they're already
+handled by `_is_section_candidate` (which has a ≤3-word guard this guard-less ends-in match lacks, so
+"spread the filling evenly" can't wrongly promote).
+
+**Importer intelligence.** Each verified rule is permanent importer knowledge (the state-of-the-art-
+importer goal): a pattern harvested against the real corpus and confirmed false-positive-free under the
+**asymmetric-bad guard** — a wrongly-promoted heading *hides* a real ingredient, so a rule ships only when
+every amount-less match is provably a header.
+
+**Remaining manual to-do (reconciled).** The 4 rules cleared the "X Ingredients" pair (7287/7295) and the
+Day-N/Metric/prep rows from the earlier manual list. What's left for hand-toggle: the Pastina variant
+labels (4965/4972), `Brown Butter-Cream Cheese Frosting` (5147), `Cheddar Mashed Potatoes` (5476), `Salsa`
+(5530), `Meatballs` (5699), `Loaves` (5759), and the italic `_Vanilla Cream Cheese Icing_` (3047) — plus
+`Spice Mix` (4799, leave as an ingredient) and the `Mix or Cajun seasoning` merge-fix (2650). All are the
+prep-vs-food "food word" collisions or one-offs a heuristic would get wrong.
 
 ## The inline recipe editor ("mark up the page")
 

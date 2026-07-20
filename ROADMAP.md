@@ -365,6 +365,15 @@ direction — palette, type, the R1/R2 boundary, the punch-list — in
   bold-colon). Detection biases to *ingredient* when ambiguous (a wrongly-promoted heading hides a real
   ingredient), so **~11 ambiguous rows** (2 "X Ingredients", 1 italic, the section-word garnish/frosting
   rows) are a **small manual to-do** via the editor heading-toggle.
+- **Heading detection rules + backfill done (follow-on).** Added a shared `import_cleanup.section_signal`
+  helper with **4 corpus-verified amount-less patterns** — "X Ingredients" (meta-word), unit-system
+  labels, "Day N" stage labels, and a prep-component allowlist `{egg wash, dredge, sponge, brine}` —
+  layered on top of `is_section` (which stays pure, since `classify_step` also uses it). A backfill
+  promoted **9** more existing rows. The **prep-vs-food distinction**: preparations *made from*
+  ingredients (egg wash/dredge/sponge/brine, glaze/marinade) are only ever headers → safe to detect;
+  foods that are also ingredients (sauce/potatoes/salsa/meatballs/dough) collide → hand-toggle. **~10
+  ambiguous rows** (Pastina variants, Frosting, Cheddar Mash, Salsa, Meatballs, Loaves, italic Vanilla,
+  plus Spice Mix left-as-ingredient and the 2650 merge-fix) remain a manual to-do.
 - **App rename pending:** "Seasonal Kitchen" → **"Chef's Choice"** across UI + docs (decided; not
   yet applied — see design-decisions.md).
 
