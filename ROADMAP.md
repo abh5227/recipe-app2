@@ -291,12 +291,14 @@ adding a source never touches the hard logic.
 - **Harvested grams captured (migration 011).** A `(NNN g)` weight is harvested and stored in
   `recipe_ingredients.grams`, and the gram parenthetical is stripped from the name. Captured
   only — not yet displayed/scaled (see Known limitations & tech debt).
-- **Validation:** a writes-nothing dry-run on a random **15 with distinct authors** (prints the
-  full plan + dedup decisions). **15 recipes really imported** so far.
+- **Validation → full import (DONE):** validated via a writes-nothing dry-run on a random 15 with
+  distinct authors (full plan + dedup decisions), then ran the full import. **All ~298 Paprika
+  recipes are now imported** — the DB holds **301 recipes** (293 app-tier imports + 5 seed twins
+  tagged with their `uid`s + 3 test fixtures) and **3,634 ingredient rows** (3,406 ingredients +
+  228 headings).
 
 **Remaining work:**
 
-- Full **~295 import** (the validated path; 15 imported so far).
 - Library **linkage** pass (`ingredient_id`) — link confident library matches, flag uncertain,
   leave no-match as free text.
 - Full **image storage** (extract `photos[]`; today `image` is primary-only / NULL).
