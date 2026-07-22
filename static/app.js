@@ -1947,6 +1947,9 @@ document.addEventListener("click", (e) => {
   // a clickable ingredient (in a list, a step, or the in-season chips) -> open the drawer
   const ing = e.target.closest("[data-item]");
   if (ing) {
+    // Edit-mode step chips carry data-item too; clicking one shouldn't open the reference drawer
+    // (it's an editor token, not a reading-mode link). Reading-mode links still open the drawer.
+    if (view && view.editMode && ing.closest(".step-editor-host")) return;
     openPanel(ing.dataset.item, ing);
     return;
   }

@@ -14,11 +14,34 @@
 // Self-contained + removable: app.js calls mountStepEditors()/destroyStepEditors() at the edit-mode
 // enter/exit/save/nav hooks; view/state ownership stays in app.js (passed in, written back via cb).
 
-import { Editor } from "@tiptap/core";
+import { Editor, Node } from "@tiptap/core";
 import { Document } from "@tiptap/extension-document";
 import { Paragraph } from "@tiptap/extension-paragraph";
 import { Text } from "@tiptap/extension-text";
 import { History } from "@tiptap/extension-history";
+import { stepTextToDoc, docToStepText } from "./step-adapter.js";
+
+// The [[key|label]] chip: an inline atom node. atom:true (no editable content) + contenteditable=false
+// on the DOM make the caret treat it as a single unit — arrows skip it, backspace deletes it whole,
+// you can't type inside. id/label are rendered:false (they live in the node/JSON, not as HTML attrs)
+// so renderHTML can emit the SAME markup reading-mode linkify does (<button class="ingredient" …>) —
+// reusing the existing .ingredient CSS, no new styling. Attrs survive editor.getJSON() -> the proven
+// docToStepText serializer turns them back into [[id|label]].
+const IngredientLink = Node.create({
+  name: "ingredientLink",
+  group: "inline",
+  inline: true,
+  atom: true,
+  selectable: true,
+  addAttributes() {
+    return { id: { default: null, rendered: false }, label: { default: null, rendered: false } };
+  },
+  renderHTML({ node }) {
+    const { id, label } = node.attrs;
+    const shown = label != null ? label : id;
+    return ["button", { class: "ingredient", "data-item": id, contenteditable: "false", type: "button" }, shown];
+  },
+});
 
 // Live instances, parallel to the currently-mounted .step-editor-host nodes. Cleared on destroy.
 let editors = [];
@@ -36,9 +59,9 @@ export function mountStepEditors(draft, onStepInput) {
     if (!step || step.is_heading) return;            // headings keep their plain rendering (not TipTap in 1a)
     const editor = new Editor({
       element: host,
-      extensions: [Document, Paragraph, Text, History],
-      content: textToDoc(step.text || ""),           // plain text -> paragraph(s); raw markup stays literal
-      onUpdate: ({ editor }) => onStepInput(i, docToText(editor)),
+      extensions: [Document, Paragraph, Text, History, IngredientLink],
+      content: stepTextToDoc(step.text || ""),        // [[key|label]] -> chip nodes; other text verbatim
+      onUpdate: ({ editor }) => onStepInput(i, docToStepText(editor.getJSON())),
     });
     editors.push(editor);
   });
@@ -53,19 +76,3 @@ export function destroyStepEditors() {
 
 // How many editors are currently mounted — used to VERIFY teardown (0 after every exit path).
 export function mountedStepEditorCount() { return editors.length; }
-
-// ---- plain-text <-> doc (1a: no markup interpretation) ----------------------------------------
-// A method step is one logical line, modelled as a single paragraph. Internal newlines (rare) map to
-// separate paragraphs and rejoin with "\n" on serialize, so text -> doc -> text is faithful.
-function textToDoc(text) {
-  const paras = String(text).split("\n").map((line) =>
-    line
-      ? { type: "paragraph", content: [{ type: "text", text: line }] }
-      : { type: "paragraph" });
-  return { type: "doc", content: paras.length ? paras : [{ type: "paragraph" }] };
-}
-
-function docToText(editor) {
-  // Default getText joins blocks with "\n\n"; a step is one line, so join blocks with a single "\n".
-  return editor.getText({ blockSeparator: "\n" });
-}
