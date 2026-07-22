@@ -9,8 +9,12 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-if str(REPO) not in sys.path:
-    sys.path.insert(0, str(REPO))
+HERE = Path(__file__).resolve().parent
+for _p in (str(REPO), str(HERE)):
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
+from fixtures import TEST_RECIPES   # test-owned recipe set (fixtures.py) — seeded instead of seed.py RECIPES
 
 
 class Kitchen:
@@ -62,7 +66,13 @@ def make_kitchen(tmp_path):
     build_db.DB = db
     app.DB = db
 
-    build_db.build()                       # apply migrations + load seed content
+    # Seed the test DB from the test-owned fixtures, NOT production seed.py's RECIPES: override the
+    # module global that build_db.build() (validate + seed_content) reads — the same rebinding pattern
+    # as build_db.DB above. This is what lets production seed.py RECIPES be emptied later without
+    # breaking the suite. INGREDIENTS/PEOPLE still come from seed.py (they aren't being emptied).
+    build_db.RECIPES = TEST_RECIPES
+
+    build_db.build()                       # apply migrations + load seed content (from TEST_RECIPES)
     return Kitchen(db, app.app.test_client())
 
 

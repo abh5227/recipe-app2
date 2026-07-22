@@ -1,5 +1,6 @@
 """Build + migration behavior: schema is created from scratch, seed content loads, and a
 rebuild is idempotent and keeps referential integrity."""
+from fixtures import TEST_RECIPES   # the test-owned recipe set the harness seeds (see fixtures.py)
 
 # Bump this when a migration is added.
 EXPECTED_MIGRATIONS = 15
@@ -35,7 +36,9 @@ def test_seed_rows_get_qty_unit_split(kitchen):
 
 
 def test_seed_counts(kitchen):
-    assert kitchen.count("recipes", "source='seed'") == 5
+    # Recipes are seeded from the test fixtures (fixtures.TEST_RECIPES), not production seed.py's
+    # RECIPES — so assert the fixture count; this stays correct after production RECIPES is emptied.
+    assert kitchen.count("recipes", "source='seed'") == len(TEST_RECIPES)
     assert kitchen.count("recipes", "source='app'") == 0
     assert kitchen.count("ingredients") == 36
     assert kitchen.count("people") == 2
