@@ -29,6 +29,12 @@ preview/
 /index.html
 /paprika_samples/
 
+# Frontend build tooling (Vite) — deps + build output are generated, not committed.
+# The frontend is built on deploy (npm run build → dist/); Flask serves dist/ at runtime.
+node_modules/
+dist/
+.vite/
+
 # Python bytecode caches
 __pycache__/
 *.pyc

@@ -16,7 +16,7 @@ import re
 import sqlite3
 from pathlib import Path
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, send_from_directory
 
 from weights import build_index, match_weight
 from stepscale import api_spans
@@ -24,11 +24,13 @@ from import_cleanup import split_qty   # shared qty->quantity+unit split (backfi
 
 # Anchor everything to this file's folder so the app runs from any directory.
 BASE_DIR = Path(__file__).resolve().parent
-app = Flask(__name__, static_folder=str(BASE_DIR / "static"), static_url_path="")
-# Static assets cache for a year — SAFE because the "/" shell stamps each with a ?v=<mtime> that
-# changes on edit (see home()). Standard fingerprint-and-cache: fresh on a normal refresh in dev,
-# no needless re-downloads in production. (The shell itself stays no-cache, so it always re-emits
-# the current ?v=.)
+# The frontend is built by Vite (npm run build) into dist/: a hashed entry + dist/assets/*.[hash].*.
+# Flask serves those bundles at /assets/ (static mount below) and the shell via home(); recipe photos
+# live outside the bundle in static/images/ and are served by the /images route.
+app = Flask(__name__, static_folder=str(BASE_DIR / "dist" / "assets"), static_url_path="/assets")
+# Built assets cache for a year — SAFE because Vite content-hashes every filename, so a changed file
+# gets a new name (the cache-bust is the hash). The shell (home()) stays no-cache, so it always
+# re-emits the current hashed names. (This replaces the old ?v=<mtime> query-string scheme.)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 31_536_000   # 1 year
 DB = BASE_DIR / "recipes.db"
 
@@ -248,25 +250,31 @@ def write_recipe_rows(c, rid, clean, preserve=None):
             )
 
 
-def _asset_version(name):
-    """Cache-bust token from the file's mtime — changes automatically whenever it's edited."""
-    try:
-        return str(int((BASE_DIR / "static" / name).stat().st_mtime))
-    except OSError:
-        return "0"
-
-
 @app.route("/")
 def home():
-    # Serve the shell with a per-asset ?v=<mtime> so a normal refresh always gets the current file
-    # (no hard-refresh in dev), while the assets themselves cache for a year (production-correct).
-    html = (BASE_DIR / "static" / "index.html").read_text(encoding="utf-8")
-    for asset in ("styles.css", "scaler.js", "ingredient-row.js", "app.js"):
-        html = html.replace(f'"{asset}"', f'"{asset}?v={_asset_version(asset)}"')
+    # Serve the Vite-built shell verbatim. It references content-hashed assets (/assets/*.[hash].*),
+    # so it stays no-cache (always revalidated → always names the current build), while those hashed
+    # assets cache for a year. Requires `npm run build` to have produced dist/index.html.
+    html = (BASE_DIR / "dist" / "index.html").read_text(encoding="utf-8")
     resp = app.make_response(html)
     resp.headers["Content-Type"] = "text/html; charset=utf-8"
-    resp.headers["Cache-Control"] = "no-cache"   # the shell always revalidates → always fresh ?v=
+    resp.headers["Cache-Control"] = "no-cache"
     return resp
+
+
+@app.route("/images/<path:filename>")
+def recipe_image(filename):
+    # Recipe hero photos live in static/images/ (not the Vite bundle) and are referenced as
+    # absolute /images/<file> in the client; serve them from their on-disk home.
+    return send_from_directory(BASE_DIR / "static" / "images", filename)
+
+
+@app.route("/fonts/<path:filename>")
+def font_file(filename):
+    # In PROD the fonts are bundled+hashed into /assets by Vite, so this route is unused there.
+    # In DEV the Vite server proxies /fonts here (styles.css references /fonts/<file>), so the
+    # self-hosted faces must be reachable from Flask too — serve them from static/fonts/.
+    return send_from_directory(BASE_DIR / "static" / "fonts", filename)
 
 
 @app.route("/api/recipes")
