@@ -90,3 +90,26 @@ How this project is run:
 - **Never push without explicit approval;** after an approved push, watch the GitHub
   Actions run and report green/red.
 - **The import runner writes only with `--yes`** and takes a backup first.
+- **Blast-radius follows the DATA, not the field.** For any change to the data model, `seed.py`,
+  or the build/seed pipeline, scope the analysis to the *rows being changed* (their
+  slugs/ids/counts/existence), not just the column/token edited — and grep `tests/` **and** the
+  fixture harness (`tests/harness.py`), not only app code. Fixtures and tests are part of the blast
+  radius.
+- **A dry-run that touches anything the tests build on must RUN THE TEST SUITE,** not just DB/count
+  assertions. When a change touches seed content, the build pipeline, fixtures, or schema, one
+  `pytest` run in the dry-run copy (after the edit) surfaces fixture coupling before it reaches
+  live, at ~zero cost.
+- **"Correct data + red suite" is still STOP-before-commit** — but it isn't data corruption: don't
+  auto-revert correct live data over a fixable test issue; surface the choice.
+
+*Why these three exist (the seed→app miss):* converting the 5 seed recipes to app (flip `source` +
+empty `seed.py`'s `RECIPES`) was proven rebuild-safe on a DB dry-run and applied correctly to live,
+yet broke **31 pytest tests** — the suite builds every fixture DB from `seed.py`'s `RECIPES`
+(`make_kitchen` → `build_db`), coupling to the seed slugs (~90 references across `tests/`), not the
+`source` column the blast-radius had grepped. The DB dry-run passed because it only asserted on the
+DB; a `pytest` run in the same scratch copy would have caught all 31. Reverted cleanly. **Open
+follow-up:** the conversion (a numbered migration + the `seed.py` edit) is proven correct and
+rebuild-safe and will be re-applied *after* the tests seed their own fixtures instead of the 5 seed
+recipes — its own diagnostic + plan, whose dry-run includes `pytest`. `test_changes.py` in
+particular used those recipes as the only read-only `source='seed'` recipes, so the decouple
+intersects with what those per-person-change tests exercise.
