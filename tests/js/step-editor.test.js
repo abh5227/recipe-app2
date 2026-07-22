@@ -9,7 +9,7 @@
 // json.dumps (ASCII, so copy-exact — no risk of mis-transcribing sauté / en-dash / ½ ¼ / em-dash).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stepTextToDoc, docToStepText } from "../../static/step-editor.js";
+import { stepTextToDoc, docToStepText } from "../../static/step-adapter.js";
 
 const roundTrip = (t) => docToStepText(stepTextToDoc(t));
 
