@@ -694,6 +694,75 @@ Depends on the full dataset (corpus + linkage + the Tier-3 outcome data).
 - **Why last:** a different class of project (deployment + multi-user) than the rest, which is
   local and single-user.
 
+### Eventual architecture (north-star — FUTURE, not current work)
+
+The long-term destination for taking the app multi-user. **This is NOT current work** — the app
+is deliberately local, single-user, and no-auth today, and that is the right shape for now. This
+records *where it's headed* so today's choices point toward it; actually building the multi-user
+stack is a big, deliberate future project for when multi-user genuinely arrives. It's the shape
+and an honest cost map, not a build plan. (Pressure-tested against the real codebase, so the costs
+below reflect what's actually in the repo, not an idealized version of it.)
+
+1. **Backend — the API/UI boundary is already clean** (not merely "partway"). 20 of 21 routes are
+   already JSON `/api/…` endpoints; the one non-API route just serves the static `index.html`
+   shell — there is no Jinja, no `templates/`, no server-rendered HTML anywhere. So the multi-user
+   backend work is mostly: **add CORS** (there is none today) locked to the frontend origin, and
+   decide whether Flask keeps serving the shell/assets or that moves to a CDN / static host.
+
+2. **Frontend — already a pure JSON SPA** (hash-routed, talks JSON exclusively, paints via
+   `innerHTML`, no forms or full-page loads). The eventual frontend is likely **React**. Note the
+   sequence: the near-term editor work introduces a **build step (Vite)** as the first toolchain
+   move; the eventual React frontend is a later, larger rebuild on top of that.
+
+3. **Database — SQLite → PostgreSQL, but this is a data-access-layer REWRITE, not a config change.**
+   There is **no ORM today** — it's raw `sqlite3` throughout (`app.py`, `build_db.py`, `migrate.py`,
+   `import_write.py`). The migration means: introduce an ORM or a Postgres driver and **port every
+   hand-written query**; port SQLite-dialect DDL (`INTEGER PRIMARY KEY AUTOINCREMENT` → `SERIAL` /
+   `IDENTITY`; `TEXT`-stored dates via `datetime('now')` → real `timestamptz` plus a data-coercion
+   pass; the `PRAGMA foreign_keys` handling and `build_db.py`'s foreign-key rebuild trick are
+   SQLite-only); and adopt a real migration tool (today: 15 hand-written SQLite-dialect `.sql` files
+   run by a custom `migrate.py`, not Alembic). *Bright spot:* the `ON CONFLICT … DO UPDATE` upserts
+   port to Postgres fine. The data **shape** (e.g. `recipe_steps.text` with `[[key|label]]` / `{{}}`
+   markup) is DB-agnostic and unaffected.
+
+4. **Auth — deeper than "accounts + password hashing."** The single-user assumption is woven into
+   the **schema** and must be rescoped. Today: the `people` table is **not** auth — it's a seeded
+   "whose version am I viewing" config switcher (no passwords, sessions, or login); `ratings` is
+   global one-per-recipe (`recipe_id` as `PRIMARY KEY` — multi-user breaks this; it needs
+   `(recipe_id, user_id)`); `cook_log` has no user column; recipes have no owner (only a `source`
+   tier). So real auth drags behind it a **rescoping of the core outcome tables** (`ratings` +
+   `cook_log` — the app's stated scarce asset, currently global/single-user), plus an `owner_id`
+   and authorization on every mutating route. *Head start:* `recipe_line_changes` and
+   `recipe_additions` already carry `person_id`, so the multi-actor model is half-built there.
+
+5. **Hosting — a cloud platform.** Render for a simple Flask + React deploy; Docker / Nginx if it
+   outgrows that.
+
+6. **Editor implication — TipTap is forward-compatible.** The chosen step editor is
+   framework-agnostic (runs in today's vanilla JS) and has first-class React bindings (carries into
+   the eventual React frontend), over the same unchanged `recipe_steps.text` storage via a
+   parse/serialize adapter. *Honest caveat:* this is not a totally free forward-compat win —
+   `paintRecipe`'s full `innerHTML` re-render is hostile to a mounted editor instance (it destroys
+   the node), so **TipTap-in-vanilla lives with mount/unmount friction; TipTap-in-React is precisely
+   what removes it** (React owns the DOM). So #2 (the React rebuild) and #6 are coupled — the React
+   frontend is what pays off the editor-integration tax.
+
+7. **Image / file storage.** Images are currently **filesystem path strings** served off local
+   `static/images/`, with **no upload endpoint**. On an ephemeral-filesystem host (e.g. Render),
+   uploaded files vanish on redeploy, so multi-user with user-supplied photos needs **object
+   storage** (S3 / R2-class) plus a real upload path. Not built today.
+
+8. **The seed / build-db / source-tier content model is itself a single-user conceit.** The current
+   "content lives in `seed.py`, rebuilt every build, user data preserved by source tiers"
+   architecture assumes one curator. In a multi-user UGC world, recipes become user-generated and
+   `source='seed'` vs `'app'` stops being the right axis — **ownership** does. Expect the
+   rebuild-from-seed model to largely dissolve; this is a conceptual shift, not just a schema change.
+
+**Caveat:** implementation specifics — the exact auth mechanism, the Postgres migration steps, the
+hosting choice, the object-storage approach — are **not decided**. Each gets its own research and
+design when multi-user gets closer. This section is the direction and the honest cost map, not a
+build plan.
+
 ### AI Recipe Scan / auto-populate (P16)
 
 Read a recipe from a photo or pasted/messy text and auto-fill the form for review.
