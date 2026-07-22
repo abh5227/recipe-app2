@@ -645,6 +645,23 @@ a:hover { color: var(--berry-lift); }
   margin: 14px 0 8px; padding: 0 0 5px; border-bottom: 1.5px solid var(--border-defined);   /* "more defined" (B): defined underline */
 }
 
+/* Stage 1a: per-step TipTap editor host (edit mode only). Inherits step typography and borrows the
+   .ie dashed-baseline affordance so an editable step reads like the other inline-edit fields. No chip
+   styling yet — [[key|label]] renders as LITERAL text in 1a; the chip node-view lands in 1b. */
+.step-editor-host .ProseMirror {
+  font: inherit; color: inherit; outline: none; caret-color: var(--berry);
+  border-bottom: 1px dashed color-mix(in srgb, var(--ink-soft) 45%, transparent);
+  padding: 1px 2px; margin: 0 -2px; border-radius: 0;
+}
+.step-editor-host .ProseMirror p { margin: 0; }
+.detail-card.editing .step-editor-host .ProseMirror:hover {
+  background: color-mix(in srgb, var(--berry) 5%, transparent); border-radius: 5px 5px 0 0;
+}
+.detail-card.editing .step-editor-host .ProseMirror:focus {
+  border-bottom-color: transparent; background: var(--card); border-radius: 7px;
+  box-shadow: 0 0 0 1px var(--paper-edge), 0 6px 16px -8px rgba(40,35,30,.28); padding: 5px 8px; margin: 0 -8px;
+}
+
 .notes {
   margin-top: 26px; padding: 16px 18px;
   background: var(--card); border: 1px solid var(--line);

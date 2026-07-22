@@ -4,6 +4,7 @@ import {
   formatAmount, group, scaleQty, abbrevUnits, canonicalizeUnit, amountText, weightText, toUnicodeFractions,
 } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
+import { mountStepEditors, destroyStepEditors } from "./step-editor.js";
 
 // This file runs in the browser. It has no recipe content of its own — it asks
 // the backend (app.py) for data as JSON, builds HTML text from that data, and
@@ -615,6 +616,14 @@ function renderStepRow(row) {
   return `<li class="step"><div class="step-body">${html}</div></li>`;
 }
 
+// Stage 1a (edit mode only): a non-heading step becomes an empty host that mountStepEditors() fills
+// with a per-step TipTap editor. `data-i` indexes view.draft.steps, matching the mount lookup.
+// Heading steps reuse renderStepRow, so their display is byte-identical to reading mode.
+function renderStepEditHost(row, i) {
+  if (row.is_heading) return renderStepRow(row);
+  return `<li class="step"><div class="step-editor-host" data-i="${i}"></div></li>`;
+}
+
 // Long headnotes clamp to 3 lines + a "more" expander; short ones show in full. Measured after
 // fonts load so the clamped line-count is accurate (Spectral may change wrapping vs the fallback).
 function setupHeadnote() {
@@ -809,7 +818,11 @@ function paintRecipe() {
   // Stage 1: ingredients & steps stay DISPLAY-ONLY in edit mode (rendered from the draft, no scaler,
   // no edit affordances) and round-trip unchanged on Save. Discrete inline editing lands in Stage 2/3.
   const ingSection = editing ? editIngredientsHTML() : ingredientsSectionInner(view);
-  const steps = (editing ? view.draft.steps : data.steps).map(renderStepRow).join("");
+  // Stage 1a: in edit mode, non-heading steps become TipTap mount hosts (mounted right after this
+  // paint by enterEditMode); headings stay display-only, and reading mode is unchanged.
+  const steps = editing
+    ? view.draft.steps.map(renderStepEditHost).join("")
+    : data.steps.map(renderStepRow).join("");
 
   app.innerHTML = `
     <a class="back" href="#/">← All recipes</a>
@@ -1084,6 +1097,13 @@ function enterEditMode() {
   view.scale = 1;                             // edit at raw 1× (scaler is hidden in edit mode)
   view.undoneCook = null;                     // entering edit is "another action" -> end the one-shot redo
   paintRecipe();                              // repaints stats (statsInner reads undoneCook) -> Redo collapses to Undo
+  // Stage 1a: mount the per-step TipTap editors into the hosts this paint just produced. This is
+  // safe ONLY because paintRecipe never fires again mid edit-session (see step-editor.js island
+  // invariant); a mid-session repaint would orphan these and must re-mount. Wrapped so a step-editor
+  // failure can't break the shared enter flow (ingredient editor + Save must survive it).
+  try {
+    mountStepEditors(view.draft, (i, text) => { view.draft.steps[i].text = text; markDirty(); });
+  } catch (e) { console.error("mountStepEditors failed", e); }
   // The ingredient link-select needs the library; it's otherwise only pre-loaded for seed recipes.
   if (!INGREDIENT_LIST.length) {
     api("/api/ingredients")
@@ -1094,6 +1114,7 @@ function enterEditMode() {
 
 // Discard the buffer and return to reading (Cancel). Save has its own path.
 function exitEditMode() {
+  try { destroyStepEditors(); } catch (e) { console.error("destroyStepEditors failed", e); }
   view.editMode = false; view.draft = null; view.dirty = false; view.scale = 1;
   paintRecipe();
 }
@@ -1140,6 +1161,9 @@ async function saveInlineEdit() {
   const slug = view.slug;
   const { ok, data } = await sendJSON("PUT", "/api/recipes/" + encodeURIComponent(slug), payload);
   if (!ok) { showErr((data && data.error) || "Couldn't save."); return; }
+  // Tear down the step editors before the re-fetch repaints (renderRecipe -> paintRecipe wipes their
+  // hosts); onUpdate already synced each step's text into view.draft, so draftPayload above carried it.
+  try { destroyStepEditors(); } catch (e) { console.error("destroyStepEditors failed", e); }
   // Re-fetch the CANONICAL saved recipe rather than keeping the unfiltered draft: the payload dropped
   // blank rows and normalized headings (text -> raw_text), so view.data must reflect the server, not
   // the draft shape (which still holds WIP blanks + the dedicated `heading` field). This lands us back
@@ -2116,6 +2140,9 @@ function onHashChange() {
     }
     view.editMode = false; view.draft = null; view.dirty = false;    // discard, then route on through
   }
+  // Any navigation that reaches route() repaints a fresh view — tear down step editors first so they
+  // aren't orphaned by that repaint. (The "keep editing" branch above returns before reaching here.)
+  try { destroyStepEditors(); } catch (e) { console.error("destroyStepEditors failed", e); }
   route();
 }
 window.addEventListener("hashchange", onHashChange);

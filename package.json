@@ -12,5 +12,13 @@
   },
   "devDependencies": {
     "vite": "^8.1.5"
+  },
+  "dependencies": {
+    "@tiptap/core": "^3.28.0",
+    "@tiptap/extension-document": "^3.28.0",
+    "@tiptap/extension-history": "^3.28.0",
+    "@tiptap/extension-paragraph": "^3.28.0",
+    "@tiptap/extension-text": "^3.28.0",
+    "@tiptap/pm": "^3.28.0"
   }
 }
