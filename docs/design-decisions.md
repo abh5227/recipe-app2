@@ -443,6 +443,27 @@ mirror.
 legend (plus the now-dead `approxNote`/`anyApprox` and `.grams-note`); the `~` marker stays on values.
 Also: method text sized to match ingredients (15px), and a tighter ingredients↔method gap.
 
+**"More defined" treatment + tokens.** A reading-page pass to lift the plainness, driven by a small
+reusable token set: **`--border-defined` (#A19179)** — a "defined but soft" outline (crisper than
+`--rule`, not heavy) — plus **`--fill-card` (#F4ECD9)** and **`--fill-surface` (#F6EFDF)** subtle warm
+fills. Applied ("Treatment B") to the **cook-block card** (defined border + `--fill-card`), the
+**edit-strip buttons** (`.owner-actions .btn`: defined border + `--fill-surface`; Delete keeps its red
+text), and the **in-recipe sub-heading underlines** (`.ingredient-list`/`.steps` `li.group`). These are
+the reusable "definition" tokens for future visual work.
+
+**Three deliberate distinctions (do NOT "unify" these later):**
+
+1. **Two-tier section headers** — the main **`INGREDIENTS` col-title keeps its green 2px underline**
+   (`--green` structure accent); the **in-recipe sub-headings** get the quieter **taupe
+   `--border-defined`** underline. Intentional hierarchy, not an inconsistency.
+2. **The scaler is deliberately lighter and outline-only** — its circles + custom× pill use a dedicated
+   **`--border-scaler` (#BBAD95, 1px)**, *lighter* than `--border-defined`, with **no fill**, so it
+   reads as a distinct, quieter **interactive control** that steps back from the defined static surfaces
+   (cards/buttons). It is *not* meant to match the B elements.
+3. **Tags left original** — `.cat-tag` keeps its color-tinted/dashed treatment; the tags already carry
+   their own definition (per-category tints), so the "defined" borders/fills were intentionally not
+   applied to them.
+
 ## The inline recipe editor ("mark up the page")
 
 The recipe **edit** experience is being rebuilt from a separate admin-style form into **in-place

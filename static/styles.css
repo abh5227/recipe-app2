@@ -42,7 +42,10 @@
   /* rules / hairlines */
   --rule:       #D5CAB0;   /* warm ledger separators, meta borders */
   --rule-soft:  #E6DDC9;   /* faint warm row separators */
-  --border-defined: #A19179;   /* "defined but soft" border — midway between --rule and --ink-soft; the refined outline weight (scale pills; reused by the next visual pass) */
+  --border-defined: #A19179;   /* "defined but soft" border — midway between --rule and --ink-soft; the refined outline weight for the DEFINED elements (cook-block card, edit-strip buttons, in-recipe sub-heading underlines) */
+  --fill-card:    #F4ECD9;   /* "more defined" (Treatment B) subtle warm CARD surface — cook-block */
+  --fill-surface: #F6EFDF;   /* "more defined" (Treatment B) faint fill for OUTLINE controls — edit-strip buttons, custom× pill */
+  --border-scaler: #BBAD95;   /* deliberately LIGHTER than --border-defined — the scaler reads as a quieter/cleaner control that steps back from the defined B elements */
 
   /* one muted functional ochre (rating/season); finalized in Stage D */
   --ochre:      #A97C2E;
@@ -532,8 +535,8 @@ a:hover { color: var(--berry-lift); }
 /* the soft inset cook block: stars + cook-summary + cook buttons, grouped as one unit */
 .cook-block {
   display: flex; flex-direction: column; align-items: flex-start; gap: 13px;
-  margin: 0; background: var(--card); border: 1px solid var(--rule-soft);
-  border-radius: 12px; padding: 20px 22px;
+  margin: 0; background: var(--fill-card); border: 1.5px solid var(--border-defined);
+  border-radius: 12px; padding: 20px 22px;   /* "more defined" (B): crisper border + subtle warm fill */
 }
 .cook-redo { display: inline-flex; gap: 6px; }  /* the Undo / Redo text pair — shown only in the post-undo window */
 .rating { display: inline-flex; gap: 2px; }
@@ -603,9 +606,9 @@ a:hover { color: var(--berry-lift); }
 
 /* section headers within the list (crust / filling / Habanero Syrup) — green labels */
 .ingredient-list li.group {
-  display: block; border-bottom: none; padding: 14px 0 6px;
+  display: block; border-bottom: 1.5px solid var(--border-defined); padding: 14px 0 5px;
   font-family: var(--font-mono); font-size: 12px; font-weight: 600;
-  letter-spacing: 0.1em; text-transform: uppercase; color: var(--green);
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--green);   /* "more defined" (B): defined underline */
 }
 .ingredient-list li.group:first-child { padding-top: 0; }
 
@@ -639,7 +642,7 @@ a:hover { color: var(--berry-lift); }
 .steps li.group {
   font-family: var(--font-mono); font-size: 12px; font-weight: 600;
   letter-spacing: 0.1em; text-transform: uppercase; color: var(--green);
-  margin: 14px 0 8px; padding-left: 0;
+  margin: 14px 0 8px; padding: 0 0 5px; border-bottom: 1.5px solid var(--border-defined);   /* "more defined" (B): defined underline */
 }
 
 .notes {
@@ -884,6 +887,9 @@ a:hover { color: var(--berry-lift); }
 .btn.sm { font-size: 13px; padding: 5px 12px; }
 /* recipe-management zone: separated from the cook block by a faint hairline + generous space */
 .owner-actions { display: flex; gap: 8px; margin: 20px 0 0; padding-top: 20px; border-top: 1px solid var(--rule-soft); flex-wrap: wrap; }
+/* "more defined" (B): the edit strip's outline buttons get the defined border + subtle fill AT REST.
+   Delete keeps its red TEXT; the base :hover rules (ghost→paper, danger-soft→red fill) still win on hover. */
+.owner-actions .btn { border-width: 1.5px; border-color: var(--border-defined); background: var(--fill-surface); }
 .btn.copy-test { color: var(--ink-soft); }   /* "Copy as test" reads quieter — a removable dev-sandbox action */
 
 /* A column heading that can carry an action button on the right.
@@ -904,10 +910,11 @@ a:hover { color: var(--berry-lift); }
 .meta-stack .meta-item { display: grid; grid-template-columns: 26px auto; align-items: center; justify-items: start; gap: 7px; }
 .scaler-col .scale-control button {
   width: 42px; height: 42px; padding: 0; border-radius: 50%;
-  border: 1.5px solid var(--border-defined);  /* the "defined but soft" outline weight (token) */
+  border: 1px solid var(--border-scaler);  /* lighter than the B elements — the scaler is a quieter control */
   display: inline-flex; align-items: center; justify-content: center;
 }
-.scaler-col .scale-custom { border: 1.5px solid var(--border-defined); }   /* custom× pill matches the dialed-back border */
+.scaler-col .scale-control { gap: 9px; }   /* more breathing room so the wider custom× pill never crowds the 2× circle (rest OR active) */
+.scaler-col .scale-custom { border: 1px solid var(--border-scaler); width: 5.5rem; }   /* outline-only + lighter --border-scaler (steps back from the defined B elements); a touch wider so its active/typed state has room */
 .scale-control { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }  /* wrap so a long custom value / the servings span never overflow the row */
 .scale-control button {
   font-family: var(--font-sans); font-size: 13px; cursor: pointer; white-space: nowrap;   /* sans, matching the V3 metadata around it */
