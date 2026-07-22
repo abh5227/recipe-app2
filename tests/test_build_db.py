@@ -3,7 +3,7 @@ rebuild is idempotent and keeps referential integrity."""
 from fixtures import TEST_RECIPES   # the test-owned recipe set the harness seeds (see fixtures.py)
 
 # Bump this when a migration is added.
-EXPECTED_MIGRATIONS = 15
+EXPECTED_MIGRATIONS = 16
 
 
 def test_all_migrations_applied(kitchen):
@@ -12,7 +12,7 @@ def test_all_migrations_applied(kitchen):
     assert len(files) == EXPECTED_MIGRATIONS
     assert files == sorted(files)                 # applied in filename order
     assert files[0].startswith("001")
-    assert files[-1].startswith("015")
+    assert files[-1].startswith("016")
 
 
 def test_seed_rows_get_qty_unit_split(kitchen):
