@@ -1,18 +1,13 @@
 // scaler.js — the pure quantity scaler / unit converter (Phase 1a-1d + smart-Metric).
 //
 // This is the SAME code the browser uses and the Node test suite imports: no DOM, no globals,
-// every input passed explicitly. It's loaded as a plain <script> before app.js (the wrapper
-// attaches its exports to globalThis, so app.js keeps calling these as globals exactly as
-// before), and `require()`d by tests under tests/js/. Keep it pure — anything touching the
-// DOM or the `view` state belongs in app.js, which passes view.scale / view.units in.
+// every input passed explicitly. It's an ES module: the browser loads app.js as
+// <script type="module"> and app.js imports these names; the tests under tests/js/ import them
+// the same way. Keep it pure — anything touching the DOM or the `view` state belongs in app.js,
+// which passes view.scale / view.units in.
 //
 // The volume->mL factors below MUST stay in sync with weights.py VOLUME_TO_ML (cross-language;
 // tests/js/factor-sync.test.js guards this).
-(function (root, factory) {
-  const api = factory();
-  if (typeof module !== "undefined" && module.exports) module.exports = api; // Node: require()
-  else Object.assign(root, api);                                             // browser: globals
-})(typeof globalThis !== "undefined" ? globalThis : this, function () {
   const UNICODE_FRACTIONS = {
     "¼": "1/4", "½": "1/2", "¾": "3/4", "⅓": "1/3", "⅔": "2/3",
     "⅛": "1/8", "⅜": "3/8", "⅝": "5/8", "⅞": "7/8", "⅙": "1/6", "⅚": "5/6",
@@ -263,10 +258,9 @@
     return "~" + group(Math.max(1, Math.round(ml * gramsPerMl))) + " g";
   }
 
-  return {
+  export {
     UNICODE_FRACTIONS, normalizeFractions, tokenToNumber, NICE_FRACTIONS, formatAmount, group,
     AMOUNT_TOKEN, scaleQty, collapseRange, UNIT_TO_ML, UNIT_TO_G, MEASURE_UNIT_RE, MEASURE_UNIT_RE_G,
     SPOON_MAX_ML, isCountAmount, scaleCount, parseAmount, toMetric, displayQty,
     abbrevUnits, canonicalizeUnit, amountText, weightText, toUnicodeFractions,
   };
-});

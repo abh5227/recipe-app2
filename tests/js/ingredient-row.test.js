@@ -1,9 +1,9 @@
 "use strict";
 // Pins the LOSSLESS ingredient<->heading toggle (Option A1). This is silent-regression-prone toggle
 // logic, so it's unit-tested directly against the pure transform in static/ingredient-row.js.
-const { test } = require("node:test");
-const assert = require("node:assert/strict");
-const { toggleRowType, headingText, nonEmptyRows, writeIngField } = require("../../static/ingredient-row.js");
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { toggleRowType, headingText, nonEmptyRows, writeIngField } from "../../static/ingredient-row.js";
 
 test("ingredient -> heading -> ingredient is lossless (qty/name/note/link restored)", () => {
   const row = { is_heading: 0, qty: "2", label: "garlic cloves", note: "minced", ingredient_id: "garlic", raw_text: "2 garlic cloves" };

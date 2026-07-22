@@ -1,12 +1,7 @@
 "use strict";
-// Pure ingredient-row transforms (no DOM, no `view`) so they're unit-testable in node. Dual-export
-// like scaler.js: attaches to globalThis for the browser (app.js calls these as globals) and
-// module.exports for `node --test`.
-(function (root, factory) {
-  const api = factory();
-  Object.assign(root, api);
-  if (typeof module !== "undefined" && module.exports) module.exports = api;   // Node: require()
-})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+// Pure ingredient-row transforms (no DOM, no `view`) so they're unit-testable in node. ES module,
+// like scaler.js: app.js imports these names in the browser (loaded as <script type="module">)
+// and the tests under tests/js/ import them the same way.
 
   // The heading text to DISPLAY / SAVE for a heading row. Heading text lives in its own `heading`
   // field; `raw_text` is only a back-compat fallback for drafts that predate the dedicated field.
@@ -58,5 +53,4 @@
     return row;
   }
 
-  return { headingText, toggleRowType, rowIsBlank, nonEmptyRows, writeIngField };
-});
+  export { headingText, toggleRowType, rowIsBlank, nonEmptyRows, writeIngField };

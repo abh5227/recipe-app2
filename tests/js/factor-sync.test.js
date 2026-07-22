@@ -3,14 +3,14 @@
 // with the Python ones (weights.py VOLUME_TO_ML). This reads BOTH real files, so it catches
 // the one genuine drift class — a factor changed on one side only. Lives in the JS suite so
 // the Python pytest count stays unchanged.
-const { test } = require("node:test");
-const assert = require("node:assert/strict");
-const fs = require("node:fs");
-const path = require("node:path");
-const { UNIT_TO_ML } = require("../../static/scaler.js");
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { UNIT_TO_ML } from "../../static/scaler.js";
 
 test("JS UNIT_TO_ML agrees with Python weights.VOLUME_TO_ML", () => {
-  const py = fs.readFileSync(path.join(__dirname, "../../weights.py"), "utf8");
+  const py = fs.readFileSync(path.join(import.meta.dirname, "../../weights.py"), "utf8");
   const block = py.match(/VOLUME_TO_ML\s*=\s*\{([\s\S]*?)\}/);
   assert.ok(block, "VOLUME_TO_ML block not found in weights.py");
 

@@ -1,5 +1,10 @@
 "use strict";
 
+import {
+  formatAmount, group, scaleQty, abbrevUnits, canonicalizeUnit, amountText, weightText, toUnicodeFractions,
+} from "./scaler.js";
+import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
+
 // This file runs in the browser. It has no recipe content of its own — it asks
 // the backend (app.py) for data as JSON, builds HTML text from that data, and
 // drops it into the page. There's only one real page; clicking around swaps what's

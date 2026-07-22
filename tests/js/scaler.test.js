@@ -2,9 +2,9 @@
 // JS unit tests for the pure scaler/converter (static/scaler.js) — the client-side equivalent
 // of the pytest suite. Run with `node --test tests/js`. The grams_per_ml input is stubbed
 // here (the matcher itself is server-side and pytest-covered); these target the display logic.
-const { test } = require("node:test");
-const assert = require("node:assert/strict");
-const s = require("../../static/scaler.js");
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import * as s from "../../static/scaler.js";
 
 const WATER = 227 / 236.588;   // ~0.9595 g/mL (a KA-matched liquid)
 const OLIVE = 50 / 59.147;     // ~0.8454 g/mL (KA olive oil)
