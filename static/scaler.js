@@ -219,6 +219,7 @@
     [/\bteaspoons?\b/gi, "tsp"],
     [/\bkilograms?\b/gi, "kg"],
     [/\bmilli(?:lit(?:re|er)s?)\b/gi, "ml"],
+    [/\blit(?:re|er)s?\b/gi, "liter"],   // display-only: "litre"/"litres" -> "liter" (American spelling)
     [/\bounces?\b/gi, "oz"],
     [/\bpounds?\b/gi, "lb"],
     [/\bgrams?\b/gi, "g"],

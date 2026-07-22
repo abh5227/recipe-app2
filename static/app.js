@@ -308,24 +308,6 @@ function ledgerCells(qty, gramsPerMl, inlineStyle) {
          `</span>`;
 }
 
-// Does any non-heading ingredient produce a weight at the current scale? Drives the weight column's
-// presence — a recipe with no convertible volumes shows no empty gram gutter.
-// True if any ledger value renders with a "~" at the current scale — an estimated weight, a
-// humane-rounded amount, or a count rounded up from <1. Drives the approximate-value footnote.
-function anyApprox() {
-  return view.data.ingredients.some((row) =>
-    !row.is_heading &&
-    (amountText(row.qty, view.scale).includes("~") ||
-     weightText(row.qty, row.grams_per_ml, view.scale).includes("~")));
-}
-
-// A quiet caption for the unified "~" family (estimates, humane rounding, rounded-up counts).
-function approxNote() {
-  return anyApprox()
-    ? `<p class="grams-note">~ an estimate, rounded, or rounded up from a smaller amount — weigh or measure for precision.</p>`
-    : "";
-}
-
 // The recipe's serving count as a number, if its servings text contains one.
 function servingsBase() {
   const sv = view && view.data.recipe.servings;
@@ -553,9 +535,7 @@ function ingredientsSectionInner(view) {
     const rows = view.data.ingredients.map(plainRow).join("");
     return `
       <div class="col-head"><h2 class="col-title">Ingredients</h2></div>
-      <ul class="ingredient-list">${rows}</ul>
-      ${approxNote()}
-      <p class="hint">Tap any highlighted ingredient to see when it's in season and where it grows.</p>`;
+      <ul class="ingredient-list">${rows}</ul>`;
   }
 
   let rows, hint;
@@ -582,7 +562,6 @@ function ingredientsSectionInner(view) {
     ${viewSelector(view)}
     <ul class="ingredient-list">${rows}</ul>
     ${isPersonView ? addControl(view) : ""}
-    ${approxNote()}
     <p class="hint">${hint}</p>`;
 }
 
@@ -591,9 +570,10 @@ function rerenderIngredients() {
   if (el) el.innerHTML = ingredientsSectionInner(view);
 }
 
-// The scaler now lives in the vitals (its own #scaler-host), decoupled from the ingredients
-// rebuild — so refresh JUST that host on a scale change to move the active pill / reflect the
-// custom value. Targets only #scaler-host; never the .stats/cook-block, so redo/cook state is untouched.
+// The scaler + cook-time + serves are grouped in the .above-ing block just above the Ingredients
+// heading (scaler in its own #scaler-host), a SIBLING of #ing-section so an ingredient rebuild can't
+// wipe it — so refresh JUST that host on a scale change to move the active pill / reflect the custom
+// value. Targets only #scaler-host; never the .stats/cook-block, so redo/cook state is untouched.
 function rerenderScaler() {
   const el = document.getElementById("scaler-host");
   if (el) el.innerHTML = scaleControl();
@@ -693,16 +673,19 @@ function tagsHTML(r) {
 const META_FIG = `<svg class="meta-ico fig" viewBox="0 0 30 24" aria-hidden="true"><circle cx="9" cy="6" r="3"/><path d="M4.5 20 a4.5 4.5 0 0 1 9 0"/><circle cx="21" cy="6" r="3"/><path d="M21 9 L17.2 20 H24.8 Z"/></svg>`;
 const META_CLOCK = `<svg class="meta-ico clk" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7.5"/><path d="M12 9 V13 L15 15"/><path d="M9.5 3 H14.5"/></svg>`;
 
-// Compact masthead meta: servings + time — recipe facts only (cook status lives in the stats bar).
-// Icon + value; the serving count stays scaled to the current factor (updated by rerenderServings).
-function metaLine(r) {
-  const items = [];
-  const base = servingsBase();
-  if (base) items.push(`<span class="meta-item">${META_FIG}<span>Serves <span class="serves-count meta-val">${formatAmount(base * view.scale)}</span></span></span>`);
+// The control block above the Ingredients heading: cook time (top) + serves (bottom) STACKED on the
+// left, the scale control on the right — circular ½×/1×/2× pills, vertically centered against the
+// two-line stack. Time, serves, AND the scaler all live here now, none in the vitals strip. The
+// serving count stays scaled to the factor (rerenderServings queries .serves-count); #scaler-host is
+// the rerenderScaler target.
+function scaleMetaBlock(r) {
+  const stack = [];
   const time = r.total_time || r.cook_time || r.prep_time;
-  if (time) items.push(`<span class="meta-item">${META_CLOCK}<span class="meta-val">${esc(time)}</span></span>`);
-  if (!items.length) return "";
-  return `<p class="meta-line">${items.join("")}</p>`;
+  if (time) stack.push(`<span class="meta-item">${META_CLOCK}<span class="meta-val">${esc(time)}</span></span>`);
+  const base = servingsBase();
+  if (base) stack.push(`<span class="meta-item">${META_FIG}<span>Serves <span class="serves-count meta-val">${formatAmount(base * view.scale)}</span></span></span>`);
+  const metaStack = stack.length ? `<div class="meta-stack">${stack.join("")}</div>` : "";
+  return `<div class="above-ing">${metaStack}<div class="scaler-col" id="scaler-host">${scaleControl()}</div></div>`;
 }
 
 // Take A brass clip (ported verbatim from the approved preview). Gem proportions; three stacked
@@ -815,9 +798,7 @@ function paintRecipe() {
 
   const vitalsInner = editing
     ? `${vitalsEditHTML(r)}<div class="stats cook-block locked" data-rid="${esc(r.id)}" aria-disabled="true">${statsInner(data.stats)}</div>`
-    : `${metaLine(r)}
-        <div class="scaler-line" id="scaler-host">${scaleControl()}</div>
-        <div class="stats cook-block" data-rid="${esc(r.id)}">${statsInner(data.stats)}</div>
+    : `<div class="stats cook-block" data-rid="${esc(r.id)}">${statsInner(data.stats)}</div>
         ${owner}`;
 
   // Stage 1: ingredients & steps stay DISPLAY-ONLY in edit mode (rendered from the draft, no scaler,
@@ -836,7 +817,10 @@ function paintRecipe() {
         ${editing ? ieDescrHTML(r) : ""}
         <div class="vitals">${vitalsInner}</div>
         <div class="recipe-cols">
-          <section id="ing-section">${ingSection}</section>
+          <section>
+            ${editing ? "" : scaleMetaBlock(r)}
+            <div id="ing-section">${ingSection}</div>
+          </section>
           <section>
             <h2 class="col-title">Method</h2>
             <ol class="steps" id="steps-list">${steps}</ol>
@@ -1022,7 +1006,7 @@ function editIngredientsHTML() {
   // measuring → size → count for scannability (<optgroup> isn't reliably rendered inside <datalist>,
   // so a flat sensibly-ordered list). NB: the size/count words are suggestions HERE ONLY — they are
   // deliberately NOT in the scaler's measure recognizer, so the scaler keeps treating them as counts.
-  const units = ["tsp", "tbsp", "cup", "g", "oz", "lb", "ml", "litre", "kg",   // measuring
+  const units = ["tsp", "tbsp", "cup", "g", "oz", "lb", "ml", "liter", "kg",   // measuring
                  "small", "medium", "large",                                    // size
                  "clove", "sprig", "stalk", "knob", "bunch", "can", "slice", "pinch"];  // count
   const datalist = `<datalist id="ie-units">${units.map((u) => `<option value="${u}">`).join("")}</datalist>`;
@@ -1884,7 +1868,7 @@ document.addEventListener("click", (e) => {
       rerenderIngredients();
       rerenderSteps();
       rerenderServings();
-      rerenderScaler();      // scaler lives in the vitals now — refresh its own host (active pill)
+      rerenderScaler();      // scaler sits above Ingredients now — refresh its own host (active pill)
       return;
     }
 

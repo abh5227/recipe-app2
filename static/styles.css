@@ -42,6 +42,7 @@
   /* rules / hairlines */
   --rule:       #D5CAB0;   /* warm ledger separators, meta borders */
   --rule-soft:  #E6DDC9;   /* faint warm row separators */
+  --border-defined: #A19179;   /* "defined but soft" border — midway between --rule and --ink-soft; the refined outline weight (scale pills; reused by the next visual pass) */
 
   /* one muted functional ochre (rating/season); finalized in Stage D */
   --ochre:      #A97C2E;
@@ -467,9 +468,9 @@ a:hover { color: var(--berry-lift); }
 /* Take A brass clip: threads the edge on the right, top leaning toward the top-right corner.
    FRONT copy (z5) pins the photo; BACK copy (z1) peeks a few px to thread over the edge. */
 .clip { position: absolute; width: 34px; height: 86px; }
-.clip.front { right: 18px; top: -40px; z-index: 5; transform: rotate(10deg);
+.clip.front { right: 18px; top: -40px; z-index: 5; transform: rotate(28deg); transform-origin: 50% 46%;
   filter: drop-shadow(-0.5px 1.5px 1.4px rgba(31,42,32,.34)); }
-.clip.back  { right: 15px; top: -40px; z-index: 1; transform: rotate(10deg);
+.clip.back  { right: 15px; top: -40px; z-index: 1; transform: rotate(28deg); transform-origin: 50% 46%;
   filter: drop-shadow(0 1px 1px rgba(31,42,32,.22)); }
 
 @media (max-width: 680px) {
@@ -582,7 +583,7 @@ a:hover { color: var(--berry-lift); }
    two-column split is retired so the right --hand-gutter stays free for the Round-2 margin layer. */
 .recipe-cols {
   display: grid; grid-template-columns: 1fr;
-  gap: clamp(30px, 5vw, 46px); margin-top: 40px;
+  gap: clamp(20px, 3vw, 28px); margin-top: 20px;   /* tightened: sits closer under the edit/copy/delete strip */
 }
 
 .col-title {
@@ -626,6 +627,7 @@ a:hover { color: var(--berry-lift); }
 .steps li.step {
   counter-increment: step; position: relative;
   padding: 0 0 16px 38px; min-height: 26px;
+  font-size: var(--fs-amount);   /* method text matches the ingredient text size (15px) */
 }
 .steps li.step::before {
   content: counter(step);
@@ -892,8 +894,20 @@ a:hover { color: var(--berry-lift); }
 }
 .col-head .col-title { border-bottom: none; padding-bottom: 0; margin: 0; }
 
-/* Quantity scaler — now on its own line in the vitals, under the serves/time row */
-.scaler-line { margin: 0 0 16px; }
+/* The control block above the Ingredients heading: cook time (top) + serves (bottom) stacked on the
+   left, the scale control on the right — vertically CENTERED against the two-line stack (not stretched).
+   ½×/1×/2× are fixed CIRCLES (equal w/h) with a defined but soft border; custom× keeps its wider pill. */
+.above-ing { display: flex; align-items: center; gap: 22px; margin: 0 0 20px; }
+.meta-stack { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 2px 0; }
+/* fixed-width icon column so both rows share a left edge AND their text aligns (fig icon 26px is the
+   wider of the two — 15px clock left-aligns in the same 26px slot). */
+.meta-stack .meta-item { display: grid; grid-template-columns: 26px auto; align-items: center; justify-items: start; gap: 7px; }
+.scaler-col .scale-control button {
+  width: 42px; height: 42px; padding: 0; border-radius: 50%;
+  border: 1.5px solid var(--border-defined);  /* the "defined but soft" outline weight (token) */
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.scaler-col .scale-custom { border: 1.5px solid var(--border-defined); }   /* custom× pill matches the dialed-back border */
 .scale-control { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }  /* wrap so a long custom value / the servings span never overflow the row */
 .scale-control button {
   font-family: var(--font-sans); font-size: 13px; cursor: pointer; white-space: nowrap;   /* sans, matching the V3 metadata around it */
@@ -904,7 +918,6 @@ a:hover { color: var(--berry-lift); }
 .scale-control button:hover { color: var(--ink); border-color: var(--ink-soft); }
 .scale-control button.on { background: var(--btn-fill); color: var(--card); border-color: var(--btn-fill); }  /* active = the brown anchor, matching "Cooked it" */
 .scale-control button:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
-.grams-note { margin: 10px 0 0; font-size: 13px; font-style: italic; color: var(--ink-soft); }
 /* Phase 1d: custom multiplier input + scaled step quantities */
 .scale-custom {
   font-family: var(--font-sans); font-size: 13px; width: 4.5rem; padding: 4px 10px; border-radius: 999px;

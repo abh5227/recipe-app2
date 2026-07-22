@@ -423,6 +423,26 @@ labels (4965/4972), `Brown Butter-Cream Cheese Frosting` (5147), `Cheddar Mashed
 `Spice Mix` (4799, leave as an ingredient) and the `Mix or Cajun seasoning` merge-fix (2650). All are the
 prep-vs-food "food word" collisions or one-offs a heuristic would get wrong.
 
+## Reading-mode polish (control-block restructure + small tweaks)
+
+**Control-block restructure.** The recipe reading page's amount-scaling controls were regrouped:
+**cook time + serves (stacked) and the scaler now sit together in a `.above-ing` block directly above
+the Ingredients heading** (`scaleMetaBlock`), moved out of the top vitals strip — which now holds just
+the title, the cook/rating block, and the edit/copy/delete strip. The scaler is a sibling of
+`#ing-section` (so an ingredient rebuild can't wipe it); `#scaler-host` + `.serves-count` keep
+live-rescaling on factor change. The `½×/1×/2×` pills render as fixed circles (custom× stays a wider
+pill), with a `--border-defined` token for the "defined but soft" outline (reused by the next visual pass).
+
+**`litre`→`liter` is display-only.** A `UNIT_ABBREV` rule in `scaler.js`
+(`/\blit(?:re|er)s?\b/gi → "liter"`) normalizes the American spelling **at render** — stored values,
+`MEASURE_UNIT_RE`, and `UNIT_TO_ML` are untouched (litre isn't a conversion key; the recognizer already
+accepts both spellings), so it self-heals with no backfill. Display-only, JS-side, no `stepscale.py`
+mirror.
+
+**Removed two helper lines:** the "Tap any highlighted ingredient…" hint and the "~ = an estimate"
+legend (plus the now-dead `approxNote`/`anyApprox` and `.grams-note`); the `~` marker stays on values.
+Also: method text sized to match ingredients (15px), and a tighter ingredients↔method gap.
+
 ## The inline recipe editor ("mark up the page")
 
 The recipe **edit** experience is being rebuilt from a separate admin-style form into **in-place
