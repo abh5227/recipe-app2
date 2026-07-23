@@ -34,7 +34,7 @@ def upgrade() -> None:
     op.create_table('ingredient_weights',
     sa.Column('lookup_key', sa.Text(), nullable=False),
     sa.Column('display_name', sa.Text(), nullable=False),
-    sa.Column('grams_per_ml', sa.REAL(), nullable=False),
+    sa.Column('grams_per_ml', sa.Float(), nullable=False),
     sa.Column('convert_to_grams', sa.Integer(), server_default=sa.text('1'), nullable=False)
     )
     op.create_index('idx_iw_lookup', 'ingredient_weights', ['lookup_key'], unique=False)
@@ -159,7 +159,7 @@ def upgrade() -> None:
     sa.Column('label', sa.Text(), nullable=True),
     sa.Column('note', sa.Text(), nullable=True),
     sa.Column('raw_text', sa.Text(), nullable=True),
-    sa.Column('grams', sa.REAL(), nullable=True),
+    sa.Column('grams', sa.Float(), nullable=True),
     sa.Column('secondary_measure', sa.Text(), nullable=True),
     sa.Column('quantity', sa.Text(), nullable=True),
     sa.Column('unit', sa.Text(), nullable=True),

@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 
 from sqlalchemy import (
-    CheckConstraint, Column, ForeignKey, Index, Integer, REAL, Table, Text,
+    CheckConstraint, Column, Float, ForeignKey, Index, Integer, Table, Text,
     create_engine, text,
 )
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
@@ -146,7 +146,7 @@ class RecipeIngredient(Base):
     label = Column(Text)
     note = Column(Text)
     raw_text = Column(Text)
-    grams = Column(REAL)
+    grams = Column(Float)   # Float = float8/DOUBLE PRECISION on PG (sa.REAL = float4 would truncate)
     secondary_measure = Column(Text)
     quantity = Column(Text)
     unit = Column(Text)
@@ -214,7 +214,7 @@ ingredient_weights = Table(
     "ingredient_weights", Base.metadata,
     Column("lookup_key", Text, nullable=False),
     Column("display_name", Text, nullable=False),
-    Column("grams_per_ml", REAL, nullable=False),
+    Column("grams_per_ml", Float, nullable=False),   # float8 on PG for full density precision
     Column("convert_to_grams", Integer, nullable=False, server_default=text("1")),
     Index("idx_iw_lookup", "lookup_key"),
 )
