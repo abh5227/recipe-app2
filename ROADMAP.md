@@ -715,6 +715,9 @@ below reflect what's actually in the repo, not an idealized version of it.)
    move; the eventual React frontend is a later, larger rebuild on top of that.
 
 3. **Database — SQLite → PostgreSQL, but this is a data-access-layer REWRITE, not a config change.**
+   *(NOW IN PROGRESS — this piece was pulled forward ahead of auth/rescoping; the staged plan +
+   decisions live in [docs/migration-plan.md](../docs/migration-plan.md). Stage 1a done: SQLAlchemy
+   models mirroring the live schema.)*
    There is **no ORM today** — it's raw `sqlite3` throughout (`app.py`, `build_db.py`, `migrate.py`,
    `import_write.py`). The migration means: introduce an ORM or a Postgres driver and **port every
    hand-written query**; port SQLite-dialect DDL (`INTEGER PRIMARY KEY AUTOINCREMENT` → `SERIAL` /
