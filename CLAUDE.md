@@ -24,9 +24,12 @@ import pipeline from Paprika native exports.
 ## Tech stack
 
 - **Backend:** Python 3 + Flask (≥3.0) + SQLAlchemy (≥2.0). Single small backend serving a JSON API +
-  the built frontend. (SQLAlchemy landed in DB-migration Stage 1a — `models.py` mirrors the schema but
-  is **not wired yet**; queries still use raw `sqlite3`. See `docs/migration-plan.md`.)
-- **DB:** SQLite (`recipes.db`, git-ignored, local only); mid-migration to PostgreSQL (see the plan doc).
+  the built frontend. The serve path queries **entirely through SQLAlchemy** (`app.py::orm_session()`) —
+  the raw `sqlite3` path is gone. See `docs/migration-plan.md`.
+- **DB:** **SQLite by default** (`recipes.db`, git-ignored, local-only — a fresh clone runs offline, zero
+  setup); **Postgres in production**, opt-in via `DATABASE_URL=postgresql+psycopg://…`. The SQLite→Postgres
+  migration is **✅ complete** (Alembic owns the PG schema via `alembic/`; the `migrations/*.sql` files are
+  SQLite-only history; the app is proven + dual-dialect-CI-tested on both). See `docs/migration-plan.md`.
 - **Frontend:** Vanilla JS (`static/app.js`), CSS3 with design tokens, Spectral typeface — no framework,
   but **built by Vite** into `dist/` (git-ignored) which Flask serves; TipTap powers the method-step editor.
 - **Tests:** pytest (backend) + Node's built-in `--test` runner (JS suite is **zero-dep** — runs on the

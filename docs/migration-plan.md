@@ -1,4 +1,4 @@
-# SQLite → PostgreSQL + SQLAlchemy migration (Stage 1 ✅ complete — Stage 2 next)
+# SQLite → PostgreSQL + SQLAlchemy migration (✅ COMPLETE — Stages 1 + 2 done)
 
 The durable record of the data-layer migration. Chat memory is transient; this file is the plan.
 
@@ -27,8 +27,8 @@ byte-identical throughout; still on SQLite.)*
 - ⚠️ **1c GUARD (harness must redirect the ORM path):** every conversion MUST route through `app.py::orm_session()` (the call-time factory that reads the module-global `DB` the harness redirects), **NOT** a frozen-at-import `SessionLocal`. A frozen engine silently queries the real `recipes.db` in tests → green locally, red in CI. **Verify each 1c batch with `recipes.db` HIDDEN** (`pytest` green in the CI condition), not just normal-env green. *(This is why 1b needed fix `2848764` — see CLAUDE.md's fourth working-conventions rule.)*
 - `build_db.py` / `import_write.py` / `import_runner.py` / `migrate.py` **STAY raw SQL in Stage 1** (build/import-time, not serve-time; they share the SQLite file fine).
 
-### STAGE 2 — switch engine to Postgres  ← **START HERE (fresh session)**
-*(Acceptance: 288 + 44 green on Postgres in CI.)*
+### STAGE 2 ✅ COMPLETE — switch engine to Postgres
+*(Acceptance met: dual-dialect CI green — the SQLite suite (288 + 6 skipped) AND the PG integration suite (6) on a `postgres:16` service, every push.)*
 
 - **0 · PREREQUISITE (do FIRST — Stage 2 can't start without it):** a **Postgres instance** to develop +
   test against. **Decided: DOCKER (`postgres:16`)** — same image as the 2c CI service container and eventual
@@ -49,8 +49,12 @@ byte-identical throughout; still on SQLite.)*
   - **2b-5 ✅ PROVEN (docs-only; proof, not cutover)** — ran the **full app on Postgres end-to-end** (`DATABASE_URL=postgresql+psycopg://…`): LIST (298, correlated-subquery fields), byte-identical GET detail, all reads, cook/uncook/redo, rating upsert (set + update-in-place, no dup), cooked-and-rated, the seed-gated change-layer upsert (edit/remove) on PG, full RECIPE-CRUD, **delete-cascade** (PG-native FK), and **sequence correctness** (new autoincrement IDs land above the copied max — the `setval` payoff, verified under the running app). **Reversible**: unset `DATABASE_URL` → back to SQLite. **No app code change was needed** (2b-1..3 made the flip a pure env toggle).
   **Option X — the committed default stays SQLite** (`DATABASE_URL` unset → SQLite) until **2c** (harness → PG + CI service container) makes PG the *tested* default. To run on PG today: `DATABASE_URL=postgresql+psycopg://postgres:<password>@localhost:5432/recipe python3 app.py` (container up + data copied via 2b-4).
   Other residuals: AUTOINCREMENT → SERIAL (automatic via `Integer` PK, confirmed 2a); text-date columns stay `Text`. `build_db` / `migrate` / import **stay raw-SQLite** — Alembic owns the PG schema, so they're not run against PG and the `PRAGMA foreign_keys=OFF` rebuild trick needs **no** PG replacement.
-- **2c** — **test harness → Postgres**: `make_kitchen`/`Kitchen.conn` → PG engine with **transaction-rollback-per-test**; add a `postgres:16` **service container** to `build.yml`. **This is where the PG-dialect upserts finally get exercised under test** — the dialect-divergence guard (per CLAUDE.md: no test-vs-prod dialect divergence).
-- ⚠️ **GUARD (still applies):** verify every change in the **CI-like condition** (deps as CI installs them; for 2c, against the Postgres **service container**, not a hand-set-up local dev DB) before trusting green — the same "green locally, red in CI" trap the Stage-1b engine-path lesson (CLAUDE.md) came from.
+- **2c ✅ DONE — dual-dialect CI + the Postgres-default convention.** The dialect-divergent paths are now CI-covered on a real engine, alongside the unchanged SQLite suite. Chosen **Option S** (a scoped PG integration suite), not Option P (rewriting test_api's ~40 raw-SQL assertions) — the divergence surface is small + enumerable and the roadmap is filter-heavy/ORM-expressible:
+  - **2c-1 ✅** (`9006990`) — `tests/pg_harness.py`: dialect-neutral seed (`seed_all` via Core inserts — no `lastrowid`/PRAGMA, reuses the production transformations) + `reset_and_seed` (TRUNCATE … RESTART IDENTITY CASCADE) truncate-reseed isolation primitive (the app commits, so rollback-per-test doesn't fit).
+  - **2c-2 ✅** (`7a46442`) — `tests/test_pg_integration.py`: the scoped PG suite covering the real divergence classes — the on_conflict **upserts**, **list ordering / collation** (PG's linguistic sort differs from SQLite's BINARY byte order — the class the byte-identical checks missed), **recipe_stats** aggregations, PG-native **delete-cascade**, **sequence-after-insert**. Module **skips unless `DATABASE_URL` is a postgresql URL**, so the SQLite suite is untouched.
+  - **2c-3 ✅** (`6863e1a`) — `build.yml`: a health-gated `postgres:16` service (**trust auth — no credential**, no S2068) + a step that sets `DATABASE_URL`, runs `alembic upgrade head`, and runs the PG suite. **Dual-dialect CI live**: SQLite run (288 + 6 skipped) + PG run (6 passed on the real engine) every push.
+  - **2c-4 ✅** (docs) — close-out convention (below). The **code default stays SQLite**; Postgres is opt-in via `DATABASE_URL`.
+- ⚠️ **GUARD (carried forward):** verify every data-layer change in the **CI-like condition** (deps as CI installs them; the Postgres **service container**, not a hand-set-up local DB) before trusting green — the "green locally, red in CI" trap the Stage-1b engine-path lesson came from.
 
 ## Risk concentration
 
@@ -59,6 +63,26 @@ The **upserts** are the one spot SQLAlchemy does **not** abstract the dialect �
 operations across 3 code sites** (`set_line_change`'s 2 + the shared `upsert_rating`), each already
 carrying a `# Stage 2b` swap comment. Everything else in `app.py` was ~85% Tier-1 mechanical, now all
 funneled through `orm_session()`. `build_db`'s FK-rebuild trick + joins stay raw and are ported in 2b.
+
+## Conventions (post-migration — the durable rules going forward)
+
+- **Engine selection.** The **code default is SQLite** — `orm_session()` resolves
+  `os.environ.get("DATABASE_URL") or f"sqlite:///{DB}"`, so a **fresh clone runs offline on SQLite with
+  zero setup** (and the SQLite suite + the test harness's per-test DB redirect keep working). **Postgres is
+  the intended production engine, opt-in via one env var** — `DATABASE_URL=postgresql+psycopg://…` (2b-3).
+  No code-default flip: hardcoding PG would break offline local dev. "PG as the shipped/production default"
+  is realized at the future **hosting/deploy** stage by setting `DATABASE_URL` in that environment.
+- **Running on Postgres locally:** start the container (`docker start recipe-postgres`), `DATABASE_URL=… alembic upgrade head`
+  (schema), then run the app/tests with `DATABASE_URL` set. Data: `scripts/migrate_sqlite_to_pg.py` copies a
+  SQLite DB into a fresh PG schema (2b-4).
+- **Dialect-divergence rule (forward).** SQLAlchemy abstracts most paths; it does **not** abstract: the
+  **on_conflict upserts**, any **raw `text()` SQL**, and **`ORDER BY` on text/nullable columns** (collation +
+  NULL-ordering). Any NEW code of those kinds must get coverage in **`tests/test_pg_integration.py`** (it runs
+  on the real engine in CI). If that suite keeps growing / catching divergences, that's the signal to escalate
+  to **Option P** (the full serve-path suite on PG); until then the scoped suite is sufficient.
+- **Known follow-ups:** (a) **NULL-ordering canary** — add a PG test when rescoping introduces an `ORDER BY`
+  on a nullable column (SQLite sorts NULLs first, PG last). (b) **`S7637`** — pin the SonarQube scan action to
+  a full commit SHA (a separate CI-hardening item, not part of Stage 2).
 
 ## Deferred (after the DB migration)
 
