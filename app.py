@@ -12,6 +12,7 @@ own version of one by layering changes on top (see the change endpoints below).
 Run it with:  python3 app.py   then open http://localhost:8000
 """
 import datetime
+import os
 import re
 from pathlib import Path
 
@@ -51,15 +52,18 @@ DB = BASE_DIR / "recipes.db"
 EDITABLE_SOURCES = ("app", "test")
 
 
-# Engine cache keyed on the CURRENT DB path (module-global `DB`), so ORM queries hit the database the
-# module-global points at — including the test harness's redirect of app.DB. Read at call time (so the
-# redirect is honored); one engine reused per path (prod: one; each test's temp DB: its own). Stage 2
-# replaces this with a single pooled engine bound to DATABASE_URL.
+# Engine cache keyed on the resolved URL, so ORM queries hit the intended database and each URL reuses
+# one engine (prod: one; each test's temp DB: its own). Read at call time so BOTH env-driven overrides
+# and the test harness's redirect of the module-global `DB` are honored (never frozen at import).
 _engines = {}
 
 
 def orm_session():
-    url = f"sqlite:///{DB}"
+    # Stage 2b-3: env-driven, reversible. DATABASE_URL set (e.g. postgresql+psycopg://…) overrides;
+    # UNSET falls back to sqlite:///<DB> composed from the LIVE module-global DB — which the test
+    # harness (make_kitchen) rebinds per test, so reading it at call time keeps the redirect working
+    # (freezing it would silently hit the real recipes.db — the Stage-1b miss). Default = today's SQLite.
+    url = os.environ.get("DATABASE_URL") or f"sqlite:///{DB}"
     eng = _engines.get(url)
     if eng is None:
         eng = _engines[url] = create_engine(url, future=True)
