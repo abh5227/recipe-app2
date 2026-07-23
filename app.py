@@ -17,7 +17,7 @@ import sqlite3
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, text
 from sqlalchemy.orm import Session
 
 from weights import build_index, match_weight
@@ -300,8 +300,12 @@ def font_file(filename):
 
 @app.route("/api/recipes")
 def list_recipes():
-    with db() as c:
-        rows = c.execute(
+    # Stage 1c (Batch 1): routed through orm_session() (the harness-redirected engine). The list's
+    # per-recipe rating/cook_count/last_cooked are correlated scalar subqueries — kept as verbatim SQL
+    # via text() for exact-parity (identical COUNT→0 / MAX→NULL / rating→NULL semantics and sort); the
+    # SQL is standard and carries to Postgres unchanged. Migrates the DB-access path, not the query.
+    with orm_session() as s:
+        rows = s.execute(text(
             """SELECT r.id, r.name, r.author, r.category, r.servings,
                       r.prep_time, r.cook_time, r.total_time, r.image, r.created_at, r.source,
                       (SELECT rating FROM ratings WHERE recipe_id = r.id)              AS rating,
@@ -309,7 +313,7 @@ def list_recipes():
                       (SELECT MAX(cooked_on) FROM cook_log WHERE recipe_id = r.id)     AS last_cooked
                FROM recipes r
                ORDER BY r.name"""
-        ).fetchall()
+        )).mappings().all()
     return jsonify([dict(r) for r in rows])
 
 
