@@ -17,7 +17,7 @@ import sqlite3
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
-from sqlalchemy import create_engine, select, text
+from sqlalchemy import create_engine, delete, event, insert, select, text, update
 from sqlalchemy.orm import Session
 
 from weights import build_index, match_weight
@@ -26,7 +26,9 @@ from import_cleanup import split_qty   # shared qty->quantity+unit split (backfi
 # SQLAlchemy migration (Stage 1b): the raw db() path below still serves everything; these ORM reads
 # are the converted PURE-READ, self-contained routes (list_people/list_ingredients/get_ingredient/
 # in_season). Write-transaction-entangled helpers (recipe_stats, changes_for, …) stay on db() — see 1c.
-from models import Person, Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient
+from models import (
+    Person, Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
+)
 
 # Anchor everything to this file's folder so the app runs from any directory.
 BASE_DIR = Path(__file__).resolve().parent
@@ -70,6 +72,13 @@ def orm_session():
     eng = _engines.get(url)
     if eng is None:
         eng = _engines[url] = create_engine(url, future=True)
+
+        # Match db(): SQLite leaves foreign keys OFF by default, but ON DELETE CASCADE (e.g. deleting a
+        # recipe removes its ingredients/steps/ratings/cook_log/changes) only fires with them ON. Enforce
+        # per connection, exactly as the raw db() helper does.
+        @event.listens_for(eng, "connect")
+        def _fk_on(dbapi_conn, _rec):
+            dbapi_conn.execute("PRAGMA foreign_keys=ON")
     return Session(eng)
 
 
@@ -162,10 +171,11 @@ def seed_recipe_person_error(c, rid, pid):
     return None
 
 
-def validate_recipe_payload(c, payload):
+def validate_recipe_payload(s, payload):
     """Return (clean, error). Requires a name, and checks that any *linked*
     ingredient (a line with 'item', or a [[key]] in a step) exists in the library.
-    Brand-new ingredients are fine as plain text — they just aren't links."""
+    Brand-new ingredients are fine as plain text — they just aren't links.
+    Reads via the caller's ORM session `s` (Stage 1c)."""
     name = (payload.get("name") or "").strip()
     if not name:
         return None, "a name is required"
@@ -174,7 +184,7 @@ def validate_recipe_payload(c, payload):
     if not isinstance(ingredients, list) or not isinstance(steps, list):
         return None, "ingredients and steps must be lists"
 
-    known = {row[0] for row in c.execute("SELECT id FROM ingredients")}
+    known = set(s.scalars(select(Ingredient.id)))
 
     for row in ingredients:
         item = (row or {}).get("item")
@@ -215,23 +225,24 @@ def _row_qty_parts(row):
     return qty, quantity, unit
 
 
-def write_recipe_rows(c, rid, clean, preserve=None):
+def write_recipe_rows(s, rid, clean, preserve=None):
     """(Re)write a recipe's ingredient lines and steps from a validated payload.
 
     `preserve` (edit path only) maps a line's _preserve_key -> (grams, secondary_measure),
     snapshotted from the rows about to be replaced, so an UNCHANGED line keeps its import-harvested
-    weight; a changed or new line (key absent) gets NULL — exactly as on create, which passes none."""
+    weight; a changed or new line (key absent) gets NULL — exactly as on create, which passes none.
+
+    Stage 1c: runs on the caller's ORM session `s` (Core delete/insert on the same tables, exact
+    column-for-column parity with the prior raw SQL); the caller commits."""
     preserve = preserve or {}
-    c.execute("DELETE FROM recipe_ingredients WHERE recipe_id = ?", (rid,))
-    c.execute("DELETE FROM recipe_steps WHERE recipe_id = ?", (rid,))
+    ri, rs = RecipeIngredient.__table__, RecipeStep.__table__
+    s.execute(delete(ri).where(ri.c.recipe_id == rid))
+    s.execute(delete(rs).where(rs.c.recipe_id == rid))
 
     for pos, row in enumerate(clean["ingredients"]):
         row = row or {}
         if row.get("heading"):
-            c.execute(
-                "INSERT INTO recipe_ingredients (recipe_id, position, is_heading, raw_text) VALUES (?,?,1,?)",
-                (rid, pos, row["heading"]),
-            )
+            s.execute(insert(ri).values(recipe_id=rid, position=pos, is_heading=1, raw_text=row["heading"]))
         elif row.get("item"):
             label = row.get("label") or row["item"]
             note = row.get("note") or ""
@@ -240,35 +251,27 @@ def write_recipe_rows(c, rid, clean, preserve=None):
             # correctly misses the preserve map, clearing stale grams).
             qty, quantity, unit = _row_qty_parts(row)
             grams, secondary = preserve.get(_preserve_key(qty, label), (None, None))
-            c.execute(
-                """INSERT INTO recipe_ingredients
-                   (recipe_id, position, qty, quantity, unit, ingredient_id, label, note, raw_text, grams, secondary_measure)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
-                (rid, pos, qty, quantity, unit, row["item"], label, note,
-                 f"{qty} {label}{note}".strip(), grams, secondary),
-            )
+            s.execute(insert(ri).values(
+                recipe_id=rid, position=pos, qty=qty, quantity=quantity, unit=unit,
+                ingredient_id=row["item"], label=label, note=note,
+                raw_text=f"{qty} {label}{note}".strip(), grams=grams, secondary_measure=secondary,
+            ))
         else:
-            text = row.get("text", "") or ""
+            text_val = row.get("text", "") or ""
             note = row.get("note") or ""
             qty, quantity, unit = _row_qty_parts(row)   # hybrid: recombine from parts, or derive from qty
-            grams, secondary = preserve.get(_preserve_key(qty, text), (None, None))
-            c.execute(
-                "INSERT INTO recipe_ingredients (recipe_id, position, qty, quantity, unit, raw_text, note, grams, secondary_measure) VALUES (?,?,?,?,?,?,?,?,?)",
-                (rid, pos, qty, quantity, unit, text, note, grams, secondary),
-            )
+            grams, secondary = preserve.get(_preserve_key(qty, text_val), (None, None))
+            s.execute(insert(ri).values(
+                recipe_id=rid, position=pos, qty=qty, quantity=quantity, unit=unit,
+                raw_text=text_val, note=note, grams=grams, secondary_measure=secondary,
+            ))
 
     for pos, step in enumerate(clean["steps"]):
         if isinstance(step, dict) and step.get("heading"):
-            c.execute(
-                "INSERT INTO recipe_steps (recipe_id, position, is_heading, text) VALUES (?,?,1,?)",
-                (rid, pos, step["heading"]),
-            )
+            s.execute(insert(rs).values(recipe_id=rid, position=pos, is_heading=1, text=step["heading"]))
         else:
-            text = step if isinstance(step, str) else ""
-            c.execute(
-                "INSERT INTO recipe_steps (recipe_id, position, is_heading, text) VALUES (?,?,0,?)",
-                (rid, pos, text),
-            )
+            text_val = step if isinstance(step, str) else ""
+            s.execute(insert(rs).values(recipe_id=rid, position=pos, is_heading=0, text=text_val))
 
 
 @app.route("/")
@@ -321,29 +324,26 @@ def list_recipes():
 def create_recipe():
     """Create a new app-owned recipe. Rejects a name whose slug already exists."""
     payload = request.get_json(silent=True) or {}
-    with db() as c:
-        clean, err = validate_recipe_payload(c, payload)
+    with orm_session() as s:
+        clean, err = validate_recipe_payload(s, payload)
         if err:
             return jsonify({"error": err}), 400
         slug = slugify(clean["name"])
         if not slug:
             return jsonify({"error": "couldn't make a URL name from that title — try adding letters"}), 400
-        if c.execute("SELECT 1 FROM recipes WHERE id = ?", (slug,)).fetchone():
+        if s.execute(select(Recipe.id).where(Recipe.id == slug)).first():
             return jsonify({
                 "error": f"a recipe named \u201c{clean['name']}\u201d already exists — please pick a different name"
             }), 409
         source = "test" if payload.get("is_test") else "app"   # only ever 'app' | 'test' from create
-        c.execute(
-            """INSERT INTO recipes
-               (id, name, author, source_url, category, servings, prep_time,
-                cook_time, total_time, descr, notes, image, created_at, source)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (slug, clean["name"], payload.get("author"), payload.get("source_url"),
-             payload.get("category"), payload.get("servings"), payload.get("prep_time"),
-             payload.get("cook_time"), payload.get("total_time"), payload.get("descr"),
-             payload.get("notes"), payload.get("image"), now_utc(), source),
-        )
-        write_recipe_rows(c, slug, clean)
+        s.execute(insert(Recipe.__table__).values(
+            id=slug, name=clean["name"], author=payload.get("author"), source_url=payload.get("source_url"),
+            category=payload.get("category"), servings=payload.get("servings"), prep_time=payload.get("prep_time"),
+            cook_time=payload.get("cook_time"), total_time=payload.get("total_time"), descr=payload.get("descr"),
+            notes=payload.get("notes"), image=payload.get("image"), created_at=now_utc(), source=source,
+        ))
+        write_recipe_rows(s, slug, clean)
+        s.commit()
     return jsonify({"id": slug}), 201
 
 
@@ -418,36 +418,33 @@ def get_recipe(rid):
 def update_recipe(rid):
     """Edit an app-owned recipe. The slug (id) stays fixed so references don't break."""
     payload = request.get_json(silent=True) or {}
-    with db() as c:
-        row = c.execute("SELECT source FROM recipes WHERE id = ?", (rid,)).fetchone()
+    with orm_session() as s:
+        row = s.execute(select(Recipe.source).where(Recipe.id == rid)).first()
         if row is None:
             return jsonify({"error": "recipe not found"}), 404
-        if row["source"] not in EDITABLE_SOURCES:
+        if row.source not in EDITABLE_SOURCES:
             return jsonify({"error": "this recipe is from seed.py and is read-only here — edit it in seed.py"}), 403
-        clean, err = validate_recipe_payload(c, payload)
+        clean, err = validate_recipe_payload(s, payload)
         if err:
             return jsonify({"error": err}), 400
-        c.execute(
-            """UPDATE recipes SET
-                name=?, author=?, source_url=?, category=?, servings=?, prep_time=?,
-                cook_time=?, total_time=?, descr=?, notes=?, image=?
-                WHERE id=?""",
-            (clean["name"], payload.get("author"), payload.get("source_url"),
-             payload.get("category"), payload.get("servings"), payload.get("prep_time"),
-             payload.get("cook_time"), payload.get("total_time"), payload.get("descr"),
-             payload.get("notes"), payload.get("image"), rid),
-        )
+        s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rid).values(
+            name=clean["name"], author=payload.get("author"), source_url=payload.get("source_url"),
+            category=payload.get("category"), servings=payload.get("servings"), prep_time=payload.get("prep_time"),
+            cook_time=payload.get("cook_time"), total_time=payload.get("total_time"), descr=payload.get("descr"),
+            notes=payload.get("notes"), image=payload.get("image"),
+        ))
         # Preserve import-harvested grams/secondary_measure across the edit: snapshot the rows
         # about to be replaced, keyed by (qty, name); write_recipe_rows re-applies them to the
         # UNCHANGED lines (a changed qty/name, or a new line, gets NULL — see write_recipe_rows).
         preserve = {}
-        for o in c.execute(
-            "SELECT qty, label, raw_text, grams, secondary_measure "
-            "FROM recipe_ingredients WHERE recipe_id = ? AND is_heading = 0", (rid,)
-        ):
+        for o in s.execute(select(
+            RecipeIngredient.qty, RecipeIngredient.label, RecipeIngredient.raw_text,
+            RecipeIngredient.grams, RecipeIngredient.secondary_measure,
+        ).where(RecipeIngredient.recipe_id == rid, RecipeIngredient.is_heading == 0)).mappings():
             if o["grams"] is not None or o["secondary_measure"] is not None:
                 preserve[_preserve_key(o["qty"], o["label"] or o["raw_text"])] = (o["grams"], o["secondary_measure"])
-        write_recipe_rows(c, rid, clean, preserve)
+        write_recipe_rows(s, rid, clean, preserve)
+        s.commit()
     return jsonify({"id": rid})
 
 
@@ -455,24 +452,26 @@ def update_recipe(rid):
 def delete_recipe(rid):
     """Delete an app-owned recipe. Its ratings, cook history, ingredient lines, and steps
     are removed automatically by ON DELETE CASCADE (foreign keys are on, set in db())."""
-    with db() as c:
-        row = c.execute("SELECT source FROM recipes WHERE id = ?", (rid,)).fetchone()
+    with orm_session() as s:
+        row = s.execute(select(Recipe.source).where(Recipe.id == rid)).first()
         if row is None:
             return jsonify({"error": "recipe not found"}), 404
-        if row["source"] not in EDITABLE_SOURCES:
+        if row.source not in EDITABLE_SOURCES:
             return jsonify({"error": "seed recipes can't be deleted here — remove them from seed.py"}), 403
-        c.execute("DELETE FROM recipes WHERE id = ?", (rid,))
+        s.execute(delete(Recipe.__table__).where(Recipe.__table__.c.id == rid))
+        s.commit()
     return jsonify({"deleted": rid})
 
 
-def _unique_copy_id(c, base_name):
+def _unique_copy_id(s, base_name):
     """Mint a distinguishable name + unique slug for a duplicate: '<name> (copy)', then
-    '<name> (copy 2)', '(copy 3)', … bumping until the slug is free. Returns (name, slug)."""
+    '<name> (copy 2)', '(copy 3)', … bumping until the slug is free. Returns (name, slug).
+    Reads via the caller's ORM session `s` (Stage 1c)."""
     n = 1
     while True:
         name = base_name + (" (copy)" if n == 1 else f" (copy {n})")
         slug = slugify(name)
-        if slug and not c.execute("SELECT 1 FROM recipes WHERE id = ?", (slug,)).fetchone():
+        if slug and s.execute(select(Recipe.id).where(Recipe.id == slug)).first() is None:
             return name, slug
         n += 1
 
@@ -485,35 +484,33 @@ def copy_recipe(rid):
     copy neither. Content (incl. import-harvested grams/secondary_measure) is carried by a direct
     row-copy; uid/hash are import identity and left NULL (uid is UNIQUE-indexed — copying it throws)."""
     is_test = bool((request.get_json(silent=True) or {}).get("is_test"))   # thin, self-contained flag
-    with db() as c:
-        src = c.execute("SELECT * FROM recipes WHERE id = ?", (rid,)).fetchone()
+    with orm_session() as s:
+        src = s.execute(select(Recipe.__table__).where(Recipe.id == rid)).mappings().first()
         if src is None:
             return jsonify({"error": "recipe not found"}), 404
-        new_name, new_id = _unique_copy_id(c, src["name"])
-        c.execute(
-            """INSERT INTO recipes
-               (id, name, author, source_url, category, servings, prep_time, cook_time,
-                total_time, descr, notes, image, created_at, source, uid, hash)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,NULL)""",
-            (new_id, new_name, src["author"], src["source_url"], src["category"], src["servings"],
-             src["prep_time"], src["cook_time"], src["total_time"], src["descr"], src["notes"],
-             src["image"], now_utc(), "test" if is_test else "app"),
-        )
+        new_name, new_id = _unique_copy_id(s, src["name"])
+        s.execute(insert(Recipe.__table__).values(
+            id=new_id, name=new_name, author=src["author"], source_url=src["source_url"],
+            category=src["category"], servings=src["servings"], prep_time=src["prep_time"],
+            cook_time=src["cook_time"], total_time=src["total_time"], descr=src["descr"],
+            notes=src["notes"], image=src["image"], created_at=now_utc(),
+            source=("test" if is_test else "app"), uid=None, hash=None,
+        ))
         # Direct row-copy: carries all content INCL. harvested grams/secondary_measure (write_recipe_rows
         # would NULL those). cook_log / ratings / import_flags / per-person tables are deliberately NOT
-        # copied — that's what makes the copy start clean.
-        c.execute(
+        # copied — that's what makes the copy start clean. INSERT…SELECT kept verbatim via text() (exact
+        # parity; standard SQL, Postgres-portable), executed on the ORM session.
+        s.execute(text(
             """INSERT INTO recipe_ingredients
                (recipe_id, position, is_heading, qty, quantity, unit, ingredient_id, label, note, raw_text, grams, secondary_measure)
-               SELECT ?, position, is_heading, qty, quantity, unit, ingredient_id, label, note, raw_text, grams, secondary_measure
-               FROM recipe_ingredients WHERE recipe_id = ? ORDER BY position""",
-            (new_id, rid),
-        )
-        c.execute(
+               SELECT :new_id, position, is_heading, qty, quantity, unit, ingredient_id, label, note, raw_text, grams, secondary_measure
+               FROM recipe_ingredients WHERE recipe_id = :rid ORDER BY position"""
+        ), {"new_id": new_id, "rid": rid})
+        s.execute(text(
             """INSERT INTO recipe_steps (recipe_id, position, is_heading, text)
-               SELECT ?, position, is_heading, text FROM recipe_steps WHERE recipe_id = ? ORDER BY position""",
-            (new_id, rid),
-        )
+               SELECT :new_id, position, is_heading, text FROM recipe_steps WHERE recipe_id = :rid ORDER BY position"""
+        ), {"new_id": new_id, "rid": rid})
+        s.commit()
     return jsonify({"id": new_id}), 201
 
 
