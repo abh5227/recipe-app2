@@ -29,7 +29,7 @@ from import_cleanup import split_qty   # shared qty->quantity+unit split (backfi
 # in_season). Write-transaction-entangled helpers (recipe_stats, changes_for, …) stay on db() — see 1c.
 from models import (
     Person, Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
-    RecipeLineChange, RecipeAddition, Rating, CookLog,
+    RecipeLineChange, RecipeAddition, Rating, CookLog, ingredient_weights,
 )
 
 # Anchor everything to this file's folder so the app runs from any directory.
@@ -364,13 +364,19 @@ def create_recipe():
     return jsonify({"id": slug}), 201
 
 
-def attach_weights(c, ings):
+def attach_weights(s, ings):
     """Attach grams_per_ml (or None) to each ingredient-line dict by matching its name
     against the weight table. Matching is server-side (weights.match_weight) so the live
-    converter and the build-time coverage report always agree. Headings are left as-is."""
-    rows = c.execute(
-        "SELECT lookup_key, display_name, grams_per_ml, convert_to_grams FROM ingredient_weights"
-    ).fetchall()
+    converter and the build-time coverage report always agree. Headings are left as-is.
+
+    Takes an ORM session (Stage 1c Batch 5); ingredient_weights is a Core Table (no PK), so
+    this is a select() on the Table object, not an ORM-class query."""
+    rows = s.execute(
+        select(
+            ingredient_weights.c.lookup_key, ingredient_weights.c.display_name,
+            ingredient_weights.c.grams_per_ml, ingredient_weights.c.convert_to_grams,
+        )
+    ).mappings().all()
     index = build_index(rows)
     out = []
     for x in ings:
@@ -399,36 +405,36 @@ def serialize_steps(steps):
 
 @app.route("/api/recipes/<rid>")
 def get_recipe(rid):
-    with db() as c:
-        r = c.execute("SELECT * FROM recipes WHERE id = ?", (rid,)).fetchone()
+    # Fully ORM (Stage 1c Batch 5, the finale): get_recipe's own reads join the SAME session as its
+    # helpers, so the read-only bridge from Batches 3/4 collapses — one orm_session() for the whole read.
+    # Core-table selects (SELECT * equivalents) preserve the exact column set/order of the raw rows.
+    with orm_session() as s:
+        r = s.execute(select(Recipe.__table__).where(Recipe.id == rid)).mappings().first()
         if r is None:
             return jsonify({"error": "recipe not found"}), 404
-        ings = c.execute(
-            "SELECT * FROM recipe_ingredients WHERE recipe_id = ? ORDER BY position", (rid,)
-        ).fetchall()
-        steps = c.execute(
-            "SELECT * FROM recipe_steps WHERE recipe_id = ? ORDER BY position", (rid,)
-        ).fetchall()
+        ings = s.execute(
+            select(RecipeIngredient.__table__).where(RecipeIngredient.recipe_id == rid)
+            .order_by(RecipeIngredient.position)
+        ).mappings().all()
+        steps = s.execute(
+            select(RecipeStep.__table__).where(RecipeStep.recipe_id == rid)
+            .order_by(RecipeStep.position)
+        ).mappings().all()
         people = [
-            dict(p) for p in
-            c.execute("SELECT id, name, color FROM people ORDER BY position, name")
+            dict(p) for p in s.execute(
+                select(Person.id, Person.name, Person.color).order_by(Person.position, Person.name)
+            ).mappings().all()
         ]
-        # Only seed recipes carry per-person changes; app recipes are edited directly. changes_for now
-        # takes an ORM session (Stage 1c Batch 3); get_recipe still reads its own rows via db() (it
-        # converts in Batch 5), so bridge with a short read-only orm_session() just for the change layer
-        # — no raw/ORM mismatch (a read route, no uncommitted writes to miss).
-        # recipe_stats now takes an ORM session too (Stage 1c Batch 4); like changes_for above, bridge
-        # it with a short read-only orm_session() — get_recipe's own reads + attach_weights stay on db()
-        # until Batch 5. No raw/ORM mismatch: a read route, no uncommitted writes to miss.
+        # Only seed recipes carry per-person changes; app recipes are edited directly.
         changes = {}
-        with orm_session() as cs:
-            if r["source"] == "seed":
-                changes = changes_for(cs, rid)["changes"]
-            stats = recipe_stats(cs, rid)
+        if r["source"] == "seed":
+            changes = changes_for(s, rid)["changes"]
+        stats = recipe_stats(s, rid)
+        ingredients = attach_weights(s, ings)
     return jsonify(
         {
             "recipe": dict(r),
-            "ingredients": attach_weights(c, ings),
+            "ingredients": ingredients,
             "steps": serialize_steps(steps),
             "stats": stats,
             "people": people,
@@ -545,8 +551,9 @@ def delete_test_recipes():
     """Delete ALL test-tier recipes at once (their children cascade via ON DELETE CASCADE).
     Inherently safe — matches only source='test', never app/seed. Sibling namespace to
     /api/recipes/<rid> so it can't be shadowed by a recipe slugged 'test'."""
-    with db() as c:
-        n = c.execute("DELETE FROM recipes WHERE source = 'test'").rowcount
+    with orm_session() as s:
+        n = s.execute(delete(Recipe).where(Recipe.source == "test")).rowcount   # children cascade (FK ON)
+        s.commit()
     return jsonify({"deleted": n})
 
 
