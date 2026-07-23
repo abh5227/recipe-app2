@@ -30,9 +30,16 @@ byte-identical throughout; still on SQLite.)*
 ### STAGE 2 — switch engine to Postgres  ← **START HERE (fresh session)**
 *(Acceptance: 288 + 44 green on Postgres in CI.)*
 
-- **0 · PREREQUISITE (do FIRST — Stage 2 can't start without it):** stand up a **Postgres instance** to
-  develop + test against, and point `DATABASE_URL` at it. First Stage-2 decision: **local install vs
-  Docker vs cloud** — Docker `postgres:16` mirrors the CI service container 2c adds (lowest-friction match).
+- **0 · PREREQUISITE (do FIRST — Stage 2 can't start without it):** a **Postgres instance** to develop +
+  test against. **Decided: DOCKER (`postgres:16`)** — same image as the 2c CI service container and eventual
+  Render prod (local matches CI matches prod — the whole point), disposable/resettable for migration
+  testing, no system install. Setup for a fresh session:
+  - **Install Docker Desktop for Mac** (one-time); ensure it's running.
+  - **Start:** `docker run --name recipe-postgres -e POSTGRES_PASSWORD=recipe -e POSTGRES_DB=recipe -p 5432:5432 -d postgres:16`
+  - **Confirm:** `docker ps` shows `recipe-postgres` running.
+  - **`DATABASE_URL`:** `postgresql://postgres:recipe@localhost:5432/recipe`
+  - **Lifecycle:** stop `docker stop recipe-postgres` · start `docker start recipe-postgres` · reset (fresh DB) `docker rm -f recipe-postgres` then re-run the `docker run`.
+  - **2a runs against this container**, so it must be up first.
 - **2a** — **Alembic baseline**: autogenerate the initial migration from the models, **empty-diff-verified** against the current schema, `alembic stamp head`. `alembic_version` replaces `schema_migrations`; the 16 `.sql` files become archived history — **do NOT port them**.
 - **2b** — **engine swap + dialect residuals**: `DATABASE_URL` → Postgres. **The one non-abstracted change — flip the upserts** `sqlalchemy.dialects.sqlite.insert` → `sqlalchemy.dialects.postgresql.insert`. That's **5 upsert operations across 3 code sites already tagged `# Stage 2b`**: the **2 in `set_line_change`** (edit + remove) and the **1 shared `upsert_rating`** helper (serving all 3 rating routes — `set_rating`/`redo_cook`/`log_cook_and_rate`) — plus the `sqlite_insert` **import** (`app.py` ~line 20). Then: AUTOINCREMENT → SERIAL (auto via `Integer` PK); **keep text-date columns as `Text`** for parity; port `build_db`/import raw SQL to PG-compatible; **REPLACE the `build_db` FK-off rebuild trick** (no `PRAGMA foreign_keys=OFF` in PG — use deferred constraints / correct insert order / `TRUNCATE … CASCADE`).
 - **2c** — **test harness → Postgres**: `make_kitchen`/`Kitchen.conn` → PG engine with **transaction-rollback-per-test**; add a `postgres:16` **service container** to `build.yml`. **This is where the PG-dialect upserts finally get exercised under test** — the dialect-divergence guard (per CLAUDE.md: no test-vs-prod dialect divergence).
