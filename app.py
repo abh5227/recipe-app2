@@ -17,7 +17,7 @@ import sqlite3
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
-from sqlalchemy import create_engine, delete, event, insert, select, text, update
+from sqlalchemy import create_engine, delete, event, func, insert, select, text, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert   # Stage 2b swaps to the postgresql dialect
 from sqlalchemy.orm import Session
 
@@ -29,7 +29,7 @@ from import_cleanup import split_qty   # shared qty->quantity+unit split (backfi
 # in_season). Write-transaction-entangled helpers (recipe_stats, changes_for, …) stay on db() — see 1c.
 from models import (
     Person, Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
-    RecipeLineChange, RecipeAddition,
+    RecipeLineChange, RecipeAddition, Rating, CookLog,
 )
 
 # Anchor everything to this file's folder so the app runs from any directory.
@@ -97,27 +97,41 @@ def slugify(name):
     return s
 
 
-def recipe_stats(c, rid):
+def recipe_stats(s, rid):
     """Derive the cooking stats for a recipe from the log + ratings tables.
     cook_count and last_cooked are computed, never stored, so they can't drift.
     last_cooked_provisional flags that the most-recent cook is provisional — ANY non-app cook
     source (e.g. 'paprika-import', 'rating-inferred'), i.e. a seeded/inferred date rather than
     a confirmed app-logged cook — so the UI can mark it (the '~'/.approx treatment) as a date
-    still to be corrected."""
-    count = c.execute(
-        "SELECT COUNT(*) AS n FROM cook_log WHERE recipe_id = ?", (rid,)
-    ).fetchone()["n"]
-    last = c.execute(
-        "SELECT cooked_on, source FROM cook_log WHERE recipe_id = ? ORDER BY cooked_on DESC, id DESC LIMIT 1",
-        (rid,),
-    ).fetchone()
-    rating_row = c.execute("SELECT rating FROM ratings WHERE recipe_id = ?", (rid,)).fetchone()
+    still to be corrected.
+
+    Takes an ORM session (Stage 1c Batch 4): the 5 cook/rating routes call it AFTER their write
+    on the SAME session (before commit), so it reads the just-written rows in-transaction."""
+    count = s.scalar(select(func.count()).select_from(CookLog).where(CookLog.recipe_id == rid))
+    last = s.execute(
+        select(CookLog.cooked_on, CookLog.source)
+        .where(CookLog.recipe_id == rid)
+        .order_by(CookLog.cooked_on.desc(), CookLog.id.desc())
+        .limit(1)
+    ).first()
+    rating_row = s.execute(select(Rating.rating).where(Rating.recipe_id == rid)).first()
     return {
         "cook_count": count,
-        "last_cooked": last["cooked_on"] if last else None,                  # None if never cooked
-        "last_cooked_provisional": bool(last and last["source"] != "app"),
-        "rating": rating_row["rating"] if rating_row else None,
+        "last_cooked": last.cooked_on if last else None,                     # None if never cooked
+        "last_cooked_provisional": bool(last and last.source != "app"),
+        "rating": rating_row.rating if rating_row else None,
     }
+
+
+def upsert_rating(s, rid, rating):
+    """Set-or-replace a recipe's single rating, stamping rated_on = datetime('now'). Shared by the
+    3 rating writers (set_rating, redo_cook, log_cook_and_rate). SQLite-dialect ON CONFLICT(recipe_id)
+    upsert; Stage 2b swaps sqlite_insert for the postgresql dialect."""
+    stmt = sqlite_insert(Rating).values(recipe_id=rid, rating=rating, rated_on=text("datetime('now')"))
+    s.execute(stmt.on_conflict_do_update(
+        index_elements=[Rating.recipe_id],
+        set_={"rating": stmt.excluded.rating, "rated_on": stmt.excluded.rated_on},
+    ))
 
 
 def changes_for(s, rid):
@@ -403,11 +417,14 @@ def get_recipe(rid):
         # takes an ORM session (Stage 1c Batch 3); get_recipe still reads its own rows via db() (it
         # converts in Batch 5), so bridge with a short read-only orm_session() just for the change layer
         # — no raw/ORM mismatch (a read route, no uncommitted writes to miss).
+        # recipe_stats now takes an ORM session too (Stage 1c Batch 4); like changes_for above, bridge
+        # it with a short read-only orm_session() — get_recipe's own reads + attach_weights stay on db()
+        # until Batch 5. No raw/ORM mismatch: a read route, no uncommitted writes to miss.
         changes = {}
-        if r["source"] == "seed":
-            with orm_session() as cs:
+        with orm_session() as cs:
+            if r["source"] == "seed":
                 changes = changes_for(cs, rid)["changes"]
-        stats = recipe_stats(c, rid)   # computed here, while the connection is open
+            stats = recipe_stats(cs, rid)
     return jsonify(
         {
             "recipe": dict(r),
@@ -737,14 +754,16 @@ def log_cook(rid):
             return jsonify({"error": "date must be a real date in YYYY-MM-DD form"}), 400
         if supplied > datetime.date.today():
             return jsonify({"error": "cook date cannot be in the future"}), 400
-    with db() as c:
-        if c.execute("SELECT 1 FROM recipes WHERE id = ?", (rid,)).fetchone() is None:
+    with orm_session() as s:
+        if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
+        cl = CookLog.__table__
         if cooked_on:
-            c.execute("INSERT INTO cook_log (recipe_id, cooked_on) VALUES (?, ?)", (rid, cooked_on))
+            s.execute(insert(cl).values(recipe_id=rid, cooked_on=cooked_on))
         else:
-            c.execute("INSERT INTO cook_log (recipe_id) VALUES (?)", (rid,))
-        stats = recipe_stats(c, rid)
+            s.execute(insert(cl).values(recipe_id=rid))   # cooked_on omitted -> DB default date('now')
+        stats = recipe_stats(s, rid)
+        s.commit()
     return jsonify(stats)
 
 
@@ -754,25 +773,27 @@ def undo_cook(rid):
     to uncooked (cook_count -> 0), also clear its rating in the same transaction, so we never leave
     an uncooked-but-rated recipe (the inconsistency the cook-gate prevents). If other cooks remain,
     the rating stands — you've still cooked it."""
-    with db() as c:
-        if c.execute("SELECT 1 FROM recipes WHERE id = ?", (rid,)).fetchone() is None:
+    with orm_session() as s:
+        if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
-        last = c.execute(
-            "SELECT id, cooked_on, source FROM cook_log WHERE recipe_id = ? ORDER BY id DESC LIMIT 1", (rid,)
-        ).fetchone()
+        last = s.execute(
+            select(CookLog.id, CookLog.cooked_on, CookLog.source)
+            .where(CookLog.recipe_id == rid).order_by(CookLog.id.desc()).limit(1)
+        ).first()
         undone = None   # what this undo removed, so a one-shot redo can reverse exactly it
         if last:
-            c.execute("DELETE FROM cook_log WHERE id = ?", (last["id"],))
-            remaining = c.execute(
-                "SELECT COUNT(*) AS n FROM cook_log WHERE recipe_id = ?", (rid,)
-            ).fetchone()["n"]
+            s.execute(delete(CookLog).where(CookLog.id == last.id))
+            remaining = s.scalar(   # counted AFTER the delete — drop the rating iff this undo hit 0 cooks
+                select(func.count()).select_from(CookLog).where(CookLog.recipe_id == rid)
+            )
             cleared_rating = None
             if remaining == 0:
-                rr = c.execute("SELECT rating FROM ratings WHERE recipe_id = ?", (rid,)).fetchone()
-                cleared_rating = rr["rating"] if rr else None
-                c.execute("DELETE FROM ratings WHERE recipe_id = ?", (rid,))   # back to uncooked -> drop the rating
-            undone = {"cooked_on": last["cooked_on"], "source": last["source"], "cleared_rating": cleared_rating}
-        stats = recipe_stats(c, rid)
+                rr = s.execute(select(Rating.rating).where(Rating.recipe_id == rid)).first()
+                cleared_rating = rr.rating if rr else None
+                s.execute(delete(Rating).where(Rating.recipe_id == rid))   # back to uncooked -> drop the rating
+            undone = {"cooked_on": last.cooked_on, "source": last.source, "cleared_rating": cleared_rating}
+        stats = recipe_stats(s, rid)
+        s.commit()
     return jsonify({**stats, "undone": undone})
 
 
@@ -802,19 +823,14 @@ def redo_cook(rid):
         return jsonify({"error": "unknown cook source"}), 400
     if rating is not None and rating not in (1, 2, 3, 4, 5):
         return jsonify({"error": "rating must be an integer from 1 to 5"}), 400
-    with db() as c:
-        if c.execute("SELECT 1 FROM recipes WHERE id = ?", (rid,)).fetchone() is None:
+    with orm_session() as s:
+        if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
-        c.execute("INSERT INTO cook_log (recipe_id, cooked_on, source) VALUES (?, ?, ?)",
-                  (rid, cooked_on, source))
+        s.execute(insert(CookLog.__table__).values(recipe_id=rid, cooked_on=cooked_on, source=source))
         if rating is not None:
-            c.execute(
-                """INSERT INTO ratings (recipe_id, rating, rated_on)
-                   VALUES (?, ?, datetime('now'))
-                   ON CONFLICT(recipe_id) DO UPDATE SET rating = excluded.rating, rated_on = excluded.rated_on""",
-                (rid, rating),
-            )
-        stats = recipe_stats(c, rid)
+            upsert_rating(s, rid, rating)
+        stats = recipe_stats(s, rid)
+        s.commit()
     return jsonify(stats)
 
 
@@ -825,16 +841,12 @@ def set_rating(rid):
     rating = payload.get("rating")
     if rating not in (1, 2, 3, 4, 5):
         return jsonify({"error": "rating must be an integer from 1 to 5"}), 400
-    with db() as c:
-        if c.execute("SELECT 1 FROM recipes WHERE id = ?", (rid,)).fetchone() is None:
+    with orm_session() as s:
+        if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
-        c.execute(
-            """INSERT INTO ratings (recipe_id, rating, rated_on)
-               VALUES (?, ?, datetime('now'))
-               ON CONFLICT(recipe_id) DO UPDATE SET rating = excluded.rating, rated_on = excluded.rated_on""",
-            (rid, rating),
-        )
-        stats = recipe_stats(c, rid)
+        upsert_rating(s, rid, rating)   # NOT cook-gated: rating an uncooked recipe is allowed (as before)
+        stats = recipe_stats(s, rid)
+        s.commit()
     return jsonify(stats)
 
 
@@ -846,17 +858,13 @@ def log_cook_and_rate(rid):
     rating = payload.get("rating")
     if rating not in (1, 2, 3, 4, 5):
         return jsonify({"error": "rating must be an integer from 1 to 5"}), 400
-    with db() as c:
-        if c.execute("SELECT 1 FROM recipes WHERE id = ?", (rid,)).fetchone() is None:
+    with orm_session() as s:
+        if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
-        c.execute("INSERT INTO cook_log (recipe_id) VALUES (?)", (rid,))
-        c.execute(
-            """INSERT INTO ratings (recipe_id, rating, rated_on)
-               VALUES (?, ?, datetime('now'))
-               ON CONFLICT(recipe_id) DO UPDATE SET rating = excluded.rating, rated_on = excluded.rated_on""",
-            (rid, rating),
-        )
-        stats = recipe_stats(c, rid)
+        s.execute(insert(CookLog.__table__).values(recipe_id=rid))   # today's cook, source default 'app'
+        upsert_rating(s, rid, rating)
+        stats = recipe_stats(s, rid)
+        s.commit()
     return jsonify(stats)
 
 

@@ -312,6 +312,38 @@ def test_redo_malformed_date_400_inserts_nothing(kitchen):
     assert kitchen.count("cook_log", "recipe_id='gai-yang'") == 0
 
 
+def test_multi_cook_undo_redo_round_trip(kitchen):
+    # the full multi-cook cycle: the "cooks remain -> keep rating" branch + the undo->redo relay.
+    cl = kitchen.client
+    cl.post("/api/recipes/gai-yang/cooked", json={"date": "2024-05-01"})
+    cl.post("/api/recipes/gai-yang/cooked", json={"date": "2024-05-02"})
+    cl.post("/api/recipes/gai-yang/rating", json={"rating": 5})            # 2 cooks + a rating
+    # undo once: a cook is removed but one remains -> rating SURVIVES, cleared_rating is None
+    u1 = cl.post("/api/recipes/gai-yang/uncook", json={}).get_json()
+    assert u1["cook_count"] == 1 and u1["rating"] == 5
+    assert u1["undone"]["cleared_rating"] is None
+    # undo again: back to 0 cooks -> rating cleared, and its value reported for a redo
+    u2 = cl.post("/api/recipes/gai-yang/uncook", json={}).get_json()
+    assert u2["cook_count"] == 0 and u2["rating"] is None
+    assert u2["undone"]["cleared_rating"] == 5
+    # redo, relaying exactly what the client would (the cook + the cleared rating) -> both restored
+    body = {"cooked_on": u2["undone"]["cooked_on"], "source": u2["undone"]["source"],
+            "rating": u2["undone"]["cleared_rating"]}
+    s = cl.post("/api/recipes/gai-yang/redo-cook", json=body).get_json()
+    assert s["cook_count"] == 1 and s["rating"] == 5
+
+
+def test_set_rating_does_not_gate_on_cook_count(kitchen):
+    # set_rating is NOT cook-gated: you CAN rate a never-cooked recipe, and it persists.
+    # (The "rating only while cooked" invariant is UI + undo-clear, not a server guard.)
+    cl = kitchen.client
+    assert kitchen.count("cook_log", "recipe_id='gai-yang'") == 0
+    s = cl.post("/api/recipes/gai-yang/rating", json={"rating": 3}).get_json()
+    assert s["cook_count"] == 0 and s["rating"] == 3
+    assert kitchen.count("ratings", "recipe_id='gai-yang'") == 1        # persisted despite zero cooks
+    assert kitchen.client.get("/api/recipes/gai-yang").get_json()["stats"]["rating"] == 3
+
+
 def test_deleting_recipe_clears_its_stats(kitchen):
     # deletion relies on ON DELETE CASCADE to remove the recipe's rating + cook history
     cl = kitchen.client
