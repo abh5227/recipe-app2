@@ -26,15 +26,15 @@ class Base(DeclarativeBase):
     pass
 
 
-# Single-column PKs use `nullable=True` to MIRROR the live DDL exactly: migrations declared these as
-# `id TEXT PRIMARY KEY` / `id INTEGER PRIMARY KEY AUTOINCREMENT` with NO explicit NOT NULL, so PRAGMA
-# reports notnull=0. Without nullable=True, SQLAlchemy would emit `NOT NULL` (notnull=1) — a schema
-# divergence. The PK constraint still guarantees presence/uniqueness; this only drops the redundant
-# NOT NULL keyword to match. Composite PKs (recipe_line_changes, ingredient_seasons, ingredient_regions)
-# were declared NOT NULL in their migrations, so those stay non-nullable (no nullable=True).
+# Single-column PKs are NOT NULL (SQLAlchemy's default for primary_key columns). NOTE (Stage 2a): these
+# originally carried nullable=True to mirror SQLite's implicit-nullable PK DDL (PRAGMA notnull=0), but a
+# Postgres PK is ALWAYS NOT NULL — so the Alembic baseline's re-autogenerate saw a perpetual nullable
+# diff. Dropping nullable=True aligns the models with Postgres (and is semantically honest — a PK is never
+# null); the live SQLite schema is still built by migrations/*.sql, so this metadata change doesn't touch
+# the running SQLite app. Composite PKs were already NOT NULL.
 class Recipe(Base):
     __tablename__ = "recipes"
-    id = Column(Text, primary_key=True, nullable=True)
+    id = Column(Text, primary_key=True)
     name = Column(Text, nullable=False)
     author = Column(Text)
     source_url = Column(Text)
@@ -51,14 +51,17 @@ class Recipe(Base):
     uid = Column(Text)
     hash = Column(Text)
     __table_args__ = (
-        # partial unique index: uid is unique only when set (imports carry it; app recipes don't)
-        Index("idx_recipes_uid", "uid", unique=True, sqlite_where=text("uid IS NOT NULL")),
+        # partial unique index: uid is unique only when set (imports carry it; app recipes don't).
+        # Both dialect kwargs so the partial index renders on SQLite AND Postgres (Stage 2a) — each
+        # dialect ignores the other's kwarg; without postgresql_where PG would build a plain unique index.
+        Index("idx_recipes_uid", "uid", unique=True,
+              sqlite_where=text("uid IS NOT NULL"), postgresql_where=text("uid IS NOT NULL")),
     )
 
 
 class Ingredient(Base):
     __tablename__ = "ingredients"
-    id = Column(Text, primary_key=True, nullable=True)
+    id = Column(Text, primary_key=True)
     name = Column(Text, nullable=False)
     descr = Column(Text)
     pairs = Column(Text)
@@ -67,7 +70,7 @@ class Ingredient(Base):
 
 class Person(Base):
     __tablename__ = "people"
-    id = Column(Text, primary_key=True, nullable=True)
+    id = Column(Text, primary_key=True)
     name = Column(Text, nullable=False)
     color = Column(Text, nullable=False)
     position = Column(Integer, nullable=False, server_default=text("0"))
@@ -75,7 +78,7 @@ class Person(Base):
 
 class Rating(Base):
     __tablename__ = "ratings"
-    recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), primary_key=True, nullable=True)
+    recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), primary_key=True)
     rating = Column(Integer, nullable=False)
     rated_on = Column(Text, nullable=False, server_default=text("datetime('now')"))
     __table_args__ = (CheckConstraint("rating BETWEEN 1 AND 5"),)
@@ -83,7 +86,7 @@ class Rating(Base):
 
 class CookLog(Base):
     __tablename__ = "cook_log"
-    id = Column(Integer, primary_key=True, nullable=True)
+    id = Column(Integer, primary_key=True)
     recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
     cooked_on = Column(Text, nullable=False, server_default=text("date('now')"))
     source = Column(Text, nullable=False, server_default=text("'app'"))
@@ -95,7 +98,7 @@ class CookLog(Base):
 
 class ImportFlag(Base):
     __tablename__ = "import_flags"
-    id = Column(Integer, primary_key=True, nullable=True)
+    id = Column(Integer, primary_key=True)
     recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
     position = Column(Integer)
     flag = Column(Text, nullable=False)
@@ -109,7 +112,7 @@ class ImportFlag(Base):
 
 class Region(Base):
     __tablename__ = "regions"
-    id = Column(Integer, primary_key=True, nullable=True)
+    id = Column(Integer, primary_key=True)
     name = Column(Text, nullable=False, unique=True)
     __table_args__ = ({"sqlite_autoincrement": True},)
 
@@ -134,7 +137,7 @@ class IngredientRegion(Base):
 
 class RecipeIngredient(Base):
     __tablename__ = "recipe_ingredients"
-    id = Column(Integer, primary_key=True, nullable=True)
+    id = Column(Integer, primary_key=True)
     recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
     position = Column(Integer, nullable=False)
     is_heading = Column(Integer, nullable=False, server_default=text("0"))
@@ -156,7 +159,7 @@ class RecipeIngredient(Base):
 
 class RecipeStep(Base):
     __tablename__ = "recipe_steps"
-    id = Column(Integer, primary_key=True, nullable=True)
+    id = Column(Integer, primary_key=True)
     recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
     position = Column(Integer, nullable=False)
     is_heading = Column(Integer, nullable=False, server_default=text("0"))
@@ -183,7 +186,7 @@ class RecipeLineChange(Base):
 
 class RecipeAddition(Base):
     __tablename__ = "recipe_additions"
-    id = Column(Integer, primary_key=True, nullable=True)
+    id = Column(Integer, primary_key=True)
     recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
     person_id = Column(Text, ForeignKey("people.id", ondelete="CASCADE"), nullable=False)
     qty = Column(Text)
@@ -200,7 +203,7 @@ class RecipeAddition(Base):
 
 class SchemaMigration(Base):
     __tablename__ = "schema_migrations"
-    filename = Column(Text, primary_key=True, nullable=True)
+    filename = Column(Text, primary_key=True)
     applied_at = Column(Text, nullable=False, server_default=text("datetime('now')"))
 
 
