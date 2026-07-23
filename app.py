@@ -13,7 +13,6 @@ Run it with:  python3 app.py   then open http://localhost:8000
 """
 import datetime
 import re
-import sqlite3
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
@@ -24,9 +23,10 @@ from sqlalchemy.orm import Session
 from weights import build_index, match_weight
 from stepscale import api_spans
 from import_cleanup import split_qty   # shared qty->quantity+unit split (backfill/seed/import use it too)
-# SQLAlchemy migration (Stage 1b): the raw db() path below still serves everything; these ORM reads
-# are the converted PURE-READ, self-contained routes (list_people/list_ingredients/get_ingredient/
-# in_season). Write-transaction-entangled helpers (recipe_stats, changes_for, …) stay on db() — see 1c.
+# SQLAlchemy migration (Stage 1 complete): the entire serve path queries through orm_session() below —
+# reads, writes, and the 5 SQLite-dialect upserts. Build-time modules (build_db/import/migrate) keep
+# their own raw sqlite3 connections (out of Stage 1 scope). Stage 2 swaps the engine to Postgres
+# (see docs/migration-plan.md).
 from models import (
     Person, Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
     RecipeLineChange, RecipeAddition, Rating, CookLog, ingredient_weights,
@@ -50,22 +50,10 @@ DB = BASE_DIR / "recipes.db"
 EDITABLE_SOURCES = ("app", "test")
 
 
-def db():
-    # Open a fresh connection to the database file.
-    conn = sqlite3.connect(DB)
-    # row_factory = Row lets us read a column by name (row["name"]) instead of by
-    # numeric position (row[0]) — easier to read and less error-prone.
-    conn.row_factory = sqlite3.Row
-    # Turn on foreign-key enforcement (SQLite leaves it off by default). With it on,
-    # deleting a recipe cascades to its ingredient/step/change rows automatically.
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
-
-
-# Engine cache keyed on the CURRENT DB path (module-global `DB`), so ORM reads hit the same database
-# the raw db() path uses — including the test harness's redirect of app.DB. Read at call time (like
-# db()); reusing one engine per path (prod: one; each test's temp DB: its own). Stage 2 replaces this
-# with a single pooled engine bound to DATABASE_URL.
+# Engine cache keyed on the CURRENT DB path (module-global `DB`), so ORM queries hit the database the
+# module-global points at — including the test harness's redirect of app.DB. Read at call time (so the
+# redirect is honored); one engine reused per path (prod: one; each test's temp DB: its own). Stage 2
+# replaces this with a single pooled engine bound to DATABASE_URL.
 _engines = {}
 
 
@@ -75,9 +63,9 @@ def orm_session():
     if eng is None:
         eng = _engines[url] = create_engine(url, future=True)
 
-        # Match db(): SQLite leaves foreign keys OFF by default, but ON DELETE CASCADE (e.g. deleting a
-        # recipe removes its ingredients/steps/ratings/cook_log/changes) only fires with them ON. Enforce
-        # per connection, exactly as the raw db() helper does.
+        # SQLite leaves foreign keys OFF by default, but ON DELETE CASCADE (e.g. deleting a recipe
+        # removes its ingredients/steps/ratings/cook_log/changes) only fires with them ON. Enforce
+        # per connection.
         @event.listens_for(eng, "connect")
         def _fk_on(dbapi_conn, _rec):
             dbapi_conn.execute("PRAGMA foreign_keys=ON")
@@ -483,7 +471,8 @@ def update_recipe(rid):
 @app.route("/api/recipes/<rid>", methods=["DELETE"])
 def delete_recipe(rid):
     """Delete an app-owned recipe. Its ratings, cook history, ingredient lines, and steps
-    are removed automatically by ON DELETE CASCADE (foreign keys are on, set in db())."""
+    are removed automatically by ON DELETE CASCADE (foreign keys are enforced per connection
+    by orm_session)."""
     with orm_session() as s:
         row = s.execute(select(Recipe.source).where(Recipe.id == rid)).first()
         if row is None:
