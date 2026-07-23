@@ -113,8 +113,17 @@ How this project is run:
   live, at ~zero cost.
 - **"Correct data + red suite" is still STOP-before-commit** — but it isn't data corruption: don't
   auto-revert correct live data over a fixable test issue; surface the choice.
+- **When you change HOW code reaches the DB (new engine/session/connection path), verify the test
+  harness redirects THAT path to the test DB — and PROVE it by running the suite with `recipes.db`
+  HIDDEN (the CI condition).** "Suites green locally" is meaningless if the suite is silently hitting
+  the *real* `recipes.db` instead of the test's temp DB. A frozen-at-import engine bypasses
+  `make_kitchen`'s redirect (it only rebinds `app.DB`/`build_db.DB`/`migrate.DB`); use a **call-time
+  factory** that reads the redirected module-global `DB` (see `app.py::orm_session()`, mirroring
+  `db()`). This is a *variant of the dry-run-must-run-tests rule*: both are "green locally because the
+  tests aren't exercising what CI exercises" — the unifying guard is **run the suite in the CI-like
+  environment (deps as CI installs them, `recipes.db` absent) before trusting green.**
 
-*Why these three exist (the seed→app miss):* converting the 5 seed recipes to app (flip `source` +
+*Why the first three exist (the seed→app miss):* converting the 5 seed recipes to app (flip `source` +
 empty `seed.py`'s `RECIPES`) was proven rebuild-safe on a DB dry-run and applied correctly to live,
 yet broke **31 pytest tests** — the suite builds every fixture DB from `seed.py`'s `RECIPES`
 (`make_kitchen` → `build_db`), coupling to the seed slugs (~90 references across `tests/`), not the
@@ -125,3 +134,11 @@ rebuild-safe and will be re-applied *after* the tests seed their own fixtures in
 recipes — its own diagnostic + plan, whose dry-run includes `pytest`. `test_changes.py` in
 particular used those recipes as the only read-only `source='seed'` recipes, so the decouple
 intersects with what those per-person-change tests exercise.
+
+*Why the fourth exists (the Stage-1b CI miss):* the converted ORM read routes used `models.SessionLocal`
+(frozen at import to the default `recipes.db`). `make_kitchen` redirects `app.DB`/`build_db.DB`/`migrate.DB`
+but not the frozen engine, so the ORM silently queried the **real** `recipes.db` during tests — green
+locally (the file exists and its seed-derived ingredients/people happened to match the fixtures) but red
+in CI (no `recipes.db` → empty DB → `OperationalError`). Fixed by `orm_session()` reading the redirected
+module-global `DB` at call time. Hiding `recipes.db` and re-running `pytest` reproduces the CI failure in
+one step — the standing guard for any DB-access-path change.
