@@ -35,9 +35,9 @@ byte-identical throughout; still on SQLite.)*
   Render prod (local matches CI matches prod — the whole point), disposable/resettable for migration
   testing, no system install. Setup for a fresh session:
   - **Install Docker Desktop for Mac** (one-time); ensure it's running.
-  - **Start:** `docker run --name recipe-postgres -e POSTGRES_PASSWORD=recipe -e POSTGRES_DB=recipe -p 5432:5432 -d postgres:16`
+  - **Start:** `docker run --name recipe-postgres -e POSTGRES_PASSWORD=<password> -e POSTGRES_DB=recipe -p 5432:5432 -d postgres:16` (example — pick your own for the local throwaway container)
   - **Confirm:** `docker ps` shows `recipe-postgres` running.
-  - **`DATABASE_URL`:** `postgresql://postgres:recipe@localhost:5432/recipe`
+  - **`DATABASE_URL`:** `postgresql://postgres:<password>@localhost:5432/recipe`
   - **Lifecycle:** stop `docker stop recipe-postgres` · start `docker start recipe-postgres` · reset (fresh DB) `docker rm -f recipe-postgres` then re-run the `docker run`.
   - **2a runs against this container**, so it must be up first.
 - **2a** — **Alembic baseline**: autogenerate the initial migration from the models, **empty-diff-verified** against the current schema, `alembic stamp head`. `alembic_version` replaces `schema_migrations`; the 16 `.sql` files become archived history — **do NOT port them**.
