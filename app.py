@@ -18,6 +18,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 from sqlalchemy import create_engine, delete, event, insert, select, text, update
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert   # Stage 2b swaps to the postgresql dialect
 from sqlalchemy.orm import Session
 
 from weights import build_index, match_weight
@@ -28,6 +29,7 @@ from import_cleanup import split_qty   # shared qty->quantity+unit split (backfi
 # in_season). Write-transaction-entangled helpers (recipe_stats, changes_for, …) stay on db() — see 1c.
 from models import (
     Person, Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
+    RecipeLineChange, RecipeAddition,
 )
 
 # Anchor everything to this file's folder so the app runs from any directory.
@@ -118,7 +120,7 @@ def recipe_stats(c, rid):
     }
 
 
-def changes_for(c, rid):
+def changes_for(s, rid):
     """Every saved per-person change for a recipe, grouped by person:
 
         { person_id: { "edits":     { position: new_qty, ... },
@@ -127,27 +129,27 @@ def changes_for(c, rid):
 
     (JSON turns the integer position keys in "edits" into strings; the front end
     looks them up with the numeric position, which coerces to the same string.)
-    """
+
+    Stage 1c: reads via the caller's ORM session `s`, so a write route that calls this after its
+    own (uncommitted) writes still sees them (same session/transaction) — as before."""
     changes = {}
 
     def bucket(person_id):
         return changes.setdefault(person_id, {"edits": {}, "removes": [], "additions": []})
 
-    for row in c.execute(
-        "SELECT person_id, position, kind, new_qty FROM recipe_line_changes WHERE recipe_id = ?",
-        (rid,),
-    ):
+    for row in s.execute(select(
+        RecipeLineChange.person_id, RecipeLineChange.position, RecipeLineChange.kind, RecipeLineChange.new_qty
+    ).where(RecipeLineChange.recipe_id == rid)).mappings():
         b = bucket(row["person_id"])
         if row["kind"] == "edit":
             b["edits"][row["position"]] = row["new_qty"]
         else:
             b["removes"].append(row["position"])
 
-    for row in c.execute(
-        """SELECT id, person_id, qty, ingredient_id, label, note, raw_text, section
-           FROM recipe_additions WHERE recipe_id = ? ORDER BY id""",
-        (rid,),
-    ):
+    for row in s.execute(select(
+        RecipeAddition.id, RecipeAddition.person_id, RecipeAddition.qty, RecipeAddition.ingredient_id,
+        RecipeAddition.label, RecipeAddition.note, RecipeAddition.raw_text, RecipeAddition.section,
+    ).where(RecipeAddition.recipe_id == rid).order_by(RecipeAddition.id)).mappings():
         bucket(row["person_id"])["additions"].append({
             "id": row["id"], "qty": row["qty"], "ingredient_id": row["ingredient_id"],
             "label": row["label"], "note": row["note"], "raw_text": row["raw_text"],
@@ -157,16 +159,17 @@ def changes_for(c, rid):
     return {"changes": changes}
 
 
-def seed_recipe_person_error(c, rid, pid):
+def seed_recipe_person_error(s, rid, pid):
     """Validate that changes are allowed here. Returns (message, status) on failure,
     or None when the recipe is a seed recipe and the person exists. Changes apply
-    only to seed recipes, because app recipes you simply edit directly."""
-    r = c.execute("SELECT source FROM recipes WHERE id = ?", (rid,)).fetchone()
-    if r is None:
+    only to seed recipes, because app recipes you simply edit directly.
+    Reads via the caller's ORM session `s` (Stage 1c)."""
+    src = s.execute(select(Recipe.source).where(Recipe.id == rid)).scalar_one_or_none()
+    if src is None:
         return ("recipe not found", 404)
-    if r["source"] != "seed":
+    if src != "seed":
         return ("changes apply to cookbook (seed) recipes only", 400)
-    if c.execute("SELECT 1 FROM people WHERE id = ?", (pid,)).fetchone() is None:
+    if s.execute(select(Person.id).where(Person.id == pid)).first() is None:
         return ("unknown person", 404)
     return None
 
@@ -396,8 +399,14 @@ def get_recipe(rid):
             dict(p) for p in
             c.execute("SELECT id, name, color FROM people ORDER BY position, name")
         ]
-        # Only seed recipes carry per-person changes; app recipes are edited directly.
-        changes = changes_for(c, rid)["changes"] if r["source"] == "seed" else {}
+        # Only seed recipes carry per-person changes; app recipes are edited directly. changes_for now
+        # takes an ORM session (Stage 1c Batch 3); get_recipe still reads its own rows via db() (it
+        # converts in Batch 5), so bridge with a short read-only orm_session() just for the change layer
+        # — no raw/ORM mismatch (a read route, no uncommitted writes to miss).
+        changes = {}
+        if r["source"] == "seed":
+            with orm_session() as cs:
+                changes = changes_for(cs, rid)["changes"]
         stats = recipe_stats(c, rid)   # computed here, while the connection is open
     return jsonify(
         {
@@ -542,54 +551,57 @@ def set_line_change(rid, pid, pos):
     (kind='edit', with 'qty') or a removal (kind='remove')."""
     payload = request.get_json(silent=True) or {}
     kind = payload.get("kind")
-    with db() as c:
-        err = seed_recipe_person_error(c, rid, pid)
+    with orm_session() as s:
+        err = seed_recipe_person_error(s, rid, pid)
         if err:
             return jsonify({"error": err[0]}), err[1]
-        is_line = c.execute(
-            "SELECT 1 FROM recipe_ingredients WHERE recipe_id = ? AND position = ? AND is_heading = 0",
-            (rid, pos),
-        ).fetchone()
+        is_line = s.execute(select(RecipeIngredient.id).where(
+            RecipeIngredient.recipe_id == rid, RecipeIngredient.position == pos, RecipeIngredient.is_heading == 0
+        )).first()
         if not is_line:
             return jsonify({"error": "there's no ingredient line at that position"}), 400
 
+        # SQLite-dialect upsert on the composite PK (recipe_id, person_id, position). The edit branch
+        # writes the inserted qty (excluded.new_qty); the remove branch nulls it. An edit-then-edit
+        # updates the same row in place (no duplicate). Stage 2b swaps sqlite_insert -> the postgresql
+        # dialect's insert().on_conflict_do_update().
+        conflict = [RecipeLineChange.recipe_id, RecipeLineChange.person_id, RecipeLineChange.position]
         if kind == "edit":
             qty = (payload.get("qty") or "").strip()
             if not qty:
                 return jsonify({"error": "a quantity is required to change a line"}), 400
-            c.execute(
-                """INSERT INTO recipe_line_changes (recipe_id, person_id, position, kind, new_qty)
-                VALUES (?, ?, ?, 'edit', ?)
-                ON CONFLICT(recipe_id, person_id, position)
-                DO UPDATE SET kind = 'edit', new_qty = excluded.new_qty""",
-                (rid, pid, pos, qty),
+            stmt = sqlite_insert(RecipeLineChange).values(
+                recipe_id=rid, person_id=pid, position=pos, kind="edit", new_qty=qty
             )
+            s.execute(stmt.on_conflict_do_update(
+                index_elements=conflict, set_={"kind": "edit", "new_qty": stmt.excluded.new_qty},
+            ))
         elif kind == "remove":
-            c.execute(
-                """INSERT INTO recipe_line_changes (recipe_id, person_id, position, kind, new_qty)
-                VALUES (?, ?, ?, 'remove', NULL)
-                ON CONFLICT(recipe_id, person_id, position)
-                DO UPDATE SET kind = 'remove', new_qty = NULL""",
-                (rid, pid, pos),
+            stmt = sqlite_insert(RecipeLineChange).values(
+                recipe_id=rid, person_id=pid, position=pos, kind="remove", new_qty=None
             )
+            s.execute(stmt.on_conflict_do_update(
+                index_elements=conflict, set_={"kind": "remove", "new_qty": None},
+            ))
         else:
             return jsonify({"error": "kind must be 'edit' or 'remove'"}), 400
-        result = changes_for(c, rid)
+        result = changes_for(s, rid)
+        s.commit()
     return jsonify(result)
 
 
 @app.route("/api/recipes/<rid>/people/<pid>/lines/<int:pos>", methods=["DELETE"])
 def clear_line_change(rid, pid, pos):
     """Undo this person's change to a line, reverting it to the original."""
-    with db() as c:
-        err = seed_recipe_person_error(c, rid, pid)
+    with orm_session() as s:
+        err = seed_recipe_person_error(s, rid, pid)
         if err:
             return jsonify({"error": err[0]}), err[1]
-        c.execute(
-            "DELETE FROM recipe_line_changes WHERE recipe_id = ? AND person_id = ? AND position = ?",
-            (rid, pid, pos),
-        )
-        result = changes_for(c, rid)
+        s.execute(delete(RecipeLineChange).where(
+            RecipeLineChange.recipe_id == rid, RecipeLineChange.person_id == pid, RecipeLineChange.position == pos
+        ))
+        result = changes_for(s, rid)
+        s.commit()
     return jsonify(result)
 
 
@@ -603,53 +615,50 @@ def add_addition(rid, pid):
     qty = (payload.get("qty") or "").strip()
     note = (payload.get("note") or "").strip()
     section = (payload.get("section") or "").strip() or None
-    with db() as c:
-        err = seed_recipe_person_error(c, rid, pid)
+    with orm_session() as s:
+        err = seed_recipe_person_error(s, rid, pid)
         if err:
             return jsonify({"error": err[0]}), err[1]
         # A section, if given, must match one of this recipe's actual headings.
         if section is not None:
-            is_heading = c.execute(
-                "SELECT 1 FROM recipe_ingredients WHERE recipe_id = ? AND is_heading = 1 AND raw_text = ?",
-                (rid, section),
-            ).fetchone()
+            is_heading = s.execute(select(RecipeIngredient.id).where(
+                RecipeIngredient.recipe_id == rid, RecipeIngredient.is_heading == 1, RecipeIngredient.raw_text == section
+            )).first()
             if not is_heading:
                 return jsonify({"error": "that section isn't a heading in this recipe"}), 400
         if item:
-            known = c.execute("SELECT name FROM ingredients WHERE id = ?", (item,)).fetchone()
-            if known is None:
+            known_name = s.execute(select(Ingredient.name).where(Ingredient.id == item)).scalar_one_or_none()
+            if known_name is None:
                 return jsonify({"error": f"'{item}' isn't in your ingredient library"}), 400
-            label = (payload.get("label") or known["name"]).strip()
-            c.execute(
-                """INSERT INTO recipe_additions
-                   (recipe_id, person_id, qty, ingredient_id, label, note, raw_text, section)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-                (rid, pid, qty, item, label, note, f"{label}{note}".strip(), section),
-            )
+            label = (payload.get("label") or known_name).strip()
+            s.execute(insert(RecipeAddition.__table__).values(
+                recipe_id=rid, person_id=pid, qty=qty, ingredient_id=item, label=label, note=note,
+                raw_text=f"{label}{note}".strip(), section=section,
+            ))
         else:
-            text = (payload.get("text") or "").strip()
-            if not text:
+            text_val = (payload.get("text") or "").strip()
+            if not text_val:
                 return jsonify({"error": "type an ingredient, or pick one from your library"}), 400
-            c.execute(
-                "INSERT INTO recipe_additions (recipe_id, person_id, qty, raw_text, section) VALUES (?, ?, ?, ?, ?)",
-                (rid, pid, qty, text, section),
-            )
-        result = changes_for(c, rid)
+            s.execute(insert(RecipeAddition.__table__).values(
+                recipe_id=rid, person_id=pid, qty=qty, raw_text=text_val, section=section,
+            ))
+        result = changes_for(s, rid)
+        s.commit()
     return jsonify(result)
 
 
 @app.route("/api/recipes/<rid>/people/<pid>/additions/<int:add_id>", methods=["DELETE"])
 def delete_addition(rid, pid, add_id):
     """Remove one of this person's added ingredients."""
-    with db() as c:
-        err = seed_recipe_person_error(c, rid, pid)
+    with orm_session() as s:
+        err = seed_recipe_person_error(s, rid, pid)
         if err:
             return jsonify({"error": err[0]}), err[1]
-        c.execute(
-            "DELETE FROM recipe_additions WHERE id = ? AND recipe_id = ? AND person_id = ?",
-            (add_id, rid, pid),
-        )
-        result = changes_for(c, rid)
+        s.execute(delete(RecipeAddition).where(
+            RecipeAddition.id == add_id, RecipeAddition.recipe_id == rid, RecipeAddition.person_id == pid
+        ))
+        result = changes_for(s, rid)
+        s.commit()
     return jsonify(result)
 
 
