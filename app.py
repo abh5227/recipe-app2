@@ -17,7 +17,8 @@ import sqlite3
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
-from sqlalchemy import select
+from sqlalchemy import create_engine, select
+from sqlalchemy.orm import Session
 
 from weights import build_index, match_weight
 from stepscale import api_spans
@@ -25,10 +26,7 @@ from import_cleanup import split_qty   # shared qty->quantity+unit split (backfi
 # SQLAlchemy migration (Stage 1b): the raw db() path below still serves everything; these ORM reads
 # are the converted PURE-READ, self-contained routes (list_people/list_ingredients/get_ingredient/
 # in_season). Write-transaction-entangled helpers (recipe_stats, changes_for, …) stay on db() — see 1c.
-from models import (
-    SessionLocal, Person, Ingredient, IngredientSeason, IngredientRegion, Region,
-    Recipe, RecipeIngredient,
-)
+from models import Person, Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient
 
 # Anchor everything to this file's folder so the app runs from any directory.
 BASE_DIR = Path(__file__).resolve().parent
@@ -58,6 +56,21 @@ def db():
     # deleting a recipe cascades to its ingredient/step/change rows automatically.
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
+
+
+# Engine cache keyed on the CURRENT DB path (module-global `DB`), so ORM reads hit the same database
+# the raw db() path uses — including the test harness's redirect of app.DB. Read at call time (like
+# db()); reusing one engine per path (prod: one; each test's temp DB: its own). Stage 2 replaces this
+# with a single pooled engine bound to DATABASE_URL.
+_engines = {}
+
+
+def orm_session():
+    url = f"sqlite:///{DB}"
+    eng = _engines.get(url)
+    if eng is None:
+        eng = _engines[url] = create_engine(url, future=True)
+    return Session(eng)
 
 
 def now_utc():
@@ -515,7 +528,7 @@ def delete_test_recipes():
 @app.route("/api/people")
 def list_people():
     """The people who can keep a version of a recipe — used by the view switcher."""
-    with SessionLocal() as s:
+    with orm_session() as s:
         rows = s.execute(
             select(Person.id, Person.name, Person.color).order_by(Person.position, Person.name)
         ).all()
@@ -645,14 +658,14 @@ def delete_addition(rid, pid, add_id):
 def list_ingredients():
     """The whole library as {id, name} — used to populate the recipe form and the
     'add ingredient' picker in a person's version."""
-    with SessionLocal() as s:
+    with orm_session() as s:
         rows = s.execute(select(Ingredient.id, Ingredient.name).order_by(Ingredient.name)).all()
     return jsonify([dict(r._mapping) for r in rows])
 
 
 @app.route("/api/ingredients/<iid>")
 def get_ingredient(iid):
-    with SessionLocal() as s:
+    with orm_session() as s:
         ing = s.execute(select(Ingredient.__table__).where(Ingredient.id == iid)).first()
         if ing is None:
             return jsonify({"error": "ingredient not found"}), 404
@@ -688,7 +701,7 @@ def get_ingredient(iid):
 def in_season(month=None):
     if month is None:
         month = datetime.date.today().month
-    with SessionLocal() as s:
+    with orm_session() as s:
         rows = s.execute(
             select(Ingredient.id, Ingredient.name)
             .join(IngredientSeason, IngredientSeason.ingredient_id == Ingredient.id)
