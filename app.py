@@ -17,7 +17,8 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 from sqlalchemy import create_engine, delete, event, func, insert, select, text, update
-from sqlalchemy.dialects.sqlite import insert as sqlite_insert   # Stage 2b swaps to the postgresql dialect
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert       # dialect-agnostic upserts (2b-2):
+from sqlalchemy.dialects.postgresql import insert as pg_insert       # pick per engine dialect at runtime
 from sqlalchemy.orm import Session
 
 from weights import build_index, match_weight
@@ -113,11 +114,20 @@ def recipe_stats(s, rid):
     }
 
 
+def dialect_insert(s, table):
+    """Return the engine-appropriate INSERT construct for an ON CONFLICT upsert (Stage 2b-2). Both the
+    sqlite and postgresql dialects expose insert(...).on_conflict_do_update(index_elements=, set_=) +
+    .excluded with the same signature for our usage, so the same upsert code works on both — SQLite
+    (dev/tests today) and Postgres (once the engine flips in 2b-5)."""
+    ins = pg_insert if s.get_bind().dialect.name == "postgresql" else sqlite_insert
+    return ins(table)
+
+
 def upsert_rating(s, rid, rating):
-    """Set-or-replace a recipe's single rating, stamping rated_on = datetime('now'). Shared by the
-    3 rating writers (set_rating, redo_cook, log_cook_and_rate). SQLite-dialect ON CONFLICT(recipe_id)
-    upsert; Stage 2b swaps sqlite_insert for the postgresql dialect."""
-    stmt = sqlite_insert(Rating).values(recipe_id=rid, rating=rating, rated_on=text("datetime('now')"))
+    """Set-or-replace a recipe's single rating, stamping rated_on with a Python UTC timestamp (2b-2:
+    was the SQLite-only datetime('now'); now_utc() is identical in format and dialect-neutral). Shared
+    by the 3 rating writers (set_rating, redo_cook, log_cook_and_rate). ON CONFLICT(recipe_id) upsert."""
+    stmt = dialect_insert(s, Rating).values(recipe_id=rid, rating=rating, rated_on=now_utc())
     s.execute(stmt.on_conflict_do_update(
         index_elements=[Rating.recipe_id],
         set_={"rating": stmt.excluded.rating, "rated_on": stmt.excluded.rated_on},
@@ -576,23 +586,22 @@ def set_line_change(rid, pid, pos):
         if not is_line:
             return jsonify({"error": "there's no ingredient line at that position"}), 400
 
-        # SQLite-dialect upsert on the composite PK (recipe_id, person_id, position). The edit branch
-        # writes the inserted qty (excluded.new_qty); the remove branch nulls it. An edit-then-edit
-        # updates the same row in place (no duplicate). Stage 2b swaps sqlite_insert -> the postgresql
-        # dialect's insert().on_conflict_do_update().
+        # Dialect-agnostic upsert (2b-2) on the composite PK (recipe_id, person_id, position). The edit
+        # branch writes the inserted qty (excluded.new_qty); the remove branch nulls it. An edit-then-edit
+        # updates the same row in place (no duplicate). Works on SQLite (today) and Postgres (2b-5).
         conflict = [RecipeLineChange.recipe_id, RecipeLineChange.person_id, RecipeLineChange.position]
         if kind == "edit":
             qty = (payload.get("qty") or "").strip()
             if not qty:
                 return jsonify({"error": "a quantity is required to change a line"}), 400
-            stmt = sqlite_insert(RecipeLineChange).values(
+            stmt = dialect_insert(s, RecipeLineChange).values(
                 recipe_id=rid, person_id=pid, position=pos, kind="edit", new_qty=qty
             )
             s.execute(stmt.on_conflict_do_update(
                 index_elements=conflict, set_={"kind": "edit", "new_qty": stmt.excluded.new_qty},
             ))
         elif kind == "remove":
-            stmt = sqlite_insert(RecipeLineChange).values(
+            stmt = dialect_insert(s, RecipeLineChange).values(
                 recipe_id=rid, person_id=pid, position=pos, kind="remove", new_qty=None
             )
             s.execute(stmt.on_conflict_do_update(
