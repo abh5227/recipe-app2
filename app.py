@@ -65,10 +65,12 @@ def orm_session():
 
         # SQLite leaves foreign keys OFF by default, but ON DELETE CASCADE (e.g. deleting a recipe
         # removes its ingredients/steps/ratings/cook_log/changes) only fires with them ON. Enforce
-        # per connection.
-        @event.listens_for(eng, "connect")
-        def _fk_on(dbapi_conn, _rec):
-            dbapi_conn.execute("PRAGMA foreign_keys=ON")
+        # per connection — SQLITE ONLY (Stage 2b-1): PRAGMA is a syntax error on Postgres, which
+        # enforces FKs + CASCADE always, so on PG the listener is simply not registered (a no-op).
+        if eng.dialect.name == "sqlite":
+            @event.listens_for(eng, "connect")
+            def _fk_on(dbapi_conn, _rec):
+                dbapi_conn.execute("PRAGMA foreign_keys=ON")
     return Session(eng)
 
 
