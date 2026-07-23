@@ -23,30 +23,42 @@ import pipeline from Paprika native exports.
 
 ## Tech stack
 
-- **Backend:** Python 3 + Flask (≥3.0). Single small backend serving a JSON API + static files.
-- **DB:** SQLite (`recipes.db`, git-ignored, local only).
-- **Frontend:** Vanilla JS (`static/app.js`), CSS3 with design tokens, Spectral typeface. No framework.
-- **Tests:** pytest (backend) + Node's built-in `--test` runner (JS; zero npm deps).
+- **Backend:** Python 3 + Flask (≥3.0) + SQLAlchemy (≥2.0). Single small backend serving a JSON API +
+  the built frontend. (SQLAlchemy landed in DB-migration Stage 1a — `models.py` mirrors the schema but
+  is **not wired yet**; queries still use raw `sqlite3`. See `docs/migration-plan.md`.)
+- **DB:** SQLite (`recipes.db`, git-ignored, local only); mid-migration to PostgreSQL (see the plan doc).
+- **Frontend:** Vanilla JS (`static/app.js`), CSS3 with design tokens, Spectral typeface — no framework,
+  but **built by Vite** into `dist/` (git-ignored) which Flask serves; TipTap powers the method-step editor.
+- **Tests:** pytest (backend) + Node's built-in `--test` runner (JS suite is **zero-dep** — runs on the
+  source without `node_modules`; the app build itself uses Vite + TipTap).
 - **CI:** GitHub Actions runs pytest w/ coverage, JS tests, and a SonarQube scan on push/PR.
 
 ## Commands
 
 ```bash
-# Setup / run
-pip install -r requirements.txt      # runtime: flask
-python3 build_db.py                  # apply migrations + load seed.py → recipes.db (never wipes your data)
-python3 app.py                       # serve at http://localhost:8000
+# Setup (fresh clone → working app at http://localhost:8000)
+python3.13 -m pip install -r requirements.txt   # Python runtime: flask, SQLAlchemy
+npm install                          # frontend deps: Vite (build) + TipTap (step editor)
+npm run build                        # build the Vite bundle → dist/ (git-ignored)
+                                     #   REQUIRED: Flask's "/" serves dist/index.html — skip this and / 500s
+python3.13 build_db.py               # apply migrations + load seed.py → recipes.db (never wipes your data)
+python3.13 app.py                    # serve the built frontend + API at http://localhost:8000
+
+# Active development (two processes, hot-reload)
+npm run dev                          # Vite dev server on :5173 (HMR); proxies /api + /images + /fonts → Flask
+python3.13 app.py                    # Flask on :8000 (API + images/fonts). Open the app at :5173.
 
 # Backup before risky DB work
-python3 backup.py                    # timestamped copy → backups/
+python3.13 backup.py                 # timestamped copy → backups/
 
 # Tests
-pip install -r requirements-dev.txt  # one-time: pytest
-python3 -m pytest                    # Python suite
-node --test tests/js                 # JS suite (scaler, factor-sync)  [also: npm test]
+python3.13 -m pip install -r requirements-dev.txt   # one-time: pytest
+python3.13 -m pytest                 # Python suite
+node --test tests/js                 # JS suite (zero-dep; scaler, factor-sync, step-adapter)  [also: npm test]
 ```
 
-After editing `seed.py`, rerun `build_db.py` then restart `app.py`.
+After editing frontend source (`static/*.js`, `static/styles.css`), rerun `npm run build` (or use the
+`npm run dev` loop). After editing `seed.py`, rerun `build_db.py` then restart `app.py`.
 
 ## Architecture & conventions
 
