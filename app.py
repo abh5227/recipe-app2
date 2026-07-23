@@ -17,10 +17,18 @@ import sqlite3
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
+from sqlalchemy import select
 
 from weights import build_index, match_weight
 from stepscale import api_spans
 from import_cleanup import split_qty   # shared qty->quantity+unit split (backfill/seed/import use it too)
+# SQLAlchemy migration (Stage 1b): the raw db() path below still serves everything; these ORM reads
+# are the converted PURE-READ, self-contained routes (list_people/list_ingredients/get_ingredient/
+# in_season). Write-transaction-entangled helpers (recipe_stats, changes_for, …) stay on db() — see 1c.
+from models import (
+    SessionLocal, Person, Ingredient, IngredientSeason, IngredientRegion, Region,
+    Recipe, RecipeIngredient,
+)
 
 # Anchor everything to this file's folder so the app runs from any directory.
 BASE_DIR = Path(__file__).resolve().parent
@@ -507,9 +515,11 @@ def delete_test_recipes():
 @app.route("/api/people")
 def list_people():
     """The people who can keep a version of a recipe — used by the view switcher."""
-    with db() as c:
-        rows = c.execute("SELECT id, name, color FROM people ORDER BY position, name").fetchall()
-    return jsonify([dict(r) for r in rows])
+    with SessionLocal() as s:
+        rows = s.execute(
+            select(Person.id, Person.name, Person.color).order_by(Person.position, Person.name)
+        ).all()
+    return jsonify([dict(r._mapping) for r in rows])
 
 
 @app.route("/api/recipes/<rid>/people/<pid>/lines/<int:pos>", methods=["PUT"])
@@ -635,49 +645,41 @@ def delete_addition(rid, pid, add_id):
 def list_ingredients():
     """The whole library as {id, name} — used to populate the recipe form and the
     'add ingredient' picker in a person's version."""
-    with db() as c:
-        rows = c.execute("SELECT id, name FROM ingredients ORDER BY name").fetchall()
-    return jsonify([dict(r) for r in rows])
+    with SessionLocal() as s:
+        rows = s.execute(select(Ingredient.id, Ingredient.name).order_by(Ingredient.name)).all()
+    return jsonify([dict(r._mapping) for r in rows])
 
 
 @app.route("/api/ingredients/<iid>")
 def get_ingredient(iid):
-    with db() as c:
-        ing = c.execute("SELECT * FROM ingredients WHERE id = ?", (iid,)).fetchone()
+    with SessionLocal() as s:
+        ing = s.execute(select(Ingredient.__table__).where(Ingredient.id == iid)).first()
         if ing is None:
             return jsonify({"error": "ingredient not found"}), 404
 
-        season = [
-            row["month"]
-            for row in c.execute(
-                "SELECT month FROM ingredient_seasons WHERE ingredient_id = ? ORDER BY month",
-                (iid,),
-            )
-        ]
-        regions = [
-            row["name"]
-            for row in c.execute(
-                """SELECT rg.name
-                   FROM ingredient_regions ir
-                   JOIN regions rg ON rg.id = ir.region_id
-                   WHERE ir.ingredient_id = ?
-                   ORDER BY ir.position""",
-                (iid,),
-            )
-        ]
-        used = c.execute(
-            """SELECT DISTINCT r.id, r.name
-               FROM recipes r
-               JOIN recipe_ingredients ri ON ri.recipe_id = r.id
-               WHERE ri.ingredient_id = ?
-               ORDER BY r.name""",
-            (iid,),
-        ).fetchall()
+        season = list(s.scalars(
+            select(IngredientSeason.month)
+            .where(IngredientSeason.ingredient_id == iid)
+            .order_by(IngredientSeason.month)
+        ))
+        regions = list(s.scalars(
+            select(Region.name)
+            .join(IngredientRegion, IngredientRegion.region_id == Region.id)
+            .where(IngredientRegion.ingredient_id == iid)
+            .order_by(IngredientRegion.position)
+        ))
+        used = s.execute(
+            select(Recipe.id, Recipe.name)
+            .join(RecipeIngredient, RecipeIngredient.recipe_id == Recipe.id)
+            .where(RecipeIngredient.ingredient_id == iid)
+            .distinct()
+            .order_by(Recipe.name)
+        ).all()
 
-    d = dict(ing)
+    d = dict(ing._mapping)
     d["season"] = season
     d["regions"] = regions
-    d["used_in"] = [dict(u) for u in used]
+    d["used_in"] = [dict(u._mapping) for u in used]
     return jsonify(d)
 
 
@@ -686,16 +688,14 @@ def get_ingredient(iid):
 def in_season(month=None):
     if month is None:
         month = datetime.date.today().month
-    with db() as c:
-        rows = c.execute(
-            """SELECT i.id, i.name
-               FROM ingredients i
-               JOIN ingredient_seasons s ON s.ingredient_id = i.id
-               WHERE s.month = ?
-               ORDER BY i.name""",
-            (month,),
-        ).fetchall()
-    return jsonify({"month": month, "ingredients": [dict(r) for r in rows]})
+    with SessionLocal() as s:
+        rows = s.execute(
+            select(Ingredient.id, Ingredient.name)
+            .join(IngredientSeason, IngredientSeason.ingredient_id == Ingredient.id)
+            .where(IngredientSeason.month == month)
+            .order_by(Ingredient.name)
+        ).all()
+    return jsonify({"month": month, "ingredients": [dict(r._mapping) for r in rows]})
 
 
 # ---- cooking log + ratings ----
