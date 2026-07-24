@@ -5,6 +5,7 @@ import {
 } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
 import { mountStepEditors, destroyStepEditors } from "./step-editor.js";
+import heroUrl from "./login-hero.jpg";   // auth-4 login hero — Vite hashes it into dist/assets (served via /assets)
 
 // This file runs in the browser. It has no recipe content of its own — it asks
 // the backend (app.py) for data as JSON, builds HTML text from that data, and
@@ -13,6 +14,8 @@ import { mountStepEditors, destroyStepEditors } from "./step-editor.js";
 
 const MONTHS = ["J", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
 const app = document.getElementById("app");
+const authGate = document.getElementById("auth-gate");   // login/signup split-spread (auth-4)
+let CURRENT_USER = null;                                  // set from /api/me|login|signup (never stored)
 
 // State for whichever recipe page is open (null on the home list or a form). It
 // remembers which view is showing and which line is being edited, so a click can
@@ -42,7 +45,8 @@ function esc(s) {
 // server to answer before continuing". If the server returns an error, we throw,
 // and the caller (route) shows the error screen.
 async function api(path) {
-  const res = await fetch(path, { cache: "no-store" });
+  const res = await fetch(path, { cache: "no-store", credentials: "same-origin" });
+  if (res.status === 401) { showAuth(); throw new Error("__auth__"); }   // session lost -> login view
   if (!res.ok) throw new Error("HTTP " + res.status);
   return res.json();
 }
@@ -61,8 +65,10 @@ async function postJSON(path, body) {
   const res = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "same-origin",
     body: JSON.stringify(body || {}),
   });
+  if (res.status === 401) { showAuth(); throw new Error("__auth__"); }
   if (!res.ok) throw new Error("HTTP " + res.status);
   return res.json();
 }
@@ -73,6 +79,24 @@ async function sendJSON(method, path, body) {
   const res = await fetch(path, {
     method,
     headers: body ? { "Content-Type": "application/json" } : {},
+    credentials: "same-origin",
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  let data = null;
+  try { data = await res.json(); } catch (_) { /* no/!json body */ }
+  if (res.status === 401) showAuth();   // an app write hit a lost session -> drop to the login view
+  return { ok: res.ok, status: res.status, data };
+}
+
+// Auth-endpoint calls (/api/me|login|signup|logout). Kept SEPARATE from api()/sendJSON so a 401 here
+// (a bad login) does NOT trip the session-lost gate above — the login/signup form shows the message
+// itself. Cookie is the session (credentials sent/received); nothing is stored client-side.
+async function authRequest(method, path, body) {
+  const res = await fetch(path, {
+    method,
+    headers: body ? { "Content-Type": "application/json" } : {},
+    credentials: "same-origin",
+    cache: "no-store",
     body: body ? JSON.stringify(body) : undefined,
   });
   let data = null;
@@ -189,6 +213,138 @@ async function updateStats(el, path, body) {
 //   #/recipe/mussakhan -> that recipe
 //   #/new              -> the create form
 //   #/edit/mussakhan   -> the edit form (app recipes only)
+/* ---------- auth gate (auth-4) ----------
+   A top-level state BEFORE the app renders: boot() asks GET /api/me; if logged out we show the
+   login/signup split-spread and route()/the app never runs; once authenticated we hand off to the
+   existing route(). The app's rendering (route/renderHome/paintRecipe/…) is untouched — it only runs
+   inside showApp(). This is the whole integration seam. */
+
+const HERO_SRC = heroUrl;   // the approved clean-B hero — bundled by Vite (committed source: static/login-hero.jpg)
+
+function authGateHTML() {
+  return `
+  <main class="auth-spread">
+    <section class="auth-hero">
+      <img src="${HERO_SRC}" alt="">
+      <div class="auth-hero-inner">
+        <span class="auth-hero-kicker">Chef&rsquo;s Choice&ensp;&middot;&ensp;Est. 2026</span>
+        <div>
+          <h2 class="auth-hero-statement login-only">Cook what you love.<br><em>Remember</em> what worked.</h2>
+          <h2 class="auth-hero-statement signup-only">A kitchen that<br><em>learns</em> your taste.</h2>
+          <p class="auth-hero-cred">Ratings, cook history &amp; your own versions — in one place.</p>
+        </div>
+      </div>
+    </section>
+    <section class="auth-panel">
+      <p class="auth-brand">Private&ensp;&middot;&ensp;Invite&nbsp;only</p>
+      <h1 class="auth-wordmark">Chef&rsquo;s Choice</h1>
+      <hr class="auth-divider">
+      <form id="auth-form" novalidate autocomplete="on">
+        <h2 class="auth-formhead login-only">Sign in to your kitchen</h2>
+        <h2 class="auth-formhead signup-only">Create your account</h2>
+        <div class="auth-field signup-only">
+          <label for="auth-name">Display name</label>
+          <input id="auth-name" name="display_name" type="text" autocomplete="name" placeholder="Your name">
+        </div>
+        <div class="auth-field">
+          <label for="auth-email">Email</label>
+          <input id="auth-email" name="email" type="email" autocomplete="email" placeholder="you@example.com">
+        </div>
+        <div class="auth-field">
+          <label for="auth-pw">Password</label>
+          <input id="auth-pw" name="password" type="password" autocomplete="current-password" placeholder="••••••••">
+        </div>
+        <div class="auth-field signup-only">
+          <label for="auth-invite">Invite code</label>
+          <input id="auth-invite" name="invite_code" type="text" autocomplete="off" placeholder="Enter your invite code">
+        </div>
+        <p class="auth-error" id="auth-error" role="alert" aria-live="polite"></p>
+        <button class="auth-btn login-only" type="submit">Sign in</button>
+        <button class="auth-btn signup-only" type="submit">Create account</button>
+        <p class="auth-toggle login-only">Have an invite code? <button type="button" data-auth-toggle>Create an account</button></p>
+        <p class="auth-toggle signup-only">Already have an account? <button type="button" data-auth-toggle>Sign in</button></p>
+      </form>
+    </section>
+  </main>`;
+}
+
+function showAuth() {
+  CURRENT_USER = null;
+  // tear down any open drawer / modal so nothing floats over the login view
+  document.querySelectorAll(".scrim, .panel[role='dialog'], .backdate-modal").forEach((el) => el.setAttribute("hidden", ""));
+  app.style.display = "none";
+  if (!authGate.dataset.wired) {
+    authGate.innerHTML = authGateHTML();
+    wireAuthGate();
+    authGate.dataset.wired = "1";
+  }
+  authGate.classList.remove("signup");                 // default to the login state
+  // Privacy (docs/SECURITY.md): the APP must not retain the previous session's typed credentials in the
+  // DOM after logout. reset() clears our own field values; it does NOT disable the browser's own
+  // password-manager/autofill (that re-populates on user focus and stays user-friendly).
+  const form = document.getElementById("auth-form");
+  if (form) form.reset();
+  const err = document.getElementById("auth-error");
+  if (err) err.textContent = "";
+  authGate.hidden = false;
+}
+
+function showApp() {
+  authGate.hidden = true;
+  app.style.display = "";
+  route();                                             // hand off to the existing renderer
+}
+
+function wireAuthGate() {
+  authGate.querySelectorAll("[data-auth-toggle]").forEach((b) =>
+    b.addEventListener("click", () => {
+      authGate.classList.toggle("signup");
+      document.getElementById("auth-error").textContent = "";
+    })
+  );
+  document.getElementById("auth-form").addEventListener("submit", onAuthSubmit);
+}
+
+async function onAuthSubmit(e) {
+  e.preventDefault();
+  const signup = authGate.classList.contains("signup");
+  const errEl = document.getElementById("auth-error");
+  errEl.textContent = "";
+  const email = document.getElementById("auth-email").value.trim();
+  const password = document.getElementById("auth-pw").value;
+  if (!email || !password) { errEl.textContent = "Please enter your email and password."; return; }
+
+  let res;
+  if (signup) {
+    const display_name = document.getElementById("auth-name").value.trim();
+    const invite_code = document.getElementById("auth-invite").value.trim();
+    if (!invite_code) { errEl.textContent = "An invite code is required to sign up."; return; }
+    res = await authRequest("POST", "/api/signup", { email, password, display_name, invite_code });
+  } else {
+    res = await authRequest("POST", "/api/login", { email, password });
+  }
+
+  if (res.ok && res.data && res.data.id) {               // login/signup return the user object
+    CURRENT_USER = res.data;
+    showApp();
+    return;
+  }
+  // Failure: signup surfaces the SPECIFIC server message (bad/used/expired invite, duplicate email);
+  // login stays GENERIC ("invalid credentials" from the backend — no email enumeration).
+  const msg = (res.data && res.data.error) ? res.data.error : "Something went wrong — please try again.";
+  errEl.textContent = msg.charAt(0).toUpperCase() + msg.slice(1);
+}
+
+async function boot() {
+  try {
+    const me = await authRequest("GET", "/api/me");      // public: 200 {user:null} or {user:{…}}
+    if (me.ok && me.data && me.data.user) { CURRENT_USER = me.data.user; showApp(); }
+    else { showAuth(); }
+  } catch (_) {
+    showAuth();                                          // network hiccup -> show login rather than a blank page
+  }
+}
+
 // route() runs once at startup and again every time the "#" part changes.
 async function route() {
   const hash = location.hash || "#/";
@@ -275,7 +431,9 @@ async function renderHome() {
         <h1 class="site-title">Chef's Choice</h1>
         <p class="site-sub">Field notes from the kitchen — recipes, and what goes in them.</p>
       </div>
-      <div class="site-head-actions">${bulkTest}<a class="btn new-recipe" href="#/new">+ New recipe</a></div>
+      <div class="site-head-actions">${bulkTest}<a class="btn new-recipe" href="#/new">+ New recipe</a>${
+        CURRENT_USER ? `<span class="site-user">${esc(CURRENT_USER.display_name || CURRENT_USER.email)}<button type="button" data-logout>Sign out</button></span>` : ""
+      }</div>
     </div>
     <div class="season-rail">
       <h2>In season now — ${esc(monthName)}</h2>
@@ -1488,6 +1646,7 @@ async function onSaveForm(mode, slug) {
 
 /* ---------- error state ---------- */
 function showError(err) {
+  if (err && err.message === "__auth__") return;   // 401 already dropped us to the login view — no error card
   app.innerHTML = `
     <div class="notice">
       <h2>Couldn't reach the kitchen</h2>
@@ -2134,6 +2293,7 @@ document.addEventListener("mouseout", (e) => {
 // Prompt first; if kept, restore the hash and leave the edit session intact.
 let inlineNavSuppress = false;
 function onHashChange() {
+  if (!authGate.hidden) return;                                   // logged out (login view up) — don't route
   if (inlineNavSuppress) { inlineNavSuppress = false; return; }   // our own hash-restore — ignore
   if (view && view.editMode && view.dirty) {
     if (!confirm("Discard unsaved changes?")) {
@@ -2153,4 +2313,12 @@ window.addEventListener("hashchange", onHashChange);
 window.addEventListener("beforeunload", (e) => {
   if (view && view.editMode && view.dirty) { e.preventDefault(); e.returnValue = ""; }
 });
-route();
+
+// Sign out (auth-4): delegated so it survives home re-renders. Ends the session, returns to login.
+document.addEventListener("click", async (e) => {
+  if (!e.target.closest("[data-logout]")) return;
+  await authRequest("POST", "/api/logout");
+  showAuth();
+});
+
+boot();   // auth-4: gate on GET /api/me before the app renders (was: route())

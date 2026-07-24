@@ -14,6 +14,10 @@
 </head>
 <body>
 
+  <!-- Auth gate (auth-4): the login/signup split-spread. Shown when GET /api/me is {user:null};
+       hidden once authenticated (then #app renders the real app). Filled/wired by app.js. -->
+  <div id="auth-gate" hidden></div>
+
   <!-- Everything is rendered into here by app.js -->
   <div class="page" id="app">
     <div class="notice"><p>Loading…</p></div>
