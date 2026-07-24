@@ -113,6 +113,25 @@ one "just a little ranking to boost engagement" at a time.
 
 The portfolio spans network density: **A + C work solo / day-one; B is the social engine.**
 
+### The moat — where the differentiation lives
+
+The differentiator is NOT the feature list (friend graph, feed, upload, copy, achievements are table
+stakes — anyone can build them). It's that hooks A and B are GENUINELY GOOD:
+
+- **A** ("what should I cook tonight" / recommendations) is good only if the recommendations are good —
+  which is a **CULINARY-EXPERTISE** problem as much as an algorithm one (knowing WHY dishes are
+  ingredient-adjacent — e.g. the fermented-chili backbone linking doubanjiang & gochujang — is culinary
+  knowledge, not collaborative filtering). This is domain expertise encoded into the ingredient-adjacency
+  model (the ingredient library + regions/seasons is the start of that encoded knowledge).
+- **B** (the feed) is good only if it fosters **CONNECTION not consumption** — a product-TASTE +
+  RESTRAINT problem, not an engineering one. The hard part isn't building a feed; it's keeping it
+  bounded/un-addictive/connection-focused against every industry instinct to do the opposite.
+
+**IMPLICATION for effort allocation:** build the table-stakes social plumbing (friend graph, upload, feed
+mechanics, copy, achievements) SOLIDLY but WITHOUT gold-plating — it's the foundation, not the moat.
+Reserve the deep thought for A's recommendation quality and B's connection-discipline. Guard against
+drift into over-engineering the plumbing instead of investing in the moat.
+
 ## Recommendation engine (north-star, later — NOT this stage)
 
 Learns your palate from logged data and recommends **"different but rooted in similar ingredients"**
