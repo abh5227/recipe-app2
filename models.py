@@ -50,6 +50,10 @@ class Recipe(Base):
     source = Column(Text, nullable=False, server_default=text("'seed'"))
     uid = Column(Text)
     hash = Column(Text)
+    # Rescoping R1: whose recipe-box this recipe is in (docs/product-vision.md). NULLABLE for now —
+    # a fresh build_db has no user to own seed recipes; R2 backfills existing rows to me, and
+    # create/copy set it to current_user. Reference FK (no cascade), matching auth-1's created_by/used_by.
+    owner = Column(Integer, ForeignKey("users.id"))
     __table_args__ = (
         # partial unique index: uid is unique only when set (imports carry it; app recipes don't).
         # Both dialect kwargs so the partial index renders on SQLite AND Postgres (Stage 2a) — each
@@ -81,6 +85,9 @@ class Rating(Base):
     recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), primary_key=True)
     rating = Column(Integer, nullable=False)
     rated_on = Column(Text, nullable=False, server_default=text("datetime('now')"))
+    # Rescoping R1: whose rating this is. NULLABLE add only — the PK stays (recipe_id) here; the
+    # composite (recipe_id, user_id) PK rebuild is R3. Reference FK (no cascade).
+    user_id = Column(Integer, ForeignKey("users.id"))
     __table_args__ = (CheckConstraint("rating BETWEEN 1 AND 5"),)
 
 
@@ -90,6 +97,9 @@ class CookLog(Base):
     recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
     cooked_on = Column(Text, nullable=False, server_default=text("date('now')"))
     source = Column(Text, nullable=False, server_default=text("'app'"))
+    # Rescoping R1: who logged this cook. NULLABLE add only (R2 backfills existing → me; new cooks set
+    # current_user). Reference FK (no cascade). No PK change here (cook_log keeps its own id PK).
+    user_id = Column(Integer, ForeignKey("users.id"))
     __table_args__ = (
         Index("idx_cook_log_recipe", "recipe_id"),
         {"sqlite_autoincrement": True},
