@@ -1,4 +1,5 @@
 flask>=3.0
+flask-login>=0.6            # server-side session auth for the JSON API (auth-2); pip-installed like alembic/psycopg
 SQLAlchemy>=2.0
 alembic>=1.13            # schema migrations for the Postgres world (Stage 2a+); SQLite still uses migrations/*.sql
 psycopg[binary]>=3.2     # PostgreSQL driver (Stage 2); DSN: postgresql+psycopg://…

@@ -222,6 +222,18 @@ class User(Base):
     created_at = Column(Text, nullable=False)
     __table_args__ = ({"sqlite_autoincrement": True},)
 
+    # Flask-Login interface (auth-2). Provided directly rather than via flask_login.UserMixin so
+    # models.py stays free of the web-framework import — this data layer is shared by build_db/alembic/
+    # import, none of which use Flask-Login. A loaded User is always an authenticated, active, non-anon
+    # account (there is no disabled/soft-delete flag yet); get_id returns the PK as the str Flask-Login
+    # stores in the signed session cookie.
+    is_authenticated = True
+    is_active = True
+    is_anonymous = False
+
+    def get_id(self):
+        return str(self.id)
+
 
 class Invite(Base):
     __tablename__ = "invites"

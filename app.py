@@ -17,6 +17,7 @@ import re
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
+from flask_login import LoginManager
 from sqlalchemy import create_engine, delete, event, func, insert, select, text, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert       # dialect-agnostic upserts (2b-2):
 from sqlalchemy.dialects.postgresql import insert as pg_insert       # pick per engine dialect at runtime
@@ -31,8 +32,9 @@ from import_cleanup import split_qty   # shared qty->quantity+unit split (backfi
 # (see docs/migration-plan.md).
 from models import (
     Person, Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
-    RecipeLineChange, RecipeAddition, Rating, CookLog, ingredient_weights,
+    RecipeLineChange, RecipeAddition, Rating, CookLog, User, ingredient_weights,
 )
+from auth import auth_bp   # JSON auth endpoints (auth-2); auth.py imports models only, so no import cycle
 
 # Anchor everything to this file's folder so the app runs from any directory.
 BASE_DIR = Path(__file__).resolve().parent
@@ -45,6 +47,36 @@ app = Flask(__name__, static_folder=str(BASE_DIR / "dist" / "assets"), static_ur
 # re-emits the current hashed names. (This replaces the old ?v=<mtime> query-string scheme.)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 31_536_000   # 1 year
 DB = BASE_DIR / "recipes.db"
+
+# --- authentication (auth-2): Flask-Login + a server-side session cookie -------------------------
+# SECRET_KEY signs the session cookie Flask-Login uses. FAIL CLOSED (docs/SECURITY.md): production is
+# signalled by a Postgres DATABASE_URL — the SAME switch that selects the prod database (CLAUDE.md) — so
+# there we REQUIRE SECRET_KEY from the env and REFUSE TO START if it's unset, rather than sign sessions
+# with a publicly-known dev key (which would make every session forgeable). Locally / in tests (SQLite,
+# DATABASE_URL unset) a clearly dev-only fallback is used; it is structurally unable to reach production
+# because the moment DATABASE_URL points at Postgres the fallback is rejected. (So running Postgres
+# locally also requires SECRET_KEY — correct: you can't drive the prod DB with a dev session key.)
+_secret_key = os.environ.get("SECRET_KEY")
+if not _secret_key:
+    if (os.environ.get("DATABASE_URL") or "").startswith("postgresql"):
+        raise RuntimeError(
+            "SECRET_KEY must be set when DATABASE_URL is Postgres (production): refusing to start with "
+            "the dev-only fallback, which would sign session cookies with a publicly-known key."
+        )
+    _secret_key = "dev-only-not-a-secret-set-SECRET_KEY-in-prod"   # dev/test ONLY (SQLite); see above
+app.config["SECRET_KEY"] = _secret_key
+
+login_manager = LoginManager()
+login_manager.init_app(app)
+app.register_blueprint(auth_bp)   # /api/signup | /api/login | /api/logout | /api/me (all public; auth-3 gates the rest)
+
+
+@login_manager.unauthorized_handler
+def _unauthorized():
+    # This is a JSON API, not a server-rendered app: answer an unauthenticated request to a gated route
+    # (once auth-3 adds @login_required) with 401 JSON, never a 302 redirect to a login page.
+    return jsonify({"error": "authentication required"}), 401
+
 
 # Recipe source tiers the app may edit/delete. 'test' is the scratch/throwaway tier (a removable
 # bridge feature — production would use separate dev/staging DBs); 'seed' stays read-only (edit in
@@ -81,6 +113,16 @@ def orm_session():
 
 def now_utc():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+@login_manager.user_loader
+def load_user(user_id):
+    # Flask-Login stores get_id() (str(id)) in the session cookie; this reloads the User on each request
+    # via the SAME call-time orm_session() (so it honors DATABASE_URL + the test-harness DB redirect,
+    # never a frozen engine). Returns a detached User with all columns loaded — fine for current_user's
+    # attribute reads — or None if the id is unknown (a stale/forged cookie → treated as logged out).
+    with orm_session() as s:
+        return s.get(User, int(user_id))
 
 
 def slugify(name):

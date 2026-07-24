@@ -39,6 +39,9 @@ jobs:
       - name: Run Postgres integration tests
         env:
           DATABASE_URL: postgresql+psycopg://postgres@localhost:5432/recipe_test
+          # A Postgres DATABASE_URL makes app.py FAIL CLOSED without SECRET_KEY (docs/SECURITY.md), so
+          # this step MUST supply one. This is a throwaway CI value, NOT a real/production secret.
+          SECRET_KEY: ci-only-not-a-real-secret
         run: |
           alembic upgrade head                  # create the schema on the CI Postgres service
           pytest tests/test_pg_integration.py   # DATABASE_URL is postgresql -> the 6 PG tests RUN
