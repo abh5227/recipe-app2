@@ -139,3 +139,26 @@ def test_sequence_after_insert(pg):
         new_ids = [r[0] for r in conn.execute(
             text("SELECT id FROM recipe_ingredients WHERE recipe_id=:r"), {"r": rid})]
     assert new_ids and all(i > max_before for i in new_ids)
+
+
+# ---- 6. per-user cook/rating scoping — the cross-bleed pin (rescoping R4, consideration #3) -------
+
+def test_undo_cook_rating_is_per_user_no_cross_bleed(pg):
+    """MY undo (cooks -> 0) must drop only MY rating, never another user's on the same recipe. The
+    single-user harness can't catch this — it needs two users. Sharpest isolation of the rating-delete
+    cross-bleed: user B RATES the recipe without cooking it (0 cooks); user A cooks once then undoes.
+    With the R4 user-filter, A's undo drops only A's (absent) rating; the old unscoped
+    delete(Rating).where(recipe_id) would wipe B's rating too."""
+    a_id = harness.ensure_test_user()                                 # the harness user (pg.client is A)
+    b_id = harness.ensure_test_user(email="userb@test.local")         # a 2nd user
+    ca = pg.client
+    cb = app.app.test_client()
+    harness.login_test_client(cb, b_id)
+    rid = "gai-yang"
+    assert cb.post(f"/api/recipes/{rid}/rating", json={"rating": 3}).status_code == 200   # B rates, does NOT cook
+    assert ca.post(f"/api/recipes/{rid}/cooked", json={}).status_code == 200              # A cooks once (no rating)
+    assert ca.post(f"/api/recipes/{rid}/uncook").status_code == 200                       # A undoes -> A's cooks 0
+    b_rating = _count(pg.engine, "SELECT rating FROM ratings WHERE recipe_id=:r AND user_id=:u", r=rid, u=b_id)
+    a_ratings = _count(pg.engine, "SELECT COUNT(*) FROM ratings WHERE recipe_id=:r AND user_id=:u", r=rid, u=a_id)
+    assert b_rating == 3      # B's rating SURVIVES A's undo (the cross-bleed would have deleted it)
+    assert a_ratings == 0     # A never rated; A's undo-to-0 only ever touches A's own layer

@@ -430,6 +430,7 @@ def create_recipe():
             category=payload.get("category"), servings=payload.get("servings"), prep_time=payload.get("prep_time"),
             cook_time=payload.get("cook_time"), total_time=payload.get("total_time"), descr=payload.get("descr"),
             notes=payload.get("notes"), image=payload.get("image"), created_at=now_utc(), source=source,
+            owner=current_user.id,   # R4: a created recipe lands in the creator's box
         ))
         write_recipe_rows(s, slug, clean)
         s.commit()
@@ -600,6 +601,7 @@ def copy_recipe(rid):
             cook_time=src["cook_time"], total_time=src["total_time"], descr=src["descr"],
             notes=src["notes"], image=src["image"], created_at=now_utc(),
             source=("test" if is_test else "app"), uid=None, hash=None,
+            owner=current_user.id,   # R4 (box model): the copy is owned by whoever made it, even copying your own
         ))
         # Direct row-copy: carries all content INCL. harvested grams/secondary_measure (write_recipe_rows
         # would NULL those). cook_log / ratings / import_flags / per-person tables are deliberately NOT
@@ -838,9 +840,9 @@ def log_cook(rid):
             return jsonify({"error": "recipe not found"}), 404
         cl = CookLog.__table__
         if cooked_on:
-            s.execute(insert(cl).values(recipe_id=rid, cooked_on=cooked_on))
+            s.execute(insert(cl).values(recipe_id=rid, user_id=current_user.id, cooked_on=cooked_on))
         else:
-            s.execute(insert(cl).values(recipe_id=rid))   # cooked_on omitted -> DB default date('now')
+            s.execute(insert(cl).values(recipe_id=rid, user_id=current_user.id))   # cooked_on omitted -> DB default date('now')
         stats = recipe_stats(s, rid)
         s.commit()
     return jsonify(stats)
@@ -855,21 +857,28 @@ def undo_cook(rid):
     with orm_session() as s:
         if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
+        # R4: everything here is scoped to current_user — MY last cook, MY remaining count, MY rating.
+        # Without the user filter, my undo would drop ANOTHER user's rating on the same recipe (the
+        # consideration-#3 cross-bleed). recipes stay visible to all, but the personal layer is per-user.
         last = s.execute(
             select(CookLog.id, CookLog.cooked_on, CookLog.source)
-            .where(CookLog.recipe_id == rid).order_by(CookLog.id.desc()).limit(1)
+            .where(CookLog.recipe_id == rid, CookLog.user_id == current_user.id)
+            .order_by(CookLog.id.desc()).limit(1)
         ).first()
         undone = None   # what this undo removed, so a one-shot redo can reverse exactly it
         if last:
             s.execute(delete(CookLog).where(CookLog.id == last.id))
-            remaining = s.scalar(   # counted AFTER the delete — drop the rating iff this undo hit 0 cooks
-                select(func.count()).select_from(CookLog).where(CookLog.recipe_id == rid)
+            remaining = s.scalar(   # MY cooks remaining, counted AFTER the delete — drop MY rating iff 0
+                select(func.count()).select_from(CookLog)
+                .where(CookLog.recipe_id == rid, CookLog.user_id == current_user.id)
             )
             cleared_rating = None
             if remaining == 0:
-                rr = s.execute(select(Rating.rating).where(Rating.recipe_id == rid)).first()
+                rr = s.execute(select(Rating.rating)
+                               .where(Rating.recipe_id == rid, Rating.user_id == current_user.id)).first()
                 cleared_rating = rr.rating if rr else None
-                s.execute(delete(Rating).where(Rating.recipe_id == rid))   # back to uncooked -> drop the rating
+                s.execute(delete(Rating)   # back to uncooked (for ME) -> drop MY rating, never anyone else's
+                          .where(Rating.recipe_id == rid, Rating.user_id == current_user.id))
             undone = {"cooked_on": last.cooked_on, "source": last.source, "cleared_rating": cleared_rating}
         stats = recipe_stats(s, rid)
         s.commit()
@@ -905,7 +914,7 @@ def redo_cook(rid):
     with orm_session() as s:
         if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
-        s.execute(insert(CookLog.__table__).values(recipe_id=rid, cooked_on=cooked_on, source=source))
+        s.execute(insert(CookLog.__table__).values(recipe_id=rid, user_id=current_user.id, cooked_on=cooked_on, source=source))
         if rating is not None:
             upsert_rating(s, rid, current_user.id, rating)
         stats = recipe_stats(s, rid)
@@ -940,7 +949,7 @@ def log_cook_and_rate(rid):
     with orm_session() as s:
         if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
-        s.execute(insert(CookLog.__table__).values(recipe_id=rid))   # today's cook, source default 'app'
+        s.execute(insert(CookLog.__table__).values(recipe_id=rid, user_id=current_user.id))   # today's cook, source default 'app'
         upsert_rating(s, rid, current_user.id, rating)
         stats = recipe_stats(s, rid)
         s.commit()

@@ -72,6 +72,17 @@ def test_create_without_flag_is_app(kitchen):
     assert kitchen.client.get(f"/api/recipes/{rid}").get_json()["is_test"] is False
 
 
+def test_create_and_copy_set_owner_to_current_user(kitchen):
+    # R4: a created recipe — and a copy of it — land in the current (harness) user's box (owner = me).
+    with kitchen.conn() as c:
+        me = c.execute("SELECT id FROM users").fetchone()[0]   # the sole harness user (kitchen.client's login)
+    rid = kitchen.client.post("/api/recipes", json={"name": "Owned One", "ingredients": [], "steps": []}).get_json()["id"]
+    cp = kitchen.client.post(f"/api/recipes/{rid}/copy", json={}).get_json()["id"]
+    with kitchen.conn() as c:
+        assert c.execute("SELECT owner FROM recipes WHERE id=?", (rid,)).fetchone()["owner"] == me
+        assert c.execute("SELECT owner FROM recipes WHERE id=?", (cp,)).fetchone()["owner"] == me
+
+
 def test_gate_parity_test_editable_deletable_seed_not(kitchen):
     # a test recipe edits + deletes like an app recipe...
     rid = kitchen.client.post("/api/recipes", json={"name": "Scratch Two", "ingredients": [], "steps": [], "is_test": True}).get_json()["id"]
