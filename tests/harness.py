@@ -53,9 +53,50 @@ class Kitchen:
         build_db.build()
 
 
-def make_kitchen(tmp_path):
+# auth-3b: the routes are login-gated, so the harness logs a reserved test user into its client by
+# default — otherwise every route test would 401. The email is reserved (no real test uses it, so it
+# can't collide on users.email UNIQUE). is_admin=0: the mutating/read routes only need a logged-in user;
+# the admin-only /api/invites tests mint their own admin (create_admin). Auth-state tests get a
+# logged-OUT client via app.app.test_client() directly (a fresh cookie jar) or make_kitchen(..., login=False).
+HARNESS_USER_EMAIL = "harness@test.local"
+
+
+def ensure_test_user(email=HARNESS_USER_EMAIL, is_admin=0):
+    """Create the reserved harness user (idempotent) in whatever DB app.orm_session() currently points
+    at — SQLite temp DB or Postgres — and return its id. Uses the app's own ORM/hash so it's
+    dialect-agnostic and honors the harness DB redirect (app.DB is rebound just above by make_kitchen)."""
+    import app
+    from sqlalchemy import select
+    from models import User
+    from auth import hash_password
+    with app.orm_session() as s:
+        uid = s.execute(select(User.id).where(User.email == email)).scalar_one_or_none()
+        if uid is None:
+            u = User(email=email, password_hash=hash_password("harness-pw"),
+                     is_admin=is_admin, created_at=app.now_utc())
+            s.add(u)
+            s.commit()
+            uid = u.id
+        return uid
+
+
+def login_test_client(client, user_id):
+    """Authenticate a Flask test client as `user_id` using Flask-Login's session key directly (no login
+    route / password round-trip needed). Signing the cookie needs SECRET_KEY — present in BOTH test
+    paths: SQLite tests use the dev fallback (DATABASE_URL unset), PG tests get it from the env
+    (build.yml's PG step / a local export, required anyway by the fail-closed guard)."""
+    with client.session_transaction() as sess:
+        sess["_user_id"] = str(user_id)
+        sess["_fresh"] = True
+
+
+def make_kitchen(tmp_path, login=True):
     """Point the app / build_db / migrate modules at a new temp DB, build it, and return
-    a Kitchen. Each call uses its own database file, so tests stay isolated."""
+    a Kitchen. Each call uses its own database file, so tests stay isolated.
+
+    login=True (default, auth-3b) creates + logs in the reserved harness user, so the client is
+    authenticated and the ~300 route tests pass un-edited against the login-gated routes. Pass
+    login=False for a logged-out client (e.g. to assert unauthenticated 401 behavior)."""
     db = Path(tmp_path) / "test.db"
     import migrate
     import build_db
@@ -73,7 +114,10 @@ def make_kitchen(tmp_path):
     build_db.RECIPES = TEST_RECIPES
 
     build_db.build()                       # apply migrations + load seed content (from TEST_RECIPES)
-    return Kitchen(db, app.app.test_client())
+    client = app.app.test_client()
+    if login:
+        login_test_client(client, ensure_test_user())   # authenticate against the just-built DB
+    return Kitchen(db, client)
 
 
 def write_paprika_archive(path, recipes, malformed=()):

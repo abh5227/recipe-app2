@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
-from flask_login import LoginManager
+from flask_login import LoginManager, current_user
 from sqlalchemy import create_engine, delete, event, func, insert, select, text, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert       # dialect-agnostic upserts (2b-2):
 from sqlalchemy.dialects.postgresql import insert as pg_insert       # pick per engine dialect at runtime
@@ -73,9 +73,33 @@ app.register_blueprint(auth_bp)   # /api/signup | /api/login | /api/logout | /ap
 
 @login_manager.unauthorized_handler
 def _unauthorized():
-    # This is a JSON API, not a server-rendered app: answer an unauthenticated request to a gated route
-    # (once auth-3 adds @login_required) with 401 JSON, never a 302 redirect to a login page.
+    # This is a JSON API, not a server-rendered app: answer an unauthenticated request with 401 JSON,
+    # never a 302 redirect to a login page. Fired by the before_request gate below and by @login_required.
     return jsonify({"error": "authentication required"}), 401
+
+
+# Routes reachable WITHOUT login: the SPA shell + its hashed assets/images/fonts (so the login page can
+# load before anyone is authenticated) and the auth entry points. EVERYTHING else — all /api/* reads and
+# writes — requires login (auth-3b; the pilot is private, so reads are gated too). /api/invites is
+# ADDITIONALLY admin-gated by its own @admin_required (a logged-in non-admin gets 403 there, not 401).
+# Keyed on request.endpoint (not the path) so it's robust to URL params and can't be defeated by casing.
+PUBLIC_ENDPOINTS = frozenset({
+    "home", "static", "recipe_image", "font_file",     # SPA shell + /assets, /images, /fonts
+    "auth.login", "auth.signup", "auth.me",            # log in / sign up / "who am I" (returns {user:null})
+})
+
+
+@app.before_request
+def _require_login():
+    # Fail-closed default-deny (docs/SECURITY.md): any matched route NOT on the allowlist needs a
+    # logged-in user. New routes are therefore gated by default (you must opt INTO public), the safe way.
+    if request.endpoint is None:                       # unmatched path → let Flask 404 (don't 401 typos)
+        return None
+    if request.endpoint in PUBLIC_ENDPOINTS:
+        return None
+    if not current_user.is_authenticated:
+        return jsonify({"error": "authentication required"}), 401
+    return None
 
 
 # Recipe source tiers the app may edit/delete. 'test' is the scratch/throwaway tier (a removable

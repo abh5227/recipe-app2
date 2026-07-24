@@ -278,3 +278,36 @@ def test_non_admin_cannot_list_invites(kitchen):
     user_client.post("/api/signup", json={"email": "u@ex.com", "password": "pw", "invite_code": code})
     assert user_client.get("/api/invites").status_code == 403
     assert _fresh().get("/api/invites").status_code == 401   # logged out → 401
+
+
+# ---- auth-3b: the login gate (private pilot — reads + writes require login) ----
+def test_gated_read_route_401_then_200(kitchen):
+    """A read route is gated: 401 unauthenticated, 200 as the logged-in harness client."""
+    anon = _fresh()                                       # fresh cookie jar → not logged in
+    blocked = anon.get("/api/recipes")
+    assert blocked.status_code == 401
+    assert blocked.get_json() == {"error": "authentication required"}
+    assert kitchen.client.get("/api/recipes").status_code == 200   # harness client is authenticated
+
+
+def test_gated_write_route_401_unauthenticated(kitchen):
+    r = _fresh().post("/api/recipes", json={"name": "X", "ingredients": [], "steps": []})
+    assert r.status_code == 401                           # write also gated (no auth → blocked)
+
+
+def test_public_routes_reachable_unauthenticated(kitchen):
+    anon = _fresh()
+    # /api/me is public: 200 with {user:null} when logged out (a gated route would 401 instead)
+    me = anon.get("/api/me")
+    assert me.status_code == 200 and me.get_json() == {"user": None}
+    # /api/login is public: reaching the handler (bad creds → 401 "invalid credentials"), NOT the
+    # gate's 401 "authentication required" — proves the allowlist lets it through to the view.
+    login = anon.post("/api/login", json={"email": "nobody@ex.com", "password": "x"})
+    assert login.status_code == 401 and login.get_json()["error"] == "invalid credentials"
+    # the SPA shell (/) is not gated (must load before auth) — never the gate's 401
+    assert anon.get("/").status_code != 401
+
+
+def test_logged_out_kitchen_client_is_blocked(kitchen_logged_out):
+    """The make_kitchen(login=False) opt-out yields an unauthenticated client (gated → 401)."""
+    assert kitchen_logged_out.client.get("/api/recipes").status_code == 401

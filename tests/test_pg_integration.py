@@ -26,6 +26,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 import app                       # noqa: E402
+import harness                   # noqa: E402  (auth-3b: reserved-user create + client login helpers)
 import pg_harness                # noqa: E402
 from sqlalchemy import create_engine, text   # noqa: E402
 
@@ -37,11 +38,15 @@ EXPECTED_RECIPE_ORDER = ["bulgogi-bowls", "no-knead-bread", "mussakhan", "aloo-g
 
 @pytest.fixture
 def pg():
-    """Fresh truncate-reseeded PG + the real app test client, per test (isolation; app commits)."""
+    """Fresh truncate-reseeded PG + the real app test client, per test (isolation; app commits).
+    auth-3b: routes are login-gated, so authenticate the client. The reserved user is created AFTER
+    reset_and_seed (which TRUNCATEs users), and login signs the cookie with the PG-step SECRET_KEY."""
     engine = create_engine(DATABASE_URL, future=True)
     pg_harness.reset_and_seed(engine)
+    client = app.app.test_client()
+    harness.login_test_client(client, harness.ensure_test_user())
     try:
-        yield SimpleNamespace(engine=engine, client=app.app.test_client())
+        yield SimpleNamespace(engine=engine, client=client)
     finally:
         engine.dispose()
 

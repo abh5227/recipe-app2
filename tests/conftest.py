@@ -15,3 +15,9 @@ from harness import make_kitchen
 @pytest.fixture
 def kitchen(tmp_path):
     return make_kitchen(tmp_path)
+
+
+@pytest.fixture
+def kitchen_logged_out(tmp_path):
+    # auth-3b opt-out: a Kitchen whose client is NOT authenticated, for asserting the login gate blocks.
+    return make_kitchen(tmp_path, login=False)
