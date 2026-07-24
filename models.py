@@ -85,9 +85,10 @@ class Rating(Base):
     recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), primary_key=True)
     rating = Column(Integer, nullable=False)
     rated_on = Column(Text, nullable=False, server_default=text("datetime('now')"))
-    # Rescoping R1: whose rating this is. NULLABLE add only — the PK stays (recipe_id) here; the
-    # composite (recipe_id, user_id) PK rebuild is R3. Reference FK (no cascade).
-    user_id = Column(Integer, ForeignKey("users.id"))
+    # Rescoping R3: whose rating this is. Now part of the COMPOSITE PK (recipe_id, user_id) — one rating
+    # per (recipe, user) — so it's NOT NULL. Reference FK to users (no cascade). Existing rows were
+    # backfilled to the owner account by scripts/backfill_rescoping.py before this constraint applied.
+    user_id = Column(Integer, ForeignKey("users.id"), primary_key=True, nullable=False)
     __table_args__ = (CheckConstraint("rating BETWEEN 1 AND 5"),)
 
 

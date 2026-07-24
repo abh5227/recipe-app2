@@ -52,7 +52,7 @@ class Summary:
         return self.written + self.skipped + len(self.reader_errors)
 
 
-def run_import(db_path=DB, archive_path=ARCHIVE, *, backup_dir=None):
+def run_import(db_path=DB, archive_path=ARCHIVE, *, backup_dir=None, owner_email=None):
     """Import EVERY recipe in `archive_path` into `db_path`, all-or-nothing.
 
     Backs up first; if the backup can't be made it raises BEFORE opening any connection, so
@@ -73,6 +73,7 @@ def run_import(db_path=DB, archive_path=ARCHIVE, *, backup_dir=None):
     conn.isolation_level = None                             # we drive BEGIN / COMMIT / ROLLBACK
     try:
         conn.execute("PRAGMA foreign_keys = ON")            # (3) enforce cascades (before BEGIN)
+        owner_id = iw.resolve_owner(conn, owner_email)      # whose box imports land in (ratings.user_id, R3)
         conn.execute("BEGIN")                               # (4) one transaction for the batch
         with zipfile.ZipFile(str(archive_path)) as zf:
             for name, rec, err in reader.iter_entries(zf):  # (2) namelist order, per-entry safe
@@ -81,7 +82,7 @@ def run_import(db_path=DB, archive_path=ARCHIVE, *, backup_dir=None):
                     continue
                 cleaned = cleanup.clean_recipe(reader.normalize(rec))
                 plan = iw.plan_recipe(cleaned, uid_index, taken)
-                if iw.commit_plan(conn, plan):              # module ref -> monkeypatchable
+                if iw.commit_plan(conn, plan, owner_id):    # module ref -> monkeypatchable
                     summary.written += 1
                     summary.flags += len(plan["review_flags"])
                     uid = plan["recipe"]["uid"]
@@ -122,6 +123,9 @@ def main():
                     help="Paprika .paprikarecipes archive (default: repo archive)")
     ap.add_argument("--yes", action="store_true",
                     help="REQUIRED to write. Without it the runner refuses and does nothing.")
+    ap.add_argument("--owner-email",
+                    help="account that owns the imported recipes' ratings (rescoping R3). "
+                         "Defaults to the sole user if exactly one exists; required otherwise.")
     args = ap.parse_args()
 
     if not args.yes:
@@ -130,7 +134,7 @@ def main():
         return 2
 
     try:
-        s = run_import(Path(args.db), Path(args.archive))
+        s = run_import(Path(args.db), Path(args.archive), owner_email=args.owner_email)
     except Exception as e:                                   # noqa: BLE001 — report + nonzero exit
         print(f"IMPORT FAILED: {e!r}")
         print("  rolled back — database unchanged (0 recipes written).")

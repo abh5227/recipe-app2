@@ -215,11 +215,34 @@ def plan_recipe(cleaned, uid_index, taken_slugs, now=None):
 # --------------------------------------------------------------------------- #
 # The ONLY writer (used by the real import run, NOT by the dry-run)
 # --------------------------------------------------------------------------- #
-def commit_plan(conn, plan):
+def resolve_owner(conn, email=None):
+    """Resolve the owner user id for an import (rescoping R3: ratings.user_id is NOT NULL, so imported
+    ratings need an owner). Explicit email wins (error if unknown); else the SOLE user (error if 0 or >1
+    — pass --owner-email). Mirrors scripts/backfill_rescoping.py's resolution. `conn` is a raw sqlite3
+    connection (the import path)."""
+    if email:
+        row = conn.execute("SELECT id FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()
+        if row is None:
+            raise ValueError(f"no user with email {email!r}")
+        return row[0]
+    ids = [row[0] for row in conn.execute("SELECT id FROM users ORDER BY id")]
+    if len(ids) == 1:
+        return ids[0]
+    raise ValueError(f"import owner ambiguous: {len(ids)} users exist — pass --owner-email")
+
+
+def commit_plan(conn, plan, owner_id=None):
     """Persist one write plan; returns True if it wrote, False for a SKIP. The caller owns
-    the transaction (commit/rollback). Requires migration 010 (import_flags)."""
+    the transaction (commit/rollback). Requires migration 010 (import_flags).
+
+    owner_id: the user whose box this import lands in — imported ratings are attributed to it (ratings
+    .user_id is NOT NULL since R3). Defaults to the sole user (resolve_owner) for direct callers/tests;
+    import_runner passes the --owner-email-resolved id. recipes.owner is left to the backfill (not set
+    here — R4 owns recipe-ownership rules)."""
     if plan["decision"] != "write":
         return False
+    if owner_id is None:
+        owner_id = resolve_owner(conn)
     r = plan["recipe"]
     conn.execute(
         """INSERT INTO recipes
@@ -241,8 +264,8 @@ def commit_plan(conn, plan):
             "INSERT INTO recipe_steps (recipe_id, position, is_heading, text) VALUES (?,?,?,?)",
             (r["id"], row["position"], row["is_heading"], row["text"]))
     if plan["rating"] is not None:
-        conn.execute("INSERT INTO ratings (recipe_id, rating) VALUES (?,?)",
-                     (r["id"], plan["rating"]))
+        conn.execute("INSERT INTO ratings (recipe_id, user_id, rating) VALUES (?,?,?)",
+                     (r["id"], owner_id, plan["rating"]))
     for fl in plan["review_flags"]:
         conn.execute(
             "INSERT INTO import_flags (recipe_id, position, flag, reason) VALUES (?,?,?,?)",

@@ -73,11 +73,11 @@ def test_write_failure_mid_batch_rolls_back_everything(kitchen, archive, tmp_pat
     real = iw.commit_plan
     calls = {"n": 0}
 
-    def flaky(conn, plan):
+    def flaky(conn, plan, owner_id=None):       # signature mirrors commit_plan (owner_id added in R3)
         calls["n"] += 1
         if calls["n"] == 2:                     # fail on the SECOND recipe (first already written)
             raise RuntimeError("injected write failure")
-        return real(conn, plan)
+        return real(conn, plan, owner_id)
 
     monkeypatch.setattr(iw, "commit_plan", flaky)   # the runner calls iw.commit_plan -> patched
 

@@ -193,13 +193,15 @@ def dialect_insert(s, table):
     return ins(table)
 
 
-def upsert_rating(s, rid, rating):
-    """Set-or-replace a recipe's single rating, stamping rated_on with a Python UTC timestamp (2b-2:
-    was the SQLite-only datetime('now'); now_utc() is identical in format and dialect-neutral). Shared
-    by the 3 rating writers (set_rating, redo_cook, log_cook_and_rate). ON CONFLICT(recipe_id) upsert."""
-    stmt = dialect_insert(s, Rating).values(recipe_id=rid, rating=rating, rated_on=now_utc())
+def upsert_rating(s, rid, user_id, rating):
+    """Set-or-replace THIS user's rating of a recipe, stamping rated_on with a Python UTC timestamp
+    (dialect-neutral now_utc()). Shared by the 3 rating writers (set_rating, redo_cook, log_cook_and_rate).
+    Rescoping R3: the conflict target is the composite PK (recipe_id, user_id) — one rating per (recipe,
+    user) — and user_id is supplied (it's NOT NULL). Callers pass current_user.id. (Broader write-scoping
+    of cooks + owner is R4; this is the minimal change to keep rating writes working under the new PK.)"""
+    stmt = dialect_insert(s, Rating).values(recipe_id=rid, user_id=user_id, rating=rating, rated_on=now_utc())
     s.execute(stmt.on_conflict_do_update(
-        index_elements=[Rating.recipe_id],
+        index_elements=[Rating.recipe_id, Rating.user_id],
         set_={"rating": stmt.excluded.rating, "rated_on": stmt.excluded.rated_on},
     ))
 
@@ -905,7 +907,7 @@ def redo_cook(rid):
             return jsonify({"error": "recipe not found"}), 404
         s.execute(insert(CookLog.__table__).values(recipe_id=rid, cooked_on=cooked_on, source=source))
         if rating is not None:
-            upsert_rating(s, rid, rating)
+            upsert_rating(s, rid, current_user.id, rating)
         stats = recipe_stats(s, rid)
         s.commit()
     return jsonify(stats)
@@ -921,7 +923,7 @@ def set_rating(rid):
     with orm_session() as s:
         if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
-        upsert_rating(s, rid, rating)   # NOT cook-gated: rating an uncooked recipe is allowed (as before)
+        upsert_rating(s, rid, current_user.id, rating)   # NOT cook-gated: rating an uncooked recipe is allowed (as before)
         stats = recipe_stats(s, rid)
         s.commit()
     return jsonify(stats)
@@ -939,7 +941,7 @@ def log_cook_and_rate(rid):
         if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
         s.execute(insert(CookLog.__table__).values(recipe_id=rid))   # today's cook, source default 'app'
-        upsert_rating(s, rid, rating)
+        upsert_rating(s, rid, current_user.id, rating)
         stats = recipe_stats(s, rid)
         s.commit()
     return jsonify(stats)
