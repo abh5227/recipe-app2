@@ -207,6 +207,34 @@ class SchemaMigration(Base):
     applied_at = Column(Text, nullable=False, server_default=text("datetime('now')"))
 
 
+# ---- auth (auth-1: data layer only; Flask-Login + the JSON endpoints land in auth-2) -------------
+class User(Base):
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    email = Column(Text, nullable=False, unique=True)                    # stored lowercased
+    password_hash = Column(Text, nullable=False)
+    display_name = Column(Text)
+    # int-boolean (0/1), matching is_heading/convert_to_grams — NOT a Boolean column. Gates invite
+    # GENERATION only (a later stage), not a general superpower.
+    is_admin = Column(Integer, nullable=False, server_default=text("0"))
+    # created_at is set in code (now_utc()) — NO DB default, so there's no SQLite datetime('now') vs
+    # Postgres to_char default expression to reconcile (the divergence the 2a baseline had to hand-fix).
+    created_at = Column(Text, nullable=False)
+    __table_args__ = ({"sqlite_autoincrement": True},)
+
+
+class Invite(Base):
+    __tablename__ = "invites"
+    id = Column(Integer, primary_key=True)
+    code = Column(Text, nullable=False, unique=True)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)   # reference FK, no cascade
+    created_at = Column(Text, nullable=False)                              # set in code via now_utc()
+    used_by = Column(Integer, ForeignKey("users.id"))                      # NULL until consumed (single-use)
+    used_at = Column(Text)
+    expires_at = Column(Text)                                              # present now, unused until later
+    __table_args__ = ({"sqlite_autoincrement": True},)
+
+
 # ingredient_weights has NO primary key in the live schema. ORM-mapped classes require a PK, so this
 # table is defined as a Core Table (part of the same metadata) — faithful in create_all (no synthetic
 # PK added, no structure change). It can be given an imperative ORM mapping in Stage 1b if it's queried.
