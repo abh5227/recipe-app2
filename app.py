@@ -158,24 +158,28 @@ def slugify(name):
     return s
 
 
-def recipe_stats(s, rid):
-    """Derive the cooking stats for a recipe from the log + ratings tables.
-    cook_count and last_cooked are computed, never stored, so they can't drift.
-    last_cooked_provisional flags that the most-recent cook is provisional — ANY non-app cook
-    source (e.g. 'paprika-import', 'rating-inferred'), i.e. a seeded/inferred date rather than
-    a confirmed app-logged cook — so the UI can mark it (the '~'/.approx treatment) as a date
-    still to be corrected.
+def recipe_stats(s, rid, user_id):
+    """Derive THIS user's cooking stats for a recipe from the log + ratings tables (rescoping R5:
+    per-user — MY cook_count, MY last_cooked, MY rating). cook_count and last_cooked are computed,
+    never stored, so they can't drift. last_cooked_provisional flags that the most-recent cook is
+    provisional — ANY non-app cook source (e.g. 'paprika-import', 'rating-inferred'), i.e. a
+    seeded/inferred date rather than a confirmed app-logged cook — so the UI can mark it (the
+    '~'/.approx treatment) as a date still to be corrected.
 
-    Takes an ORM session (Stage 1c Batch 4): the 5 cook/rating routes call it AFTER their write
-    on the SAME session (before commit), so it reads the just-written rows in-transaction."""
-    count = s.scalar(select(func.count()).select_from(CookLog).where(CookLog.recipe_id == rid))
+    Empty case (the common one now): I haven't cooked -> cook_count 0, last_cooked None; I haven't
+    rated -> rating None. Takes an ORM session: the 5 cook/rating routes call it AFTER their write on
+    the SAME session (before commit), so it reads the just-written rows in-transaction."""
+    count = s.scalar(select(func.count()).select_from(CookLog)
+                     .where(CookLog.recipe_id == rid, CookLog.user_id == user_id))
     last = s.execute(
         select(CookLog.cooked_on, CookLog.source)
-        .where(CookLog.recipe_id == rid)
+        .where(CookLog.recipe_id == rid, CookLog.user_id == user_id)
         .order_by(CookLog.cooked_on.desc(), CookLog.id.desc())
         .limit(1)
     ).first()
-    rating_row = s.execute(select(Rating.rating).where(Rating.recipe_id == rid)).first()
+    rating_row = s.execute(
+        select(Rating.rating).where(Rating.recipe_id == rid, Rating.user_id == user_id)
+    ).first()
     return {
         "cook_count": count,
         "last_cooked": last.cooked_on if last else None,                     # None if never cooked
@@ -392,20 +396,22 @@ def font_file(filename):
 
 @app.route("/api/recipes")
 def list_recipes():
-    # Stage 1c (Batch 1): routed through orm_session() (the harness-redirected engine). The list's
-    # per-recipe rating/cook_count/last_cooked are correlated scalar subqueries — kept as verbatim SQL
-    # via text() for exact-parity (identical COUNT→0 / MAX→NULL / rating→NULL semantics and sort); the
-    # SQL is standard and carries to Postgres unchanged. Migrates the DB-access path, not the query.
+    # Per-recipe rating/cook_count/last_cooked are correlated scalar subqueries, kept as verbatim SQL via
+    # text() (identical rating→NULL / COUNT→0 / MAX→NULL empty semantics + sort on both dialects).
+    # Rescoping R5: each subquery is scoped to the current user via the :uid BINDPARAM (never string-
+    # interpolated) — so the list shows MY rating and MY cook stats. The recipe rows themselves are NOT
+    # owner-filtered (FROM recipes r, unchanged) — EVERY recipe still appears; only the personal-layer
+    # aggregates are per-user (an untouched recipe shows rating=NULL, cook_count=0, last_cooked=NULL).
     with orm_session() as s:
         rows = s.execute(text(
             """SELECT r.id, r.name, r.author, r.category, r.servings,
                       r.prep_time, r.cook_time, r.total_time, r.image, r.created_at, r.source,
-                      (SELECT rating FROM ratings WHERE recipe_id = r.id)              AS rating,
-                      (SELECT COUNT(*) FROM cook_log WHERE recipe_id = r.id)           AS cook_count,
-                      (SELECT MAX(cooked_on) FROM cook_log WHERE recipe_id = r.id)     AS last_cooked
+                      (SELECT rating FROM ratings WHERE recipe_id = r.id AND user_id = :uid)          AS rating,
+                      (SELECT COUNT(*) FROM cook_log WHERE recipe_id = r.id AND user_id = :uid)       AS cook_count,
+                      (SELECT MAX(cooked_on) FROM cook_log WHERE recipe_id = r.id AND user_id = :uid) AS last_cooked
                FROM recipes r
                ORDER BY r.name"""
-        )).mappings().all()
+        ), {"uid": current_user.id}).mappings().all()
     return jsonify([dict(r) for r in rows])
 
 
@@ -502,7 +508,7 @@ def get_recipe(rid):
         changes = {}
         if r["source"] == "seed":
             changes = changes_for(s, rid)["changes"]
-        stats = recipe_stats(s, rid)
+        stats = recipe_stats(s, rid, current_user.id)
         ingredients = attach_weights(s, ings)
     return jsonify(
         {
@@ -843,7 +849,7 @@ def log_cook(rid):
             s.execute(insert(cl).values(recipe_id=rid, user_id=current_user.id, cooked_on=cooked_on))
         else:
             s.execute(insert(cl).values(recipe_id=rid, user_id=current_user.id))   # cooked_on omitted -> DB default date('now')
-        stats = recipe_stats(s, rid)
+        stats = recipe_stats(s, rid, current_user.id)
         s.commit()
     return jsonify(stats)
 
@@ -880,7 +886,7 @@ def undo_cook(rid):
                 s.execute(delete(Rating)   # back to uncooked (for ME) -> drop MY rating, never anyone else's
                           .where(Rating.recipe_id == rid, Rating.user_id == current_user.id))
             undone = {"cooked_on": last.cooked_on, "source": last.source, "cleared_rating": cleared_rating}
-        stats = recipe_stats(s, rid)
+        stats = recipe_stats(s, rid, current_user.id)
         s.commit()
     return jsonify({**stats, "undone": undone})
 
@@ -917,7 +923,7 @@ def redo_cook(rid):
         s.execute(insert(CookLog.__table__).values(recipe_id=rid, user_id=current_user.id, cooked_on=cooked_on, source=source))
         if rating is not None:
             upsert_rating(s, rid, current_user.id, rating)
-        stats = recipe_stats(s, rid)
+        stats = recipe_stats(s, rid, current_user.id)
         s.commit()
     return jsonify(stats)
 
@@ -933,7 +939,7 @@ def set_rating(rid):
         if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
         upsert_rating(s, rid, current_user.id, rating)   # NOT cook-gated: rating an uncooked recipe is allowed (as before)
-        stats = recipe_stats(s, rid)
+        stats = recipe_stats(s, rid, current_user.id)
         s.commit()
     return jsonify(stats)
 
@@ -951,7 +957,7 @@ def log_cook_and_rate(rid):
             return jsonify({"error": "recipe not found"}), 404
         s.execute(insert(CookLog.__table__).values(recipe_id=rid, user_id=current_user.id))   # today's cook, source default 'app'
         upsert_rating(s, rid, current_user.id, rating)
-        stats = recipe_stats(s, rid)
+        stats = recipe_stats(s, rid, current_user.id)
         s.commit()
     return jsonify(stats)
 

@@ -162,3 +162,42 @@ def test_undo_cook_rating_is_per_user_no_cross_bleed(pg):
     a_ratings = _count(pg.engine, "SELECT COUNT(*) FROM ratings WHERE recipe_id=:r AND user_id=:u", r=rid, u=a_id)
     assert b_rating == 3      # B's rating SURVIVES A's undo (the cross-bleed would have deleted it)
     assert a_ratings == 0     # A never rated; A's undo-to-0 only ever touches A's own layer
+
+
+def test_reads_are_user_scoped(pg):
+    """R5 (the crux): list_recipes + get_recipe show MY rating/cook_count/last_cooked — not a global
+    aggregate, not the other user's. A rates 4 + cooks 2×; B rates 2 + cooks 1×; each sees only theirs."""
+    b_id = harness.ensure_test_user(email="userb@test.local")
+    ca = pg.client
+    cb = app.app.test_client()
+    harness.login_test_client(cb, b_id)
+    rid = "gai-yang"
+    ca.post(f"/api/recipes/{rid}/cooked", json={"date": "2024-01-01"})
+    ca.post(f"/api/recipes/{rid}/cooked", json={"date": "2024-02-02"})
+    ca.post(f"/api/recipes/{rid}/rating", json={"rating": 4})
+    cb.post(f"/api/recipes/{rid}/cooked", json={"date": "2024-03-03"})
+    cb.post(f"/api/recipes/{rid}/rating", json={"rating": 2})
+    # get_recipe: each sees their OWN stats
+    sa = ca.get(f"/api/recipes/{rid}").get_json()["stats"]
+    sb = cb.get(f"/api/recipes/{rid}").get_json()["stats"]
+    assert (sa["rating"], sa["cook_count"], sa["last_cooked"]) == (4, 2, "2024-02-02")
+    assert (sb["rating"], sb["cook_count"], sb["last_cooked"]) == (2, 1, "2024-03-03")
+    # list_recipes: same per-user scoping on the list row (the raw text() subqueries)
+    la = next(r for r in ca.get("/api/recipes").get_json() if r["id"] == rid)
+    lb = next(r for r in cb.get("/api/recipes").get_json() if r["id"] == rid)
+    assert (la["rating"], la["cook_count"], la["last_cooked"]) == (4, 2, "2024-02-02")
+    assert (lb["rating"], lb["cook_count"], lb["last_cooked"]) == (2, 1, "2024-03-03")
+
+
+def test_untouched_recipe_empty_stats_but_still_listed(pg):
+    """R5 empty case + visibility: a recipe the user never touched shows rating=NULL, cook_count=0,
+    last_cooked=NULL — and STILL appears in the list (recipes are NOT owner-filtered; all stay visible)."""
+    ca = pg.client
+    other = "no-knead-bread"                                  # a seeded recipe the user never rates/cooks
+    s = ca.get(f"/api/recipes/{other}").get_json()["stats"]
+    assert s["rating"] is None and s["cook_count"] == 0 and s["last_cooked"] is None
+    lst = ca.get("/api/recipes").get_json()
+    row = next((r for r in lst if r["id"] == other), None)
+    assert row is not None                                    # still listed
+    assert row["rating"] is None and row["cook_count"] == 0 and row["last_cooked"] is None
+    assert len(lst) == len(EXPECTED_RECIPE_ORDER)             # ALL seeded recipes visible (none owner-filtered)

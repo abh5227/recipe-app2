@@ -180,9 +180,11 @@ def test_cook_log(kitchen):
 
 def test_provisional_marker_tracks_non_app_source(kitchen):
     # any non-app cook source (e.g. the forthcoming 'rating-inferred') renders provisional...
+    # R5: stats reads are per-user, so the seeded cook must belong to the reading (harness) user.
     with kitchen.conn() as c:
-        c.execute("INSERT INTO cook_log (recipe_id, cooked_on, source) VALUES (?, ?, ?)",
-                  ("gai-yang", "2025-01-01", "rating-inferred"))
+        me = c.execute("SELECT id FROM users").fetchone()[0]   # the harness user the client is logged in as
+        c.execute("INSERT INTO cook_log (recipe_id, user_id, cooked_on, source) VALUES (?, ?, ?, ?)",
+                  ("gai-yang", me, "2025-01-01", "rating-inferred"))
     inferred = kitchen.client.get("/api/recipes/gai-yang").get_json()["stats"]
     assert inferred["last_cooked_provisional"] is True
 
