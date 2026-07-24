@@ -170,3 +170,111 @@ def test_create_admin_rejects_duplicate_email(kitchen):
     create_admin("dupe@ex.com", "pw")
     with pytest.raises(ValueError):
         create_admin("Dupe@ex.com", "pw2")
+
+
+# ---- auth-3a: admin-gated invite generation ----
+def _admin_client(kitchen, email="admin@ex.com", pw="adminpw"):
+    """A test client logged in as a freshly-bootstrapped admin (is_admin=1)."""
+    from create_admin import create_admin
+    create_admin(email, pw)
+    c = _fresh()
+    r = c.post("/api/login", json={"email": email, "password": pw})
+    assert r.status_code == 200 and r.get_json()["is_admin"] is True
+    return c
+
+
+def test_admin_generates_invite(kitchen):
+    c = _admin_client(kitchen)
+    r = c.post("/api/invites", json={})
+    assert r.status_code == 201
+    body = r.get_json()
+    assert body["code"] and body["created_at"] and body["expires_at"] is None
+    # the row exists, attributed to the admin, and is unused
+    with kitchen.conn() as conn:
+        row = conn.execute(
+            "SELECT i.used_by, i.used_at, u.email FROM invites i JOIN users u ON u.id = i.created_by "
+            "WHERE i.code = ?", (body["code"],)
+        ).fetchone()
+    assert row["email"] == "admin@ex.com"
+    assert row["used_by"] is None and row["used_at"] is None
+
+
+def test_generated_invite_round_trips_into_signup(kitchen):
+    """The full lifecycle: admin GENERATES an invite (3a) → invitee CONSUMES it at signup (auth-2)."""
+    c = _admin_client(kitchen)
+    code = c.post("/api/invites", json={}).get_json()["code"]
+    signup = _fresh().post("/api/signup", json={
+        "email": "invitee@ex.com", "password": "pw", "invite_code": code,
+    })
+    assert signup.status_code == 201
+    with kitchen.conn() as conn:
+        used_by = conn.execute("SELECT used_by FROM invites WHERE code=?", (code,)).fetchone()["used_by"]
+        invitee = conn.execute("SELECT id FROM users WHERE email='invitee@ex.com'").fetchone()["id"]
+    assert used_by == invitee                              # consumed by exactly the signing-up user
+
+
+def test_non_admin_cannot_generate_invite(kitchen):
+    """Default-deny: a logged-in NON-admin is refused (403) — the is_admin gate."""
+    c = _admin_client(kitchen)
+    code = c.post("/api/invites", json={}).get_json()["code"]
+    user_client = _fresh()                                 # signup logs this client in as a non-admin
+    user_client.post("/api/signup", json={"email": "u@ex.com", "password": "pw", "invite_code": code})
+    r = user_client.post("/api/invites", json={})
+    assert r.status_code == 403
+    assert "admin" in r.get_json()["error"].lower()
+
+
+def test_logged_out_cannot_generate_invite(kitchen):
+    r = _fresh().post("/api/invites", json={})             # not logged in → the 401 login gate
+    assert r.status_code == 401
+
+
+def test_generated_codes_are_random_and_distinct(kitchen):
+    c = _admin_client(kitchen)
+    codes = {c.post("/api/invites", json={}).get_json()["code"] for _ in range(5)}
+    assert len(codes) == 5                                 # all distinct (not sequential/predictable)
+    assert all(len(code) >= 20 for code in codes)          # long, high-entropy token
+
+
+def test_invite_expiry_is_generated_and_enforced(kitchen):
+    """Optional expiry: an admin sets a past expiry → the generated code is rejected at signup."""
+    c = _admin_client(kitchen)
+    r = c.post("/api/invites", json={"expires_at": "2000-01-01"})
+    assert r.status_code == 201
+    body = r.get_json()
+    assert body["expires_at"] == "2000-01-01 00:00:00"     # normalized to now_utc() format
+    signup = _fresh().post("/api/signup", json={
+        "email": "late@ex.com", "password": "pw", "invite_code": body["code"],
+    })
+    assert signup.status_code == 400
+    assert "expired" in signup.get_json()["error"].lower()
+
+
+def test_invite_bad_expiry_rejected(kitchen):
+    c = _admin_client(kitchen)
+    r = c.post("/api/invites", json={"expires_at": "not-a-date"})
+    assert r.status_code == 400
+
+
+# ---- auth-3a: admin invite listing (least-exposure) ----
+def test_admin_lists_own_invites_with_used_status(kitchen):
+    c = _admin_client(kitchen)
+    code = c.post("/api/invites", json={}).get_json()["code"]
+    before = c.get("/api/invites").get_json()["invites"]
+    assert any(i["code"] == code and i["used"] is False for i in before)
+    # consume it, then it flips to used
+    _fresh().post("/api/signup", json={"email": "x@ex.com", "password": "pw", "invite_code": code})
+    after = c.get("/api/invites").get_json()["invites"]
+    mine = next(i for i in after if i["code"] == code)
+    assert mine["used"] is True
+    # least-exposure: never leak WHO consumed it (no used_by / email in the payload)
+    assert all("used_by" not in i and "email" not in i for i in after)
+
+
+def test_non_admin_cannot_list_invites(kitchen):
+    c = _admin_client(kitchen)
+    code = c.post("/api/invites", json={}).get_json()["code"]
+    user_client = _fresh()
+    user_client.post("/api/signup", json={"email": "u@ex.com", "password": "pw", "invite_code": code})
+    assert user_client.get("/api/invites").status_code == 403
+    assert _fresh().get("/api/invites").status_code == 401   # logged out → 401
