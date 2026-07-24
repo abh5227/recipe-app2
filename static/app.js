@@ -20,10 +20,8 @@ let CURRENT_USER = null;                                  // set from /api/me|lo
 // State for whichever recipe page is open (null on the home list or a form). It
 // remembers which view is showing and which line is being edited, so a click can
 // re-render the ingredient list without re-fetching from the server:
-//   { slug, data, mode, editingPos, addingOpen }
+//   { slug, data, scale, editMode, draft, dirty }
 //   - data        : the GET /api/recipes/<id> response
-//   - mode        : 'original' | a person id | 'compare'   (which version is shown)
-//   - editingPos  : the line position whose inline editor is open, or null
 //   - addingOpen  : whether the "add ingredient" form is open
 let view = null;
 // The ingredient library ({id, name}), fetched when a form or a seed recipe opens,
@@ -451,8 +449,8 @@ async function renderHome() {
    and passes view.scale into the scaler's amount/weight formatters. */
 
 // One ledger figure cell — the amount or the weight, mono + tabular. A leading "~" (an estimated
-// weight, or a humane-rounded amount) earns the shared "approx" treatment. inlineStyle carries a
-// person's colour on edited/added lines (seed recipes).
+// weight, or a humane-rounded amount) earns the shared "approx" treatment. (inlineStyle is unused
+// now that the per-person coloured overlay is gone — R6; kept as an optional arg.)
 function figCell(cls, text, inlineStyle) {
   const approx = text.charAt(0) === "~" ? " approx" : "";
   const style = inlineStyle ? ` style="${inlineStyle}"` : "";
@@ -495,15 +493,6 @@ function scaleControl() {
   return `<div class="scale-control" role="group" aria-label="Scale quantities">${buttons}${custom}</div>`;
 }
 
-// Look up a person record / their saved changes by id.
-function personById(pid) {
-  return view.data.people.find((p) => p.id === pid) || null;
-}
-function changesFor(pid) {
-  // Returns the person's change bucket, or an empty one if they've made none yet.
-  return view.data.changes[pid] || { edits: {}, removes: [], additions: [] };
-}
-
 // A note rendered as a distinct secondary annotation on its OWN line below the ingredient (muted,
 // italic, smaller — see .inote). Applies to every reading-mode line, linked or plain.
 function readNote(row) {
@@ -527,207 +516,16 @@ function plainRow(row) {
   return `<li>${ledgerCells(row.qty, row.grams_per_ml)}<span class="iname">${lineBodyHTML(row)}</span></li>`;
 }
 
-// An added line (a person's new ingredient), shown in their color. In a person's own
-// view it carries a × to delete it; in Compare it's read-only.
-function additionRow(a, color, withDelete) {
-  const body = a.ingredient_id
-    ? `<button class="ingredient" data-item="${esc(a.ingredient_id)}">${esc(a.label || a.raw_text || a.ingredient_id)}</button>${readNote(a)}`
-    : `${esc(a.raw_text || "")}${readNote(a)}`;
-  const tools = withDelete
-    ? `<span class="line-tools"><button class="icon-btn" data-del-add data-add="${a.id}" title="Remove this addition" aria-label="Remove this addition">\u00d7</button></span>`
-    : "";
-  return `<li>${ledgerCells(a.qty, a.grams_per_ml, `color:${color};font-weight:600`)}` +
-         `<span class="iname muted-ing" style="color:${color}">${body}</span>${tools}</li>`;
-}
-
-// The view switcher: Original / each person / Compare all. The active person's button
-// is filled with their color; Original and Compare use the default ink (the .on class).
-function viewSelector(view) {
-  const button = (mode, label, color) => {
-    const active = view.mode === mode;
-    const style = active && color ? ` style="background:${color};border-color:${color}"` : "";
-    return `<button class="${active ? "on" : ""}" data-view="${esc(mode)}"${style}>${esc(label)}</button>`;
-  };
-  let out = button("original", "Original");
-  view.data.people.forEach((p) => { out += button(p.id, p.name, p.color); });
-  out += button("compare", "Compare all");
-  return `<div class="view-seg">${out}</div>`;
-}
-
-// The inline editor that opens on a line in a person's view: a quantity box plus
-// Save / Remove (or Restore) / Reset / Cancel, depending on the line's current state.
-function lineEditor(view, row, pid) {
-  const ch = changesFor(pid);
-  const pos = row.position;
-  const removed = ch.removes.includes(pos);
-  const editedQty = ch.edits[pos];                       // a string, or undefined
-  const qtyValue = editedQty !== undefined ? editedQty : (row.qty || "");
-  const forLabel = esc(row.label || row.raw_text || row.ingredient_id || "");
-  const buttons = [
-    `<button class="btn sm" data-save-edit data-pos="${pos}">Save</button>`,
-    removed
-      ? `<button class="btn ghost sm" data-clear-line data-pos="${pos}">Restore</button>`
-      : `<button class="btn ghost sm" data-remove-line data-pos="${pos}">Remove</button>`,
-    (editedQty !== undefined && !removed)
-      ? `<button class="btn ghost sm" data-clear-line data-pos="${pos}">Reset</button>` : "",
-    `<button class="btn ghost sm" data-cancel-line>Cancel</button>`,
-  ].join("");
-  return `<li class="editing">
-    <span class="line-editor">
-      <input class="le-qty" value="${esc(qtyValue)}" placeholder="quantity" aria-label="Quantity for ${forLabel}">
-      <span class="le-for">${forLabel}</span>
-      ${buttons}
-    </span>
-  </li>`;
-}
-
-// One person's version: each original line (edited / removed / unchanged) with a
-// pencil to change it, then that person's additions at the bottom.
-// Walk a recipe's ingredient list and, at the end of each section (just before the next
-// heading, and again at the very end), drop in that section's additions. A "section" is
-// the run of lines under a heading; its key is the heading text, or null for the area
-// before the first heading (and for recipes with no headings at all).
-function renderWithSections(ingredients, renderLine, additionsForSection) {
-  let out = "";
-  let section = null;                        // start in the pre-heading area
-  ingredients.forEach((row) => {
-    if (row.is_heading) {
-      out += additionsForSection(section);   // close out the section we were in
-      out += `<li class="group">${esc(row.raw_text)}</li>`;
-      section = row.raw_text;                // a new section begins here
-    } else {
-      out += renderLine(row);
-    }
-  });
-  out += additionsForSection(section);       // flush the final section
-  return out;
-}
-
-// One person's version: each original line (edited / removed / unchanged) with a pencil
-// to change it, and that person's additions placed at the bottom of their own section.
-function personRows(view, pid) {
-  const person = personById(pid);
-  const color = person ? person.color : "var(--ink)";
-  const ch = changesFor(pid);
-  const tools = (pos) =>
-    `<span class="line-tools"><button class="icon-btn" data-edit-line data-pos="${pos}" title="Change or remove" aria-label="Change or remove">\u270e</button></span>`;
-
-  const renderLine = (row) => {
-    const pos = row.position;
-    if (view.editingPos === pos) return lineEditor(view, row, pid);
-    const removed = ch.removes.includes(pos);
-    const editedQty = ch.edits[pos];                  // keys arrive as strings; pos coerces
-    if (removed) {
-      return `<li class="ing-line removed">${ledgerCells(row.qty, row.grams_per_ml, `color:${color}`)}` +
-             `<span class="iname muted-ing" style="color:${color}">${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
-    }
-    if (editedQty !== undefined) {
-      return `<li>${ledgerCells(editedQty, row.grams_per_ml, `color:${color};font-weight:600`)}` +
-             `<span class="iname muted-ing" style="color:${color}">${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
-    }
-    return `<li>${ledgerCells(row.qty, row.grams_per_ml)}<span class="iname">${lineBodyHTML(row)}</span>${tools(pos)}</li>`;
-  };
-
-  // this person's additions that belong to the given section (null matches null)
-  const additionsForSection = (section) =>
-    ch.additions
-      .filter((a) => (a.section || null) === section)
-      .map((a) => additionRow(a, color, true))
-      .join("");
-
-  return renderWithSections(view.data.ingredients, renderLine, additionsForSection);
-}
-
-// Does anyone have an added ingredient on this recipe? (Drives the Compare view.)
-function anyAdditions(view) {
-  return view.data.people.some((p) => {
-    const ch = view.data.changes[p.id];
-    return ch && ch.additions.length > 0;
-  });
-}
-
-// Compare view: everything anyone has *added*, gathered in one place, each in its
-// owner's color. Read-only. Edits and removals stay in each person's own view — this
-// is the "communal pot," just the extras everyone brings, side by side.
-function compareRows(view) {
-  let out = "";
-  view.data.people.forEach((p) => {
-    const ch = view.data.changes[p.id];
-    if (ch) ch.additions.forEach((a) => { out += additionRow(a, p.color, false); });
-  });
-  return out;
-}
-
-// The "add ingredient" control at the bottom of a person's view: a button that opens an
-// inline form (quantity, link-to-library dropdown or plain text, optional note, and — when
-// the recipe has sections — which section to drop it into).
-function addControl(view) {
-  if (!view.addingOpen) {
-    return `<div class="add-row"><button class="btn ghost sm" data-add-open>+ Add ingredient</button></div>`;
-  }
-  const options = INGREDIENT_LIST
-    .map((i) => `<option value="${esc(i.id)}">${esc(i.name)}</option>`)
-    .join("");
-
-  // If the recipe has section headings, offer them. Default to the last one, so an
-  // addition lands at the very bottom (the old behavior) unless you pick another section.
-  const headings = view.data.ingredients.filter((row) => row.is_heading).map((row) => row.raw_text);
-  let sectionField = "";
-  if (headings.length) {
-    const opts = headings
-      .map((h, i) => `<option value="${esc(h)}"${i === headings.length - 1 ? " selected" : ""}>${esc(h)}</option>`)
-      .join("");
-    sectionField = `<select class="af-section" aria-label="Section"><option value="">\u2014 no section \u2014</option>${opts}</select>`;
-  }
-
-  return `<div class="add-form">
-    <input class="af-qty" placeholder="qty">
-    <select class="af-link"><option value="">\u2014 plain text \u2014</option>${options}</select>
-    <input class="af-text" placeholder="ingredient / text">
-    <input class="af-note" placeholder="note (optional)">
-    ${sectionField}
-    <button class="btn sm" data-add-save>Add</button>
-    <button class="btn ghost sm" data-add-cancel>Cancel</button>
-  </div>`;
-}
-
-// The whole Ingredients section. App recipes get a plain list; seed recipes get the
-// view switcher, the list for the chosen view, and (in a person's view) the add form.
-// Re-rendered on its own so the rest of the page doesn't flicker.
+// The whole Ingredients section — a plain list. R6 removed the per-person view switcher (the box
+// model has no "switch person"; every recipe is your own, edited directly via the recipe editor).
+// Re-rendered on its own (e.g. on a scale change) so the rest of the page doesn't flicker.
 function ingredientsSectionInner(view) {
-  if (!view.data.is_seed) {
-    const rows = view.data.ingredients.map(plainRow).join("");
-    return `
-      <div class="col-head"><h2 class="col-title">Ingredients</h2></div>
-      <ul class="ingredient-list">${rows}</ul>`;
-  }
-
-  let rows, hint;
-  if (view.mode === "original") {
-    rows = view.data.ingredients.map(plainRow).join("");
-    hint = "The cookbook original. Pick a name above to see or make that person's version.";
-  } else if (view.mode === "compare") {
-    if (anyAdditions(view)) {
-      rows = compareRows(view);
-      hint = "Everyone's add-ins, in one place \u2014 throw it all in the pot and the whole table goes home happy.";
-    } else {
-      rows = `<li style="color: var(--ink-soft);">No one's added anything yet.</li>`;
-      hint = "When someone adds an ingredient in their version, it turns up here \u2014 everyone's extras, gathered in one pot.";
-    }
-  } else {
-    rows = personRows(view, view.mode);
-    const name = personById(view.mode) ? esc(personById(view.mode).name) : "this person";
-    hint = `${name}'s version \u2014 edits and additions show in their color. Use the pencil to change a quantity or remove a line.`;
-  }
-  const isPersonView = view.mode !== "original" && view.mode !== "compare";
-
+  const rows = view.data.ingredients.map(plainRow).join("");
   return `
     <div class="col-head"><h2 class="col-title">Ingredients</h2></div>
-    ${viewSelector(view)}
-    <ul class="ingredient-list">${rows}</ul>
-    ${isPersonView ? addControl(view) : ""}
-    <p class="hint">${hint}</p>`;
+    <ul class="ingredient-list">${rows}</ul>`;
 }
+
 
 function rerenderIngredients() {
   const el = document.getElementById("ing-section");
@@ -931,17 +729,11 @@ function deleteConfirmHTML(r) {
 
 async function renderRecipe(rid) {
   const data = await api("/api/recipes/" + encodeURIComponent(rid));
-  view = { slug: rid, data, mode: "original", editingPos: null, addingOpen: false, scale: 1,
+  view = { slug: rid, data, scale: 1,
            pendingRating: null, undoneCook: null, editMode: false, draft: null, dirty: false };
   app.className = "page recipe-view";
   setCookCount(app, data.stats.cook_count);   // reserved R2 wear signal on the recipe root
 
-  // Seed recipes let people add ingredients to their version, so load the library
-  // now to fill the "link to an ingredient" picker in the add form.
-  if (data.is_seed) {
-    try { INGREDIENT_LIST = await api("/api/ingredients"); }
-    catch (_) { INGREDIENT_LIST = []; }
-  }
   paintRecipe();
 }
 
@@ -1351,59 +1143,6 @@ function handleInlineEdit(e) {
   const ani = e.target.closest("[data-inline-edit-addnote]");
   if (ani) { addNote(Number(ani.dataset.i)); return true; }
   return false;
-}
-
-// ---- saving per-person changes (everything goes through the change endpoints) ----
-
-// The shared URL prefix for the open recipe + active person. pid is always view.mode,
-// because the editing controls only ever appear inside a person's view.
-function changeBase() {
-  return `/api/recipes/${encodeURIComponent(view.slug)}/people/${encodeURIComponent(view.mode)}`;
-}
-
-// Apply a server response (each change endpoint returns the full {changes} map) to the
-// open view, then re-render just the ingredient list.
-function applyChanges(res, closeAddForm) {
-  if (res.ok) {
-    view.data.changes = res.data.changes || {};
-    view.editingPos = null;
-    if (closeAddForm) view.addingOpen = false;
-    rerenderIngredients();
-  } else {
-    alert((res.data && res.data.error) || "Couldn't save that change.");
-  }
-}
-
-async function saveLineEdit(pos) {
-  const input = document.querySelector(".le-qty");
-  const qty = input ? input.value.trim() : "";
-  if (!qty) { if (input) input.focus(); return; }            // a quantity is required
-  applyChanges(await sendJSON("PUT", `${changeBase()}/lines/${pos}`, { kind: "edit", qty }));
-}
-
-async function removeLine(pos) {
-  applyChanges(await sendJSON("PUT", `${changeBase()}/lines/${pos}`, { kind: "remove" }));
-}
-
-// Used by both Reset (undo an edit) and Restore (undo a removal) — same DELETE.
-async function clearLine(pos) {
-  applyChanges(await sendJSON("DELETE", `${changeBase()}/lines/${pos}`));
-}
-
-async function saveAddition() {
-  const item = (document.querySelector(".af-link") || {}).value || "";
-  const qty = ((document.querySelector(".af-qty") || {}).value || "").trim();
-  const text = ((document.querySelector(".af-text") || {}).value || "").trim();
-  const note = ((document.querySelector(".af-note") || {}).value || "").trim();
-  const section = (document.querySelector(".af-section") || {}).value || "";   // "" if recipe has no sections
-  if (!item && !text) { const t = document.querySelector(".af-text"); if (t) t.focus(); return; }
-  // Linked: send the ingredient key + an optional custom label. Plain: just the text.
-  const body = item ? { qty, item, label: text, note, section } : { qty, text, section };
-  applyChanges(await sendJSON("POST", `${changeBase()}/additions`, body), true);
-}
-
-async function deleteAddition(addId) {
-  applyChanges(await sendJSON("DELETE", `${changeBase()}/additions/${addId}`));
 }
 
 // The actual delete, run only after the inline two-step confirmation (data-delete-confirm).
@@ -2029,7 +1768,7 @@ document.addEventListener("click", (e) => {
     return;
   }
 
-  // recipe-detail interactions: app-recipe delete + the per-person change layers
+  // recipe-detail interactions: app-recipe delete / copy / scale
   if (view) {
     // Delete: a deliberate two-step — first click swaps to an inline confirm that names the
     // recipe; only data-delete-confirm actually deletes (data-delete-cancel restores the row).
@@ -2060,47 +1799,6 @@ document.addEventListener("click", (e) => {
       return;
     }
 
-    // view switcher: Original / a person / Compare all
-    const seg = e.target.closest("[data-view]");
-    if (seg) {
-      view.mode = seg.dataset.view;
-      view.editingPos = null;
-      view.addingOpen = false;
-      rerenderIngredients();
-      return;
-    }
-
-    // open / cancel the inline quantity editor on a line
-    const edit = e.target.closest("[data-edit-line]");
-    if (edit) {
-      view.editingPos = Number(edit.dataset.pos);
-      rerenderIngredients();
-      const inp = document.querySelector(".le-qty");
-      if (inp) { inp.focus(); inp.select(); }
-      return;
-    }
-    if (e.target.closest("[data-cancel-line]")) { view.editingPos = null; rerenderIngredients(); return; }
-
-    // save an edit / remove a line / clear a change (Reset or Restore)
-    const save = e.target.closest("[data-save-edit]");
-    if (save) { saveLineEdit(Number(save.dataset.pos)); return; }
-    const rem = e.target.closest("[data-remove-line]");
-    if (rem) { removeLine(Number(rem.dataset.pos)); return; }
-    const clr = e.target.closest("[data-clear-line]");
-    if (clr) { clearLine(Number(clr.dataset.pos)); return; }
-
-    // the add-ingredient form: open / cancel / save, and delete an existing addition
-    if (e.target.closest("[data-add-open]")) {
-      view.addingOpen = true;
-      rerenderIngredients();
-      const q = document.querySelector(".af-qty");
-      if (q) q.focus();
-      return;
-    }
-    if (e.target.closest("[data-add-cancel]")) { view.addingOpen = false; rerenderIngredients(); return; }
-    if (e.target.closest("[data-add-save]")) { saveAddition(); return; }
-    const del = e.target.closest("[data-del-add]");
-    if (del) { deleteAddition(Number(del.dataset.add)); return; }
   }
 
   // a clickable ingredient (in a list, a step, or the in-season chips) -> open the drawer
@@ -2162,11 +1860,6 @@ document.addEventListener("keydown", (e) => {
   // Enter commits the custom multiplier (blur → focusout handler reformats to "N×" + applies scale)
   if (e.key === "Enter" && e.target.classList && e.target.classList.contains("scale-custom")) {
     e.preventDefault(); e.target.blur(); return;
-  }
-  // Enter saves / Escape cancels while editing a line's quantity
-  if (view && view.editingPos != null && e.target.classList && e.target.classList.contains("le-qty")) {
-    if (e.key === "Enter") { e.preventDefault(); saveLineEdit(view.editingPos); }
-    else if (e.key === "Escape") { view.editingPos = null; rerenderIngredients(); }
   }
 });
 

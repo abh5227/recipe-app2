@@ -3,7 +3,7 @@ rebuild is idempotent and keeps referential integrity."""
 from fixtures import TEST_RECIPES   # the test-owned recipe set the harness seeds (see fixtures.py)
 
 # Bump this when a migration is added.
-EXPECTED_MIGRATIONS = 19
+EXPECTED_MIGRATIONS = 20
 
 
 def test_all_migrations_applied(kitchen):
@@ -12,7 +12,7 @@ def test_all_migrations_applied(kitchen):
     assert len(files) == EXPECTED_MIGRATIONS
     assert files == sorted(files)                 # applied in filename order
     assert files[0].startswith("001")
-    assert files[-1].startswith("019")
+    assert files[-1].startswith("020")
 
 
 def test_seed_rows_get_qty_unit_split(kitchen):
@@ -41,14 +41,11 @@ def test_seed_counts(kitchen):
     assert kitchen.count("recipes", "source='seed'") == len(TEST_RECIPES)
     assert kitchen.count("recipes", "source='app'") == 0
     assert kitchen.count("ingredients") == 36
-    assert kitchen.count("people") == 2
 
 
 def test_no_user_data_on_fresh_build(kitchen):
     assert kitchen.count("ratings") == 0
     assert kitchen.count("cook_log") == 0
-    assert kitchen.count("recipe_line_changes") == 0
-    assert kitchen.count("recipe_additions") == 0
 
 
 def test_foreign_key_integrity(kitchen):
@@ -56,8 +53,8 @@ def test_foreign_key_integrity(kitchen):
 
 
 def test_build_is_idempotent(kitchen):
-    before = (kitchen.count("recipes"), kitchen.count("ingredients"), kitchen.count("people"))
+    before = (kitchen.count("recipes"), kitchen.count("ingredients"))
     kitchen.rebuild()
-    after = (kitchen.count("recipes"), kitchen.count("ingredients"), kitchen.count("people"))
+    after = (kitchen.count("recipes"), kitchen.count("ingredients"))
     assert before == after
     assert kitchen.fk_orphans() == []

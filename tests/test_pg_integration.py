@@ -66,27 +66,11 @@ def test_rating_upsert_in_place(pg):
     assert _count(pg.engine, "SELECT COUNT(*) FROM ratings WHERE recipe_id='gai-yang'") == 1
 
 
-def test_line_change_upsert_composite_key(pg):
-    """ON CONFLICT(recipe_id, person_id, position) on the seed-gated change layer: edit in place, then remove."""
-    c = pg.client
-    pid = c.get("/api/people").get_json()[0]["id"]
-    assert c.put(f"/api/recipes/gai-yang/people/{pid}/lines/0", json={"kind": "edit", "qty": "9 cups"}).status_code == 200
-    c.put(f"/api/recipes/gai-yang/people/{pid}/lines/0", json={"kind": "edit", "qty": "10 cups"})   # re-edit
-    changes = c.get("/api/recipes/gai-yang").get_json()["changes"][pid]
-    assert changes["edits"]["0"] == "10 cups"                                   # updated in place
-    assert _count(pg.engine,
-                  "SELECT COUNT(*) FROM recipe_line_changes WHERE recipe_id='gai-yang' AND person_id=:p AND position=0",
-                  p=pid) == 1                                                    # no duplicate
-    c.put(f"/api/recipes/gai-yang/people/{pid}/lines/0", json={"kind": "remove"})
-    changes = c.get("/api/recipes/gai-yang").get_json()["changes"][pid]
-    assert 0 in changes["removes"] and "0" not in changes["edits"]              # remove branch
-
-
 # ---- 2. LIST ORDERING (collation — differs SQLite↔PG) --------------------------------------------
 
 def test_list_ordering_is_pg_collation(pg):
     """GET list endpoints return PG's native collation order (decision A). Pinned for recipes;
-    for ingredients/people, assert the route order matches PG's own ORDER BY (route orders correctly)."""
+    for ingredients, assert the route order matches PG's own ORDER BY (route orders correctly)."""
     c = pg.client
     recs = [r["id"] for r in c.get("/api/recipes").get_json()]
     assert recs == EXPECTED_RECIPE_ORDER                                        # PG linguistic order (intended)
@@ -96,7 +80,6 @@ def test_list_ordering_is_pg_collation(pg):
     assert recs == db_recipes                                                   # route == PG ORDER BY name
     ings = [i["id"] for i in c.get("/api/ingredients").get_json()]
     assert ings == db_ings and len(ings) == 36
-    assert [p["id"] for p in c.get("/api/people").get_json()] == ["andy", "vedant"]
 
 
 # ---- 3. recipe_stats AGGREGATIONS (correlated subqueries / MAX over text dates) ------------------

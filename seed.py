@@ -18,15 +18,6 @@
 #   "Plain sentence with a [[garlic]] link or [[red_onion|red onions]] link."
 #   {"heading": "Grill the chicken"}                     -> a sub-heading
 
-# The people who can keep their own version of a recipe. Each gets a display colour
-# (any CSS colour value). The original cookbook recipe always shows in the default
-# ink; a person's edits and additions show in their colour. Add or rename people here
-# and rerun build_db.py — their saved changes are keyed by id, so keep ids stable.
-PEOPLE = [
-    {"id": "andy",   "name": "Andy",   "color": "#A32D2D"},   # red
-    {"id": "vedant", "name": "Vedant", "color": "#534AB7"},   # purple
-]
-
 # month numbers: 1=Jan ... 12=Dec   (empty list = treat as a year-round staple)
 INGREDIENTS = {
     # ---- fresh produce & aromatics ----

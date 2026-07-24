@@ -6,8 +6,7 @@ It does two jobs:
   2. answers a small JSON API that runs the SQLite queries
 
 Recipes can be created/edited/deleted in the app (source='app'); recipes from
-seed.py (source='seed') are read-only here, but several people can each keep their
-own version of one by layering changes on top (see the change endpoints below).
+seed.py (source='seed') are read-only here (edit them in seed.py).
 
 Run it with:  python3 app.py   then open http://localhost:8000
 """
@@ -31,8 +30,8 @@ from import_cleanup import split_qty   # shared qty->quantity+unit split (backfi
 # their own raw sqlite3 connections (out of Stage 1 scope). Stage 2 swaps the engine to Postgres
 # (see docs/migration-plan.md).
 from models import (
-    Person, Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
-    RecipeLineChange, RecipeAddition, Rating, CookLog, User, ingredient_weights,
+    Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
+    Rating, CookLog, User, ingredient_weights,
 )
 from auth import auth_bp   # JSON auth endpoints (auth-2); auth.py imports models only, so no import cycle
 
@@ -208,60 +207,6 @@ def upsert_rating(s, rid, user_id, rating):
         index_elements=[Rating.recipe_id, Rating.user_id],
         set_={"rating": stmt.excluded.rating, "rated_on": stmt.excluded.rated_on},
     ))
-
-
-def changes_for(s, rid):
-    """Every saved per-person change for a recipe, grouped by person:
-
-        { person_id: { "edits":     { position: new_qty, ... },
-                       "removes":   [ position, ... ],
-                       "additions": [ { id, qty, ingredient_id, label, note, raw_text }, ... ] } }
-
-    (JSON turns the integer position keys in "edits" into strings; the front end
-    looks them up with the numeric position, which coerces to the same string.)
-
-    Stage 1c: reads via the caller's ORM session `s`, so a write route that calls this after its
-    own (uncommitted) writes still sees them (same session/transaction) — as before."""
-    changes = {}
-
-    def bucket(person_id):
-        return changes.setdefault(person_id, {"edits": {}, "removes": [], "additions": []})
-
-    for row in s.execute(select(
-        RecipeLineChange.person_id, RecipeLineChange.position, RecipeLineChange.kind, RecipeLineChange.new_qty
-    ).where(RecipeLineChange.recipe_id == rid)).mappings():
-        b = bucket(row["person_id"])
-        if row["kind"] == "edit":
-            b["edits"][row["position"]] = row["new_qty"]
-        else:
-            b["removes"].append(row["position"])
-
-    for row in s.execute(select(
-        RecipeAddition.id, RecipeAddition.person_id, RecipeAddition.qty, RecipeAddition.ingredient_id,
-        RecipeAddition.label, RecipeAddition.note, RecipeAddition.raw_text, RecipeAddition.section,
-    ).where(RecipeAddition.recipe_id == rid).order_by(RecipeAddition.id)).mappings():
-        bucket(row["person_id"])["additions"].append({
-            "id": row["id"], "qty": row["qty"], "ingredient_id": row["ingredient_id"],
-            "label": row["label"], "note": row["note"], "raw_text": row["raw_text"],
-            "section": row["section"],
-        })
-
-    return {"changes": changes}
-
-
-def seed_recipe_person_error(s, rid, pid):
-    """Validate that changes are allowed here. Returns (message, status) on failure,
-    or None when the recipe is a seed recipe and the person exists. Changes apply
-    only to seed recipes, because app recipes you simply edit directly.
-    Reads via the caller's ORM session `s` (Stage 1c)."""
-    src = s.execute(select(Recipe.source).where(Recipe.id == rid)).scalar_one_or_none()
-    if src is None:
-        return ("recipe not found", 404)
-    if src != "seed":
-        return ("changes apply to cookbook (seed) recipes only", 400)
-    if s.execute(select(Person.id).where(Person.id == pid)).first() is None:
-        return ("unknown person", 404)
-    return None
 
 
 def validate_recipe_payload(s, payload):
@@ -499,15 +444,6 @@ def get_recipe(rid):
             select(RecipeStep.__table__).where(RecipeStep.recipe_id == rid)
             .order_by(RecipeStep.position)
         ).mappings().all()
-        people = [
-            dict(p) for p in s.execute(
-                select(Person.id, Person.name, Person.color).order_by(Person.position, Person.name)
-            ).mappings().all()
-        ]
-        # Only seed recipes carry per-person changes; app recipes are edited directly.
-        changes = {}
-        if r["source"] == "seed":
-            changes = changes_for(s, rid)["changes"]
         stats = recipe_stats(s, rid, current_user.id)
         ingredients = attach_weights(s, ings)
     return jsonify(
@@ -516,10 +452,8 @@ def get_recipe(rid):
             "ingredients": ingredients,
             "steps": serialize_steps(steps),
             "stats": stats,
-            "people": people,
-            "changes": changes,
             "is_editable": r["source"] in EDITABLE_SOURCES,   # app + test recipes get edit/delete
-            "is_seed": r["source"] == "seed",           # seed recipes get the change layers
+            "is_seed": r["source"] == "seed",           # seed tier stays read-only (edit in seed.py)
             "is_test": r["source"] == "test",           # scratch tier — gets the visible test marker
         }
     )
@@ -636,134 +570,6 @@ def delete_test_recipes():
         n = s.execute(delete(Recipe).where(Recipe.source == "test")).rowcount   # children cascade (FK ON)
         s.commit()
     return jsonify({"deleted": n})
-
-
-# ---- per-person change layers (seed recipes only) ----
-
-@app.route("/api/people")
-def list_people():
-    """The people who can keep a version of a recipe — used by the view switcher."""
-    with orm_session() as s:
-        rows = s.execute(
-            select(Person.id, Person.name, Person.color).order_by(Person.position, Person.name)
-        ).all()
-    return jsonify([dict(r._mapping) for r in rows])
-
-
-@app.route("/api/recipes/<rid>/people/<pid>/lines/<int:pos>", methods=["PUT"])
-def set_line_change(rid, pid, pos):
-    """Set this person's change to an existing ingredient line: a new quantity
-    (kind='edit', with 'qty') or a removal (kind='remove')."""
-    payload = request.get_json(silent=True) or {}
-    kind = payload.get("kind")
-    with orm_session() as s:
-        err = seed_recipe_person_error(s, rid, pid)
-        if err:
-            return jsonify({"error": err[0]}), err[1]
-        is_line = s.execute(select(RecipeIngredient.id).where(
-            RecipeIngredient.recipe_id == rid, RecipeIngredient.position == pos, RecipeIngredient.is_heading == 0
-        )).first()
-        if not is_line:
-            return jsonify({"error": "there's no ingredient line at that position"}), 400
-
-        # Dialect-agnostic upsert (2b-2) on the composite PK (recipe_id, person_id, position). The edit
-        # branch writes the inserted qty (excluded.new_qty); the remove branch nulls it. An edit-then-edit
-        # updates the same row in place (no duplicate). Works on SQLite (today) and Postgres (2b-5).
-        conflict = [RecipeLineChange.recipe_id, RecipeLineChange.person_id, RecipeLineChange.position]
-        if kind == "edit":
-            qty = (payload.get("qty") or "").strip()
-            if not qty:
-                return jsonify({"error": "a quantity is required to change a line"}), 400
-            stmt = dialect_insert(s, RecipeLineChange).values(
-                recipe_id=rid, person_id=pid, position=pos, kind="edit", new_qty=qty
-            )
-            s.execute(stmt.on_conflict_do_update(
-                index_elements=conflict, set_={"kind": "edit", "new_qty": stmt.excluded.new_qty},
-            ))
-        elif kind == "remove":
-            stmt = dialect_insert(s, RecipeLineChange).values(
-                recipe_id=rid, person_id=pid, position=pos, kind="remove", new_qty=None
-            )
-            s.execute(stmt.on_conflict_do_update(
-                index_elements=conflict, set_={"kind": "remove", "new_qty": None},
-            ))
-        else:
-            return jsonify({"error": "kind must be 'edit' or 'remove'"}), 400
-        result = changes_for(s, rid)
-        s.commit()
-    return jsonify(result)
-
-
-@app.route("/api/recipes/<rid>/people/<pid>/lines/<int:pos>", methods=["DELETE"])
-def clear_line_change(rid, pid, pos):
-    """Undo this person's change to a line, reverting it to the original."""
-    with orm_session() as s:
-        err = seed_recipe_person_error(s, rid, pid)
-        if err:
-            return jsonify({"error": err[0]}), err[1]
-        s.execute(delete(RecipeLineChange).where(
-            RecipeLineChange.recipe_id == rid, RecipeLineChange.person_id == pid, RecipeLineChange.position == pos
-        ))
-        result = changes_for(s, rid)
-        s.commit()
-    return jsonify(result)
-
-
-@app.route("/api/recipes/<rid>/people/<pid>/additions", methods=["POST"])
-def add_addition(rid, pid):
-    """Add a new ingredient line to this person's version. Either link it to a library
-    ingredient ('item' = its key) or pass plain 'text'. An optional 'section' (a heading's
-    text) places it at the bottom of that section instead of the bottom of the whole list."""
-    payload = request.get_json(silent=True) or {}
-    item = payload.get("item")
-    qty = (payload.get("qty") or "").strip()
-    note = (payload.get("note") or "").strip()
-    section = (payload.get("section") or "").strip() or None
-    with orm_session() as s:
-        err = seed_recipe_person_error(s, rid, pid)
-        if err:
-            return jsonify({"error": err[0]}), err[1]
-        # A section, if given, must match one of this recipe's actual headings.
-        if section is not None:
-            is_heading = s.execute(select(RecipeIngredient.id).where(
-                RecipeIngredient.recipe_id == rid, RecipeIngredient.is_heading == 1, RecipeIngredient.raw_text == section
-            )).first()
-            if not is_heading:
-                return jsonify({"error": "that section isn't a heading in this recipe"}), 400
-        if item:
-            known_name = s.execute(select(Ingredient.name).where(Ingredient.id == item)).scalar_one_or_none()
-            if known_name is None:
-                return jsonify({"error": f"'{item}' isn't in your ingredient library"}), 400
-            label = (payload.get("label") or known_name).strip()
-            s.execute(insert(RecipeAddition.__table__).values(
-                recipe_id=rid, person_id=pid, qty=qty, ingredient_id=item, label=label, note=note,
-                raw_text=f"{label}{note}".strip(), section=section,
-            ))
-        else:
-            text_val = (payload.get("text") or "").strip()
-            if not text_val:
-                return jsonify({"error": "type an ingredient, or pick one from your library"}), 400
-            s.execute(insert(RecipeAddition.__table__).values(
-                recipe_id=rid, person_id=pid, qty=qty, raw_text=text_val, section=section,
-            ))
-        result = changes_for(s, rid)
-        s.commit()
-    return jsonify(result)
-
-
-@app.route("/api/recipes/<rid>/people/<pid>/additions/<int:add_id>", methods=["DELETE"])
-def delete_addition(rid, pid, add_id):
-    """Remove one of this person's added ingredients."""
-    with orm_session() as s:
-        err = seed_recipe_person_error(s, rid, pid)
-        if err:
-            return jsonify({"error": err[0]}), err[1]
-        s.execute(delete(RecipeAddition).where(
-            RecipeAddition.id == add_id, RecipeAddition.recipe_id == rid, RecipeAddition.person_id == pid
-        ))
-        result = changes_for(s, rid)
-        s.commit()
-    return jsonify(result)
 
 
 # ---- ingredient field guide ----

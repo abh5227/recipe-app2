@@ -3,8 +3,8 @@
 The 5 recipes the suite exercises, copied VERBATIM from seed.py so the tests own their data
 independently of production seed.py. make_kitchen seeds the test DB from TEST_RECIPES (via a
 build_db.RECIPES override), NOT from seed.py RECIPES — so production RECIPES can later be emptied
-without breaking the suite. All 5 are seeded as source='seed' by build_db (gai-yang in particular
-must stay seed: the per-person change layer is seed-gated and test_changes depends on it).
+without breaking the suite. All 5 are seeded as source='seed' by build_db — the read-only tier that
+test_api uses for its is_seed / is_editable=False assertions (the change-layer was removed in R6).
 
 Not collected by pytest (filename is not test_*.py). Kept in sync manually if these recipes change.
 """

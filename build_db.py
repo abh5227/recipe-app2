@@ -19,7 +19,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-from seed import INGREDIENTS, RECIPES, PEOPLE
+from seed import INGREDIENTS, RECIPES
 from migrate import migrate
 from import_cleanup import split_qty   # same qty->quantity+unit split as the app-row backfill
 from weights import (
@@ -164,23 +164,6 @@ def seed_content(conn):
                 (key, region_id[name], pos),
             )
 
-    # ---- people (configuration, like the ingredient library): upsert from seed.py ----
-    for pos, person in enumerate(PEOPLE):
-        conn.execute(
-            """INSERT INTO people (id, name, color, position) VALUES (?,?,?,?)
-               ON CONFLICT(id) DO UPDATE SET
-                   name = excluded.name, color = excluded.color, position = excluded.position""",
-            (person["id"], person["name"], person["color"], pos),
-        )
-    # drop anyone removed from seed.py, along with their saved changes (FK is off here,
-    # so the cascade doesn't fire — delete the child rows explicitly).
-    seed_people = {p["id"] for p in PEOPLE}
-    for pid in [row[0] for row in conn.execute("SELECT id FROM people")]:
-        if pid not in seed_people:
-            conn.execute("DELETE FROM recipe_line_changes WHERE person_id = ?", (pid,))
-            conn.execute("DELETE FROM recipe_additions    WHERE person_id = ?", (pid,))
-            conn.execute("DELETE FROM people               WHERE id = ?", (pid,))
-
     # ---- seed-owned recipes (app recipes are left completely alone) ----
     seed_slugs = {r["id"] for r in RECIPES}
 
@@ -189,8 +172,7 @@ def seed_content(conn):
     existing_seed = [row[0] for row in conn.execute("SELECT id FROM recipes WHERE source = 'seed'")]
     for slug in existing_seed:
         if slug not in seed_slugs:
-            for t in ("ratings", "cook_log", "recipe_line_changes", "recipe_additions",
-                      "recipe_ingredients", "recipe_steps"):
+            for t in ("ratings", "cook_log", "recipe_ingredients", "recipe_steps"):
                 conn.execute(f"DELETE FROM {t} WHERE recipe_id = ?", (slug,))
             conn.execute("DELETE FROM recipes WHERE id = ?", (slug,))
 
@@ -395,83 +377,22 @@ def build():
     n_seed = conn.execute("SELECT COUNT(*) FROM recipes WHERE source='seed'").fetchone()[0]
     n_app = conn.execute("SELECT COUNT(*) FROM recipes WHERE source='app'").fetchone()[0]
     n_ings = conn.execute("SELECT COUNT(*) FROM ingredients").fetchone()[0]
-    n_people = conn.execute("SELECT COUNT(*) FROM people").fetchone()[0]
     n_cooks = conn.execute("SELECT COUNT(*) FROM cook_log").fetchone()[0]
     n_ratings = conn.execute("SELECT COUNT(*) FROM ratings").fetchone()[0]
-    n_changes = conn.execute("SELECT COUNT(*) FROM recipe_line_changes").fetchone()[0]
-    n_additions = conn.execute("SELECT COUNT(*) FROM recipe_additions").fetchone()[0]
     n_weights = conn.execute("SELECT COUNT(*) FROM ingredient_weights").fetchone()[0]
 
-    # A line edit/removal is stored by line position, so reordering or trimming a seed
-    # recipe's ingredients in seed.py can leave one pointing at the wrong line, or at a
-    # line that's gone. List where each one landed (per person) so you can eyeball it,
-    # and mark with [!] any that clearly no longer fit. (Additions aren't position-based,
-    # so they can't drift this way and aren't listed here.)
-    change_rows = conn.execute(
-        """SELECT r.name, pe.name, c.position, c.kind, c.new_qty,
-                  ri.is_heading, ri.qty, ri.label, ri.raw_text
-           FROM recipe_line_changes c
-           JOIN recipes r  ON r.id  = c.recipe_id
-           JOIN people  pe ON pe.id = c.person_id
-           LEFT JOIN recipe_ingredients ri
-                  ON ri.recipe_id = c.recipe_id AND ri.position = c.position
-           ORDER BY r.name, pe.name, c.position"""
-    ).fetchall()
-
-    # An addition can name a section (a heading's text). If that heading is later renamed
-    # or removed in seed.py, the addition no longer matches and quietly falls to the bottom
-    # of the list. List those so you can re-point them.
-    orphan_additions = conn.execute(
-        """SELECT r.name, pe.name, a.section, a.raw_text
-           FROM recipe_additions a
-           JOIN recipes r  ON r.id  = a.recipe_id
-           JOIN people  pe ON pe.id = a.person_id
-           WHERE a.section IS NOT NULL
-             AND NOT EXISTS (
-                 SELECT 1 FROM recipe_ingredients ri
-                 WHERE ri.recipe_id = a.recipe_id AND ri.is_heading = 1 AND ri.raw_text = a.section
-             )
-           ORDER BY r.name, pe.name, a.id"""
-    ).fetchall()
     coverage = compute_coverage(conn)
     step_coverage = compute_step_coverage(conn)
     conn.close()
 
     print(
         f"Seed content refreshed: {n_seed} seed recipes, {n_ings} ingredients, "
-        f"{n_people} people, {n_weights} ingredient weights."
+        f"{n_weights} ingredient weights."
     )
     print(
         f"Left untouched (app-owned): {n_app} app recipe(s), {n_cooks} cook-log "
-        f"entries, {n_ratings} rating(s), {n_changes} line change(s), {n_additions} addition(s)."
+        f"entries, {n_ratings} rating(s)."
     )
-
-    if change_rows:
-        print("\nSaved per-person line changes are attached to these ingredient lines —")
-        print("give them a glance; a line marked [!] may have shifted out of place:")
-        current = None
-        for recipe_name, person_name, position, kind, new_qty, is_heading, qty, label, raw_text in change_rows:
-            if recipe_name != current:
-                current = recipe_name
-                print(f"  {recipe_name}")
-            change = f'set quantity "{new_qty}"' if kind == "edit" else "removed this line"
-            if is_heading is None:
-                print(f"    [!] {person_name} \u00b7 line {position}: no ingredient there now -> {change}")
-            elif is_heading:
-                print(f"    [!] {person_name} \u00b7 line {position}: now a section heading -> {change}")
-            else:
-                text = f"{qty or ''} {label or raw_text or ''}".strip()
-                print(f"    {person_name} \u00b7 line {position}: \"{text}\"  ->  {change}")
-
-    if orphan_additions:
-        print("\nThese added ingredients name a section that no longer exists (so they now")
-        print("sit at the bottom of the list) — re-point them in the app if you like:")
-        current = None
-        for recipe_name, person_name, section, raw_text in orphan_additions:
-            if recipe_name != current:
-                current = recipe_name
-                print(f"  {recipe_name}")
-            print(f"    [!] {person_name} \u00b7 \"{raw_text}\" -> section \"{section}\" is gone")
 
     if orphans:
         print(

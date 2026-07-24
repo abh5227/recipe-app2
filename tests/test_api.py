@@ -13,8 +13,6 @@ def test_get_seed_recipe_shape(kitchen):
     d = kitchen.client.get("/api/recipes/gai-yang").get_json()
     assert d["is_seed"] is True
     assert d["is_editable"] is False
-    assert len(d["people"]) == 2
-    assert d["changes"] == {}
     for key in ("recipe", "ingredients", "steps", "stats"):
         assert key in d
 
@@ -36,7 +34,6 @@ def test_create_edit_delete_app_recipe(kitchen):
     d = kitchen.client.get(f"/api/recipes/{rid}").get_json()
     assert d["is_editable"] is True
     assert d["is_seed"] is False
-    assert d["changes"] == {}
 
     # a duplicate name (same slug) is rejected
     dup = kitchen.client.post("/api/recipes", json={"name": "Test Dish", "ingredients": [], "steps": []})

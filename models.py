@@ -72,14 +72,6 @@ class Ingredient(Base):
     created_at = Column(Text)
 
 
-class Person(Base):
-    __tablename__ = "people"
-    id = Column(Text, primary_key=True)
-    name = Column(Text, nullable=False)
-    color = Column(Text, nullable=False)
-    position = Column(Integer, nullable=False, server_default=text("0"))
-
-
 class Rating(Base):
     __tablename__ = "ratings"
     recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), primary_key=True)
@@ -178,36 +170,6 @@ class RecipeStep(Base):
     body = Column("text", Text, nullable=False)
     __table_args__ = (
         Index("idx_rs_recipe", "recipe_id"),
-        {"sqlite_autoincrement": True},
-    )
-
-
-class RecipeLineChange(Base):
-    __tablename__ = "recipe_line_changes"
-    recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), primary_key=True)
-    person_id = Column(Text, ForeignKey("people.id", ondelete="CASCADE"), primary_key=True)
-    position = Column(Integer, primary_key=True)
-    kind = Column(Text, nullable=False)
-    new_qty = Column(Text)
-    __table_args__ = (
-        CheckConstraint("kind IN ('edit', 'remove')"),
-        Index("idx_line_changes_recipe", "recipe_id"),
-    )
-
-
-class RecipeAddition(Base):
-    __tablename__ = "recipe_additions"
-    id = Column(Integer, primary_key=True)
-    recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
-    person_id = Column(Text, ForeignKey("people.id", ondelete="CASCADE"), nullable=False)
-    qty = Column(Text)
-    ingredient_id = Column(Text, ForeignKey("ingredients.id"))
-    label = Column(Text)
-    note = Column(Text)
-    raw_text = Column(Text)
-    section = Column(Text)
-    __table_args__ = (
-        Index("idx_additions_recipe", "recipe_id"),
         {"sqlite_autoincrement": True},
     )
 

@@ -2,7 +2,7 @@
 
 build_db.seed_content is SQLite-coupled (cur.lastrowid, PRAGMA foreign_keys OFF/ON,
 PRAGMA foreign_key_check), so it can't seed Postgres. This module loads the SAME logical seed
-the SQLite harness builds — INGREDIENTS + PEOPLE (seed.py), TEST_RECIPES (fixtures.py), the
+the SQLite harness builds — INGREDIENTS (seed.py), TEST_RECIPES (fixtures.py), the
 King-Arthur weights CSV — via SQLAlchemy Core inserts on models.py's tables: no lastrowid
 (regions capture their generated id via result.inserted_primary_key), no PRAGMA. It runs on any
 dialect; Stage 2c uses it against the Postgres test DB (schema from `alembic upgrade head`).
@@ -25,10 +25,10 @@ for _p in (str(REPO), str(REPO / "tests")):
 
 import models
 from models import (
-    Ingredient, IngredientSeason, Region, IngredientRegion, Person,
+    Ingredient, IngredientSeason, Region, IngredientRegion,
     Recipe, RecipeIngredient, RecipeStep, ingredient_weights,
 )
-from seed import INGREDIENTS, PEOPLE
+from seed import INGREDIENTS
 from fixtures import TEST_RECIPES
 from build_db import WEIGHT_CONVERT_EXCLUDE, WEIGHTS_CSV
 from weights import normalize, parse_reference_volume
@@ -94,7 +94,7 @@ def _seed_weights(conn):
 def seed_all(conn):
     """Load the full test seed into `conn` (a SQLAlchemy connection, any dialect) via Core inserts.
     Same logical state build_db.build() produces on SQLite: 36 ingredients + their seasons/regions,
-    2 people, 5 TEST_RECIPES (source='seed') with lines+steps, and the weights chart."""
+    5 TEST_RECIPES (source='seed') with lines+steps, and the weights chart."""
     now = _now()
     # ingredient library
     for key, ing in INGREDIENTS.items():
@@ -115,10 +115,6 @@ def seed_all(conn):
         for pos, name in enumerate(ing.get("regions", [])):
             conn.execute(insert(IngredientRegion.__table__).values(
                 ingredient_id=key, region_id=region_id[name], position=pos))
-    # people (configuration, like the ingredient library)
-    for pos, person in enumerate(PEOPLE):
-        conn.execute(insert(Person.__table__).values(
-            id=person["id"], name=person["name"], color=person["color"], position=pos))
     # recipes + their lines/steps (seeded as source='seed', matching the SQLite harness)
     for r in TEST_RECIPES:
         conn.execute(insert(Recipe.__table__).values(
