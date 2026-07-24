@@ -694,6 +694,17 @@ Depends on the full dataset (corpus + linkage + the Tier-3 outcome data).
 - **Why last:** a different class of project (deployment + multi-user) than the rest, which is
   local and single-user.
 
+### Ingredient-compatibility — social discovery (deferred)
+
+Compare two friends' recipe boxes by **shared-ingredient overlap** ("you both cook heavily with
+doubanjiang / sumac") — a lightweight social-discovery angle. **Computable cheaply from existing joins**
+(`recipe_ingredients` ⨝ the ingredient library, per owner) — **no new data**. **Discovery-polish, not
+foundational:** it needs a working friend network (P17 / the social layer) first, so it's deferred to
+after that lands. Doubles as a **soft on-ramp to the ingredient-adjacency moat** (hook A / the P19
+recommender): the same ingredient-overlap machinery that surfaces "you two cook alike" is a first step
+toward "you like X, try adjacent Y." *See [docs/product-vision.md](docs/product-vision.md) (the moat +
+the finalized social-layer build plan).*
+
 ### Eventual architecture (north-star — FUTURE, not current work)
 
 The long-term destination for taking the app multi-user. **This is NOT current work** — the app

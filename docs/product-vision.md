@@ -158,3 +158,57 @@ ingredient-adjacency **concept** cheaply on the existing corpus before committin
 - **A missing forward-looking / planning primitive.** The app is largely **retrospective** (log what you
   cooked); cooking is also **prospective** (what to make this week). A planning/intent primitive ("want
   to make," a queue) is where recommendations land + a natural social prompt — possibly a later addition.
+  *(Resolved by the grounding pass: it already exists latently — see sub-stage 3 below.)*
+
+## Social-layer build plan (finalized — sub-stage by sub-stage, diagnostic-first each)
+
+The concrete build sequence for the social layer, decided after a read-only grounding pass against the
+real schema + data. Each sub-stage is its own diagnostic-first stage (read-only diagnostic → build with
+STOP-for-review → reconcile + commit + CI), dual-source where it touches schema. Ordered cheap-and-
+foundational first; the one expensive, risk-concentrated piece (photos) is built LAST and isolated.
+
+1. **FRIEND GRAPH.** A `friendships` join table (`requester_id`, `addressee_id`, `status`
+   pending/accepted, timestamps, composite PK), with request → accept → list. Cheap and foundational —
+   everything social needs "who are my friends" first. Clean `users` base needs nothing added; reuses the
+   established reference-FK / composite-PK idiom. Dual-source (migration + Alembic).
+
+2. **FEED + DELIBERATE SHARE.** ⚠️ **KEY DECISION: the feed is DELIBERATE, not automatic.** Logging
+   (`cook_log` / `ratings`) stays **ALWAYS-PRIVATE** — your honest record, for you + your data. **Sharing
+   is a separate opt-in act** (you share a cook you're proud of / a recipe / later a meal photo). A share
+   creates a **feed POST** in a small `shared_posts` table (references the shared thing, a share-timestamp,
+   and an optional caption). The feed = friends' deliberately-shared posts, **chronological by share-time,
+   bounded**. This is better than the grounding-pass alternatives on two counts: it **kills the cook_log
+   recency wrinkle by construction** (share-time IS feed-time — no conflation with the backdatable
+   `cooked_on`), and it is **connection-aligned by design** (curated proud moments, not an auto-broadcast
+   firehose — the *connection-not-consumption* principle built in, not bolted on). Explicitly **NOT** the
+   grounding-pass's "derive-from-cook_log + visibility flag" (that was the auto-broadcast model we
+   **rejected**); **NOT** an auto `activity_events` table. A deliberate-share table is **smaller** (only
+   shared things) and **correct**.
+
+3. **WANT-TO-MAKE QUEUE + SHARING.** Promote the latent **"To Make"** category tag (**133 real rows — no
+   cold start**) to a structured queue: the forward-looking / planning primitive (Gap-3 above — which, it
+   turns out, already exists in the data). It's where hook-A recommendations **land**, and a natural
+   **prospective** social post ("Andy wants to make X"). PLUS the sharing mechanics: **direct 1:1 recipe
+   share** + **share-as-invite** (extend `invites` with `shared_recipe_id` + **auto-friend on consume** —
+   `created_by` already records the sharer). *(Cross-user copy is already done — `copy_recipe` is
+   owner-agnostic + content-only.)*
+
+4. **MANUAL ADD-RECIPE FORM.** `create_recipe` already does per-user structured upload server-side (sets
+   `owner=current_user`, full ingredient/step validation) — this sub-stage is **just the client form**.
+   Cheap.
+
+5. **MEAL PHOTOS + PEOPLE-TAGGING.** **EXPENSIVE + risk-concentrated** — the **ONLY** untrusted-binary-
+   input surface (no file-upload endpoint exists anywhere in the backend today). Needs a real **multipart
+   upload endpoint** + a `meal_photos` table + a `meal_photo_tags` join. Built **LAST**, **ISOLATED**,
+   with real [SECURITY.md](SECURITY.md) care: size limits, content-type sniffing, filename sanitation,
+   decompression-bomb guards, path safety. `process_photo()` (`scripts/backfill_photos.py`) is the
+   image-processing head-start; the request wrapper + storage + hardening are **net-new**.
+
+**Guards to fold in when the visibility filter lands** (deferred with the ownership rules, not this
+sequence): filter `source='test'` recipes OUT of boxes/feeds; the owner-based read filter is what converts
+the *recorded* `owner` into an actual **box** (no data migration — a read-side filter only).
+
+**Durability — the moat's culinary-knowledge seed already exists in the schema.** Hook A / the later
+recommendation engine won't start from nothing: `ingredients.pairs` is **36/36 hand-authored adjacency
+text**, plus **44 regions / 102 ingredient-region links / 65 seasons** — a real head start for the
+ingredient-adjacency model (the "culinary knowledge, not collaborative filtering" the moat names).
