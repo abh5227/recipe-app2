@@ -96,6 +96,31 @@ engagement: reasons to return must be **intrinsically valuable** (good recommend
 interesting feed), not manufactured. It must be **protected feature-by-feature** — it's easy to erode
 one "just a little ranking to boost engagement" at a time.
 
+### Comments — connection, never engagement machinery
+
+The feed supports **COMMENTS** (conversation between friends) but deliberately rejects the engagement
+apparatus that comments usually drag in:
+
+- **COMMENTS YES** (words — a friend saying "how'd you get that char?" is the reconnection the app
+  exists for). **LIKES/REACTIONS NEVER** (a like is a one-tap validation **metric** that produces a
+  count/scoreboard — pure consumption-farming, adds nothing to connection). Words connect; taps/counts
+  farm engagement. This **"comments yes, likes never"** line IS the concrete test of
+  connection-not-consumption.
+- **No comment-count as a displayed metric** — you see the conversation itself; no "12 comments" vanity
+  number.
+- ⭐ **NO NOTIFICATIONS OF ANY KIND** — not push, not email, not even an in-app badge that pulls. A
+  friend's comment is seen ONLY by opening the app and looking. The app NEVER reaches out or summons the
+  user. People return because the thing is valuable, not because it nagged them. (This is the strongest
+  expression of the principle: remove every mechanism by which the app could pull you back.)
+- **Friends-only** — comment on friends' posts, bounded to your real network, private (consistent with
+  private-by-default).
+- **Delete your own comments;** the post owner can remove comments on their post (light,
+  it's-your-post moderation).
+
+The point: comments are the **conversation** (connection); everything that would turn them into an
+engagement loop (likes, counts, notifications) is rejected. Built this way, commenting **fulfills** "I
+want my friends to really connect" rather than eroding it.
+
 ## Engagement hooks (the "why open it on a random Tuesday")
 
 - **A — "What should I cook tonight?"** The daily decision ritual, powered by recommendations — the
