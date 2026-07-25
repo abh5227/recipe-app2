@@ -705,6 +705,35 @@ recommender): the same ingredient-overlap machinery that surfaces "you two cook 
 toward "you like X, try adjacent Y." *See [docs/product-vision.md](docs/product-vision.md) (the moat +
 the finalized social-layer build plan).*
 
+### Chef profile — a personal cook-page (identity, not competition)
+
+Each user has a profile / "wall" — who they are **as a cook**: their achievements (cuisines explored,
+techniques tried — **variety not volume**, per the achievement rule), their box / signature dishes, a bit
+of "this is me as a cook." The MySpace **"this is me" warmth** — WITHOUT MySpace's death (the
+performance/competition dynamic).
+
+⚠️ **THE LINE** (same as comments/feed — identity/connection YES, competition/metrics NO):
+
+- ✅ **Identity / expression:** your achievements, your dishes, who you are as a cook — your friends see
+  **you**.
+- ❌ **Performance / competition:** NO follower counts, NO "Top 8 friends" ranking, NO visitor counts, NO
+  "most cooked" leaderboards — nothing that makes the profile a scoreboard or popularity contest (that's
+  the exact MySpace/Facebook drift the connection-not-consumption principle rejects). The nostalgia is for
+  the **identity/expression**, not the competition.
+- The **achievements** system (Xbox-style, variety-not-volume — see the engagement hooks in
+  [docs/product-vision.md](docs/product-vision.md)) IS the profile's core content — the profile is
+  where achievements live and get shown. So **"chef profile + achievements" likely build together as one
+  future sub-stage.**
+
+**Market signal** (a viral 2026 Reddit thread on missing early-Facebook/MySpace): people are nostalgic
+for the friends-only feed + the "this is me" profile, and explicitly hate what killed them (ads,
+algorithms, "impressing random people," feature-pile-on/games, non-private opening-up). Every principle
+enshrined here maps to something that thread mourns — strong directional validation of the thesis (though
+nostalgia ≠ proven willingness to switch; the real test is friends actually using it).
+
+**Sequencing:** deferred — its own sub-stage, **AFTER** the current feed + comments work. Do NOT derail
+the in-flight feed.
+
 ### Eventual architecture (north-star — FUTURE, not current work)
 
 The long-term destination for taking the app multi-user. **This is NOT current work** — the app
