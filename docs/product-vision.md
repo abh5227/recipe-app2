@@ -5,6 +5,43 @@ survives across sessions and shapes the rescoping + later stages rather than bei
 outcome-data thesis (why ratings/cooks/modifications are the scarce asset) lives in
 [OVERVIEW.md](../OVERVIEW.md); this doc records the **multi-user shape** that thesis takes.
 
+## What this is really about (the north-star feeling)
+
+Every principle below serves one feeling. Before the model, before the mechanics, this is the thing
+they protect:
+
+> There is a man in Kansas City who starts the meat at three in the morning for a meal at four in the
+> afternoon. He tends a fire that does not need watching. He keeps a promise to people who do not know
+> he is awake. When they eat, he says nothing about the thirteen hours; he eats his own plate standing
+> up. **Dave did not tell them.**
+>
+> *"I would like it recorded somewhere, by someone. In case I was called upon to do this alone, I wrote
+> down: oak. A man does not hand his fire to a stranger — this is an adoption. I have bought a black
+> iron drum. I do not yet know anyone here well enough to feed. **I am starting the fire anyway.**"*
+
+**The recipe is nothing; the CARE is everything.** The app records the *caring* — ratings, cook-history,
+annotations, the residue of someone tending a fire before anyone arrives — **not** the food. This is the
+used-cookbook thesis felt rather than argued.
+
+**Why Dave is the anchor** — every enshrined principle is a way of protecting this:
+
+- **Record the care, NEVER farm it.** *"Dave did not tell them."* No likes, no counts, no notifications,
+  no scoreboard — each rejected mechanic is the refusal to make Dave announce he was awake at 3am. The
+  moment care becomes performance it stops being Dave and becomes **content**. ⭐ **THE TEST for any
+  feature:** *"Is this Dave — or is this the thing that would make Dave tell everyone?"*
+- **You hand your fire to known people.** *"A man does not hand his fire to a stranger — this is an
+  adoption."* The friend graph is private, mutual, earned — an adoption, not an audience to impress.
+- **Growth over perfection.** *"In case I was called upon to do this alone, I wrote down: oak."* The
+  beginner learning badly and earnestly is welcome; post the embarrassing cooks. Dave's silence about
+  the thirteen hours was a kindness, not a highlight reel.
+- ⭐ **Start the fire anyway** — the cold-start answer. *"I do not yet know anyone here well enough to
+  feed. I am starting the fire anyway."* The solo core is **not** a consolation for having no friends
+  yet; it is **Dave at 3am**. The app is great alone because **tending the fire is the point** — watched
+  or not.
+
+Everything that follows — **connection-not-consumption, no-counts, failure-acceptance, private-mutual
+friends** — exists to keep this feeling intact. **When a decision is unclear, check it against Dave.**
+
 ## Recipe-box / multi-user model (decided, mostly not-yet-built)
 
 The app is a **social recipe-box**: each user has their OWN recipe box (collection). The used-cookbook
