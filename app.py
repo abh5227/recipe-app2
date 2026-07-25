@@ -31,7 +31,7 @@ from import_cleanup import split_qty   # shared qty->quantity+unit split (backfi
 # (see docs/migration-plan.md).
 from models import (
     Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
-    Rating, CookLog, User, Friendship, SharedPost, ingredient_weights,
+    Rating, CookLog, User, Friendship, SharedPost, Comment, ingredient_weights,
 )
 from auth import auth_bp   # JSON auth endpoints (auth-2); auth.py imports models only, so no import cycle
 
@@ -991,6 +991,20 @@ def get_feed():
         ).scalars().all()
         sharers = {u.id: u for u in s.execute(
             select(User).where(User.id.in_({p.user_id for p in posts}))).scalars()} if posts else {}
+        # Comments embedded in the feed (the conversation under each post) — batched, NOT N+1: ONE query
+        # for every post's comments (oldest-first, a thread reads top-to-bottom) + ONE author load,
+        # grouped by post_id in Python. can_delete is computed per post below (needs the post owner).
+        comments_by_post, comment_authors = {}, {}
+        post_ids = [p.id for p in posts]
+        if post_ids:
+            crows = s.execute(
+                select(Comment).where(Comment.post_id.in_(post_ids))
+                .order_by(Comment.created_at, Comment.id)                 # oldest-first, stable tiebreak
+            ).scalars().all()
+            comment_authors = {u.id: u for u in s.execute(
+                select(User).where(User.id.in_({c.author_id for c in crows}))).scalars()} if crows else {}
+            for c in crows:
+                comments_by_post.setdefault(c.post_id, []).append(c)
         out = []
         for p in posts:
             post_type = "cook" if p.cook_log_id is not None else "recipe"
@@ -1002,6 +1016,15 @@ def get_feed():
                 rec = s.get(Recipe, p.recipe_id)
                 cooked_on = None
             sharer = sharers.get(p.user_id)
+            comments = [{
+                "id": c.id,
+                "author": {"display_name": (comment_authors.get(c.author_id).display_name
+                                            if comment_authors.get(c.author_id) else None)},
+                "body": c.body,
+                "created_at": c.created_at,
+                "is_mine": c.author_id == me,
+                "can_delete": c.author_id == me or p.user_id == me,   # own comment OR I own the post
+            } for c in comments_by_post.get(p.id, [])]
             out.append({
                 "id": p.id,
                 "post_type": post_type,
@@ -1011,8 +1034,61 @@ def get_feed():
                 "caption": p.caption,
                 "created_at": p.created_at,
                 "is_mine": p.user_id == me,
+                "comments": comments,
             })
     return jsonify(out)
+
+
+# ---- social: comments on feed posts ------------------------------------------------------------
+# The conversation under a post (docs/product-vision.md): comments YES, likes/reactions NEVER, no
+# count-as-metric, NO notifications (a comment is just a row, seen only when the feed renders — the
+# simplification that removes commenting's hard part). Friends-only == feed-visibility (the same
+# accepted_friend_ids set that scopes the feed). Listing is embedded in GET /api/feed (batched above),
+# so there is deliberately NO separate list endpoint — just add + delete.
+COMMENT_MAX = 300
+
+
+@app.route("/api/posts/<int:post_id>/comments", methods=["POST"])
+def add_comment(post_id):
+    """Comment on a feed post. AUTHZ (friends-only = feed-visibility): you may comment on your OWN post
+    or an ACCEPTED FRIEND's post; anyone else gets a uniform 404 (a non-friend can't see the post and
+    shouldn't learn it exists). Body is trimmed, required, and capped at COMMENT_MAX. Returns the created
+    comment so the client appends it without a refetch."""
+    body = (request.get_json(silent=True) or {}).get("body")
+    body = (body or "").strip() if isinstance(body, str) else ""
+    if not body:
+        return jsonify({"error": "a comment can't be empty"}), 400
+    if len(body) > COMMENT_MAX:
+        return jsonify({"error": f"a comment must be {COMMENT_MAX} characters or fewer"}), 400
+    with orm_session() as s:
+        post = s.get(SharedPost, post_id)
+        if post is None:
+            return jsonify({"error": "post not found"}), 404
+        if post.user_id != current_user.id and post.user_id not in accepted_friend_ids(s, current_user.id):
+            return jsonify({"error": "post not found"}), 404       # non-friend: non-leaking (== feed-visibility)
+        c = Comment(post_id=post_id, author_id=current_user.id, body=body, created_at=now_utc())
+        s.add(c)
+        s.commit()
+        out = {"id": c.id, "author": {"display_name": current_user.display_name},
+               "body": c.body, "created_at": c.created_at, "is_mine": True,
+               "can_delete": True}                                  # author (and maybe post owner) — always deletable by you
+    return jsonify(out), 201
+
+
+@app.route("/api/comments/<int:comment_id>", methods=["DELETE"])
+def delete_comment(comment_id):
+    """Delete a comment. AUTHZ: the comment's AUTHOR (delete your own) OR the OWNER of the post it's on
+    (light 'it's your post' moderation). Anyone else, or a missing comment, gets a uniform 404."""
+    with orm_session() as s:
+        c = s.get(Comment, comment_id)
+        if c is None:
+            return jsonify({"error": "comment not found"}), 404
+        post = s.get(SharedPost, c.post_id)                        # post owner may moderate
+        if c.author_id != current_user.id and not (post and post.user_id == current_user.id):
+            return jsonify({"error": "comment not found"}), 404
+        s.delete(c)
+        s.commit()
+    return jsonify({"ok": True}), 200
 
 
 if __name__ == "__main__":

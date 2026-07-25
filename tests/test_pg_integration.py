@@ -241,3 +241,34 @@ def test_shared_posts_pg_dialect(pg):
     # ON DELETE CASCADE: undo the cook (route) -> the shared_post cascades away on PG
     assert ca.post("/api/recipes/gai-yang/uncook").status_code == 200
     assert _count(pg.engine, "SELECT COUNT(*) FROM shared_posts WHERE id=:p", p=pid) == 0
+
+
+# ---- 9. comments — friends-only authz + the 2-level cascade (recipe -> post -> comment) on PG ------
+
+def test_comments_pg_dialect(pg):
+    """PG echo: the comment ROUTES round-trip on Postgres, friends-only authz holds (a non-friend 404s),
+    and the 2-level cascade fires on PG — deleting the RECIPE removes the shared_post AND its comments."""
+    a_id = harness.ensure_test_user()
+    b_id = harness.ensure_test_user(email="commb@test.local")
+    ca = pg.client
+    cb = app.app.test_client()
+    harness.login_test_client(cb, b_id)
+    a_email = harness.HARNESS_USER_EMAIL
+    # friend A<->B, A shares a recipe A owns
+    ca.post("/api/friends/requests", json={"email": "commb@test.local"})
+    cb.post("/api/friends/accept", json={"email": a_email})
+    rid = ca.post("/api/recipes", json={"name": "PG Comment Dish", "ingredients": [{"qty": "1", "text": "x"}],
+                                        "steps": ["go"]}).get_json()["id"]
+    pid = ca.post("/api/shares", json={"recipe_id": rid}).get_json()["id"]
+
+    # friend B can comment; a non-friend can't (fresh 3rd user)
+    assert cb.post(f"/api/posts/{pid}/comments", json={"body": "great on PG"}).status_code == 201
+    c_id = harness.ensure_test_user(email="commc@test.local")
+    cc = app.app.test_client(); harness.login_test_client(cc, c_id)
+    assert cc.post(f"/api/posts/{pid}/comments", json={"body": "sneaky"}).status_code == 404
+    assert _count(pg.engine, "SELECT COUNT(*) FROM comments WHERE post_id=:p", p=pid) == 1
+
+    # ⭐ 2-level cascade on PG: delete the recipe -> shared_post -> comments
+    assert ca.delete(f"/api/recipes/{rid}").status_code == 200
+    assert _count(pg.engine, "SELECT COUNT(*) FROM shared_posts WHERE id=:p", p=pid) == 0
+    assert _count(pg.engine, "SELECT COUNT(*) FROM comments WHERE post_id=:p", p=pid) == 0

@@ -261,6 +261,27 @@ class SharedPost(Base):
     )
 
 
+class Comment(Base):
+    """A comment on a feed post — the CONVERSATION (docs/product-vision.md: comments YES, likes/reactions
+    NEVER, no count-as-metric, no notifications). post_id -> shared_posts(id) ON DELETE CASCADE is the
+    integrity chain: a shared_post already cascades when its cook/recipe is deleted, so recipe/cook ->
+    post -> comments cleans up the whole thread (and unshare deletes a post's comments). author_id ->
+    users(id) is a reference FK (no ondelete), matching shared_posts.user_id. Surrogate id PK; created_at
+    = now_utc(); idx_comments_post backs the feed's batched WHERE post_id IN (...) load. Queried with
+    explicit select() — no relationship() (house style). Additive: nothing reads it until the feed
+    serializer embeds comments."""
+    __tablename__ = "comments"
+    id = Column(Integer, primary_key=True)
+    post_id = Column(Integer, ForeignKey("shared_posts.id", ondelete="CASCADE"), nullable=False)
+    author_id = Column(Integer, ForeignKey("users.id"), nullable=False)           # reference FK, no cascade
+    body = Column(Text, nullable=False)                                           # <=300 chars, app-enforced
+    created_at = Column(Text, nullable=False)                                     # now_utc()
+    __table_args__ = (
+        Index("idx_comments_post", "post_id"),
+        {"sqlite_autoincrement": True},
+    )
+
+
 # ingredient_weights has NO primary key in the live schema. ORM-mapped classes require a PK, so this
 # table is defined as a Core Table (part of the same metadata) — faithful in create_all (no synthetic
 # PK added, no structure change). It can be given an imperative ORM mapping in Stage 1b if it's queried.
