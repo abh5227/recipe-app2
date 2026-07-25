@@ -240,6 +240,27 @@ class Friendship(Base):
     )
 
 
+class SharedPost(Base):
+    """A deliberate share (sub-stage 2a) — a first-class feed post. References WHAT was shared via
+    SEPARATE nullable FK columns (cook_log_id / recipe_id) with ON DELETE CASCADE, so a deleted
+    cook/recipe cascades the post (no orphans) — the integrity need that ruled out a polymorphic column
+    (which can't cascade). The XOR CheckConstraint enforces exactly one target, so post_type is DERIVED
+    (cook_log_id -> 'cook', recipe_id -> 'recipe'), never stored. Surrogate id PK (repeat shares allowed,
+    no dedup); created_at = now_utc() is share-time = feed-time. Queried with explicit select() — no
+    relationship() (house style). Additive: nothing reads it until the feed endpoint."""
+    __tablename__ = "shared_posts"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)             # the sharer
+    cook_log_id = Column(Integer, ForeignKey("cook_log.id", ondelete="CASCADE"))  # set for a 'cook' post
+    recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"))        # set for a 'recipe' post
+    caption = Column(Text)                                                        # optional (<=280 chars)
+    created_at = Column(Text, nullable=False)                                     # now_utc(): share-time
+    __table_args__ = (
+        CheckConstraint("(cook_log_id IS NOT NULL) <> (recipe_id IS NOT NULL)"),  # exactly one target
+        {"sqlite_autoincrement": True},
+    )
+
+
 # ingredient_weights has NO primary key in the live schema. ORM-mapped classes require a PK, so this
 # table is defined as a Core Table (part of the same metadata) — faithful in create_all (no synthetic
 # PK added, no structure change). It can be given an imperative ORM mapping in Stage 1b if it's queried.

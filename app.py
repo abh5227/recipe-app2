@@ -31,7 +31,7 @@ from import_cleanup import split_qty   # shared qty->quantity+unit split (backfi
 # (see docs/migration-plan.md).
 from models import (
     Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
-    Rating, CookLog, User, Friendship, ingredient_weights,
+    Rating, CookLog, User, Friendship, SharedPost, ingredient_weights,
 )
 from auth import auth_bp   # JSON auth endpoints (auth-2); auth.py imports models only, so no import cycle
 
@@ -791,6 +791,19 @@ def friendship_edge(s, a_id, b_id):
     return s.get(Friendship, (a_id, b_id)) or s.get(Friendship, (b_id, a_id))
 
 
+def accepted_friend_ids(s, user_id):
+    """The set of user_ids who are ACCEPTED friends of `user_id` — both directions (a friendship is one
+    row; the other party may be requester OR addressee). The 'all my friends' set the feed (sub-stage 2a)
+    and later sharing/reco sub-stages need — distinct from friendship_edge (pairwise) and list_friends
+    (buckets, inline)."""
+    rows = s.execute(
+        select(Friendship.requester_id, Friendship.addressee_id)
+        .where(Friendship.status == "accepted",
+               or_(Friendship.requester_id == user_id, Friendship.addressee_id == user_id))
+    ).all()
+    return {(addr if req == user_id else req) for req, addr in rows}
+
+
 @app.route("/api/friends/requests", methods=["POST"])
 def request_friend():
     """Send a friend request to a user identified by email. Enumeration-safe: an unknown email returns
@@ -886,6 +899,120 @@ def remove_friend():
         s.delete(row)
         s.commit()
     return jsonify({"ok": True}), 200
+
+
+# ---- social: the deliberate-share feed (sub-stage 2a) -------------------------------------------
+# Logging stays private; SHARING is a separate opt-in act that creates a first-class feed post. You
+# share YOUR OWN things — a cook you logged, or a recipe you own (copy-then-share for others'); test-tier
+# recipes can't be shared (scratch). The feed is BOUNDED by design (connection-not-consumption): a 14-day
+# window, capped at 50, pure chronological, NO pagination/load-more — you can see the end.
+CAPTION_MAX = 280
+FEED_WINDOW_DAYS = 14
+FEED_LIMIT = 50
+
+
+@app.route("/api/shares", methods=["POST"])
+def create_share():
+    """Deliberately share a cook OR a recipe (exactly one), with an optional caption. Authz: you share
+    YOUR OWN things — a cook you logged (cook_log.user_id == you) or a recipe you own (owner == you);
+    someone else's returns a uniform 404. test-tier recipes can't be shared (400). Repeat shares are
+    allowed (no dedup — the surrogate PK permits 'cooked it again, still great')."""
+    payload = request.get_json(silent=True) or {}
+    cook_log_id = payload.get("cook_log_id")
+    recipe_id = payload.get("recipe_id")
+    caption = payload.get("caption")
+    if (cook_log_id is None) == (recipe_id is None):                       # exactly one (mirrors the CHECK)
+        return jsonify({"error": "share exactly one of a cook or a recipe"}), 400
+    if caption is not None:
+        if not isinstance(caption, str):
+            return jsonify({"error": "caption must be text"}), 400
+        caption = caption.strip() or None
+        if caption is not None and len(caption) > CAPTION_MAX:
+            return jsonify({"error": f"caption must be {CAPTION_MAX} characters or fewer"}), 400
+    with orm_session() as s:
+        if cook_log_id is not None:
+            try:
+                cook_log_id = int(cook_log_id)
+            except (ValueError, TypeError):
+                return jsonify({"error": "cook not found"}), 404
+            cook = s.get(CookLog, cook_log_id)
+            if cook is None or cook.user_id != current_user.id:           # only your own cook
+                return jsonify({"error": "cook not found"}), 404
+            rec = s.get(Recipe, cook.recipe_id)
+            if rec is not None and rec.source == "test":                  # block test-tier at write
+                return jsonify({"error": "test recipes can't be shared"}), 400
+            post = SharedPost(user_id=current_user.id, cook_log_id=cook_log_id,
+                              caption=caption, created_at=now_utc())
+        else:
+            rec = s.get(Recipe, str(recipe_id))
+            if rec is None or rec.owner != current_user.id:               # only a recipe you own (option i)
+                return jsonify({"error": "recipe not found"}), 404
+            if rec.source == "test":
+                return jsonify({"error": "test recipes can't be shared"}), 400
+            post = SharedPost(user_id=current_user.id, recipe_id=rec.id,
+                              caption=caption, created_at=now_utc())
+        s.add(post)
+        s.commit()
+        pid = post.id
+    return jsonify({"id": pid}), 201
+
+
+@app.route("/api/shares/<int:post_id>", methods=["DELETE"])
+def delete_share(post_id):
+    """Unshare — retract a post. Only the sharer (user_id == current_user); anyone else, or a missing
+    post, gets a uniform 404."""
+    with orm_session() as s:
+        post = s.get(SharedPost, post_id)
+        if post is None or post.user_id != current_user.id:
+            return jsonify({"error": "post not found"}), 404
+        s.delete(post)
+        s.commit()
+    return jsonify({"ok": True}), 200
+
+
+@app.route("/api/feed")
+def get_feed():
+    """The BOUNDED deliberate-share feed: my accepted friends' + my OWN shared posts (include-self),
+    newest first, within a FEED_WINDOW_DAYS window, capped at FEED_LIMIT — NO pagination/load-more
+    (connection-not-consumption: finite, you reach the end). The window is a lexicographic compare on the
+    fixed-width now_utc() timestamp (the invite-expiry trick, dialect-safe). Each post serializes the
+    sharer, the DERIVED post_type, the referenced recipe (id/name/image) [+ the cook's cooked_on for a
+    'cook' post], the caption, and the share time."""
+    me = current_user.id
+    cutoff = (datetime.datetime.now(datetime.timezone.utc)
+              - datetime.timedelta(days=FEED_WINDOW_DAYS)).strftime("%Y-%m-%d %H:%M:%S")
+    with orm_session() as s:
+        author_ids = accepted_friend_ids(s, me) | {me}                    # {me} ∪ accepted friends
+        posts = s.execute(
+            select(SharedPost)
+            .where(SharedPost.user_id.in_(author_ids), SharedPost.created_at >= cutoff)
+            .order_by(SharedPost.created_at.desc(), SharedPost.id.desc())
+            .limit(FEED_LIMIT)
+        ).scalars().all()
+        sharers = {u.id: u for u in s.execute(
+            select(User).where(User.id.in_({p.user_id for p in posts}))).scalars()} if posts else {}
+        out = []
+        for p in posts:
+            post_type = "cook" if p.cook_log_id is not None else "recipe"
+            if post_type == "cook":
+                cook = s.get(CookLog, p.cook_log_id)
+                rec = s.get(Recipe, cook.recipe_id) if cook else None
+                cooked_on = cook.cooked_on if cook else None
+            else:
+                rec = s.get(Recipe, p.recipe_id)
+                cooked_on = None
+            sharer = sharers.get(p.user_id)
+            out.append({
+                "id": p.id,
+                "post_type": post_type,
+                "sharer": {"display_name": sharer.display_name, "email": sharer.email} if sharer else None,
+                "recipe": {"id": rec.id, "name": rec.name, "image": rec.image} if rec is not None else None,
+                "cooked_on": cooked_on,
+                "caption": p.caption,
+                "created_at": p.created_at,
+                "is_mine": p.user_id == me,
+            })
+    return jsonify(out)
 
 
 if __name__ == "__main__":

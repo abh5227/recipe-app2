@@ -216,3 +216,28 @@ def test_friend_graph_pg_dialect(pg):
     _expect_error(pg.engine, ins, r=a_id, a=b_id, s="pending")        # composite PK: dup (a,b) rejected
     _expect_error(pg.engine, ins, r=b_id, a=a_id, s="bogus")          # status CHECK: bad value rejected
     _expect_error(pg.engine, ins, r=a_id, a=a_id, s="pending")        # self CHECK: (a,a) rejected
+
+
+# ---- 8. deliberate-share feed — the FK cascade + exactly-one CHECK on PG (social sub-stage 2a) -----
+
+def test_shared_posts_pg_dialect(pg):
+    """PG echo (like the friendships coverage): the share ROUTES round-trip on Postgres, the exactly-one
+    XOR CHECK rejects both/neither, and — the integrity proof — deleting a cook_log row CASCADES its
+    shared_post on PG (the constraint + cascade Alembic autogenerate wouldn't reliably emit)."""
+    a_id = harness.ensure_test_user()
+    ca = pg.client
+
+    # a cook -> a share, via the routes
+    ca.post("/api/recipes/gai-yang/cooked", json={})
+    clid = _count(pg.engine, "SELECT id FROM cook_log WHERE recipe_id='gai-yang' AND user_id=:u", u=a_id)
+    pid = ca.post("/api/shares", json={"cook_log_id": clid, "caption": "pg"}).get_json()["id"]
+    assert _count(pg.engine, "SELECT COUNT(*) FROM shared_posts WHERE id=:p", p=pid) == 1
+
+    # exactly-one XOR CHECK: both targets and neither target are rejected
+    ins = "INSERT INTO shared_posts (user_id, cook_log_id, recipe_id, caption, created_at) VALUES (:u,:c,:r,'x','t')"
+    _expect_error(pg.engine, ins, u=a_id, c=clid, r="gai-yang")       # both set -> CHECK rejects
+    _expect_error(pg.engine, ins, u=a_id, c=None, r=None)             # neither set -> CHECK rejects
+
+    # ON DELETE CASCADE: undo the cook (route) -> the shared_post cascades away on PG
+    assert ca.post("/api/recipes/gai-yang/uncook").status_code == 200
+    assert _count(pg.engine, "SELECT COUNT(*) FROM shared_posts WHERE id=:p", p=pid) == 0
