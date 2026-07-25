@@ -17,7 +17,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory
 from flask_login import LoginManager, current_user
-from sqlalchemy import create_engine, delete, event, func, insert, select, text, update
+from sqlalchemy import create_engine, delete, event, func, insert, or_, select, text, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert       # dialect-agnostic upserts (2b-2):
 from sqlalchemy.dialects.postgresql import insert as pg_insert       # pick per engine dialect at runtime
 from sqlalchemy.orm import Session
@@ -31,7 +31,7 @@ from import_cleanup import split_qty   # shared qty->quantity+unit split (backfi
 # (see docs/migration-plan.md).
 from models import (
     Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
-    Rating, CookLog, User, ingredient_weights,
+    Rating, CookLog, User, Friendship, ingredient_weights,
 )
 from auth import auth_bp   # JSON auth endpoints (auth-2); auth.py imports models only, so no import cycle
 
@@ -766,6 +766,126 @@ def log_cook_and_rate(rid):
         stats = recipe_stats(s, rid, current_user.id)
         s.commit()
     return jsonify(stats)
+
+
+# ---- social: the friend graph (sub-stage 1) -----------------------------------------------------
+# Additive — nothing else reads friendships yet (the feed/sharing sub-stages consume it). All four
+# routes are login-gated by default (NOT in PUBLIC_ENDPOINTS); current_user is ALWAYS the actor (never
+# client-supplied), so authorization is structural: accept keys on addressee=current_user, delete/list
+# key on current_user's membership. Friend-by-exact-email, no directory (private-by-default); the
+# request path returns a UNIFORM response whether or not the email is a user, so it can't be used to
+# enumerate accounts (the same non-leak posture as login) — and that unknown-email branch is the seam
+# sub-stage 3 upgrades to share-as-invite.
+FRIEND_REQUEST_OK = {"ok": True, "message": "If they have an account, they'll get your request."}
+
+
+def _user_by_email(s, email):
+    """Resolve a normalized (lowercased/stripped) email to its User, or None. Callers lowercase first,
+    matching how signup/login store + look up users.email."""
+    return s.execute(select(User).where(User.email == email)).scalar_one_or_none()
+
+
+def friendship_edge(s, a_id, b_id):
+    """The friendship row between two users in EITHER direction, or None — the one-row/query-both-
+    directions read. Reusable by the feed/sharing sub-stages to answer 'are these two friends'."""
+    return s.get(Friendship, (a_id, b_id)) or s.get(Friendship, (b_id, a_id))
+
+
+@app.route("/api/friends/requests", methods=["POST"])
+def request_friend():
+    """Send a friend request to a user identified by email. Enumeration-safe: an unknown email returns
+    the SAME success shape as a real request (no row created — sub-stage 3 turns this branch into an
+    invite). The one real subtlety is the reverse-duplicate: if THEY already have a pending request to
+    ME, this is mutual intent -> auto-accept it (one row becomes 'accepted', never a second row)."""
+    email = (request.get_json(silent=True) or {}).get("email")
+    email = (email or "").strip().lower()
+    if not email:
+        return jsonify({"error": "an email is required"}), 400
+    with orm_session() as s:
+        target = _user_by_email(s, email)
+        if target is None:
+            return jsonify(FRIEND_REQUEST_OK), 200          # unknown email -> uniform no-op (enumeration-safe)
+        if target.id == current_user.id:
+            return jsonify({"error": "you can't friend yourself"}), 400   # you already know your own email
+        rev = s.get(Friendship, (target.id, current_user.id))   # THEY -> me
+        if rev is not None and rev.status == "pending":         # mutual intent -> auto-accept, no 2nd row
+            rev.status = "accepted"
+            rev.accepted_at = now_utc()
+            s.commit()
+            return jsonify(FRIEND_REQUEST_OK), 200
+        fwd = s.get(Friendship, (current_user.id, target.id))   # me -> them
+        if fwd is None and rev is None:                         # nothing yet -> a fresh pending request
+            s.add(Friendship(requester_id=current_user.id, addressee_id=target.id,
+                             status="pending", created_at=now_utc()))
+            s.commit()
+        # else: already sent (fwd) or already friends (rev accepted) -> idempotent success, no dup
+        return jsonify(FRIEND_REQUEST_OK), 200
+
+
+@app.route("/api/friends/accept", methods=["POST"])
+def accept_friend():
+    """Accept a pending request FROM the given email. Structural authz: the row is keyed
+    (requester=them, addressee=current_user), so you can only ever accept a request addressed to YOU —
+    accepting someone else's request is impossible, not merely forbidden. Unknown email and
+    no-such-pending-request return the SAME 404 (no enumeration)."""
+    email = (request.get_json(silent=True) or {}).get("email")
+    email = (email or "").strip().lower()
+    if not email:
+        return jsonify({"error": "an email is required"}), 400
+    with orm_session() as s:
+        requester = _user_by_email(s, email)
+        row = s.get(Friendship, (requester.id, current_user.id)) if requester else None
+        if row is None or row.status != "pending":
+            return jsonify({"error": "no pending request from that person"}), 404
+        row.status = "accepted"
+        row.accepted_at = now_utc()
+        s.commit()
+    return jsonify({"ok": True}), 200
+
+
+@app.route("/api/friends")
+def list_friends():
+    """My social graph in three buckets: accepted friends, incoming pending (requests to me), outgoing
+    pending (requests I sent). Scoped to edges where I'm a party, so I only ever see my own edges; each
+    entry projects the OTHER party (email + display_name), never the raw ids."""
+    me = current_user.id
+    with orm_session() as s:
+        edges = s.execute(
+            select(Friendship).where(or_(Friendship.requester_id == me, Friendship.addressee_id == me))
+        ).scalars().all()
+        other_ids = {(e.addressee_id if e.requester_id == me else e.requester_id) for e in edges}
+        users = {u.id: u for u in s.execute(select(User).where(User.id.in_(other_ids))).scalars()} \
+            if other_ids else {}
+        friends, incoming, outgoing = [], [], []
+        for e in edges:
+            other = users[e.addressee_id if e.requester_id == me else e.requester_id]
+            info = {"email": other.email, "display_name": other.display_name}
+            if e.status == "accepted":
+                friends.append(info)
+            elif e.requester_id == me:
+                outgoing.append(info)                          # I sent it, still pending
+            else:
+                incoming.append(info)                          # sent to me, awaiting my accept
+    return jsonify({"friends": friends, "incoming": incoming, "outgoing": outgoing})
+
+
+@app.route("/api/friends", methods=["DELETE"])
+def remove_friend():
+    """One handler for unfriend / decline / cancel — they're mechanically identical (drop the single
+    edge between me and them, in whichever direction it exists). Membership authz: both lookup keys
+    include current_user, so a non-party can't remove someone else's edge. Uniform 404 if there's none."""
+    email = (request.get_json(silent=True) or {}).get("email")
+    email = (email or "").strip().lower()
+    if not email:
+        return jsonify({"error": "an email is required"}), 400
+    with orm_session() as s:
+        other = _user_by_email(s, email)
+        row = friendship_edge(s, current_user.id, other.id) if other else None
+        if row is None:
+            return jsonify({"error": "no such friendship"}), 404
+        s.delete(row)
+        s.commit()
+    return jsonify({"ok": True}), 200
 
 
 if __name__ == "__main__":

@@ -184,3 +184,35 @@ def test_untouched_recipe_empty_stats_but_still_listed(pg):
     assert row is not None                                    # still listed
     assert row["rating"] is None and row["cook_count"] == 0 and row["last_cooked"] is None
     assert len(lst) == len(EXPECTED_RECIPE_ORDER)             # ALL seeded recipes visible (none owner-filtered)
+
+
+# ---- 7. friend graph — composite PK + status/self CHECKs on PG (dialect echo, social sub-stage 1) --
+
+def _expect_error(engine, sql, **params):
+    """A raw INSERT that must be rejected by a PG constraint — the exception propagates out of begin()
+    (rolling back), and pytest.raises catches it outside, so the transaction is never left aborted."""
+    with pytest.raises(Exception):
+        with engine.begin() as conn:
+            conn.execute(text(sql), params)
+
+
+def test_friend_graph_pg_dialect(pg):
+    """PG echo (like the ratings composite-PK coverage): the friend-graph ROUTES round-trip on Postgres,
+    and the composite PK + status CHECK + self CHECK all enforce there — the constraints Alembic
+    autogenerate wouldn't have emitted, so this pins the hand-authored revision."""
+    a_id = harness.ensure_test_user()                                 # harness user A (pg.client is A)
+    b_id = harness.ensure_test_user(email="friendb@test.local")
+    ca = pg.client
+    cb = app.app.test_client()
+    harness.login_test_client(cb, b_id)
+    a_email = harness.HARNESS_USER_EMAIL
+
+    # routes work end-to-end on PG: request -> accept -> one accepted row
+    assert ca.post("/api/friends/requests", json={"email": "friendb@test.local"}).status_code == 200
+    assert cb.post("/api/friends/accept", json={"email": a_email}).status_code == 200
+    assert _count(pg.engine, "SELECT COUNT(*) FROM friendships WHERE status='accepted'") == 1
+
+    ins = "INSERT INTO friendships (requester_id, addressee_id, status, created_at) VALUES (:r,:a,:s,'t')"
+    _expect_error(pg.engine, ins, r=a_id, a=b_id, s="pending")        # composite PK: dup (a,b) rejected
+    _expect_error(pg.engine, ins, r=b_id, a=a_id, s="bogus")          # status CHECK: bad value rejected
+    _expect_error(pg.engine, ins, r=a_id, a=a_id, s="pending")        # self CHECK: (a,a) rejected

@@ -220,6 +220,26 @@ class Invite(Base):
     __table_args__ = ({"sqlite_autoincrement": True},)
 
 
+# ---- social (sub-stage 1: the friend graph; docs/product-vision.md build plan) ------------------
+class Friendship(Base):
+    """A mutual friendship stored as ONE row (requester -> addressee); "are A and B friends" queries BOTH
+    directions. Composite PK (requester_id, addressee_id) blocks a same-direction duplicate; the
+    reverse-duplicate (B->A while A->B pending) is resolved by auto-accept in the request endpoint. status
+    is a text-IN CHECK (the ratings CHECK idiom); reference FKs -> users(id) with no ondelete (matching
+    owner/user_id/created_by). created_at/accepted_at set in code via now_utc() (no DB default). Queried
+    with explicit select() — no relationship() (house style). Additive: nothing reads it yet."""
+    __tablename__ = "friendships"
+    requester_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    addressee_id = Column(Integer, ForeignKey("users.id"), primary_key=True)
+    status = Column(Text, nullable=False)                                  # 'pending' | 'accepted'
+    created_at = Column(Text, nullable=False)                              # set in code via now_utc()
+    accepted_at = Column(Text)                                             # NULL until accepted
+    __table_args__ = (
+        CheckConstraint("status IN ('pending','accepted')"),
+        CheckConstraint("requester_id <> addressee_id"),                   # no self-friend
+    )
+
+
 # ingredient_weights has NO primary key in the live schema. ORM-mapped classes require a PK, so this
 # table is defined as a Core Table (part of the same metadata) — faithful in create_all (no synthetic
 # PK added, no structure change). It can be given an imperative ORM mapping in Stage 1b if it's queried.
