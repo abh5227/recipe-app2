@@ -121,6 +121,35 @@ The point: comments are the **conversation** (connection); everything that would
 engagement loop (likes, counts, notifications) is rejected. Built this way, commenting **fulfills** "I
 want my friends to really connect" rather than eroding it.
 
+### No counts anywhere — a community, not a leaderboard
+
+**NO DISPLAYED COUNTS OF ANYTHING.** No follower/friend count ("N friends"), no post/share count, no
+like count, no comment count — nothing tallied, anywhere. This is the same family as **no-likes**:
+counting anything is the **first inch** of the scoreboard / competition dynamic the principle rejects,
+and it erodes exactly one "harmless little number" at a time. A community, not a leaderboard.
+
+- The feed is **bounded/finite by simply ENDING** — the last post is the last, and it just stops.
+  **NEVER** by announcing a tally ("that's all 12 posts"). Finitude is expressed by *running out*, not
+  by *counting*.
+- Applies to every surface: friends list, profile, feed, comments. You see the **things themselves**
+  (the friends, the posts, the conversation) — never a number summarizing them.
+
+### Failure-acceptance — growth over performance (foundational)
+
+Cooking is **mostly failure + iteration** — the truth the highlight-reel platforms hide. Chef's Choice
+**welcomes the embarrassing cook**: posting a flop is normal, safe, and encouraged. This is the
+**deepest form of connection-over-performance** (you connect over the real thing, not a curated
+performance), and it also **lowers the posting barrier** (if only triumphs are postable, most people
+post nothing). We grow together; we don't perform a highlight reel.
+
+- **Expressed as light-touch CULTURE, not heavy MECHANICS.** The warmth lives in **copy + tone** — share
+  prompts, the empty state, onboarding gently invite the *real* story (including the failures). It does
+  **NOT** become a "flops feature" or "failure badges": a dedicated failure-mechanic would just create a
+  **new** performance pressure (performing relatability / competitive humility) — the very thing we're
+  escaping. Keep it culture, not a gameable feature.
+- **Backed by growth-oriented achievements** (see below) — perseverance/iteration as *one* rewarded
+  category, never a flop-counter.
+
 ## Engagement hooks (the "why open it on a random Tuesday")
 
 - **A — "What should I cook tonight?"** The daily decision ritual, powered by recommendations — the
@@ -137,6 +166,24 @@ want my friends to really connect" rather than eroding it.
   seed the recommendation engine's palate-expansion mission — a day-one, solo-working version of it.
 
 The portfolio spans network density: **A + C work solo / day-one; B is the social engine.**
+
+### Achievements — a broad system; growth is one category, never volume
+
+Hook C is **broad by design** — it rewards, across several categories:
+
+- **EXPLORATION / variety** — new cuisines, techniques, ingredients (palate-expansion; **tied to the
+  recommendation engine** — the cuisine achievements presage and seed hook A's palate-expansion mission).
+- **GROWTH / perseverance** — trying, iterating, cooking *through* difficulty. This is the
+  **failure-acceptance category** made concrete: it celebrates the attempt and the iteration, not a
+  flawless result.
+- **ACCOMPLISHMENT** — genuine milestones worth marking.
+
+All three sit under one rule: reward **VARIETY / EXPLORATION / GROWTH / ACCOMPLISHMENT**, **NEVER**
+volume / frequency / streaks / perfection ("cooked 5 cuisines" ✓; "cooked 100×" / "30-day streak" ✗ —
+that's compulsion-farming sneaking back). **Growth is ONE type among several** (the exploration ones
+exist alongside it) and the whole system is **light-touch**. Achievements live on the chef **PROFILE**
+(a place you *visit*), **NOT** as a surround widget or an always-on dashboard metric — surfacing a score
+everywhere would rebuild the scoreboard the no-counts principle rejects.
 
 ### The moat — where the differentiation lives
 
@@ -237,3 +284,27 @@ the *recorded* `owner` into an actual **box** (no data migration — a read-side
 recommendation engine won't start from nothing: `ingredients.pairs` is **36/36 hand-authored adjacency
 text**, plus **44 regions / 102 ingredient-region links / 65 seasons** — a real head start for the
 ingredient-adjacency model (the "culinary knowledge, not collaborative filtering" the moat names).
+
+### Build state (where the sequence stands)
+
+The repo is the continuity record; this is where the social sequence actually stands:
+
+- **Sub-stage 1 — friend graph:** ✅ **COMMITTED.** `friendships` table + request/accept/list/unfriend
+  endpoints, dual-source (migration + Alembic).
+- **Sub-stage 2a — deliberate-share feed BACKEND:** ✅ **COMMITTED.** `shared_posts` table +
+  create/delete-share + `GET /api/feed`, dual-source.
+- **Comments BACKEND:** ✅ **COMMITTED.** `comments` table + add/delete endpoints + comments embedded
+  in the feed serializer (batched), friends-only authz, dual-source.
+- **Sub-stage 2b — the CLIENT (the composed feed page):** ⏳ **NEXT / in progress.** Build the composed
+  feed page **to the locked design spec** (see *The social feed — composed page design* in
+  [design-decisions.md](design-decisions.md); §§ layout, color, type, post, comments, avatar), wired to
+  the **existing** endpoints — `GET /api/feed`, `POST`/`DELETE /api/shares`,
+  `POST /api/posts/<id>/comments`, `DELETE /api/comments/<id>`. Kalam bundled self-hosted; **placeholder
+  avatar** (simple hat/initials — the characterful hand-drawn hat is a dedicated later task); the
+  **real-now surround** = left nav + Your Friends (from the friend graph) + honest **`SOON`** slots for
+  Profile / Want-to-make / Cook-it-again. **OPEN decision:** In-Season is either a small seasons-data
+  endpoint (the data exists) **or** a `SOON` slot — decide at build time. Responsive. **MANDATORY manual
+  browser click-through before commit** (it's UI). The 2b design was iterated across **~8 preview
+  rounds**; the spec is the **LOCKED result** — a new chat should **build to it, not re-derive it**.
+- **After 2b** (per the plan above): want-to-make queue + sharing (direct 1:1 + share-as-invite) →
+  manual add-recipe form → meal-photos + tagging (expensive / security-focused / **last**).

@@ -572,6 +572,92 @@ This is the **"edit the canonical recipe"** path — distinct from the R2 **hand
 layer** (struck-print + hand color) and from the seed-only per-person change model (see the
 architectural tension above).
 
+## The social feed — composed page design (LOCKED)
+
+The visual + interaction spec for the social feed ("Cooking") page. Locked after **~8 preview rounds**;
+a new chat should **build to this, not re-derive it**. The values behind it (connection-not-consumption,
+no-counts, failure-acceptance, achievements) live in
+[product-vision.md](product-vision.md); this section is the **design** those values render as. It
+belongs to the same **"used cookbook"** direction — warm, inhabited, hand-touched — extended from the
+single-recipe page to a full app surface.
+
+### Composed, inhabited page (not a bare list)
+
+A **four-zone composed page**, not a lonely centered column:
+
+- **Masthead** (top) — brand + identity.
+- **LEFT — nav / identity:** **Box** (all recipes) · **Cooking** (the feed — sub "what friends made") ·
+  **Friends** (your circle) · **Profile** (your chef-page — `SOON`).
+- **CENTER — the feed** (see post design below).
+- **RIGHT — warm cooking-context:** **Your Friends** · **Want-to-make** (`SOON`) · **In Season** (status
+  TBD) · **Cook-it-again** (`SOON`) — all **utility / connection / identity**, **ZERO engagement-pull**.
+
+…all on a **warm surface**. The move: take the **structure / inhabited-ness** of early social feeds but
+**reject their engagement machinery** — no Requests, no Birthdays, no Trending, no People-You-May-Know,
+no ads, no notifications. The surround is context and utility, never a hook.
+
+- **TITLE:** the feed's heading is **"What's cooking?"** (warm double-meaning); the nav entry is the
+  shorter **"Cooking."**
+
+### Color — green carries real weight ("G2")
+
+The fix for "too plain / monochromatic tan": **green (`--green` #4E4B24) carries real weight, not just
+accents on a tan field.** Within the **existing palette only** (green + terracotta + ink + cream — **no
+new colors**):
+
+- A **solid green left-nav** (soft/lightened — **not** too dark).
+- **FILLED, alternating green/terracotta context-card headers** — Your Friends + In Season **green**;
+  Want-to-make + Cook-it-again **terracotta**.
+- A **deeper sage surface** framing the **cream** feed board.
+- Green + terracotta + ink used **generously**, while content still **reads clearly**.
+
+This is connection-not-consumption made **visually warm and alive** — the warmth is chromatic, not
+manufactured engagement. (Preview levels ran G1 → G2 → G3; **G2 is the locked target** — soften the
+green from the first G2 pass so the nav isn't too dark.)
+
+### Type — Kalam is the app's "personal hand"
+
+**The handwritten font is Kalam** (a design-system decision, **replacing Caveat**). Bundled
+**self-hosted woff2** (like Inter/Caveat), and it is the **`--font-hand` primary**. Two roles, both
+chosen for Kalam because it is **legible *and* warm**:
+
+- **Now:** feed **captions**.
+- **Later:** THE font for the **"your changes / annotations on a recipe" personal layer** — the
+  used-cookbook marginalia, whose eventual target is **struck-through-original + handwritten-replacement**
+  rendering (the R2 handwritten-edit treatment above).
+
+### Feed post
+
+- **CONSISTENT treatment across ALL posts** — **one** card design. The **only** differences: (a) photo
+  present vs absent, (b) accent color. **No** different card shapes, no notecard-ruled-lines on some.
+- **ACCENT BAR + LABEL:** a colored **left-edge bar** + a small **tracked-Inter chip** —
+  **COOKED = terracotta** (`--hand`), **SHARED** (a recipe) **= green** (`--green`). Bar **+** label (not
+  bar alone) so a newcomer can read the distinction.
+- **CAPTION:** Kalam, **no quotation marks**, **150-char** limit.
+- **FULL NAMES** everywhere (first + last, e.g. "Andy Hannah").
+- **IDENTIFY YOUR OWN POSTS:** your own shares are distinguishable **at a glance** from friends' (a
+  subtle "you" / mine marker + warm tint) — it's *your* feed.
+- **BOUNDED / FINITE:** newest-first, a **recent window + cap**, **no** load-more / infinite-scroll, and
+  **no count / tally** at the end — **it just ends** (per no-counts).
+
+### Comments UI
+
+- **PLAIN INTER, not Kalam.** The hierarchy: **handwriting = the sharer's personal voice** (the caption);
+  **plain = the conversation.** (Kalam-everything read too busy.)
+- Under the post: commenter **full name** (Inter bold) + comment (Inter) + timestamp — clean; an
+  intentional **"Say something"** reply input; **lightweight when there are no comments** (bare posts stay
+  calm).
+- **No like button, no comment-count.** **300-char** comment limit. **Delete-own** + **post-owner-remove**.
+
+### Chef-hat avatar (note)
+
+Friend / identity avatars are a **chef-hat mark** (warm "these are cooks"; real profile photos come later
+with the upload stage). The **characterful hand-drawn hat is a DEDICATED later task** — AI-generated SVG
+produced stiff/generic icons (and a displacement-wobble pass got closer but still clustered); it likely
+needs an **illustrator**, working from **style reference only — original art, no tracing stock**.
+**SHIP NOW with a SIMPLE placeholder** (a clean hat or initials): the real mark is polish, **not on the
+critical path**.
+
 ## Recorded caveats (Version 3 / vitals bundle)
 
 - **`color-mix()`** powers the subtle-red Delete (`.btn.danger-soft`) — a modern-browser dependency;
