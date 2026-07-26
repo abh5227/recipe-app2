@@ -100,6 +100,15 @@ How this project is run:
 - **Present a full diff and wait for approval** before applying edits.
 - **Stage work in per-stage commits;** both test suites (`python3 -m pytest` and
   `node --test tests/js`) green at each commit.
+- **Stage UI/client work per-concern, exactly like backend — no omnibus build prompts.** A client
+  page is built in checkpointed stages, each ONE concern with its own stop-for-review, not one prompt
+  that resets the tree, adds fonts, writes the CSS, wires the JS, and seeds demo data all at once. "It
+  stops before commit" is NOT "it was checkable along the way": when many concerns land in a single
+  large diff, a wrong call in the middle (e.g. a client wired to an unverified endpoint shape) rides
+  along invisibly instead of surfacing at its own seam. For a feed/page build that means roughly:
+  tree-reset + font (trivial) → static render you can look at → wire comments → compose modal → demo
+  seed — each stopping for review. The diagnostic-first and preview-first rules already govern the
+  thinking; this governs the build's granularity.
 - **Conventional Commits:** `feat` = new user-facing capability, `fix` = bug fix,
   `chore` = routine/inert groundwork; the summary line reflects what actually changed.
 - **Never push without explicit approval;** after an approved push, watch the GitHub
