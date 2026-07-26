@@ -350,14 +350,23 @@ def list_recipes():
     with orm_session() as s:
         rows = s.execute(text(
             """SELECT r.id, r.name, r.author, r.category, r.servings,
-                      r.prep_time, r.cook_time, r.total_time, r.image, r.created_at, r.source,
+                      r.prep_time, r.cook_time, r.total_time, r.image, r.created_at, r.source, r.owner,
                       (SELECT rating FROM ratings WHERE recipe_id = r.id AND user_id = :uid)          AS rating,
                       (SELECT COUNT(*) FROM cook_log WHERE recipe_id = r.id AND user_id = :uid)       AS cook_count,
                       (SELECT MAX(cooked_on) FROM cook_log WHERE recipe_id = r.id AND user_id = :uid) AS last_cooked
                FROM recipes r
                ORDER BY r.name"""
         ), {"uid": current_user.id}).mappings().all()
-    return jsonify([dict(r) for r in rows])
+    # is_mine: an additive least-exposure signal (mirrors the feed) so the compose picker can filter to
+    # recipes you can actually share (POST /api/shares 404s a non-owned one). The raw `owner` id is
+    # popped, never leaked — the client only ever learns "mine or not", not who owns it.
+    out = []
+    for r in rows:
+        d = dict(r)
+        owner = d.pop("owner")
+        d["is_mine"] = owner == current_user.id
+        out.append(d)
+    return jsonify(out)
 
 
 @app.route("/api/recipes", methods=["POST"])
@@ -632,6 +641,32 @@ def in_season(month=None):
 
 
 # ---- cooking log + ratings ----
+
+@app.route("/api/cooks")
+def list_cooks():
+    """The signed-in user's OWN cook-log entries (cook_log.user_id == current_user), NEWEST-FIRST, for
+    the feed compose modal's cook picker. Joins cook_log -> recipes for the name/image. Scoped STRICTLY
+    to my own cooks (default-deny — never another user's; login-gated by the before_request allowlist).
+    Exposing MY OWN cook_log_id is what lets the client POST /api/shares {cook_log_id} to share a cook
+    I'm proud of."""
+    with orm_session() as s:
+        rows = s.execute(
+            select(CookLog.id, CookLog.recipe_id, CookLog.cooked_on, Recipe.name, Recipe.image)
+            .join(Recipe, Recipe.id == CookLog.recipe_id)
+            .where(CookLog.user_id == current_user.id)
+            .order_by(CookLog.cooked_on.desc(), CookLog.id.desc())   # newest cook first (id tiebreak, as recipe_stats)
+        ).all()
+    return jsonify([
+        {
+            "cook_log_id": r.id,
+            "recipe_id": r.recipe_id,
+            "recipe_name": r.name,
+            "image": r.image,
+            "cooked_on": r.cooked_on,
+        }
+        for r in rows
+    ])
+
 
 @app.route("/api/recipes/<rid>/cooked", methods=["POST"])
 def log_cook(rid):
