@@ -95,6 +95,13 @@ How this project is run:
 
 - **Read-only inspection first.** Inspect and report before changing anything; see the real
   data before acting.
+- **Preview-first for visual/UX work.** Before building any visual or UI change for real, build a
+  throwaway mock under `preview/` (gitignored) using the real design tokens + bundled fonts, openable
+  over `file://` with no app/DB/git changes, and iterate on it until the look is chosen — describing a
+  design in words is not a substitute. After building any preview, ALWAYS open it in the default browser
+  with the macOS `open` command (e.g. `open preview/feed-look.html`) — never just report the path and
+  wait. A built preview that hasn't been opened isn't done. Exception: confirmed tiny CSS tweaks to a
+  treatment already seen.
 - **Propose a spec and STOP for approval** before building anything non-trivial; don't
   draft-and-commit in one shot.
 - **Present a full diff and wait for approval** before applying edits.
