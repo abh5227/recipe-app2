@@ -15,7 +15,7 @@ from pathlib import Path
 
 from sqlalchemy import (
     CheckConstraint, Column, Float, ForeignKey, Index, Integer, Table, Text,
-    create_engine, text,
+    UniqueConstraint, create_engine, text,
 )
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
@@ -278,6 +278,27 @@ class Comment(Base):
     created_at = Column(Text, nullable=False)                                     # now_utc()
     __table_args__ = (
         Index("idx_comments_post", "post_id"),
+        {"sqlite_autoincrement": True},
+    )
+
+
+class RecipeQueue(Base):
+    """A per-user want-to-make queue (want-to-make stage 1 schema, migration 024; the API is stage 2).
+    One row = "user_id wants to make recipe_id" — the per-user planning state promoted out of the old
+    GLOBAL "To Make" category tag (backfilled by scripts/backfill_recipe_queue.py). user_id -> users(id)
+    is a reference FK (no ondelete, matching shared_posts.user_id); recipe_id -> recipes(id) ON DELETE
+    CASCADE so a deleted recipe leaves no orphan queue row (the shared_posts.recipe_id idiom). recipe_id
+    is Text to match recipes.id (Text). UNIQUE(user_id, recipe_id): a recipe is in your queue once or not
+    at all — an add is an idempotent on_conflict_do_nothing, never a duplicate. Surrogate id PK (the
+    UNIQUE carries the dedup; queue_id is exposed for a future per-entry reorder/notes consumer). added_at
+    = now_utc(). Queried with explicit select() — no relationship() (house style)."""
+    __tablename__ = "recipe_queue"
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)             # whose queue this is in
+    recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)  # the wanted recipe
+    added_at = Column(Text, nullable=False)                                       # now_utc(): when queued
+    __table_args__ = (
+        UniqueConstraint("user_id", "recipe_id"),   # in your queue once, or not at all
         {"sqlite_autoincrement": True},
     )
 

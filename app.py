@@ -31,7 +31,7 @@ from import_cleanup import split_qty   # shared qty->quantity+unit split (backfi
 # (see docs/migration-plan.md).
 from models import (
     Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
-    Rating, CookLog, User, Friendship, SharedPost, Comment, ingredient_weights,
+    Rating, CookLog, User, Friendship, SharedPost, Comment, RecipeQueue, ingredient_weights,
 )
 from auth import auth_bp   # JSON auth endpoints (auth-2); auth.py imports models only, so no import cycle
 
@@ -801,6 +801,69 @@ def log_cook_and_rate(rid):
         stats = recipe_stats(s, rid, current_user.id)
         s.commit()
     return jsonify(stats)
+
+
+# ---- want-to-make queue (stage 2) ---------------------------------------------------------------
+# Per-user planning state promoted out of the old GLOBAL "To Make" tag (recipe_queue, migration 024,
+# backfilled stage 1). Login-gated by default (NOT in PUBLIC_ENDPOINTS); current_user is ALWAYS the
+# actor. A want-to-make queue is for recipes you MEAN to cook — including OTHERS' — so queueing is NOT
+# owner-restricted (unlike sharing): any visible recipe is queueable. Mirrors list_cooks (read) /
+# upsert_rating (idempotent add) / undo_cook (recipe_id-keyed remove) verbatim in idiom.
+
+@app.route("/api/queue")
+def list_queue():
+    """The signed-in user's want-to-make queue, NEWEST-FIRST. Joins recipe_queue -> recipes for the
+    name/image. Scoped STRICTLY to my own queue (default-deny). queue_id is exposed for a known future
+    consumer (per-entry reorder / notes)."""
+    with orm_session() as s:
+        rows = s.execute(
+            select(RecipeQueue.id, RecipeQueue.recipe_id, RecipeQueue.added_at, Recipe.name, Recipe.image)
+            .join(Recipe, Recipe.id == RecipeQueue.recipe_id)
+            .where(RecipeQueue.user_id == current_user.id)
+            .order_by(RecipeQueue.added_at.desc(), RecipeQueue.id.desc())   # newest add first (id tiebreak)
+        ).all()
+    return jsonify([
+        {
+            "queue_id": r.id,
+            "recipe_id": r.recipe_id,
+            "recipe_name": r.name,
+            "image": r.image,
+            "added_at": r.added_at,
+        }
+        for r in rows
+    ])
+
+
+@app.route("/api/queue", methods=["POST"])
+def add_to_queue():
+    """Add a recipe to my want-to-make queue — IDEMPOTENT. Any visible recipe is queueable (NOT owner-
+    restricted: the point is recipes you haven't made, incl. others'). Re-adding an already-queued recipe
+    is a clean no-op via ON CONFLICT DO NOTHING on UNIQUE(user_id, recipe_id) — never a 500 or duplicate."""
+    payload = request.get_json(silent=True) or {}
+    recipe_id = payload.get("recipe_id")
+    if not recipe_id or not isinstance(recipe_id, str):
+        return jsonify({"error": "recipe_id required"}), 400
+    with orm_session() as s:
+        if s.scalar(select(Recipe.id).where(Recipe.id == recipe_id)) is None:
+            return jsonify({"error": "recipe not found"}), 404
+        stmt = dialect_insert(s, RecipeQueue).values(
+            user_id=current_user.id, recipe_id=recipe_id, added_at=now_utc())
+        s.execute(stmt.on_conflict_do_nothing(
+            index_elements=[RecipeQueue.user_id, RecipeQueue.recipe_id]))   # already queued -> no-op
+        s.commit()
+    return jsonify({"ok": True}), 201
+
+
+@app.route("/api/queue/<recipe_id>", methods=["DELETE"])
+def remove_from_queue(recipe_id):
+    """Remove a recipe from MY queue, keyed by recipe_id (the undo_cook idiom). Scoped to my own entry;
+    absent-or-not-mine is a uniform {ok:true} (idempotent remove — the queue simply doesn't contain it,
+    and we never leak whether another user queued it)."""
+    with orm_session() as s:
+        s.execute(delete(RecipeQueue)
+                  .where(RecipeQueue.recipe_id == recipe_id, RecipeQueue.user_id == current_user.id))
+        s.commit()
+    return jsonify({"ok": True}), 200
 
 
 # ---- social: the friend graph (sub-stage 1) -----------------------------------------------------
