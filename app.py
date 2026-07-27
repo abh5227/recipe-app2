@@ -895,7 +895,10 @@ def accept_friend():
 def list_friends():
     """My social graph in three buckets: accepted friends, incoming pending (requests to me), outgoing
     pending (requests I sent). Scoped to edges where I'm a party, so I only ever see my own edges; each
-    entry projects the OTHER party (email + display_name), never the raw ids."""
+    entry projects the OTHER party's display_name, never the raw ids. LEAST-EXPOSURE (docs/SECURITY.md):
+    the accepted-FRIENDS list omits email — another user's email is private and the feed's Your-Friends
+    render needs only the name. The pending incoming/outgoing lists still carry email (it identifies who
+    to accept, accept-by-email) — that's a deferred follow-up to revisit when a friends UI lands."""
     me = current_user.id
     with orm_session() as s:
         edges = s.execute(
@@ -907,13 +910,12 @@ def list_friends():
         friends, incoming, outgoing = [], [], []
         for e in edges:
             other = users[e.addressee_id if e.requester_id == me else e.requester_id]
-            info = {"email": other.email, "display_name": other.display_name}
             if e.status == "accepted":
-                friends.append(info)
+                friends.append({"display_name": other.display_name})            # NO email (least-exposure)
             elif e.requester_id == me:
-                outgoing.append(info)                          # I sent it, still pending
+                outgoing.append({"email": other.email, "display_name": other.display_name})   # follow-up
             else:
-                incoming.append(info)                          # sent to me, awaiting my accept
+                incoming.append({"email": other.email, "display_name": other.display_name})   # follow-up
     return jsonify({"friends": friends, "incoming": incoming, "outgoing": outgoing})
 
 

@@ -51,10 +51,11 @@ def test_request_accept_list(kitchen):
 
     assert b.post("/api/friends/accept", json={"email": A_EMAIL}).status_code == 200
 
-    # accepted: each sees the other as a friend, nothing pending
+    # accepted: each sees the other as a friend, nothing pending. Least-exposure (docs/SECURITY.md):
+    # the friends list carries NO email (another user's private data) — only display_name.
     la, lb = a.get("/api/friends").get_json(), b.get("/api/friends").get_json()
-    assert [f["email"] for f in la["friends"]] == ["friend-b@test.local"]
-    assert [f["email"] for f in lb["friends"]] == [A_EMAIL]
+    assert len(la["friends"]) == 1 and "email" not in la["friends"][0]
+    assert len(lb["friends"]) == 1 and "email" not in lb["friends"][0]
     assert la["incoming"] == [] and la["outgoing"] == []
 
 
@@ -72,8 +73,10 @@ def test_reverse_duplicate_auto_accepts_one_row(kitchen):
     assert len(rows) == 1                       # ONE row, not two
     assert rows[0]["status"] == "accepted"      # auto-accepted, not a second pending
 
-    assert [f["email"] for f in a.get("/api/friends").get_json()["friends"]] == ["b@test.local"]
-    assert [f["email"] for f in b.get("/api/friends").get_json()["friends"]] == [A_EMAIL]
+    fa = a.get("/api/friends").get_json()["friends"]
+    fb = b.get("/api/friends").get_json()["friends"]
+    assert len(fa) == 1 and "email" not in fa[0]        # accepted friend present, no email leaked
+    assert len(fb) == 1 and "email" not in fb[0]
 
 
 def test_idempotent_rerequest_no_duplicate(kitchen):
@@ -149,7 +152,8 @@ def test_list_buckets_separated(kitchen):
     la = a.get("/api/friends").get_json()
     assert [f["email"] for f in la["outgoing"]] == ["b@test.local"]
     assert [f["email"] for f in la["incoming"]] == ["c@test.local"]
-    assert [f["email"] for f in la["friends"]] == ["d@test.local"]
+    # friends bucket holds the one accepted edge (D); least-exposure — no email in the friends list
+    assert len(la["friends"]) == 1 and "email" not in la["friends"][0]
 
 
 def test_delete_handles_unfriend_and_decline(kitchen):
@@ -171,3 +175,20 @@ def test_delete_handles_unfriend_and_decline(kitchen):
     a.post("/api/friends/requests", json={"email": "b@test.local"})
     assert a.delete("/api/friends", json={"email": "b@test.local"}).status_code == 200
     assert len(_statuses(kitchen)) == 0
+
+
+# ---- least-exposure: the accepted-friends list must never leak another user's email --------------
+
+def test_friends_list_omits_email_even_when_display_name_is_null(kitchen):
+    """docs/SECURITY.md least-exposure: GET /api/friends must NOT return a friend's email — not even
+    when the friend has a NULL display_name (the exact case the feed's Your-Friends card falls back on,
+    where the old code rendered the email). The server projects display_name only for accepted friends."""
+    a = kitchen.client
+    _bid, b = _user_client("no-name@test.local")          # created with display_name = None
+    a.post("/api/friends/requests", json={"email": "no-name@test.local"})
+    assert b.post("/api/friends/accept", json={"email": A_EMAIL}).status_code == 200
+
+    friends = a.get("/api/friends").get_json()["friends"]
+    assert len(friends) == 1
+    assert "email" not in friends[0]                       # no email leaked, ever
+    assert friends[0]["display_name"] is None              # null name -> client renders a neutral "A cook"
