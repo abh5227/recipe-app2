@@ -958,6 +958,11 @@ clean corpus, not learned models. Depends on Phase 6 (linkage) + 8 (metadata) + 
   stage (mock the recipe/home pages with the treatment, react, then build app-wide in one go). Likely
   pairs with the deferred logo/identity pass — both are "make the whole app cohere" work. Raised during
   the 2b feed build; parked per the out-of-lane-goes-to-roadmap rule.
+- **Hand-drawn chef-hat avatar + logo/identity pass (deferred; own preview-first stage; pairs with
+  app-wide texture).** 2b ships a SIMPLE placeholder chef-hat (inline SVG); the characterful hand-drawn
+  mark is a dedicated later task (AI-generated SVG came out stiff/generic — likely needs an illustrator
+  working from style reference only). Do it as its own preview-first stage alongside the app-wide texture
+  above — both are "make the whole app cohere" identity work.
 
 ## Cosmetic / nice-to-have polish
 

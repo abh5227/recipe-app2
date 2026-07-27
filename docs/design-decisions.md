@@ -658,6 +658,21 @@ needs an **illustrator**, working from **style reference only — original art, 
 **SHIP NOW with a SIMPLE placeholder** (a clean hat or initials): the real mark is polish, **not on the
 critical path**.
 
+### Built result — sub-stage 2b (shipped, commit `03d881b`)
+
+The composed **"Cooking"** page is **built to this spec** and merged. A few **deliberate** deviations from
+the locked spec — recorded so future work reads them as **decisions, not bugs**:
+
+- **Caption cap is 150 chars CLIENT-side** (the server allows 280) — the client enforces the locked
+  **150** ceiling; the wider server limit is headroom, not the product rule.
+- **Avatar is a SIMPLE placeholder chef-hat** (inline SVG, `currentColor`) — no initials fallback was
+  needed in practice. The **characterful hand-drawn mark stays the deferred dedicated design task**
+  (see the note above).
+- **Friends nav entry is PRESENT BUT INERT** — the friends-management page is **out of 2b scope**
+  (deferred); the entry holds its place in the composed layout without a destination yet.
+- **In Season ships REAL** (`GET /api/in-season`); **Profile / Want-to-make / Cook-it-again** are honest
+  **`SOON`** slots — present in the surround for structure, no live data behind them yet.
+
 ## Recorded caveats (Version 3 / vitals bundle)
 
 - **`color-mix()`** powers the subtle-red Delete (`.btn.danger-soft`) — a modern-browser dependency;

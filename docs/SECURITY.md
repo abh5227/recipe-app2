@@ -39,3 +39,11 @@ The pilot is a single-user / invite-gated app, so it **defers** the hardening re
 public signup: email verification, password reset, rate-limiting, and bot defense. These are **required
 before public signup is opened** and are tracked as a public-launch checklist — not optional once the
 door is open to the world.
+
+## Deferred: least-exposure follow-up
+
+- **Trim email from the pending friend-request lists.** The accepted-friends list (`GET /api/friends`)
+  now **omits email** (committed `e949c5f`) — display name only. The **incoming/outgoing pending-request
+  lists still carry email**, because it is the **accept-by-email identifier** the client currently needs
+  to act on a request. **Trim it once a friends-management UI exists** and requests can be accepted by an
+  opaque id / display name instead — at which point the email is no longer needed client-side.
