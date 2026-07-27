@@ -948,6 +948,16 @@ clean corpus, not learned models. Depends on Phase 6 (linkage) + 8 (metadata) + 
   data, and divided-across-steps is the design crux. Cross-ref Phase 2 (cooking mode) and 4b
   (step photos) for the shared ingredient↔step link, and 13/14 (pantry/grocery) for the
   category field + aisle-ordered shopping lists.
+- **App-wide textured background (deferred; preview-first).** The Cooking feed page uses a
+  linen-textured "desk" (an inline `feTurbulence` data-URI) + a lifted-page board treatment (see the
+  sub-stage-2b feed work). Extend that textured surface to the rest of the app (home / recipe pages) so
+  the whole app reads as ONE warm surface rather than "textured feed, plainer everything-else." NOT a
+  copy-paste: the recipe/home pages already carry their own `--backdrop` desk gradient + patina
+  (`.page.recipe-view`), so this is a RECONCILIATION — decide whether the linen texture replaces or
+  layers over the existing gradient, and keep one coherent desk across pages. Its own preview-first
+  stage (mock the recipe/home pages with the treatment, react, then build app-wide in one go). Likely
+  pairs with the deferred logo/identity pass — both are "make the whole app cohere" work. Raised during
+  the 2b feed build; parked per the out-of-lane-goes-to-roadmap rule.
 
 ## Cosmetic / nice-to-have polish
 
