@@ -4,6 +4,7 @@ import {
   formatAmount, group, scaleQty, abbrevUnits, canonicalizeUnit, amountText, weightText, toUnicodeFractions,
 } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
+import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { mountStepEditors, destroyStepEditors } from "./step-editor.js";
 import heroUrl from "./login-hero.jpg";   // auth-4 login hero — Vite hashes it into dist/assets (served via /assets)
 
@@ -351,6 +352,8 @@ async function route() {
     const mRecipe = hash.match(/^#\/recipe\/(.+)$/);
     if (hash === "#/new") {
       await renderForm("create");
+    } else if (hash === "#/feed") {
+      await renderFeed();
     } else if (mEdit) {
       await renderForm("edit", decodeURIComponent(mEdit[1]));
     } else if (mRecipe) {
@@ -429,7 +432,7 @@ async function renderHome() {
         <h1 class="site-title">Chef's Choice</h1>
         <p class="site-sub">Field notes from the kitchen — recipes, and what goes in them.</p>
       </div>
-      <div class="site-head-actions">${bulkTest}<a class="btn new-recipe" href="#/new">+ New recipe</a>${
+      <div class="site-head-actions">${bulkTest}<a class="btn ghost" href="#/feed">Cooking</a><a class="btn new-recipe" href="#/new">+ New recipe</a>${
         CURRENT_USER ? `<span class="site-user">${esc(CURRENT_USER.display_name || CURRENT_USER.email)}<button type="button" data-logout>Sign out</button></span>` : ""
       }</div>
     </div>
@@ -2015,3 +2018,286 @@ document.addEventListener("click", async (e) => {
 });
 
 boot();   // auth-4: gate on GET /api/me before the app renders (was: route())
+
+
+/* ===================================================================================================
+   SOCIAL FEED (sub-stage 2b) — the composed "Cooking" page, wired to the existing feed/share/comment
+   endpoints. THIN CLIENT: render what the server returns; the server enforces friends-only visibility
+   and who-may-delete (the unshare / comment-delete controls are UX shown from is_mine / can_delete,
+   never the security boundary). Every user-supplied string goes through esc(). NO counts anywhere; the
+   feed is server-bounded and simply ENDS. Function declarations are hoisted, so route()'s #/feed branch
+   resolves this even though the block is appended below.
+   =================================================================================================== */
+const FEED_CAPTION_MAX = 150;    // client cap (server allows 280) — the locked spec caps the client at 150
+const FEED_COMMENT_MAX = 300;    // matches the server COMMENT_MAX
+
+// Placeholder chef-hat avatar — a simple clean mark (the characterful hand-drawn hat is a deferred
+// design task). currentColor so CSS owns the ink; decorative — the name carries identity.
+const HAT_SVG = '<svg viewBox="0 0 40 36" class="hat" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"><path d="M9 23 C3.5 23 4 14 9.5 13 C8.5 6 17.5 4.5 20 9.5 C22.5 4.5 31.5 6 30.5 13 C36 14 36.5 23 31 23 Z"/><path d="M12 23 h16 v5 a2 2 0 0 1 -2 2 h-12 a2 2 0 0 1 -2 -2 Z"/></g></svg>';
+function feedAvatar() { return `<span class="cook-av">${HAT_SVG}</span>`; }
+
+// A photo only when the recipe actually has one — otherwise nothing (no placeholder box), per spec.
+function feedPhoto(rec) {
+  if (!rec || !rec.image) return "";
+  return `<div class="fp-photo"><img src="/${esc(rec.image)}" alt="${esc(rec.name || "")}" loading="lazy"
+     onerror="this.closest('.fp-photo').remove()"></div>`;
+}
+
+function feedComment(c) {
+  const name = (c.author && c.author.display_name) || (c.is_mine ? "You" : "Someone");
+  const del = c.can_delete
+    ? `<button class="fc-del" data-comment-delete="${c.id}" aria-label="Delete comment">&times;</button>` : "";
+  return `<div class="fc" data-comment="${c.id}">${feedAvatar()}
+    <div class="fc-main"><div class="fc-top"><span class="fc-name">${esc(name)}</span>
+      <span class="fc-time">${esc(feedRelTime(c.created_at))}</span>${del}</div>
+      <div class="fc-body">${esc(c.body)}</div></div></div>`;
+}
+
+function feedPost(p) {
+  const kind = p.post_type === "cook" ? "cook" : "recipe";
+  const chip = kind === "cook" ? "Cooked" : "Shared";
+  const who = esc((p.sharer && p.sharer.display_name) || (p.is_mine ? "You" : "A friend"));   // display_name only — never the email
+  const rec = p.recipe;
+  const when = esc(feedRelTime(p.created_at));
+  const you = p.is_mine ? `<span class="fp-you">you</span>` : "";
+  const unshare = p.is_mine ? `<button class="fp-unshare" data-unshare="${p.id}">Remove</button>` : "";
+  const cookedOn = (kind === "cook" && p.cooked_on)
+    ? `<span class="fp-cooked">cooked ${esc(feedDateShort(p.cooked_on))}</span>` : "";
+  const cap = p.caption ? `<p class="fp-cap">${esc(p.caption)}</p>` : "";
+  const nameEl = rec
+    ? `<a class="fp-recipe" href="#/recipe/${encodeURIComponent(rec.id)}">${esc(rec.name)}</a>`
+    : `<span class="fp-recipe">a recipe</span>`;
+  const thread = (p.comments || []).map(feedComment).join("");
+  return `<article class="fp ${kind}${p.is_mine ? " mine" : ""}" data-post="${p.id}">
+    <div class="fp-head">${feedAvatar()}
+      <span class="fp-meta"><span class="fp-chip ${kind}">${chip}</span>${you}
+        <span class="fp-who">${who}</span><span class="fp-when">${when}</span></span>${unshare}</div>
+    ${feedPhoto(rec)}
+    ${nameEl}
+    ${cookedOn}
+    ${cap}
+    <div class="fp-thread">${thread}</div>
+    <form class="fp-reply" data-comment-form="${p.id}">${feedAvatar()}
+      <input type="text" name="body" maxlength="${FEED_COMMENT_MAX}" placeholder="Say something" autocomplete="off"></form>
+  </article>`;
+}
+
+function feedNav() {
+  return `<nav class="feed-nav">
+    <a class="fn-item" href="#/">Recipes</a>
+    <span class="fn-item active">Cooking<span class="fn-sub">what friends made</span></span>
+    <span class="fn-item inert">Friends</span>
+    <span class="fn-item inert">Profile<span class="fn-sub">your chef-page<span class="fn-soon">soon</span></span></span>
+  </nav>`;
+}
+
+function surroundCard(cls, title, body, soon) {
+  const tag = soon ? `<span class="fs-soon">soon</span>` : "";
+  return `<section class="fs-card ${cls}"><h3 class="fs-h">${title}${tag}</h3><div class="fs-body">${body}</div></section>`;
+}
+
+function feedSurround(friends, season) {
+  const fr = (friends && friends.friends) || [];
+  const friendsBody = fr.length
+    ? `<ul class="fs-friends">${fr.map((f) =>
+        `<li>${feedAvatar()}<span>${esc(f.display_name || "A cook")}</span></li>`).join("")}</ul>`
+    : `<p class="fs-empty">No friends yet — add someone to share a kitchen with.</p>`;
+  const ings = (season && season.ingredients) || [];
+  const seasonBody = ings.length
+    ? `<ul class="fs-season">${ings.map((i) => `<li>${esc(i.name)}</li>`).join("")}</ul>`
+    : `<p class="fs-empty">Nothing flagged for this month yet.</p>`;
+  return `<aside class="feed-surround">
+    ${surroundCard("green", "Your friends", friendsBody, false)}
+    ${surroundCard("terra", "Want to make", `<p class="fs-empty">A place for what you mean to cook — coming soon.</p>`, true)}
+    ${surroundCard("green", "In season now", seasonBody, false)}
+    ${surroundCard("terra", "Cook it again", `<p class="fs-empty">Your favourites, back around — coming soon.</p>`, true)}
+  </aside>`;
+}
+
+function feedEmpty() {
+  return `<div class="feed-empty"><span class="fe-orn"></span>
+    <h3>Nothing shared yet.</h3>
+    <p>When you or a friend shares a cook, it lands here. Start the fire — share something you&rsquo;ve made.</p>
+    <button class="share-btn" data-compose-open>Share a cook or recipe</button></div>`;
+}
+
+function feedMasthead() {
+  // Masthead 3 "green chrome" (ported from preview/feed-masthead.html). Title only (subtitle removed),
+  // top-right = Sign out ONLY (Box + name pills removed). The data-logout button stays functional.
+  const signout = CURRENT_USER
+    ? `<button type="button" class="pill out" data-logout>Sign out</button>` : "";
+  return `<header class="feed-mast">
+    <div><h1 class="site-title">Chef&rsquo;s Choice</h1></div>
+    <div class="nav-actions">${signout}</div></header>`;
+}
+
+async function renderFeed() {
+  view = null;
+  app.className = "page feed-view";
+  let posts;
+  try {
+    posts = await api("/api/feed");
+  } catch (e) {
+    if (e.message === "__auth__") return;   // 401 already dropped us to the login view
+    throw e;                                // other failures bubble to route()'s catch -> showError
+  }
+  // Surround data: fetch in parallel, fail SOFT — a slow/failed side-card must never break the feed.
+  const [friends, season] = await Promise.all([
+    api("/api/friends").catch(() => ({ friends: [] })),
+    api("/api/in-season").catch(() => ({ ingredients: [] })),
+  ]);
+  const center = posts.length
+    ? `<div class="feed-list">${posts.map(feedPost).join("")}<div class="feed-end"><span class="fe-orn"></span></div></div>`
+    : feedEmpty();
+  app.innerHTML = `${feedMasthead()}
+    <div class="feed-board">${feedNav()}
+      <main class="feed-col"><div class="feed-col-head"><h2 class="feed-title">What&rsquo;s cooking?</h2>
+        <button class="share-btn" data-compose-open>Share a cook or recipe</button></div>
+        ${center}</main>
+      ${feedSurround(friends, season)}</div>`;
+}
+
+/* ---- share compose (one modal, both types; cook-share primary) ---- */
+let composeState = null;
+
+async function openCompose() {
+  closeCompose();
+  const overlay = document.createElement("div");
+  overlay.className = "compose-overlay";
+  overlay.innerHTML = `<div class="compose-card" role="dialog" aria-modal="true" aria-label="Share a cook or recipe">
+    <button class="compose-x" data-compose-close aria-label="Close">&times;</button>
+    <h2 class="compose-title">Share a cook or recipe</h2>
+    <div class="compose-tabs">
+      <button class="ct-tab active" data-compose-tab="cook">A cook</button>
+      <button class="ct-tab" data-compose-tab="recipe">A recipe</button></div>
+    <div class="compose-pick" data-compose-pick><p class="fs-empty">Loading…</p></div>
+    <label class="compose-caplabel">Add a note <span class="ct-count" data-cap-count>0/${FEED_CAPTION_MAX}</span></label>
+    <textarea class="compose-cap" data-compose-caption maxlength="${FEED_CAPTION_MAX}" rows="2"
+      placeholder="say a little about it (optional)"></textarea>
+    <div class="compose-actions"><span class="compose-err" data-compose-err aria-live="polite"></span>
+      <button class="share-btn" data-compose-submit disabled>Share</button></div></div>`;
+  document.body.appendChild(overlay);
+  requestAnimationFrame(() => overlay.classList.add("open"));
+  await loadComposePick("cook");   // cook picker is the primary/default path
+}
+
+function closeCompose() {
+  const o = document.querySelector(".compose-overlay");
+  if (o) o.remove();
+  composeState = null;
+}
+
+async function loadComposePick(type) {
+  composeState = { type, cook_log_id: null, recipe_id: null };
+  const pick = document.querySelector("[data-compose-pick]");
+  const submit = document.querySelector("[data-compose-submit]");
+  if (submit) submit.disabled = true;
+  document.querySelectorAll(".ct-tab").forEach((t) => t.classList.toggle("active", t.dataset.composeTab === type));
+  if (!pick) return;
+  pick.innerHTML = `<p class="fs-empty">Loading…</p>`;
+  try {
+    if (type === "cook") {
+      const cooks = await api("/api/cooks");   // newest-first from the server
+      pick.innerHTML = cooks.length
+        ? `<ul class="ct-list">${cooks.map((c) => `<li><button class="ct-opt" data-pick-cook="${c.cook_log_id}">
+            ${c.image ? `<img class="ct-thumb" src="/${esc(c.image)}" alt="" onerror="this.remove()">` : `<span class="ct-thumb none"></span>`}
+            <span class="ct-opt-main"><span class="ct-opt-name">${esc(c.recipe_name)}</span>
+            <span class="ct-opt-sub">cooked ${esc(feedDateShort(c.cooked_on))}</span></span></button></li>`).join("")}</ul>`
+        : `<p class="fs-empty">No cooks logged yet — cook something and log it, then share it here.</p>`;
+    } else {
+      const recipes = await api("/api/recipes");
+      const mine = recipes.filter((r) => r.is_mine === true && r.source !== "test");   // only shareable: owned + non-test
+      pick.innerHTML = mine.length
+        ? `<ul class="ct-list">${mine.map((r) => `<li><button class="ct-opt" data-pick-recipe="${esc(r.id)}">
+            ${r.image ? `<img class="ct-thumb" src="/${esc(r.image)}" alt="" onerror="this.remove()">` : `<span class="ct-thumb none"></span>`}
+            <span class="ct-opt-main"><span class="ct-opt-name">${esc(r.name)}</span></span></button></li>`).join("")}</ul>`
+        : `<p class="fs-empty">No recipes of your own yet to share.</p>`;
+    }
+  } catch (e) {
+    if (e.message !== "__auth__") pick.innerHTML = `<p class="fs-empty">Couldn&rsquo;t load — try again.</p>`;
+  }
+}
+
+function selectPick(type, rawId, el) {
+  composeState = {
+    type,
+    cook_log_id: type === "cook" ? Number(rawId) : null,
+    recipe_id: type === "recipe" ? rawId : null,
+  };
+  document.querySelectorAll(".ct-opt").forEach((o) => o.classList.remove("selected"));
+  el.classList.add("selected");
+  const submit = document.querySelector("[data-compose-submit]");
+  if (submit) submit.disabled = false;
+}
+
+async function submitCompose() {
+  const submit = document.querySelector("[data-compose-submit]");
+  const errEl = document.querySelector("[data-compose-err]");
+  const capEl = document.querySelector("[data-compose-caption]");
+  const caption = ((capEl && capEl.value) || "").trim();
+  const body = {};
+  if (composeState && composeState.type === "cook" && composeState.cook_log_id != null) body.cook_log_id = composeState.cook_log_id;
+  else if (composeState && composeState.type === "recipe" && composeState.recipe_id != null) body.recipe_id = composeState.recipe_id;
+  else { if (errEl) errEl.textContent = "Pick something to share first."; return; }   // exactly-one guard (client)
+  if (caption) body.caption = caption;
+  if (submit) submit.disabled = true;
+  const res = await sendJSON("POST", "/api/shares", body);
+  if (res.ok) { closeCompose(); await renderFeed(); return; }   // returns {id} only -> refetch, don't reconstruct
+  if (errEl) errEl.textContent = (res.data && res.data.error) || "Couldn't share — try again.";
+  if (submit) submit.disabled = false;
+}
+
+/* ---- comment add / delete + unshare (thin client; the server authorizes each) ---- */
+async function submitComment(form) {
+  const postId = form.dataset.commentForm;
+  const input = form.querySelector("input[name=body]");
+  const body = (input.value || "").trim();
+  if (!body || body.length > FEED_COMMENT_MAX) return;
+  input.disabled = true;
+  const res = await sendJSON("POST", `/api/posts/${postId}/comments`, { body });
+  input.disabled = false;
+  if (res.ok && res.data) {
+    const thread = form.closest(".fp").querySelector(".fp-thread");
+    thread.insertAdjacentHTML("beforeend", feedComment(res.data));   // append the returned comment, no refetch
+    input.value = "";
+    input.focus();
+  }
+}
+
+async function deleteComment(id, el) {
+  const res = await sendJSON("DELETE", `/api/comments/${id}`);
+  if (res.ok) { const row = el.closest(".fc"); if (row) row.remove(); }
+}
+
+async function unshare(id, el) {
+  const res = await sendJSON("DELETE", `/api/shares/${id}`);
+  if (res.ok) { const card = el.closest(".fp"); if (card) card.remove(); }
+}
+
+// Delegated handlers — attached ONCE at module load; they survive the feed view's innerHTML re-renders.
+document.addEventListener("click", (e) => {
+  if (e.target.closest("[data-compose-open]")) { openCompose(); return; }
+  if (e.target.closest("[data-compose-close]") || (e.target.classList && e.target.classList.contains("compose-overlay"))) { closeCompose(); return; }
+  const tab = e.target.closest("[data-compose-tab]");
+  if (tab) { loadComposePick(tab.dataset.composeTab); return; }
+  const pc = e.target.closest("[data-pick-cook]");
+  if (pc) { selectPick("cook", pc.dataset.pickCook, pc); return; }
+  const pr = e.target.closest("[data-pick-recipe]");
+  if (pr) { selectPick("recipe", pr.dataset.pickRecipe, pr); return; }
+  if (e.target.closest("[data-compose-submit]")) { submitCompose(); return; }
+  const un = e.target.closest("[data-unshare]");
+  if (un) { unshare(un.dataset.unshare, un); return; }
+  const cd = e.target.closest("[data-comment-delete]");
+  if (cd) { deleteComment(cd.dataset.commentDelete, cd); return; }
+});
+document.addEventListener("submit", (e) => {
+  const form = e.target.closest("[data-comment-form]");
+  if (form) { e.preventDefault(); submitComment(form); }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && document.querySelector(".compose-overlay")) closeCompose();
+});
+document.addEventListener("input", (e) => {
+  const cap = e.target.closest("[data-compose-caption]");
+  if (cap) { const n = document.querySelector("[data-cap-count]"); if (n) n.textContent = `${cap.value.length}/${FEED_CAPTION_MAX}`; }
+});
