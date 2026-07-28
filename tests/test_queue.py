@@ -133,3 +133,49 @@ def test_queue_requires_auth(kitchen_logged_out):
     assert c.get("/api/queue").status_code == 401
     assert c.post("/api/queue", json={"recipe_id": "x"}).status_code == 401
     assert c.delete("/api/queue/x").status_code == 401
+
+
+# ---- is_queued read flag (stage 3a) ---------------------------------------------------------------
+# The recipe reads carry a per-user `is_queued` boolean so the UI can show queue state. State is driven
+# through the REAL POST /api/queue endpoint (never raw inserts), mirroring the two-user idiom above.
+
+def _get_recipe(client, rid):
+    return client.get(f"/api/recipes/{rid}").get_json()
+
+
+def _list_by_id(client):
+    return {row["id"]: row for row in client.get("/api/recipes").get_json()}
+
+
+def test_get_recipe_is_queued_reflects_my_queue(kitchen):
+    a = kitchen.client
+    queued = _own_recipe(a, "Queued Detail Dish")
+    plain = _own_recipe(a, "Unqueued Detail Dish")
+    assert _queue(a, queued).status_code == 201
+
+    assert _get_recipe(a, queued)["is_queued"] is True     # I queued it
+    assert _get_recipe(a, plain)["is_queued"] is False     # I didn't
+
+
+def test_list_recipes_is_queued_reflects_my_queue(kitchen):
+    a = kitchen.client
+    queued = _own_recipe(a, "Queued List Dish")
+    plain = _own_recipe(a, "Unqueued List Dish")
+    _queue(a, queued)
+
+    rows = _list_by_id(a)
+    assert rows[queued]["is_queued"] is True
+    assert rows[plain]["is_queued"] is False               # a clean boolean, not a count
+
+
+def test_is_queued_is_strictly_per_user_no_leak(kitchen):
+    # The key correctness case: A queues a recipe; in B's session that recipe reads is_queued:false in
+    # BOTH the single read and the list — my queue-state never leaks as yours (mirrors the queue scoping).
+    a = kitchen.client
+    _bid, b = _user_client("queue-flag-b@test.local")
+    rid = _own_recipe(a, "A's Wanted Dish")     # A owns AND queues it
+    _queue(a, rid)
+
+    assert _get_recipe(a, rid)["is_queued"] is True        # A: queued
+    assert _get_recipe(b, rid)["is_queued"] is False       # B: not queued, even though it's visible
+    assert _list_by_id(b)[rid]["is_queued"] is False       # and false in B's list too

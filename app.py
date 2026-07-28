@@ -353,18 +353,22 @@ def list_recipes():
                       r.prep_time, r.cook_time, r.total_time, r.image, r.created_at, r.source, r.owner,
                       (SELECT rating FROM ratings WHERE recipe_id = r.id AND user_id = :uid)          AS rating,
                       (SELECT COUNT(*) FROM cook_log WHERE recipe_id = r.id AND user_id = :uid)       AS cook_count,
-                      (SELECT MAX(cooked_on) FROM cook_log WHERE recipe_id = r.id AND user_id = :uid) AS last_cooked
+                      (SELECT MAX(cooked_on) FROM cook_log WHERE recipe_id = r.id AND user_id = :uid) AS last_cooked,
+                      (SELECT COUNT(*) FROM recipe_queue WHERE recipe_id = r.id AND user_id = :uid)   AS queued_count
                FROM recipes r
                ORDER BY r.name"""
         ), {"uid": current_user.id}).mappings().all()
     # is_mine: an additive least-exposure signal (mirrors the feed) so the compose picker can filter to
     # recipes you can actually share (POST /api/shares 404s a non-owned one). The raw `owner` id is
     # popped, never leaked — the client only ever learns "mine or not", not who owns it.
+    # is_queued: MY want-to-make state (stage 3a) — the queued_count subquery above is per-user (:uid),
+    # UNIQUE(user_id, recipe_id) so it's 0/1; popped to a clean JSON boolean, never leaked as a count.
     out = []
     for r in rows:
         d = dict(r)
         owner = d.pop("owner")
         d["is_mine"] = owner == current_user.id
+        d["is_queued"] = bool(d.pop("queued_count"))
         out.append(d)
     return jsonify(out)
 
@@ -455,6 +459,12 @@ def get_recipe(rid):
         ).mappings().all()
         stats = recipe_stats(s, rid, current_user.id)
         ingredients = attach_weights(s, ings)
+        # is_queued (stage 3a): MY want-to-make state — per-user EXISTS against recipe_queue, scoped to
+        # current_user.id like stats above. Any recipe is queueable, so this is independent of ownership.
+        is_queued = s.scalar(
+            select(RecipeQueue.id)
+            .where(RecipeQueue.recipe_id == rid, RecipeQueue.user_id == current_user.id)
+        ) is not None
     return jsonify(
         {
             "recipe": dict(r),
@@ -464,6 +474,7 @@ def get_recipe(rid):
             "is_editable": r["source"] in EDITABLE_SOURCES,   # app + test recipes get edit/delete
             "is_seed": r["source"] == "seed",           # seed tier stays read-only (edit in seed.py)
             "is_test": r["source"] == "test",           # scratch tier — gets the visible test marker
+            "is_queued": is_queued,                     # stage 3a: my want-to-make queue membership
         }
     )
 
