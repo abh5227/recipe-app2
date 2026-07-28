@@ -699,6 +699,20 @@ the locked spec — recorded so future work reads them as **decisions, not bugs*
   *already-set* image path until photo-upload ships (the inline editor excludes `image` by design;
   add-a-photo only appears when there's no image). Existing image paths are untouched and round-trip on
   inline save, and `#/edit` still works by hand.
+- **The Custom scaler pill is shape-by-state.** In the scaler row (½× · 1× · 2× preset circles · Custom),
+  Custom now reads as a member of the round row rather than a stray oval: **REST** = a 42px "×" circle (a
+  quiet round sibling of the presets); **WIDEN-ON-FOCUS** = a compact centered outline stadium pill (room
+  to type — brown is *withheld* mid-entry because brown means "committed"); **BROWN-ON-COMMIT** = the
+  filled pill via the existing `!isPreset` flag + a mirrored `.scale-custom.on` rule (the preset selected
+  rule `.scale-control button.on` is element-scoped to `<button>` and won't reach an `<input>`, so Custom
+  needs its own rule — same tokens, no new colors). The widen is **pure CSS `:focus`** (no JS shape toggle,
+  doesn't touch the fiddly focus-strip handler), and the committed pill renders from the host rebuild's
+  `!isPreset` branch so it **survives `rerenderScaler`**. The `.scale-custom:focus` rule is deliberately
+  ordered *after* `.scale-custom.on` so re-editing a committed value reads outline, not brown. Scaler math
+  (`scaler.js` / `stepscale.py` / `view.scale`) untouched. **Deferred:** whether a typed custom value
+  should *persist* when switching to a preset (today it's cleared, since `customVal` derives from
+  `view.scale`) — its own decision, to be taken with the queued "restore prior scale on exit" polish (same
+  concern); not decided here.
 
 ## Derived "to make" — the Uncooked box mark (Build 1)
 

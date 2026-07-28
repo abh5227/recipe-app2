@@ -498,7 +498,7 @@ function scaleControl() {
   // rebuilt via innerHTML on scale change, and type=number got destroyed mid-interaction.
   const isPreset = options.some(([v]) => v === view.scale);
   const customVal = isPreset ? "" : `${view.scale}\u00d7`;
-  const custom = `<input class="scale-custom" type="text" inputmode="decimal" placeholder="custom\u00d7" aria-label="Custom multiplier" value="${customVal}">`;
+  const custom = `<input class="scale-custom${isPreset ? "" : " on"}" type="text" inputmode="decimal" placeholder="\u00d7" aria-label="Custom multiplier" value="${customVal}">`;
   return `<div class="scale-control" role="group" aria-label="Scale quantities">${buttons}${custom}</div>`;
 }
 

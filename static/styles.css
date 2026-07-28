@@ -951,7 +951,27 @@ a:hover { color: var(--berry-lift); }
   display: inline-flex; align-items: center; justify-content: center;
 }
 .scaler-col .scale-control { gap: 9px; }   /* more breathing room so the wider custom× pill never crowds the 2× circle (rest OR active) */
-.scaler-col .scale-custom { border: 1px solid var(--border-scaler); width: 5.5rem; }   /* outline-only + lighter --border-scaler (steps back from the defined B elements); a touch wider so its active/typed state has room */
+/* Custom joins the round preset row: at REST a 42px circle like the presets (quiet outline, a faint
+   "×"); it WIDENS to a compact centered stadium pill on :focus (room to type, still outline) and when
+   COMMITTED (.on, brown fill). --border-scaler keeps it a hair quieter than the defined B elements. */
+.scaler-col .scale-custom {
+  width: 42px; height: 42px; padding: 0; border-radius: 50%;
+  border: 1px solid var(--border-scaler); text-align: center;
+  transition: width .18s ease, border-radius .18s ease, background .15s, color .15s, border-color .15s;
+}
+/* COMMITTED — the brown anchor, mirroring .scale-control button.on; its own rule because that selector
+   is element-scoped to <button> and won't reach an <input>. No new colors. */
+.scaler-col .scale-custom.on {
+  width: 3.9rem; padding: 0 12px; border-radius: 999px;
+  background: var(--btn-fill); color: var(--card); border-color: var(--btn-fill);
+}
+/* EDITING (focused) — widen to the same pill but stay OUTLINE (no brown): brown means "committed", so
+   it must not appear mid-type. Placed AFTER .on so equal-specificity :focus wins the fill reset when
+   re-editing an already-committed value. */
+.scaler-col .scale-custom:focus {
+  width: 3.9rem; padding: 0 12px; border-radius: 999px;
+  background: transparent; color: var(--ink); border-color: var(--ink-soft);
+}
 .scale-control { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }  /* wrap so a long custom value / the servings span never overflow the row */
 .scale-control button {
   font-family: var(--font-sans); font-size: 13px; cursor: pointer; white-space: nowrap;   /* sans, matching the V3 metadata around it */
@@ -966,7 +986,7 @@ a:hover { color: var(--berry-lift); }
 .scale-custom {
   font-family: var(--font-sans); font-size: 13px; width: 4.5rem; padding: 4px 10px; border-radius: 999px;
   border: 1px solid var(--line); background: transparent; color: var(--ink-soft);
-  text-align: right;   /* committed "N×" hugs the right, reading like the preset pills */
+  text-align: center;   /* content centered — the circle "×" at rest, "N×" in the committed pill */
 }
 .scale-custom:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
 .step-qty { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
