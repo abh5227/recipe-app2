@@ -693,6 +693,12 @@ the locked spec — recorded so future work reads them as **decisions, not bugs*
 - **The ingredient `SELECT` is `SELECT *`** (app.py), so the added `quantity`/`unit` columns now appear
   in the recipe GET response. Harmless — the client reads only `qty` for display/scaling and ignores
   them — but noted so it's a conscious surface (and because a future column add is likewise auto-exposed).
+- **The old form-edit button was removed** from the recipe controls (`ownerActionsHTML`), superseded by
+  the inline **✎ Edit** path. The `#/edit` route + `renderForm`/`onSaveForm` are **retained** — still used
+  by create (`#/new`) and the **add-a-photo** affordance. **Accepted gap:** no in-app entry point edits an
+  *already-set* image path until photo-upload ships (the inline editor excludes `image` by design;
+  add-a-photo only appears when there's no image). Existing image paths are untouched and round-trip on
+  inline save, and `#/edit` still works by hand.
 
 ## Derived "to make" — the Uncooked box mark (Build 1)
 

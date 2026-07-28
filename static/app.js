@@ -723,7 +723,6 @@ function dishPhoto(r, editable) {
 // confirmation names the recipe and needs a deliberate second click (replaces a single confirm()).
 function ownerActionsHTML(r) {
   return `<button class="btn ghost sm" data-inline-edit-enter>✎ Edit</button>
-          <a class="btn ghost sm" href="#/edit/${encodeURIComponent(r.id)}">Edit form</a>
           <button class="btn ghost sm" data-copy>Copy</button>
           <button class="btn ghost sm copy-test" data-copy-test>Copy as test</button>
           <button class="btn danger-soft sm" data-delete>Delete recipe</button>`;
