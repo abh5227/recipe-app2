@@ -590,6 +590,17 @@ a:hover { color: var(--berry-lift); }
 .rc-stats { font-size: 13px; color: var(--amber); margin: 5px 0 0; letter-spacing: 1px; }
 .rc-stats .ct { color: var(--ink-soft); letter-spacing: normal; }
 .rc-stats .dot { color: var(--ink-soft); }
+/* Derived "to make" mark on the box card (owner && cook_count==0) — the approved B-plus "Uncooked"
+   whisper. Fills the empty .rc-stats slot. NOT a category tag (kept out of TAG_CATEGORY/tagsHTML on
+   purpose); it borrows the quiet dashed status idiom (cf. .cat-tag.status) tinted muted-olive
+   (--green), at the lightest legible weight — small tracked caps, all existing tokens. */
+.rc-uncooked {
+  display: inline-block; margin: 5px 0 0;
+  font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--green); opacity: 0.72;
+  background: transparent; border: 1px dashed color-mix(in srgb, var(--green) 46%, var(--rule));
+  border-radius: 3px; padding: 1px 7px;
+}
 
 /* Single-column reading flow: masthead -> ledger -> method (the cookbook page). The old
    two-column split is retired so the right --hand-gutter stays free for the Round-2 margin layer. */

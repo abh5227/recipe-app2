@@ -5,6 +5,7 @@ import {
 } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
+import { isToMake } from "./tomake.js";
 import { mountStepEditors, destroyStepEditors } from "./step-editor.js";
 import heroUrl from "./login-hero.jpg";   // auth-4 login hero — Vite hashes it into dist/assets (served via /assets)
 
@@ -409,13 +410,18 @@ async function renderHome() {
       const statsLine = stars || count
         ? `<p class="rc-stats">${stars}${stars && count ? '<span class="dot">·</span>' : ""}${count}</p>`
         : "";
+      // Derived "to make" mark (client-only): an owned, never-cooked recipe fills the otherwise-empty
+      // .rc-stats slot with a quiet "Uncooked" whisper. Gated on is_mine via isToMake() — NOT on count
+      // alone — so another user's uncooked recipe gets no mark. Never both a stats line and the mark
+      // (it fills only the empty slot); never a category tag (see static/tomake.js).
+      const uncooked = (!statsLine && isToMake(r)) ? `<span class="rc-uncooked">Uncooked</span>` : "";
       const isTest = r.source === "test";
       return `<a class="recipe-card${isTest ? " is-test" : ""}" href="#/recipe/${encodeURIComponent(r.id)}">
                 ${photo(r, "thumb")}
                 <div class="rc-body">
                   <p class="rc-name">${esc(r.name)}${isTest ? ` <span class="test-badge">Test</span>` : ""}</p>
                   <p class="rc-meta">${bits}</p>
-                  ${statsLine}
+                  ${statsLine}${uncooked}
                 </div>
               </a>`;
     })

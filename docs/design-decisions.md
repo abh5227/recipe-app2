@@ -694,6 +694,41 @@ the locked spec — recorded so future work reads them as **decisions, not bugs*
   in the recipe GET response. Harmless — the client reads only `qty` for display/scaling and ignores
   them — but noted so it's a conscious surface (and because a future column add is likewise auto-exposed).
 
+## Derived "to make" — the Uncooked box mark (Build 1)
+
+"To make" is a DERIVED status, not an explicit list: a recipe is to-make iff
+`owner == current_user && cook_count == 0`. There is no control, no bookmark, no stored
+flag — nothing to click. On the box card, an owned never-cooked recipe fills the otherwise
+empty `.rc-stats` slot with a quiet **"Uncooked"** whisper (direction **B-plus**, chosen over
+pure-absence in `preview/to-make-b.html`): the dashed muted-olive status idiom (`.cat-tag.status`
+register, tinted `--green`), serif tracked caps, lightest legible weight — serif confirmed by eye,
+no font swap. Purely client-derived (`static/tomake.js::isToMake`, unit-tested); the payload already
+carried `is_mine` + `cook_count`, so no server change. **Deliberately NOT a category tag** — routing
+it through `TAG_CATEGORY`/`tagsHTML` would reopen the free-type "To Make" re-entry footgun; keeping it
+derived is the whole point.
+
+**Corollary (expected, not a defect):** the mark — and Build 2's page/filter — are computed correctly
+but **invisible on any session not logged in as the corpus owner (users id 1)**, because `is_mine`
+is false for everyone else. They light up once rescoping wires login→ownership.
+
+### Parked — decisions, not omissions
+
+- **Box-page redo** — deferred to its own preview-first pass; this build only adds the mark.
+- **`#/to-make` page + "haven't made" filter** — Build 2, next.
+- **`get_recipe` raw-owner over-exposure** — the single-recipe payload returns the raw `owner` id
+  (unlike the list, which pops it to `is_mine`); a SECURITY.md least-exposure follow-up.
+- **Free-text "To Make"/"status" tag re-entry footgun** — the vestigial `TAG_CATEGORY` "status"
+  entries (app.js ~616) are left INERT (0 recipes carry the tag in data); cleaned up later.
+- **Queue plumbing + `is_queued`** — left DORMANT: `recipe_queue`, `/api/queue`, `RecipeQueue`,
+  migration 024, the Alembic queue revision, and the `is_queued` read flag stay on disk, not rolled
+  back and not read by any client. A separate derived mark was added; `is_queued` was not repointed.
+- **Two-Andys hazard** — users id 2 (`test@test.com`) has `display_name` "Andy Hannah", colliding
+  with the real corpus owner id 1 (`andyhannah2014@gmail.com`, `display_name` NULL). The corpus is
+  dormant on any session that isn't id 1. Clean up the account/fixtures during the multi-user
+  rescoping — flagged, not fixed here. **Resolution (this pass): log in as id 1; do NOT re-own the
+  corpus** — re-owning 298 rows to chase a session mismatch moves data to the wrong account
+  backwards. Re-owning is only correct if the daily login is deliberately not id 1, which it isn't.
+
 ## Open questions
 
 - **Masthead title face** — Spectral vs Newsreader vs Fraunces, decided by eye after Stage B renders
