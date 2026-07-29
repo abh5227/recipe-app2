@@ -131,6 +131,21 @@ body {
   border-radius: 8px;   /* softened page edge (adjustable — reviewing 6 / 8 / 10) */
   box-shadow: 0 1px 1px rgba(40,35,30,.05), 0 16px 44px -14px rgba(40,35,30,.16);
 }
+/* Recipe-page desk — the FEED's surface (styles.css:1226-1235) painted BEHIND the reading card,
+   route-scoped via body.recipe-bg (set/removed by the router). Feed-exact gradient + the feed's .13
+   linen ::before, mirrored faithfully (the feed's linen is scoped to .feed-view, not a shared rule).
+   The reading card (.page.recipe-view) is UNCHANGED and sits above via the `> *` lift; min-height keeps
+   the desk full-viewport on a short recipe; class removed on leave so it never reaches home/forms. */
+body.recipe-bg {
+  position: relative; min-height: 100vh;
+  background: linear-gradient(180deg, #B9B191, #A7A07E);   /* feed-exact desk tones (styles.css:1228) */
+}
+body.recipe-bg::before {
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='l'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012 0.5' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23l)'/%3E%3C/svg%3E");
+  background-size: 200px 200px; opacity: .13; mix-blend-mode: multiply;   /* feed .13 linen, verbatim */
+}
+body.recipe-bg > * { position: relative; z-index: 1; }   /* reading card + back-link sit above the desk */
 /* Stage 4: EDIT mode widens the page to ~1000px so the two-field ingredient row (quantity + unit +
    name + controls) isn't pinched — the extra width goes to the name column. Reading stays 760px.
    (No max-width transition yet — feeling the raw toggle jump before deciding whether to ease it.) */

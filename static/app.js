@@ -351,6 +351,9 @@ async function route() {
   try {
     const mEdit = hash.match(/^#\/edit\/(.+)$/);
     const mRecipe = hash.match(/^#\/recipe\/(.+)$/);
+    // Recipe-page desk (the feed's surface texture) is route-scoped: paint it behind the recipe card
+    // only, and strip it on every other route so it never bleeds onto home / the create/edit forms.
+    document.body.classList.toggle("recipe-bg", !!mRecipe);
     if (hash === "#/new") {
       await renderForm("create");
     } else if (hash === "#/feed") {

@@ -713,6 +713,18 @@ the locked spec — recorded so future work reads them as **decisions, not bugs*
   should *persist* when switching to a preset (today it's cleared, since `customVal` derives from
   `view.scale`) — its own decision, to be taken with the queued "restore prior scale on exit" polish (same
   concern); not decided here.
+- **The recipe page carries the feed's desk texture behind the card.** The single-recipe page now paints
+  the FEED's surface — feed-exact gradient `#B9B191 → #A7A07E` + the feed's `.13` linen `::before`
+  (`feTurbulence`, `mix-blend-mode: multiply`), mirrored verbatim from `.feed-view.page` /
+  `.feed-view.page::before` — **behind** the reading card. It's route-scoped via a `body.recipe-bg` class
+  the router toggles with a single `classList.toggle("recipe-bg", !!mRecipe)` that recomputes on every
+  hash change, so the desk **never bleeds** to home or the create/edit forms (class removed on leave). The
+  reading card (`.page.recipe-view`, the warm-paper "page-as-object") is **UNCHANGED** — background-only;
+  the recipe-page/card redesign (cream board + mat-frame, as explored in preview) remains a **separate
+  parked pass**. Two deliberate body-vs-page adaptations (the feed paints on a sized page element; here the
+  target is the shared `body`): `position: relative` (anchors the absolute `::before`) and
+  `min-height: 100vh` (keeps the desk full-viewport behind a short recipe). Content sits above the desk via
+  `body.recipe-bg > * { z-index: 1 }` (no offsets → no movement).
 
 ## Derived "to make" — the Uncooked box mark (Build 1)
 
