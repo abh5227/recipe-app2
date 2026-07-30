@@ -38,34 +38,26 @@ if str(REPO) not in sys.path:
 
 import paprika_native_reader as reader   # noqa: E402 (path set above) — archive iterate + in-memory decode
 from PIL import Image, ImageOps          # noqa: E402
+from images import resize_image_bytes, LONG_EDGE, JPEG_QUALITY   # noqa: E402 — shared resize core (Stage 1 extract)
 
 DB = REPO / "recipes.db"
 # Define the archive path here rather than using reader.ARCHIVE — the reader derives ARCHIVE from
 # sys.argv[1] at import time, which would wrongly pick up THIS script's flags (e.g. "--dry-run").
 ARCHIVE = REPO / "My Recipes.paprikarecipes"
 IMAGES_DIR = REPO / "static" / "images"
-LONG_EDGE = 1600
-JPEG_QUALITY = 85
 
 
 def process_photo(b64):
-    """Decode a base64 photo, orient it, resize the long edge down to LONG_EDGE (no upscale), and
-    return (jpeg_bytes, (orig_w, orig_h), (new_w, new_h)). Raises on undecodable input (caller logs).
-    Encodes to an in-memory buffer only — writes nothing — so the dry-run gets an accurate size."""
+    """Decode a base64 photo and resize it via the shared core (images.resize_image_bytes), returning
+    (jpeg_bytes, (orig_w, orig_h), (new_w, new_h)). `orig` is the EXIF-oriented source size; `new` is
+    read back from the encoded output. In-memory only — writes nothing — so the dry-run size is
+    accurate. Raises on undecodable input (caller logs). Behavior identical to the pre-extraction inline
+    version; only the resize core's location moved."""
     raw = base64.b64decode(b64 or "")
-    img = Image.open(io.BytesIO(raw))
-    img = ImageOps.exif_transpose(img)          # honor phone-camera orientation
-    if img.mode not in ("RGB", "L"):
-        img = img.convert("RGB")                # JPEG can't hold alpha / CMYK / palette
-    orig = img.size
-    w, h = img.size
-    longest = max(w, h)
-    if longest > LONG_EDGE:                     # shrink only; never upscale a smaller original
-        scale = LONG_EDGE / longest
-        img = img.resize((round(w * scale), round(h * scale)), Image.LANCZOS)
-    buf = io.BytesIO()
-    img.save(buf, format="JPEG", quality=JPEG_QUALITY)
-    return buf.getvalue(), orig, img.size
+    orig = ImageOps.exif_transpose(Image.open(io.BytesIO(raw))).size   # post-EXIF source dims (as before)
+    jpeg = resize_image_bytes(raw)                                     # shared resize core
+    new = Image.open(io.BytesIO(jpeg)).size                            # actual encoded output dims
+    return jpeg, orig, new
 
 
 def main():

@@ -1,2 +1,2 @@
 pytest
-pillow   # scripts/backfill_photos.py only (resize Paprika dish photos); not an app runtime dep
+# pillow moved to requirements.txt (runtime) — now imported by the shared images.py module, not script-only

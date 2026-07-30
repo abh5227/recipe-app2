@@ -725,6 +725,21 @@ the locked spec — recorded so future work reads them as **decisions, not bugs*
   target is the shared `body`): `position: relative` (anchors the absolute `::before`) and
   `min-height: 100vh` (keeps the desk full-viewport behind a short recipe). Content sits above the desk via
   `body.recipe-bg > * { z-index: 1 }` (no offsets → no movement).
+- **Resize core extracted to a shared `images.py` (photo uploader, Stage 1).** The image-resize logic —
+  open → EXIF-orient → convert to a JPEG-safe mode → downscale the long edge to 1600 (never upscale,
+  LANCZOS) → JPEG q85 — was lifted verbatim out of `scripts/backfill_photos.py::process_photo` into a
+  root-level shared "brain" module `images.py::resize_image_bytes(raw_bytes) -> bytes` (the `weights.py` /
+  `split_qty` shared-helper pattern), so the in-app **photo uploader (later stages) reuses the exact same
+  resize** rather than reimplementing it. `process_photo` is now a thin wrapper (b64-decode → shared core →
+  recompute reported dims); `LONG_EDGE`/`JPEG_QUALITY` live in `images.py` as the single source of truth.
+  **Pillow promoted from dev-only to a runtime dependency** (`requirements.txt`, `pillow>=11`, resolving to
+  the same 12.2.0 CI installed before) since it's now imported by an app-shared module. **Scope of proof:**
+  the extraction is verified behavior-preserving by **dimension + contract equivalence** (`tests/test_images.py`
+  — oversized→1600, small→not-upscaled, non-RGB→RGB, EXIF-oriented; plus `process_photo` still returns
+  `(jpeg_bytes, orig, new)` with the same dims for both the resized and not-resized branches) **and by the
+  moved code being verbatim — NOT** by a byte-for-byte golden-output comparison against the pre-extraction
+  bytes (overkill for a transparent refactor; the observable contract is dimension/shape, not byte identity).
+  This module is the seam Stage 2's `save_image()` and the upload endpoint will call.
 
 ## Derived "to make" — the Uncooked box mark (Build 1)
 
