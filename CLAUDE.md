@@ -98,10 +98,20 @@ How this project is run:
 - **Preview-first for visual/UX work.** Before building any visual or UI change for real, build a
   throwaway mock under `preview/` (gitignored) using the real design tokens + bundled fonts, openable
   over `file://` with no app/DB/git changes, and iterate on it until the look is chosen — describing a
-  design in words is not a substitute. After building any preview, ALWAYS open it in the default browser
-  with the macOS `open` command (e.g. `open preview/feed-look.html`) — never just report the path and
-  wait. A built preview that hasn't been opened isn't done. Exception: confirmed tiny CSS tweaks to a
-  treatment already seen.
+  design in words is not a substitute. **Previews MUST use the app's ACTUAL material as closely as
+  possible — the REAL design tokens, REAL bundled fonts, and REAL existing components / markup / assets
+  pulled VERBATIM from the code** (the `styles.css` classes, the real markup, the real SVG/asset for any
+  existing graphic like the paperclip / Polaroid). **NEVER redraw, approximate, or invent a stand-in for
+  an element that already exists in the app.** When an existing designed element (paperclip, Polaroid,
+  card, pill, scaler, icon) appears in a mock, it must be the REAL one, **verbatim**. If a real element
+  can't be cleanly found/lifted, **STOP and report — do not draw a substitute.** An approximated element
+  in a returned mock is a **DEFECT to re-lift, not something to evaluate as-is.** (This rule exists
+  because approximated previews defeated the exercise **twice in a row** — a generic white Polaroid + a
+  bandaid-lozenge for the real paperclip; a redrawn icon — and the whole point is judging what the
+  thing will ACTUALLY look like, not a look-alike.) After building any preview, ALWAYS open it in the
+  default browser with the macOS `open` command (e.g. `open preview/feed-look.html`) — never just report
+  the path and wait. A built preview that hasn't been opened isn't done. Exception: confirmed tiny CSS
+  tweaks to a treatment already seen.
 - **Propose a spec and STOP for approval** before building anything non-trivial; don't
   draft-and-commit in one shot.
 - **Present a full diff and wait for approval** before applying edits.
