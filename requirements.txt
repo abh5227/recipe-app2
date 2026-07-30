@@ -4,3 +4,4 @@ SQLAlchemy>=2.0
 alembic>=1.13            # schema migrations for the Postgres world (Stage 2a+); SQLite still uses migrations/*.sql
 psycopg[binary]>=3.2     # PostgreSQL driver (Stage 2); DSN: postgresql+psycopg://…
 pillow>=11               # runtime: images.py resize core (shared by the backfill script + the photo uploader)
+pillow-heif>=1.0         # runtime: decode HEIC/HEIF (iPhone/Photos default) so images.py re-encodes to JPEG; wraps libheif (bundled in the manylinux wheels — the CI install step to watch)

@@ -763,6 +763,20 @@ the locked spec — recorded so future work reads them as **decisions, not bugs*
   over-exposure). **Test isolation:** the upload writes files, so `make_kitchen` rebinds `images.IMAGES_DIR`
   to a temp dir (the filesystem analog of the `app.DB` redirect) — the real `static/images/` is never touched.
   UI (the two entry-point hooks) is Stage 3, preview-first.
+- **HEIC/HEIF input (Stage 2 follow-up).** The uploader now accepts iPhone/Photos HEIC via `pillow-heif`
+  (`register_heif_opener()` in `images.py`, at **module import** so every decode path — upload + backfill —
+  gains it). `"HEIF"` added to `ALLOWED_INPUT_FORMATS` — that is the format id a decoded HEIC actually
+  reports (confirmed by decoding a real HEIC; there is **no** `"HEIC"` id, and pillow-heif reports `"HEIF"`
+  for the whole family, `.heic` and `.heif` alike). **Output is still JPEG** — HEIC is input-only; the
+  existing resize/EXIF-strip pipeline re-encodes it unchanged, so everything downstream (resize, GPS strip,
+  atomic write, the stored `images/<slug>.jpg` path) is untouched. Added because iPhone/Photos default to
+  HEIC. The patent-encumbered HEVC codec is acceptable for this **local/personal** app — libheif ships
+  bundled in pillow-heif's manylinux wheels (the CI install step to watch); **revisit licensing at
+  commercialization.** Proven by generated-HEIC tests (`format=="HEIF"`, HEIC→JPEG through the core, the
+  endpoint happy path, GPS strip from an HEIC source) **and a committed REAL iPhone HEIC**
+  (`tests/fixtures/IMG_5424.heic` — HEVC-encoded, 3024×4032, real device EXIF) driven through the endpoint
+  in `test_real_iphone_heic_upload_success`, plus a live-DB sanity (real file → 200, 12 MP → 1200×1600
+  JPEG, all EXIF stripped). Real-device HEVC/EXIF quirks are thus confirmed end-to-end in CI, not just synthetic.
 
 ## Derived "to make" — the Uncooked box mark (Build 1)
 

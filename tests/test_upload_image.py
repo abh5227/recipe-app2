@@ -2,6 +2,7 @@
 resizes + strips metadata + stores via the images.save_image seam. Hits the endpoint directly (no browser).
 Disk writes are isolated to the kitchen's temp images dir (harness rebinds images.IMAGES_DIR)."""
 import io
+from pathlib import Path
 
 import pytest
 from PIL import Image
@@ -9,6 +10,8 @@ from PIL import Image
 import app
 import images
 import harness
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def _user_client(email):
@@ -149,6 +152,61 @@ def test_decompression_bomb_400(kitchen, monkeypatch):
     r = _post(a, rid, _img_bytes(size=(100, 100)))
     assert r.status_code == 400
     assert not (images.IMAGES_DIR / f"{rid}.jpg").exists()
+
+
+# ---- HEIC/HEIF input (iPhone/Photos) ------------------------------------------------------------
+
+def _heic_bytes(size=(1600, 1200), gps=False):
+    im = Image.new("RGB", size, "red")
+    buf = io.BytesIO()
+    if gps:
+        ex = im.getexif(); ex[34853] = {2: (1, 2, 3)}   # 34853 = GPSInfo IFD
+        im.save(buf, format="HEIF", exif=ex)
+    else:
+        im.save(buf, format="HEIF")
+    return buf.getvalue()
+
+
+def test_owner_heic_upload_success_stored_as_jpeg(kitchen):
+    # iPhone/Photos HEIC now accepted (allowlist includes HEIF); the SAME pipeline stores a JPEG under
+    # the server slug — HEIC is input-only, output stays JPEG.
+    a = kitchen.client
+    rid = _own_recipe(a)
+    r = _post(a, rid, _heic_bytes(), filename="IMG_1234.heic")
+    assert r.status_code == 200
+    assert r.get_json() == {"image": f"images/{rid}.jpg"}
+    assert _db_image(kitchen, rid) == f"images/{rid}.jpg"
+    saved = images.IMAGES_DIR / f"{rid}.jpg"
+    assert saved.exists()
+    assert Image.open(saved).format == "JPEG"           # decoded HEIC re-encoded to JPEG on disk
+
+
+def test_heic_exif_gps_stripped(kitchen):
+    # HEIC carries GPS too — the existing strip must still yield a metadata-free JPEG from HEIC input.
+    a = kitchen.client
+    rid = _own_recipe(a)
+    src = _heic_bytes(gps=True)
+    assert 34853 in Image.open(io.BytesIO(src)).getexif()   # precondition: the source really has GPS
+    assert _post(a, rid, src, filename="IMG_1234.heic").status_code == 200
+    exif = Image.open(images.IMAGES_DIR / f"{rid}.jpg").getexif()
+    assert 34853 not in exif and len(dict(exif)) == 0
+
+
+def test_real_iphone_heic_upload_success(kitchen):
+    # Regression against a REAL iPhone HEIC (HEVC-encoded, 3024x4032, real device EXIF) — the synthetic
+    # HEIF fixtures prove the decode/re-encode plumbing; this proves real-device quirks flow through the
+    # same pipeline to a downscaled, metadata-free JPEG.
+    fixture = FIXTURES / "IMG_5424.heic"
+    assert fixture.exists(), "committed real-HEIC fixture missing"
+    a = kitchen.client
+    rid = _own_recipe(a)
+    r = _post(a, rid, fixture.read_bytes(), filename="IMG_5424.heic")
+    assert r.status_code == 200
+    saved = images.IMAGES_DIR / f"{rid}.jpg"
+    assert saved.exists()
+    out = Image.open(saved)
+    assert out.format == "JPEG" and max(out.size) == 1600     # 12 MP downscaled to long-edge 1600
+    assert len(dict(out.getexif())) == 0                       # all real EXIF stripped
 
 
 # ---- S7 wire-size cap ---------------------------------------------------------------------------

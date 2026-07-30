@@ -66,6 +66,28 @@ def test_backfill_process_photo_behavior_preserved_oversized():
     assert new == (1600, 800)                   # same result the inline logic produced
 
 
+def _heic_bytes(size=(2000, 1200)):
+    """A small in-memory HEIC (HEIF container). images.py registers pillow-heif's opener at import, so
+    Pillow can both save and open HEIF here — the same registration the app relies on at request time."""
+    buf = io.BytesIO()
+    Image.new("RGB", size, "red").save(buf, format="HEIF")
+    return buf.getvalue()
+
+
+def test_heic_decodes_and_reports_heif_format():
+    # Pins the allowlisted string: a decoded HEIC reports format "HEIF" (not "HEIC") — exactly what
+    # images.ALLOWED_INPUT_FORMATS must contain for the uploader to accept iPhone photos.
+    assert _open(_heic_bytes()).format == "HEIF"
+    assert "HEIF" in images.ALLOWED_INPUT_FORMATS
+
+
+def test_heic_flows_through_pipeline_to_jpeg():
+    # HEIC goes through the SAME resize core and comes out downscaled JPEG — no HEIC-specific path.
+    im = _open(images.resize_image_bytes(_heic_bytes((2000, 1000))))
+    assert im.format == "JPEG"
+    assert max(im.size) == 1600 and im.size == (1600, 800)
+
+
 def test_backfill_process_photo_behavior_preserved_small_not_upscaled():
     # the not-resized branch: `new` read back from the encoded JPEG must equal the source dims, matching
     # the old inline `new = img.size` for a small image (guards the recompute-from-bytes change).

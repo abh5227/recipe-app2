@@ -12,6 +12,11 @@ from pathlib import Path
 
 from PIL import Image, ImageOps
 
+import pillow_heif
+pillow_heif.register_heif_opener()   # HEIC/HEIF (iPhone/Photos default) — register the opener ONCE here in
+                                     # the shared image brain so EVERY decode path (upload + backfill) gains
+                                     # it; once decodable, the existing pipeline re-encodes HEIC to JPEG.
+
 BASE_DIR = Path(__file__).resolve().parent
 IMAGES_DIR = BASE_DIR / "static" / "images"   # where hero photos live + are served from; a REDIRECTABLE
                                               # module global (tests rebind it, like app.DB) so uploads
@@ -22,8 +27,10 @@ IMAGES_DIR = BASE_DIR / "static" / "images"   # where hero photos live + are ser
 Image.MAX_IMAGE_PIXELS = 40_000_000
 
 # Accepted INPUT formats, decided by what Pillow DECODES the bytes as — never the client Content-Type
-# or filename (S3). Output is always a re-encoded JPEG, so this gates input only.
-ALLOWED_INPUT_FORMATS = frozenset({"JPEG", "PNG", "WEBP"})
+# or filename (S3). Output is always a re-encoded JPEG, so this gates input only. "HEIF" is what Pillow
+# reports for the whole HEIF family (.heic AND .heif) once pillow-heif's opener is registered above —
+# confirmed by decoding a real HEIC (img.format == "HEIF"; there is no "HEIC" format id).
+ALLOWED_INPUT_FORMATS = frozenset({"JPEG", "PNG", "WEBP", "HEIF"})
 
 LONG_EDGE = 1600       # downscale the long edge to this; never upscale a smaller original
 JPEG_QUALITY = 85
