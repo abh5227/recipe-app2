@@ -34,6 +34,7 @@ from models import (
     Rating, CookLog, User, Friendship, SharedPost, Comment, RecipeQueue, ingredient_weights,
 )
 from auth import auth_bp   # JSON auth endpoints (auth-2); auth.py imports models only, so no import cycle
+import images              # shared image brain: resize + the save_image storage seam (Stage 1/2)
 
 # Anchor everything to this file's folder so the app runs from any directory.
 BASE_DIR = Path(__file__).resolve().parent
@@ -45,6 +46,7 @@ app = Flask(__name__, static_folder=str(BASE_DIR / "dist" / "assets"), static_ur
 # gets a new name (the cache-bust is the hash). The shell (home()) stays no-cache, so it always
 # re-emits the current hashed names. (This replaces the old ?v=<mtime> query-string scheme.)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 31_536_000   # 1 year
+app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024    # S7: 10 MB wire cap -> 413 before decode (upload guard)
 DB = BASE_DIR / "recipes.db"
 
 # --- authentication (auth-2): Flask-Login + a server-side session cookie -------------------------
@@ -527,6 +529,31 @@ def delete_recipe(rid):
         s.execute(delete(Recipe.__table__).where(Recipe.__table__.c.id == rid))
         s.commit()
     return jsonify({"deleted": rid})
+
+
+@app.route("/api/recipes/<rid>/image", methods=["POST"])
+def upload_recipe_image(rid):
+    """Upload a dish photo for a recipe you OWN (multipart, field 'image'). Owner-checked (mirrors the
+    shares owner-gate); resizes + strips metadata + stores via images.save_image (the swappable
+    local-disk seam); updates recipes.image through the same ORM path as update_recipe. Returns ONLY the
+    new path (least-exposure — no owner/uid/hash). First endpoint that writes user bytes to disk; the
+    S1–S7 hardening lives in images.py. Login-gated by before_request (NOT in PUBLIC_ENDPOINTS)."""
+    with orm_session() as s:
+        rec = s.get(Recipe, str(rid))
+        if rec is None:
+            return jsonify({"error": "recipe not found"}), 404
+        if rec.owner != current_user.id:                     # default-deny: only the owner may write (SECURITY.md)
+            return jsonify({"error": "not your recipe"}), 403
+        f = request.files.get("image")                       # owner-checked BEFORE any file work
+        if f is None:
+            return jsonify({"error": "no image file provided"}), 400
+        try:
+            path = images.save_image(f.read(), slug=rec.id)  # validate + resize + strip + atomic write (S1–S6)
+        except images.ImageValidationError as e:
+            return jsonify({"error": str(e)}), 400           # bad/blocked/bomb input -> 400, nothing written
+        s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rec.id).values(image=path))
+        s.commit()                                           # DB updated ONLY after the file is on disk (S6)
+    return jsonify({"image": path})
 
 
 def _unique_copy_id(s, base_name):

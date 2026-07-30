@@ -740,6 +740,29 @@ the locked spec — recorded so future work reads them as **decisions, not bugs*
   moved code being verbatim — NOT** by a byte-for-byte golden-output comparison against the pre-extraction
   bytes (overkill for a transparent refactor; the observable contract is dimension/shape, not byte identity).
   This module is the seam Stage 2's `save_image()` and the upload endpoint will call.
+- **Photo upload — the `save_image()` seam + owner-checked endpoint (Stage 2).** `POST /api/recipes/<id>/image`
+  (multipart, field `image`) resizes + stores a dish photo and updates `recipes.image`. Storage lives behind
+  a single seam, `images.save_image(bytes, *, slug) -> "images/<slug>.jpg"` — the **only** disk-writing
+  boundary, so a later swap to object storage is one contained change (callers see only the returned path;
+  the app.py handler does no direct file I/O). **Authorization:** owner-checked (`rec.owner != current_user.id`
+  → 403), mirroring the shares gate — deliberately **stronger** than the sibling `PUT`/`DELETE`, which still
+  gate on source-tier only (`EDITABLE_SOURCES`) with **no owner check** — a **pre-existing authorization gap,
+  recorded here as a follow-up, not fixed in this stage.** Endpoint is login-gated by `before_request` (NOT in
+  `PUBLIC_ENDPOINTS`); the response carries **only** the new path (least-exposure). **Input hardening** (first
+  endpoint to write user bytes to disk): S1 filename is **entirely server-derived** (`<rec.id>.jpg`; the client
+  filename is never read) with an `is_relative_to(IMAGES_DIR)` containment check — *the stored name derives
+  from `rec.id`, and that containment guard is what keeps the scheme safe even if recipe-id formats ever change
+  to include path characters (live defense, not dead belt-and-suspenders)*; S2 `Image.MAX_IMAGE_PIXELS` cap
+  (40 MP) + decompression-bomb error/warning caught → 400; S3 format allowlist `{JPEG,PNG,WEBP}` by Pillow
+  **decode** (never Content-Type/filename); S4 EXIF/GPS **stripped** by the re-encode (orientation applied
+  first, then dropped — output is served from a public route); S6 **atomic** temp-write + `os.replace`, DB
+  updated only after the file lands; S7 `MAX_CONTENT_LENGTH` 10 MB → 413 before decode. **S5 — recorded, not
+  fixed:** `/images/<file>` is a **PUBLIC** route, so uploaded photos are world-readable by a guessable URL
+  with no owner-check on READ — acceptable for the current local/single-user app, a **multi-user follow-up**
+  (a private recipe's photo must not be publicly fetchable — same shape as the `get_recipe` raw-owner
+  over-exposure). **Test isolation:** the upload writes files, so `make_kitchen` rebinds `images.IMAGES_DIR`
+  to a temp dir (the filesystem analog of the `app.DB` redirect) — the real `static/images/` is never touched.
+  UI (the two entry-point hooks) is Stage 3, preview-first.
 
 ## Derived "to make" — the Uncooked box mark (Build 1)
 

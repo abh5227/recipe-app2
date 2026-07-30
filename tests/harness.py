@@ -106,6 +106,8 @@ def make_kitchen(tmp_path, login=True):
     migrate.MIGRATIONS_DIR = REPO / "migrations"
     build_db.DB = db
     app.DB = db
+    import images
+    images.IMAGES_DIR = Path(tmp_path) / "images"   # isolate upload disk-writes to the temp dir (never the real static/images/)
 
     # Seed the test DB from the test-owned fixtures, NOT production seed.py's RECIPES: override the
     # module global that build_db.build() (validate + seed_content) reads — the same rebinding pattern
