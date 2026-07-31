@@ -841,6 +841,10 @@ is false for everyone else. They light up once rescoping wires login→ownership
 - **`#/to-make` page + "haven't made" filter** — Build 2, next.
 - **`get_recipe` raw-owner over-exposure** — the single-recipe payload returns the raw `owner` id
   (unlike the list, which pops it to `is_mine`); a SECURITY.md least-exposure follow-up.
+- **Access-control / multi-user rescoping map** — the current single-user access model, the two deferred
+  gaps (recipe-write ownership; public `/images`), and the coherent multi-user rescoping project are
+  mapped in [`SECURITY.md`](SECURITY.md) ("Access-control model" section) — the blueprint for the eventual
+  auth/visibility pass.
 - **Free-text "To Make"/"status" tag re-entry footgun** — the vestigial `TAG_CATEGORY` "status"
   entries (app.js ~616) are left INERT (0 recipes carry the tag in data); cleaned up later.
 - **Queue plumbing + `is_queued`** — left DORMANT: `recipe_queue`, `/api/queue`, `RecipeQueue`,
