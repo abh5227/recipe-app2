@@ -31,7 +31,7 @@ from import_cleanup import split_qty   # shared qty->quantity+unit split (backfi
 # (see docs/migration-plan.md).
 from models import (
     Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
-    Rating, CookLog, User, Friendship, SharedPost, Comment, RecipeQueue, ingredient_weights,
+    Rating, CookLog, CookPhoto, User, Friendship, SharedPost, Comment, RecipeQueue, ingredient_weights,
 )
 from auth import auth_bp   # JSON auth endpoints (auth-2); auth.py imports models only, so no import cycle
 import images              # shared image brain: resize + the save_image storage seam (Stage 1/2)
@@ -725,12 +725,13 @@ def log_cook(rid):
             return jsonify({"error": "recipe not found"}), 404
         cl = CookLog.__table__
         if cooked_on:
-            s.execute(insert(cl).values(recipe_id=rid, user_id=current_user.id, cooked_on=cooked_on))
+            res = s.execute(insert(cl).values(recipe_id=rid, user_id=current_user.id, cooked_on=cooked_on))
         else:
-            s.execute(insert(cl).values(recipe_id=rid, user_id=current_user.id))   # cooked_on omitted -> DB default date('now')
+            res = s.execute(insert(cl).values(recipe_id=rid, user_id=current_user.id))   # cooked_on omitted -> DB default date('now')
+        cook_log_id = res.inserted_primary_key[0]   # returned so the client can attach a photo to THIS cook (2b)
         stats = recipe_stats(s, rid, current_user.id)
         s.commit()
-    return jsonify(stats)
+    return jsonify({**stats, "cook_log_id": cook_log_id})
 
 
 @app.route("/api/recipes/<rid>/uncook", methods=["POST"])
@@ -834,11 +835,125 @@ def log_cook_and_rate(rid):
     with orm_session() as s:
         if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
-        s.execute(insert(CookLog.__table__).values(recipe_id=rid, user_id=current_user.id))   # today's cook, source default 'app'
+        res = s.execute(insert(CookLog.__table__).values(recipe_id=rid, user_id=current_user.id))   # today's cook, source default 'app'
+        cook_log_id = res.inserted_primary_key[0]   # returned for at-log-time photo attach (2b), like log_cook
         upsert_rating(s, rid, current_user.id, rating)
         stats = recipe_stats(s, rid, current_user.id)
         s.commit()
-    return jsonify(stats)
+    return jsonify({**stats, "cook_log_id": cook_log_id})
+
+
+# ---- cook-photo album (Stage 4 build 2b) --------------------------------------------------------
+# CRUD for cook photos over the cook_photos table (schema: migration 025/026). Reuses the 2a image seams
+# (images.save_cook_photo for the file, images.delete_image for removal), the CookPhoto model, and the
+# hero endpoint's owner-check pattern. Login-gated by default (NOT in PUBLIC_ENDPOINTS). NO promote-to-hero
+# and NO POINT/linked-hero deletion logic here — that's 2c (so in 2b no cook photo can be a hero yet,
+# which is why the DELETE below needs no hero-clear).
+
+COOK_PHOTO_CAPTION_MAX = 100   # album captions are short; mirrors create_share's CAPTION_MAX rule (400 on over-length)
+
+
+def clean_caption(raw):
+    """Normalize + validate an optional cook-photo caption. Returns (caption_or_None, error): blanks strip
+    to None (clears it), non-strings and over-length are rejected — the create_share CAPTION_MAX idiom, so
+    attach and caption-edit enforce the cap identically."""
+    if raw is None:
+        return None, None
+    if not isinstance(raw, str):
+        return None, "caption must be text"
+    caption = raw.strip() or None
+    if caption is not None and len(caption) > COOK_PHOTO_CAPTION_MAX:
+        return None, f"caption must be {COOK_PHOTO_CAPTION_MAX} characters or fewer"
+    return caption, None
+
+
+@app.route("/api/recipes/<rid>/photos", methods=["POST"])
+def add_cook_photo(rid):
+    """Attach a photo to the recipe's album (multipart, field 'image'). OPTIONAL form field 'cook_log_id':
+    attach to that cook, or omit for a STANDALONE album photo (cook_log_id NULL, made possible by 2a).
+    Owner-split gating: attaching to a cook checks the COOK is yours AND belongs to this recipe (undo_cook's
+    cook-owner scoping) — you can photograph your own cook of anyone's recipe; a STANDALONE album photo has
+    no cook, so it checks the RECIPE is yours (rec.owner, the hero owner-check). Gating runs BEFORE any file
+    work (mirrors the hero endpoint). Reuses save_cook_photo (2a: shared validation/resize/uuid write).
+    Returns the created photo (least-exposure)."""
+    raw_cook_id = request.form.get("cook_log_id")
+    caption, cap_err = clean_caption(request.form.get("caption"))
+    if cap_err:
+        return jsonify({"error": cap_err}), 400
+    with orm_session() as s:
+        rec = s.get(Recipe, str(rid))
+        if rec is None:
+            return jsonify({"error": "recipe not found"}), 404
+        cook_log_id = None
+        cooked_on = None
+        if raw_cook_id not in (None, ""):
+            try:
+                cook_log_id = int(raw_cook_id)
+            except (ValueError, TypeError):
+                return jsonify({"error": "cook_log_id must be an integer"}), 400
+            cook = s.get(CookLog, cook_log_id)
+            if cook is None or cook.recipe_id != rec.id:      # not this recipe's cook (or absent) -> 404
+                return jsonify({"error": "cook not found for this recipe"}), 404
+            if cook.user_id != current_user.id:               # your cook only (cook-owner gate)
+                return jsonify({"error": "not your cook"}), 403
+            cooked_on = cook.cooked_on
+        elif rec.owner != current_user.id:                    # standalone album photo -> recipe-owner gate
+            return jsonify({"error": "not your recipe"}), 403
+        f = request.files.get("image")                        # checks passed BEFORE any file work
+        if f is None:
+            return jsonify({"error": "no image file provided"}), 400
+        try:
+            path = images.save_cook_photo(f.read())           # 2a seam: validate + resize + strip + atomic write
+        except images.ImageValidationError as e:
+            return jsonify({"error": str(e)}), 400            # bad/blocked/bomb input -> 400, nothing inserted
+        res = s.execute(insert(CookPhoto.__table__).values(
+            cook_log_id=cook_log_id, recipe_id=rec.id, user_id=current_user.id,
+            path=path, caption=caption, added_at=now_utc(),
+        ))
+        photo_id = res.inserted_primary_key[0]
+        s.commit()
+    return jsonify({
+        "id": photo_id, "path": path, "caption": caption,
+        "cook_log_id": cook_log_id, "cooked_on": cooked_on,   # the cook's date if cook-linked, else None
+    }), 201
+
+
+@app.route("/api/photos/<int:photo_id>", methods=["PATCH"])
+def edit_cook_photo(photo_id):
+    """Edit a cook photo's caption (JSON {caption}). Photo-owner gated (cook_photo.user_id == current_user).
+    Caption optional + capped (clean_caption); a blank/absent caption CLEARS it. Returns the updated caption."""
+    payload = request.get_json(silent=True) or {}
+    caption, cap_err = clean_caption(payload.get("caption"))
+    if cap_err:
+        return jsonify({"error": cap_err}), 400
+    with orm_session() as s:
+        photo = s.get(CookPhoto, photo_id)
+        if photo is None:
+            return jsonify({"error": "photo not found"}), 404
+        if photo.user_id != current_user.id:
+            return jsonify({"error": "not your photo"}), 403
+        s.execute(update(CookPhoto.__table__).where(CookPhoto.__table__.c.id == photo_id).values(caption=caption))
+        s.commit()
+    return jsonify({"id": photo_id, "caption": caption})
+
+
+@app.route("/api/photos/<int:photo_id>", methods=["DELETE"])
+def delete_cook_photo(photo_id):
+    """Delete a cook photo — photo-owner gated (cook_photo.user_id == current_user). Removes the ROW then the
+    FILE (delete_image, 2a — idempotent, so a missing file is a no-op). 2b scope: NO hero-clear — 2c owns all
+    POINT/linked-hero logic on both deletion paths, and until 2c's promote exists no cook photo can be the
+    hero, so a 2b delete cannot orphan one."""
+    with orm_session() as s:
+        photo = s.get(CookPhoto, photo_id)
+        if photo is None:
+            return jsonify({"error": "photo not found"}), 404
+        if photo.user_id != current_user.id:
+            return jsonify({"error": "not your photo"}), 403
+        path = photo.path
+        s.delete(photo)
+        s.commit()                                            # row authoritatively gone before the file unlink
+    images.delete_image(path)                                 # 2a seam: unlink the file (missing = clean no-op)
+    return jsonify({"ok": True})
 
 
 # ---- want-to-make queue (stage 2) ---------------------------------------------------------------

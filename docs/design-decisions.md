@@ -950,6 +950,39 @@ POINT/linked-hero deletion logic)**. Build 2a lays the foundation, **no endpoint
 `recipes.image` on both the explicit-delete and the CASCADE paths (via `delete_image`), plus the
 optional hero-orphan fix.
 
+### Build 2b — the attach / caption / delete endpoints (shipped)
+
+The cook-photo CRUD over `cook_photos`, reusing the 2a seams (`save_cook_photo` for the file,
+`delete_image` for removal), the `CookPhoto` model, and the hero endpoint's owner-check idiom. **No
+promote-to-hero and no `recipes.image` write anywhere** — that's 2c.
+
+- **`POST /api/recipes/<rid>/photos`** (multipart `image`, optional form `cook_log_id` + `caption`) —
+  **one endpoint, optional cook**: a `cook_log_id` attaches the photo to that cook; omitting it makes a
+  **standalone album photo** (`cook_log_id` NULL, the reason 2a made the column nullable). Returns **201
+  Created** with the created photo `{id, path, caption, cook_log_id, cooked_on}` (the cook's date is
+  echoed only for a cook-linked photo). 201 is the deliberate choice (a new resource — consistent with
+  create/copy/queue/comment), distinct from the hero endpoint's 200 (which *updates* a recipe field).
+- **`PATCH /api/photos/<id>`** (JSON `{caption}`) — edit the caption; a blank/absent caption **clears**
+  it. Returns the updated caption. (First PATCH route in the app.)
+- **`DELETE /api/photos/<id>`** — remove the row then the file (`delete_image`, idempotent). **2b scope:
+  no hero-clear** — since promote is 2c, no cook photo can be the hero yet, so a 2b delete cannot orphan
+  one; 2c adds the hero-clear when it adds promote.
+- **Owner-split gating** (the deliberate asymmetry): **attach-to-a-cook** gates on the **cook** owner
+  (`cook_log.user_id == current_user`, and the cook must belong to this recipe) — so you can photograph
+  **your own cook of anyone's recipe**; **attach-standalone** gates on the **recipe** owner
+  (`rec.owner == current_user`) — a standalone photo attaches to the recipe itself, so it's the recipe
+  owner's call; **caption/delete** gate on the **photo** owner (`cook_photo.user_id`). Missing → 404,
+  not-yours → 403 (the hero 404-then-403 pattern).
+- **Caption cap** — `COOK_PHOTO_CAPTION_MAX = 100`, **400 on over-length** (not silent truncation),
+  factored into `clean_caption`, mirroring `create_share`'s `CAPTION_MAX` idiom so attach and
+  caption-edit enforce it identically.
+- **`log_cook` + `cooked-and-rated` now return the new `cook_log_id`** (additive, alongside the existing
+  stats) — the at-log-time attach hook, so the client can attach a photo to the cook it just logged.
+  Logging and photo-attach stay **separate actions**.
+
+**Still to come:** **2c** — promote-to-hero + the POINT/linked-hero deletion logic (both paths) as above.
+**Build 3** — the album UI (preview-first).
+
 ## Open questions
 
 - **Masthead title face** — Spectral vs Newsreader vs Fraunces, decided by eye after Stage B renders
