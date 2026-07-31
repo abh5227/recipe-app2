@@ -108,3 +108,29 @@ def test_cook_photo_dangling_cook_log_fk_rejected(kitchen):
     rid = _own_recipe(a, "Bad FK Dish")
     with pytest.raises(IntegrityError):
         _add_photo(999999, rid, uid, "images/cooks/x.jpg")   # no such cook_log row
+
+
+# ---- build 2a: cook_log_id nullable (a standalone album photo — no cook / no date) ----------------
+
+def test_cook_photo_standalone_null_cook_log_allowed(kitchen):
+    # migration 026 made cook_log_id nullable: a photo can stand alone in the album with no cook.
+    a = kitchen.client
+    uid = harness.ensure_test_user()
+    rid = _own_recipe(a, "Standalone Album Dish")
+
+    standalone = _add_photo(None, rid, uid, "images/cooks/solo.jpg")   # cook_log_id = NULL
+    with app.orm_session() as s:
+        p = s.get(CookPhoto, standalone)
+    assert p.cook_log_id is None                                       # nullable round-trips as NULL
+    assert (p.recipe_id, p.user_id, p.path) == (rid, uid, "images/cooks/solo.jpg")
+
+
+def test_cook_photo_with_cook_still_works(kitchen):
+    # the attached path is unchanged — cook_log_id still accepts a real cook and the FK still holds.
+    a = kitchen.client
+    uid = harness.ensure_test_user()
+    rid = _own_recipe(a, "Attached Album Dish")
+    clid = _log_cook(a, rid)
+    attached = _add_photo(clid, rid, uid, "images/cooks/attached.jpg")
+    with app.orm_session() as s:
+        assert s.get(CookPhoto, attached).cook_log_id == clid

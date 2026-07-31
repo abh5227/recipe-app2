@@ -319,7 +319,7 @@ class CookPhoto(Base):
     Queried with explicit select() — no relationship() (house style)."""
     __tablename__ = "cook_photos"
     id = Column(Integer, primary_key=True)
-    cook_log_id = Column(Integer, ForeignKey("cook_log.id", ondelete="CASCADE"), nullable=False)  # the cook
+    cook_log_id = Column(Integer, ForeignKey("cook_log.id", ondelete="CASCADE"))  # nullable: standalone album photo (2a)
     recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)        # denormalized
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)             # who added it (no cascade)
     path = Column(Text, nullable=False)                                           # stored image path (build 2)

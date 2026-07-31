@@ -915,6 +915,41 @@ cascade) was the current hero, `recipes.image` must be cleared, or it dangles. (
 `cook_log` row → cascades its photos → one of them might be the hero.) This is the direct consequence of
 choosing POINT over COPY, flagged now so Build 2 doesn't ship a delete path that only covers case (a).
 
+### Build 2a — the image-layer seams + `cook_log_id` nullable (shipped)
+
+Build 2 is staged **2a (image-layer seams + schema) → 2b (attach/caption endpoints) → 2c (promote +
+POINT/linked-hero deletion logic)**. Build 2a lays the foundation, **no endpoints/UI** (`app.py` and
+`static/` untouched):
+
+- **`images.save_cook_photo(file_bytes)` → `"images/cooks/<uuid>.jpg"`** — a sibling of `save_image`
+  that **shares its internals byte-for-byte** (`_validate` + `resize_image_bytes` + `_atomic_write`), so
+  validation (format allowlist, decompression-bomb guard), resize (long-edge 1600, EXIF/GPS strip,
+  JPEG q85), and the atomic write are identical to the hero. The **only** differences: the name is a
+  **server-minted `uuid4` hex** (never a client value or the recipe slug) and it lands in an
+  **`images/cooks/` subdir** — so several photos per cook never collide and never overwrite the hero
+  `images/<slug>.jpg`. `_atomic_write` mkdirs `cooks/` for free. No DB interaction (2b writes the row).
+  *(uuid chosen over `<row-id>` to avoid the insert-then-rename ordering dance — the name needs no DB
+  round-trip.)*
+- **`images.delete_image(path)` — the FIRST file-deletion seam.** Takes a stored relative path
+  (`images/…`), resolves it under `IMAGES_DIR`, **containment-checks** it is inside (refuses otherwise —
+  never unlinks outside the images dir, mirroring `save_image`'s `is_relative_to` discipline), and
+  `unlink(missing_ok=True)` so a missing/already-deleted file is a **clean idempotent no-op**. Returns
+  `True` iff a file was removed. This is the seam **2c** uses for both cook-photo deletion **and** the
+  hero-orphan cleanup (the CASCADE-clears-the-hero requirement above). Swap its body for object-storage
+  deletion later, alongside `save_image`/`save_cook_photo`.
+- **`cook_photos.cook_log_id` is now NULLABLE** (migration 026 + Alembic `a7b8c9d0e1f2`) — a photo may
+  be **attached to a cook** *or* **stand alone in the album** (no cook, no date). It shipped `NOT NULL`
+  in 025, so 026 makes it nullable: SQLite can't drop `NOT NULL` in place, so it **rebuilds the table**
+  (the `019_ratings_composite_pk` / `005` pattern: new table → `INSERT…SELECT` → drop → rename →
+  recreate the two indexes; empty today, nothing FKs into it, safe with FKs on), while the Alembic half
+  does a trivial in-place `ALTER COLUMN … DROP NOT NULL` for Postgres. **Never edited the shipped 025 —
+  additive follow-up migration**, per the repo convention.
+
+**Still to come:** **2b** adds the attach (log-time + later) + caption endpoints (cook-owner gated);
+**2c** adds promote-to-hero (recipe-owner gated) + the POINT/linked-hero **deletion** logic that clears
+`recipes.image` on both the explicit-delete and the CASCADE paths (via `delete_image`), plus the
+optional hero-orphan fix.
+
 ## Open questions
 
 - **Masthead title face** — Spectral vs Newsreader vs Fraunces, decided by eye after Stage B renders

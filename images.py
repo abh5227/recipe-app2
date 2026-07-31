@@ -7,6 +7,7 @@ bytes in, resized JPEG bytes out; no file I/O, no base64, no printing.
 import io
 import os
 import tempfile
+import uuid
 import warnings
 from pathlib import Path
 
@@ -109,3 +110,46 @@ def save_image(file_bytes, *, slug):
         raise ImageValidationError("resolved path escapes the images directory")
     _atomic_write(dest, jpeg)                                          # S6: atomic; DB write happens only after
     return f"images/{name}"
+
+
+COOKS_SUBDIR = "cooks"   # album photos live under IMAGES_DIR/cooks/, distinct from the flat hero <slug>.jpg
+
+
+def save_cook_photo(file_bytes):
+    """Storage SEAM for a cook-album photo — a sibling of save_image (Stage 4 build 2a). Validate -> resize
+    (re-encode, which strips EXIF/GPS) -> atomically write a metadata-free JPEG under IMAGES_DIR/cooks/<uuid>.jpg
+    -> return the DB path 'images/cooks/<uuid>.jpg'. Shares save_image's internals byte-for-byte (_validate +
+    resize_image_bytes + _atomic_write) — the ONLY differences from the hero are the NAME (a server-minted
+    uuid, never a client value or the recipe slug) and the cooks/ SUBDIR, so several photos per cook never
+    collide and never overwrite the hero. No DB interaction (build 2b's endpoint records the row + path).
+    Raises ImageValidationError on bad input (endpoint -> 400)."""
+    _validate(file_bytes)                                              # S2/S3: identical validation to save_image
+    jpeg = resize_image_bytes(file_bytes)                              # orient-then-strip; fresh pixels (S4)
+    name = f"{COOKS_SUBDIR}/{uuid.uuid4().hex}.jpg"                    # S1: name is a SERVER-minted uuid, no input
+    dest = IMAGES_DIR / name
+    if not dest.resolve().is_relative_to(IMAGES_DIR.resolve()):        # S1: containment, defense-in-depth
+        raise ImageValidationError("resolved path escapes the images directory")
+    _atomic_write(dest, jpeg)                                          # S6: atomic; also mkdirs IMAGES_DIR/cooks
+    return f"images/{name}"
+
+
+def delete_image(path):
+    """The file-DELETION seam — the FIRST place the app unlinks a stored image (Stage 4 build 2a; build 2c
+    uses it for cook-photo deletion AND the hero-orphan cleanup). Mirrors save_image's containment discipline:
+    take a stored relative path ('images/<...>'), resolve it under IMAGES_DIR, CONTAINMENT-CHECK it is inside
+    IMAGES_DIR (refuse otherwise — NEVER unlink outside the images dir), and unlink(missing_ok=True) so a
+    missing / already-deleted file is a clean no-op (idempotent). Returns True if a file was removed, False if
+    it was absent or the path was refused. Swap this body for object-storage deletion later, alongside
+    save_image / save_cook_photo. No DB interaction."""
+    rel = str(path or "")
+    if rel.startswith("images/"):
+        rel = rel[len("images/"):]                                    # stored paths are 'images/<...>'; strip the prefix
+    dest = IMAGES_DIR / rel
+    if not dest.resolve().is_relative_to(IMAGES_DIR.resolve()):       # containment: never escape the images dir
+        return False
+    try:
+        existed = dest.is_file()
+        dest.unlink(missing_ok=True)                                  # idempotent: a missing file is a no-op
+    except OSError:
+        return False
+    return existed

@@ -11,6 +11,7 @@ import sys
 import base64
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 import images   # root shared module (Stage 1)
@@ -94,3 +95,63 @@ def test_backfill_process_photo_behavior_preserved_small_not_upscaled():
     jpeg, orig, new = _process_photo()(base64.b64encode(_img_bytes((800, 600))).decode())
     assert orig == (800, 600)
     assert new == (800, 600)                    # new == orig — no upscale, dims survive the round-trip
+
+
+# ---- Stage 4 build 2a: save_cook_photo + delete_image seams (isolated to a temp IMAGES_DIR) --------
+
+def test_save_cook_photo_returns_cooks_uuid_path_and_writes_jpeg(tmp_path, monkeypatch):
+    monkeypatch.setattr(images, "IMAGES_DIR", tmp_path)               # isolate disk writes to the temp dir
+    path = images.save_cook_photo(_img_bytes((2000, 1000)))
+    assert path.startswith("images/cooks/") and path.endswith(".jpg")  # cooks/<uuid>.jpg, not the hero <slug>.jpg
+    on_disk = tmp_path / path[len("images/"):]                        # 'images/cooks/<uuid>.jpg' -> IMAGES_DIR/cooks/<uuid>.jpg
+    assert on_disk.exists()
+    im = _open(on_disk.read_bytes())
+    assert im.format == "JPEG"                                        # re-encoded to JPEG
+    assert max(im.size) == 1600                                       # shares resize_image_bytes (downscaled)
+
+
+def test_save_cook_photo_strips_exif(tmp_path, monkeypatch):
+    monkeypatch.setattr(images, "IMAGES_DIR", tmp_path)
+    src = _img_bytes((100, 100), exif_orientation=6)                  # source carries EXIF orientation
+    path = images.save_cook_photo(src)
+    saved = Image.open(tmp_path / path[len("images/"):])
+    assert len(dict(saved.getexif())) == 0                            # re-encode strips all metadata (S4)
+
+
+def test_save_cook_photo_rejects_non_image_like_save_image(tmp_path, monkeypatch):
+    monkeypatch.setattr(images, "IMAGES_DIR", tmp_path)
+    # shares _validate with save_image: undecodable bytes raise the SAME error BEFORE any write (validation
+    # precedes resize/atomic-write), so the cooks subdir is never even created.
+    with pytest.raises(images.ImageValidationError):
+        images.save_cook_photo(b"not an image at all")
+    assert not (tmp_path / "cooks").exists()
+
+
+def test_save_cook_photo_names_are_unique_across_calls(tmp_path, monkeypatch):
+    monkeypatch.setattr(images, "IMAGES_DIR", tmp_path)
+    paths = {images.save_cook_photo(_img_bytes((60, 60))) for _ in range(5)}
+    assert len(paths) == 5                                            # uuid per call — no collisions
+
+
+def test_delete_image_removes_a_stored_file(tmp_path, monkeypatch):
+    monkeypatch.setattr(images, "IMAGES_DIR", tmp_path)
+    path = images.save_cook_photo(_img_bytes((60, 60)))
+    on_disk = tmp_path / path[len("images/"):]
+    assert on_disk.exists()
+    assert images.delete_image(path) is True                         # removed -> True
+    assert not on_disk.exists()
+
+
+def test_delete_image_missing_file_is_idempotent_noop(tmp_path, monkeypatch):
+    monkeypatch.setattr(images, "IMAGES_DIR", tmp_path)
+    assert images.delete_image("images/cooks/does-not-exist.jpg") is False   # absent -> no error, False
+    assert images.delete_image("images/does-not-exist.jpg") is False
+
+
+def test_delete_image_refuses_path_outside_images_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(images, "IMAGES_DIR", tmp_path)
+    victim = tmp_path.parent / "victim.txt"                          # OUTSIDE IMAGES_DIR (tmp_path)
+    victim.write_text("keep me")
+    assert images.delete_image("../victim.txt") is False             # containment refuses -> False
+    assert images.delete_image("images/../../victim.txt") is False
+    assert victim.exists()                                           # untouched — never unlinked outside the dir
