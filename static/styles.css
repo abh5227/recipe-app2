@@ -553,6 +553,26 @@ a:hover { color: var(--berry-lift); }
   background: var(--btn-fill); border: none; border-radius: 999px; padding: 4px 12px; cursor: pointer; margin-top: 2px; }
 .err-retry:hover { opacity: .88; }
 
+/* Stage 3 part 2: "Update photo" on a FILLED editable Polaroid — hover-reveal pill + non-destructive
+   replace overlays. The .polaroid / .clip / .photo base rules are untouched; these only ADD affordances. */
+.polaroid-filled .polaroid { position: relative; }   /* positioning context for the pill + overlays (no visual change) */
+.update-photo { position: absolute; left: 50%; transform: translateX(-50%); bottom: 62px; z-index: 2;
+  font-family: var(--font-sans); font-size: 11.5px; font-weight: 600; color: var(--polaroid); white-space: nowrap;
+  background: rgba(40,35,30,.72); border: none; border-radius: 999px; padding: 5px 13px; cursor: pointer;
+  opacity: 0; transition: opacity .15s; pointer-events: none; }   /* hidden at rest; revealed on hover/focus */
+.polaroid-filled .polaroid:hover .update-photo,
+.polaroid-filled .update-photo:focus-visible { opacity: 1; pointer-events: auto; }
+.update-photo:hover { background: rgba(40,35,30,.88); }
+/* drop-to-replace hint (drag a file over the filled photo) */
+.polaroid-filled.dragover .photo { outline: 2px solid var(--green); outline-offset: -2px; }
+/* replace overlays over the 202×202 photo region — the <img> underneath is never removed */
+.photo-overlay { position: absolute; top: 11px; left: 11px; width: 202px; height: 202px; z-index: 3;
+  display: grid; place-items: center; align-content: center; gap: 9px; }
+.photo-overlay.replacing { background: rgba(40,35,30,.46); color: var(--polaroid);
+  font-family: var(--font-sans); font-size: 12px; letter-spacing: .03em; }
+.photo-overlay.errored { background: color-mix(in srgb, var(--danger) 6%, var(--card));
+  border: 1px dashed var(--danger); gap: 8px; padding: 10px; }   /* reuses .err-msg/.err-sub/.err-retry from part 1 */
+
 /* status tags (Made / To Make — the Paprika cook-tracking workaround) read quietest; all tags are
    plain, non-clickable labels — tag-click-to-filter is R2 (browse redesign). */
 .cat-tag.status { background: transparent; border-style: dashed; opacity: 0.7; }

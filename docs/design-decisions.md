@@ -800,6 +800,23 @@ the locked spec — recorded so future work reads them as **decisions, not bugs*
   "make this the hero" otherwise) = **Stage 4**; mobile **long-press** to reveal "Update photo" = deferred
   to the mobile pass; **drag-from-Apple-Photos** confirmed working on Andy's machine (with the `!file`
   no-op as the fallback if Photos ever hands a reference).
+- **Replace an existing photo — "Update photo" hover-reveal (Stage 3, part 2).** On a FILLED editable
+  Polaroid, hover reveals a subtle "Update photo" pill (clean photo at rest); click it or drop an image on
+  the photo to replace via the **SAME upload path as part 1** — `wirePhotoUpload` now drives both the empty
+  (add) and filled (replace) cases off **one implementation** selected by a `filled` flag: the `send()`
+  core (FormData POST → `renderRecipe(slug)` re-pull+repaint), the `!file` graceful no-op, `upload-status.js`,
+  and the drag/drop + picker wiring are identical; only the three state-painters differ. **Failed update
+  preserves the existing photo** (the load-bearing rule): the filled painters never touch the live `<img>` —
+  `uploading`/`fail` insert a `.photo-overlay` (dim "replacing…" / a light error panel) and `rest`/"Try again"
+  remove it, so an error can never blank or break the Polaroid — the recovery target is **context-aware**
+  (empty → the empty zone; filled → the still-present original photo). Browser-verified: a non-image dropped
+  on a filled photo surfaced the error and "Try again" returned to the ORIGINAL photo intact. **Stale-cache:**
+  deterministic `<slug>.jpg` naming means a replace overwrites the same URL, but the immediate swap showed the
+  NEW photo (the full re-pull + repaint sufficed) — **no `?v=` cache-bust needed**. Display unchanged: only
+  the hover affordance + reused wiring were added; `.polaroid`/`.clip`/`.photo` base rules and the `<img>`
+  onerror degradation are untouched. **Parked (decisions):** mobile **long-press** to reveal "Update photo"
+  (touch has no hover) = deferred to the mobile pass; per-cook photo **album** (several photos per cook →
+  own table, auto-hero-if-none / opt-in promote) = **Stage 4**.
 
 ## Derived "to make" — the Uncooked box mark (Build 1)
 

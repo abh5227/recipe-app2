@@ -700,17 +700,28 @@ function clipDefs() {
 // the masthead collapses to a full-width title. A broken URL collapses via the <img> onerror (adds
 // .no-photo to the stage, removes the Polaroid) — that graceful-degradation stays on the filled branch.
 function dishPhoto(r, editable) {
-  if (r.image) return `<div class="dish-photo polaroid-hero">
+  if (r.image) {
+    // Part 2: an EDITABLE owner gets the hover-reveal "Update photo" pill + drop-to-replace, wired to the
+    // SAME upload path as the empty zone (wirePhotoUpload). Non-editable (seed / other users) is byte-for-
+    // byte the original filled Polaroid — no affordance. The <img> onerror degradation is preserved verbatim.
+    const editHook   = editable ? " polaroid-filled" : "";
+    const editAttr   = editable ? " data-upload-zone" : "";
+    const updatePill = editable ? `<button class="update-photo" type="button" aria-label="Update photo">Update photo</button>` : "";
+    const fileInput  = editable ? `<input class="photo-input" type="file" accept="image/*" tabindex="-1" aria-hidden="true">` : "";
+    return `<div class="dish-photo polaroid-hero${editHook}"${editAttr}>
     ${clipDefs()}
     ${clipSvg("back")}
     <div class="edge-contact"></div>
     <figure class="polaroid-wrap"><span class="polaroid">
       <img class="photo" src="/${esc(r.image)}" alt="${esc(r.name)}" loading="lazy"
         onerror="this.closest('.recipe-stage').classList.add('no-photo'); this.closest('.dish-photo').remove();">
+      ${updatePill}
       <span class="strip"></span>
     </span></figure>
     ${clipSvg("front")}
+    ${fileInput}
   </div>`;
+  }
   if (editable) return `<div class="dish-photo polaroid-hero polaroid-empty" data-upload-zone>
     ${clipDefs()}
     ${clipSvg("back")}
@@ -818,43 +829,62 @@ function paintRecipe() {
   if (!editing) {   // edit mode bypasses the description clamp (no .dek); reading keeps it
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(setupHeadnote);
     else setupHeadnote();
-    wirePhotoUpload();   // Stage 3: the empty editable Polaroid becomes an upload zone (no-op otherwise)
+    wirePhotoUpload();   // Stage 3: the editable Polaroid becomes an upload/replace surface (no-op otherwise)
   }
 }
 
-// Stage 3 photo upload (part 1): make the empty editable Polaroid a real drop-zone + click-to-pick
-// surface, wired to the shipped owner-checked POST /api/recipes/<id>/image. Called after each
-// reading-mode paint on the freshly rendered zone — paintRecipe rebuilds the DOM, so the previous zone
-// (and its listeners) are discarded, no accumulation. No-ops when there's no empty affordance (the
-// recipe has a photo, or isn't the user's to edit — dishPhoto only emits it when data.is_editable).
+// Stage 3 photo upload: wire the editable Polaroid as an upload surface — part 1 (EMPTY: add) and part 2
+// (FILLED: replace) share ONE implementation. Called after each reading-mode paint on the freshly rendered
+// zone — paintRecipe rebuilds the DOM, so the previous zone (and its listeners) are discarded, no
+// accumulation. No-ops when there's no editable Polaroid (dishPhoto only tags it when data.is_editable).
+// The send() core, the !file guard, and the drag/drop + picker wiring are IDENTICAL for both modes; only
+// how each STATE is painted differs — EMPTY rewrites the zone cell (nothing to lose); FILLED overlays the
+// live <img> WITHOUT touching it, so a failed replace can never blank/destroy the existing photo.
 function wirePhotoUpload() {
-  const wrap = app.querySelector(".dish-photo.polaroid-empty[data-upload-zone]");
+  const wrap = app.querySelector(".dish-photo[data-upload-zone]");
   if (!wrap) return;
-  const zone = wrap.querySelector(".upload-zone");
   const input = wrap.querySelector(".photo-input");
   const rid = view && view.slug;              // id == slug in this app: the SAME key the POST endpoint
-  if (!zone || !input || !rid) return;        // (s.get(Recipe, rid)) and the success re-render use
+  if (!input || !rid) return;                 // (s.get(Recipe, rid)) and the success re-render use
+  const filled = wrap.classList.contains("polaroid-filled");   // part 2: replacing an existing photo
 
-  const rest = () => {
-    wrap.classList.remove("dragover", "error");
-    zone.className = "photo upload-zone";
-    zone.innerHTML = '<span class="add-photo-mark">+</span><span class="add-label">drag a photo here<br>or click to choose</span>';
-  };
-  const uploading = () => {
-    wrap.classList.remove("dragover", "error");
-    zone.className = "photo upload-zone working";
-    zone.innerHTML = '<div class="uploading"><span class="spinner"></span>uploading…</div>';
-  };
-  const fail = (status) => {
-    wrap.classList.remove("dragover");
-    wrap.classList.add("error");
-    zone.className = "photo upload-zone";
-    zone.innerHTML = uploadErrorHTML(status);   // stays inside the frame; "Try again" returns to rest
-  };
+  let rest, uploading, fail;
+  if (!filled) {
+    const zone = wrap.querySelector(".upload-zone");
+    if (!zone) return;
+    rest = () => {
+      wrap.classList.remove("dragover", "error");
+      zone.className = "photo upload-zone";
+      zone.innerHTML = '<span class="add-photo-mark">+</span><span class="add-label">drag a photo here<br>or click to choose</span>';
+    };
+    uploading = () => {
+      wrap.classList.remove("dragover", "error");
+      zone.className = "photo upload-zone working";
+      zone.innerHTML = '<div class="uploading"><span class="spinner"></span>uploading…</div>';
+    };
+    fail = (status) => {
+      wrap.classList.remove("dragover");
+      wrap.classList.add("error");
+      zone.className = "photo upload-zone";
+      zone.innerHTML = uploadErrorHTML(status);   // stays inside the frame; "Try again" returns to rest
+    };
+  } else {
+    const polaroid = wrap.querySelector(".polaroid");
+    const clearOverlay = () => { const o = polaroid.querySelector(".photo-overlay"); if (o) o.remove(); };
+    rest = () => { wrap.classList.remove("dragover"); clearOverlay(); };   // the <img> stays; drop any overlay
+    uploading = () => {                                                    // dim + spinner OVER the photo
+      wrap.classList.remove("dragover"); clearOverlay();
+      polaroid.insertAdjacentHTML("beforeend", '<div class="photo-overlay replacing"><span class="spinner"></span>replacing…</div>');
+    };
+    fail = (status) => {   // CRITICAL (part 2): overlay the error; NEVER remove the existing <img>
+      wrap.classList.remove("dragover"); clearOverlay();
+      polaroid.insertAdjacentHTML("beforeend", `<div class="photo-overlay errored">${uploadErrorHTML(status)}</div>`);
+    };
+  }
 
   const send = async (file) => {
     if (!file) { rest(); return; }              // GUARD: macOS Photos may hand a reference, not bytes ->
-                                                // graceful no-op back to REST (never error/hang; click-to-pick still works)
+                                                // graceful no-op (never error/hang; click-to-pick still works)
     uploading();
     const fd = new FormData();
     fd.append("image", file);
@@ -862,19 +892,23 @@ function wirePhotoUpload() {
     try {
       res = await fetch(`/api/recipes/${encodeURIComponent(rid)}/image`,
                         { method: "POST", credentials: "same-origin", body: fd });
-    } catch (_) { fail(0); return; }            // network/abort -> generic, recoverable
+    } catch (_) { fail(0); return; }            // network/abort -> generic, recoverable (filled: photo preserved)
     if (res.status === 401) { showAuth(); return; }
     if (!res.ok) { fail(res.status); return; }
-    renderRecipe(rid);                          // 200 -> re-pull by the SAME key + full repaint; the stored photo fills the real Polaroid
+    renderRecipe(rid);                          // 200 -> re-pull by the SAME key + full repaint; the new photo fills the real Polaroid
   };
 
-  zone.addEventListener("click", (e) => {
-    if (e.target.closest(".err-retry")) { rest(); return; }   // Try again -> rest (don't also open the picker)
-    input.click();
+  // Trigger + "Try again" — SHARED. Trigger is the empty zone or the filled "Update photo" pill; err-retry
+  // returns to rest without opening the picker (filled: removes the error overlay -> the photo shows again).
+  wrap.addEventListener("click", (e) => {
+    if (e.target.closest(".err-retry")) { rest(); return; }
+    if (e.target.closest(filled ? ".update-photo" : ".upload-zone")) input.click();
   });
-  zone.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
-  });
+  if (!filled) {   // the empty zone is a role=button; the filled pill is a native <button> (keyboard built in)
+    wrap.querySelector(".upload-zone").addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
+    });
+  }
   input.addEventListener("change", () => { send(input.files[0]); });   // undefined on cancel -> guarded no-op
 
   // drag-and-drop (Finder/Desktop files land here too). preventDefault on dragover is what enables the
