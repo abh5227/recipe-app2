@@ -777,6 +777,29 @@ the locked spec — recorded so future work reads them as **decisions, not bugs*
   (`tests/fixtures/IMG_5424.heic` — HEVC-encoded, 3024×4032, real device EXIF) driven through the endpoint
   in `test_real_iphone_heic_upload_success`, plus a live-DB sanity (real file → 200, 12 MP → 1200×1600
   JPEG, all EXIF stripped). Real-device HEVC/EXIF quirks are thus confirmed end-to-end in CI, not just synthetic.
+- **Empty-Polaroid photo upload from the recipe page (Stage 3, part 1).** The empty "+ add a photo"
+  Polaroid — previously an `<a href="#/edit">` link — is now a real **drag-drop + click-to-pick** upload
+  zone wired to the shipped, HEIC-capable `POST /api/recipes/<slug>/image`. One zone handles both a hidden
+  `<input type=file accept=image/*>` (click/keyboard) and `dragenter/over/leave/drop`; on drop-or-pick it
+  reads the `File` and POSTs multipart `image`. On **200** it re-pulls via `renderRecipe(slug)` (the
+  established post-mutation re-pull + full repaint — `slug == recipe id`, the same key the POST and the
+  refetch use) so the actual stored path (server-returned, never client-constructed) fills the **real**
+  Polaroid — the clean uploading→filled transition Andy verified (no drop-zone flash / spinner residue /
+  double-render). **The Polaroid/clip display is unchanged** — only the empty-state affordance + new
+  upload-state styles (rest/drag-over/uploading/error) were added; the filled branch and its `onerror`
+  graceful-degradation are untouched. Gated on the existing `is_editable` (no new client owner check); the
+  `#/edit` route stays live (router-handled) and the ✎ Edit button is the unchanged edit entry, so nothing
+  is orphaned. **File-handoff guard:** if no usable `File` arrives (macOS Photos can hand a reference, not
+  bytes), the zone **no-ops gracefully back to REST** — never errors/hangs; click-to-pick is the
+  always-works fallback. **Errors stay contained in-frame** (413 "Too large"; 400 "Not an image file";
+  other "Upload failed") with "Try again" → REST, and **never blank the page**; the status→message mapping
+  is a pure `static/upload-status.js` helper with a JS unit test. Coverage honesty: 400/not-an-image was
+  browser-verified; 413/too-large and 403/ownership ride on Stage 2's backend endpoint tests (not manually
+  re-forced). **Queued/parked (decisions):** "Update photo" hover on a *filled* Polaroid = **part 2** (next);
+  per-cook photo **album** (several photos per cook → its own table; auto-becomes-hero-if-none, opt-in
+  "make this the hero" otherwise) = **Stage 4**; mobile **long-press** to reveal "Update photo" = deferred
+  to the mobile pass; **drag-from-Apple-Photos** confirmed working on Andy's machine (with the `!file`
+  no-op as the fallback if Photos ever hands a reference).
 
 ## Derived "to make" — the Uncooked box mark (Build 1)
 

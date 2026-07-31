@@ -510,15 +510,48 @@ a:hover { color: var(--berry-lift); }
   .clip.front, .clip.back { top: 58px; }
 }
 
-/* no-photo on an EDITABLE recipe: an empty clipped Polaroid inviting a photo (links to the edit flow).
-   Seed recipes with no photo collapse to a full-width title instead (decided in app.js: dishPhoto ""). */
+/* no-photo on an EDITABLE recipe: the empty clipped Polaroid IS a photo drop-zone + click-to-pick
+   (Stage 3). Seed recipes with no photo collapse to a full-width title instead (dishPhoto ""). */
 .polaroid-empty { text-decoration: none; color: var(--ink-soft); }
 .polaroid-empty .photo { display: grid; place-items: center; align-content: center; gap: 4px;
-  background: var(--card); border: 1px dashed var(--rule); box-shadow: none; }
+  background: var(--card); border: 1px dashed var(--rule); box-shadow: none;
+  cursor: pointer; padding: 10px;   /* Stage 3: the empty cell is the upload drop-zone / click target */
+  transition: border-color .15s, background .15s, color .15s; }
 .add-photo-mark { font-family: var(--font-serif); font-size: 34px; line-height: 1; color: var(--rule); }
 .add-label { font-family: var(--font-sans); font-size: 12px; letter-spacing: .04em; }
 .polaroid-empty:hover .photo { border-color: var(--green); }
 .polaroid-empty:hover .add-photo-mark, .polaroid-empty:hover .add-label { color: var(--green); }
+
+/* Stage 3 photo upload (part 1): the empty editable Polaroid is a drop-zone + click-to-pick surface.
+   Display (.polaroid / .clip) is untouched — these only ADD the upload interaction states.
+   (The zone's base cursor/padding/transition are folded into `.polaroid-empty .photo` above.) */
+.polaroid-empty .add-label { text-align: center; line-height: 1.35; }
+.polaroid-empty:focus-within .photo { border-color: var(--green); }
+.upload-zone:focus-visible { outline: none; }
+.photo-input { display: none; }
+
+/* drag-over — solid green ring + faint fill */
+.polaroid-empty.dragover .photo { border: 2px solid var(--green);
+  background: color-mix(in srgb, var(--green) 9%, var(--card)); }
+.polaroid-empty.dragover .add-photo-mark, .polaroid-empty.dragover .add-label { color: var(--green); }
+
+/* uploading — clean cell + dark overlay + spinner (drops the empty dashed look) */
+.polaroid-empty .photo.working { border: none; padding: 0; background: #e6e0d0; position: relative; }
+.uploading { position: absolute; inset: 0; display: grid; place-items: center; align-content: center; gap: 9px;
+  background: rgba(40,35,30,.46); color: var(--polaroid); font-family: var(--font-sans); font-size: 12px; letter-spacing: .03em; }
+.spinner { width: 26px; height: 26px; border-radius: 50%; border: 3px solid rgba(255,252,244,.35);
+  border-top-color: var(--polaroid); animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* error — contained inside the 202×202 photo (message + Try again below; never overflows the frame) */
+.polaroid-empty.error .photo { border: 1px dashed var(--danger);
+  background: color-mix(in srgb, var(--danger) 6%, var(--card)); gap: 8px; }
+.err-msg { font-family: var(--font-sans); font-size: 12px; font-weight: 600; color: var(--danger);
+  line-height: 1.35; text-align: center; max-width: 172px; }
+.err-sub { font-family: var(--font-sans); font-size: 10.5px; color: var(--ink-soft); }
+.err-retry { font-family: var(--font-sans); font-size: 11px; font-weight: 600; color: var(--polaroid);
+  background: var(--btn-fill); border: none; border-radius: 999px; padding: 4px 12px; cursor: pointer; margin-top: 2px; }
+.err-retry:hover { opacity: .88; }
 
 /* status tags (Made / To Make — the Paprika cook-tracking workaround) read quietest; all tags are
    plain, non-clickable labels — tag-click-to-filter is R2 (browse redesign). */

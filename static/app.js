@@ -6,6 +6,7 @@ import {
 import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
+import { uploadErrorHTML } from "./upload-status.js";
 import { mountStepEditors, destroyStepEditors } from "./step-editor.js";
 import heroUrl from "./login-hero.jpg";   // auth-4 login hero — Vite hashes it into dist/assets (served via /assets)
 
@@ -694,9 +695,10 @@ function clipDefs() {
 
 // The finished-dish photo (top-right of the masthead) as a Polaroid straddling the recipe card's top
 // edge, held by a brass clip. The strip is empty for now (the typed caption is a separate feature).
-// No image: an EDITABLE recipe gets an empty clipped Polaroid "+ add a photo" affordance (links to the
-// edit flow); a non-editable (seed) recipe returns "" so the masthead collapses to a full-width title.
-// A broken URL collapses via the <img> onerror (adds .no-photo to the stage, removes the Polaroid).
+// No image: an EDITABLE recipe gets an empty clipped Polaroid that IS a photo drop-zone + click-to-pick
+// (wired to POST /api/recipes/<id>/image by wirePhotoUpload); a non-editable (seed) recipe returns "" so
+// the masthead collapses to a full-width title. A broken URL collapses via the <img> onerror (adds
+// .no-photo to the stage, removes the Polaroid) — that graceful-degradation stays on the filled branch.
 function dishPhoto(r, editable) {
   if (r.image) return `<div class="dish-photo polaroid-hero">
     ${clipDefs()}
@@ -709,16 +711,19 @@ function dishPhoto(r, editable) {
     </span></figure>
     ${clipSvg("front")}
   </div>`;
-  if (editable) return `<a class="dish-photo polaroid-hero polaroid-empty" href="#/edit/${encodeURIComponent(r.id)}" aria-label="Add a photo">
+  if (editable) return `<div class="dish-photo polaroid-hero polaroid-empty" data-upload-zone>
     ${clipDefs()}
     ${clipSvg("back")}
     <div class="edge-contact"></div>
     <span class="polaroid-wrap"><span class="polaroid">
-      <span class="photo"><span class="add-photo-mark">+</span><span class="add-label">add a photo</span></span>
+      <span class="photo upload-zone" tabindex="0" role="button" aria-label="Add a photo — drag one here or click to choose">
+        <span class="add-photo-mark">+</span><span class="add-label">drag a photo here<br>or click to choose</span>
+      </span>
       <span class="strip"></span>
     </span></span>
     ${clipSvg("front")}
-  </a>`;
+    <input class="photo-input" type="file" accept="image/*" tabindex="-1" aria-hidden="true">
+  </div>`;
   return "";   // seed recipe with no photo: collapse (seed recipes aren't editable — no dead add link)
 }
 
@@ -813,7 +818,80 @@ function paintRecipe() {
   if (!editing) {   // edit mode bypasses the description clamp (no .dek); reading keeps it
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(setupHeadnote);
     else setupHeadnote();
+    wirePhotoUpload();   // Stage 3: the empty editable Polaroid becomes an upload zone (no-op otherwise)
   }
+}
+
+// Stage 3 photo upload (part 1): make the empty editable Polaroid a real drop-zone + click-to-pick
+// surface, wired to the shipped owner-checked POST /api/recipes/<id>/image. Called after each
+// reading-mode paint on the freshly rendered zone — paintRecipe rebuilds the DOM, so the previous zone
+// (and its listeners) are discarded, no accumulation. No-ops when there's no empty affordance (the
+// recipe has a photo, or isn't the user's to edit — dishPhoto only emits it when data.is_editable).
+function wirePhotoUpload() {
+  const wrap = app.querySelector(".dish-photo.polaroid-empty[data-upload-zone]");
+  if (!wrap) return;
+  const zone = wrap.querySelector(".upload-zone");
+  const input = wrap.querySelector(".photo-input");
+  const rid = view && view.slug;              // id == slug in this app: the SAME key the POST endpoint
+  if (!zone || !input || !rid) return;        // (s.get(Recipe, rid)) and the success re-render use
+
+  const rest = () => {
+    wrap.classList.remove("dragover", "error");
+    zone.className = "photo upload-zone";
+    zone.innerHTML = '<span class="add-photo-mark">+</span><span class="add-label">drag a photo here<br>or click to choose</span>';
+  };
+  const uploading = () => {
+    wrap.classList.remove("dragover", "error");
+    zone.className = "photo upload-zone working";
+    zone.innerHTML = '<div class="uploading"><span class="spinner"></span>uploading…</div>';
+  };
+  const fail = (status) => {
+    wrap.classList.remove("dragover");
+    wrap.classList.add("error");
+    zone.className = "photo upload-zone";
+    zone.innerHTML = uploadErrorHTML(status);   // stays inside the frame; "Try again" returns to rest
+  };
+
+  const send = async (file) => {
+    if (!file) { rest(); return; }              // GUARD: macOS Photos may hand a reference, not bytes ->
+                                                // graceful no-op back to REST (never error/hang; click-to-pick still works)
+    uploading();
+    const fd = new FormData();
+    fd.append("image", file);
+    let res;
+    try {
+      res = await fetch(`/api/recipes/${encodeURIComponent(rid)}/image`,
+                        { method: "POST", credentials: "same-origin", body: fd });
+    } catch (_) { fail(0); return; }            // network/abort -> generic, recoverable
+    if (res.status === 401) { showAuth(); return; }
+    if (!res.ok) { fail(res.status); return; }
+    renderRecipe(rid);                          // 200 -> re-pull by the SAME key + full repaint; the stored photo fills the real Polaroid
+  };
+
+  zone.addEventListener("click", (e) => {
+    if (e.target.closest(".err-retry")) { rest(); return; }   // Try again -> rest (don't also open the picker)
+    input.click();
+  });
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
+  });
+  input.addEventListener("change", () => { send(input.files[0]); });   // undefined on cancel -> guarded no-op
+
+  // drag-and-drop (Finder/Desktop files land here too). preventDefault on dragover is what enables the
+  // drop; scoped to this zone so a stray file dropped elsewhere on the page keeps the browser default.
+  ["dragenter", "dragover"].forEach((ev) => wrap.addEventListener(ev, (e) => {
+    e.preventDefault();
+    if (!wrap.classList.contains("error")) wrap.classList.add("dragover");
+  }));
+  ["dragleave", "dragend"].forEach((ev) => wrap.addEventListener(ev, (e) => {
+    if (!wrap.contains(e.relatedTarget)) wrap.classList.remove("dragover");   // ignore moves between children
+  }));
+  wrap.addEventListener("drop", (e) => {
+    e.preventDefault();
+    wrap.classList.remove("dragover");
+    const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    send(f);                                    // f undefined (Photos reference) -> guarded no-op in send()
+  });
 }
 
 /* ---------- inline recipe editor — Stage 1: mode toggle, buffered draft, scalar fields ---------- */
