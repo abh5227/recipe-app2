@@ -515,19 +515,59 @@ def update_recipe(rid):
     return jsonify({"id": rid})
 
 
+# ---- POINT/linked-hero cleanup helpers (Stage 4 build 2c) ---------------------------------------
+# The hero (recipes.image) may POINT at a cook photo's own file (promote / auto-promote), so removing a
+# cook photo — by explicit delete OR by cascade (undo_cook / delete_recipe) — must not leave the hero
+# dangling or the file orphaned. "Is this the hero?" is a PATH comparison (recipes.image == photo.path),
+# used consistently on every deletion path.
+
+def clear_hero_if_matches(s, recipe_id, paths):
+    """If the recipe's hero points at any of `paths` (a promoted cook photo about to be removed), NULL
+    recipes.image so it doesn't dangle — a single guarded UPDATE, a no-op when the hero isn't one of them.
+    In-transaction (a DB change), on the session `s`. For a SURVIVING recipe (explicit delete / undo_cook)."""
+    paths = [p for p in paths if p]
+    if not paths:
+        return
+    s.execute(update(Recipe.__table__)
+              .where(Recipe.__table__.c.id == recipe_id, Recipe.__table__.c.image.in_(paths))
+              .values(image=None))
+
+
+def unlink_unreferenced(paths):
+    """After a delete/cascade has COMMITTED, unlink each file — but ONLY if no surviving recipe still points
+    at it as its hero. Guards the copy-shares-image case: copy_recipe carries the image PATH, so two recipes
+    can share one file; deleting one must not unlink a file the other still uses. Opens its own session for
+    the reference check (the rows are already gone). Idempotent (delete_image no-ops a missing file)."""
+    paths = [p for p in dict.fromkeys(paths) if p]   # de-dup, drop falsy
+    if not paths:
+        return
+    with orm_session() as s:
+        still = set(s.scalars(select(Recipe.image).where(Recipe.image.in_(paths))))
+    for p in paths:
+        if p not in still:
+            images.delete_image(p)
+
+
 @app.route("/api/recipes/<rid>", methods=["DELETE"])
 def delete_recipe(rid):
-    """Delete an app-owned recipe. Its ratings, cook history, ingredient lines, and steps
-    are removed automatically by ON DELETE CASCADE (foreign keys are enforced per connection
-    by orm_session)."""
+    """Delete an app-owned recipe. Its ratings, cook history, ingredient lines, steps, and cook_photos
+    are removed automatically by ON DELETE CASCADE (foreign keys are enforced per connection by
+    orm_session). The DB cascade removes ROWS but not FILES, so gather every cook-photo path + the hero's
+    own file BEFORE the delete and unlink them AFTER commit (2c) — this also fixes the pre-existing
+    hero-orphan (delete_recipe used to leave the hero file on disk). unlink_unreferenced skips any file a
+    surviving recipe still references (the copy-shares-image guard)."""
     with orm_session() as s:
-        row = s.execute(select(Recipe.source).where(Recipe.id == rid)).first()
+        row = s.execute(select(Recipe.source, Recipe.image).where(Recipe.id == rid)).first()
         if row is None:
             return jsonify({"error": "recipe not found"}), 404
         if row.source not in EDITABLE_SOURCES:
             return jsonify({"error": "seed recipes can't be deleted here — remove them from seed.py"}), 403
-        s.execute(delete(Recipe.__table__).where(Recipe.__table__.c.id == rid))
+        files = list(s.scalars(select(CookPhoto.path).where(CookPhoto.recipe_id == rid)))   # all album files
+        if row.image:
+            files.append(row.image)                          # + the hero's own file (the orphan fix)
+        s.execute(delete(Recipe.__table__).where(Recipe.__table__.c.id == rid))   # cascades cook_photos ROWS
         s.commit()
+    unlink_unreferenced(files)                               # AFTER commit: unlink files no surviving recipe uses
     return jsonify({"deleted": rid})
 
 
@@ -752,8 +792,12 @@ def undo_cook(rid):
             .order_by(CookLog.id.desc()).limit(1)
         ).first()
         undone = None   # what this undo removed, so a one-shot redo can reverse exactly it
+        photo_paths = []   # 2c: this cook's photo files, cascade-deleted with the cook_log row -> unlink after commit
         if last:
-            s.execute(delete(CookLog).where(CookLog.id == last.id))
+            photo_paths = list(s.scalars(select(CookPhoto.path).where(CookPhoto.cook_log_id == last.id)))
+            s.execute(delete(CookLog).where(CookLog.id == last.id))   # cascade-deletes this cook's cook_photos ROWS
+            clear_hero_if_matches(s, rid, photo_paths)   # 2c: the recipe SURVIVES the undo, so a hero pointing at
+                                                         # a vanished photo must be cleared (POINT/linked)
             remaining = s.scalar(   # MY cooks remaining, counted AFTER the delete — drop MY rating iff 0
                 select(func.count()).select_from(CookLog)
                 .where(CookLog.recipe_id == rid, CookLog.user_id == current_user.id)
@@ -768,6 +812,7 @@ def undo_cook(rid):
             undone = {"cooked_on": last.cooked_on, "source": last.source, "cleared_rating": cleared_rating}
         stats = recipe_stats(s, rid, current_user.id)
         s.commit()
+    unlink_unreferenced(photo_paths)   # 2c: AFTER commit, unlink the cascade-orphaned files (copy-share guarded)
     return jsonify({**stats, "undone": undone})
 
 
@@ -911,10 +956,18 @@ def add_cook_photo(rid):
             path=path, caption=caption, added_at=now_utc(),
         ))
         photo_id = res.inserted_primary_key[0]
+        # 2c AUTO-PROMOTE: if the recipe has NO hero yet, this photo becomes it (POINT/linked, same path).
+        # No-hijack guard — only when YOU own the recipe: attaching a photo to your cook of someone else's
+        # recipe must NOT auto-set their empty hero. (Standalone attach already required recipe-owner.)
+        is_hero = False
+        if not rec.image and rec.owner == current_user.id:
+            s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rec.id).values(image=path))
+            is_hero = True
         s.commit()
     return jsonify({
         "id": photo_id, "path": path, "caption": caption,
         "cook_log_id": cook_log_id, "cooked_on": cooked_on,   # the cook's date if cook-linked, else None
+        "is_hero": is_hero,                                   # auto-promoted (recipe had no hero + you own it)
     }), 201
 
 
@@ -937,12 +990,33 @@ def edit_cook_photo(photo_id):
     return jsonify({"id": photo_id, "caption": caption})
 
 
+@app.route("/api/photos/<int:photo_id>/promote", methods=["POST"])
+def promote_cook_photo(photo_id):
+    """Make this cook photo the recipe's hero — POINT/linked: set recipes.image = the photo's OWN path
+    (images/cooks/<uuid>.jpg), so hero and album entry SHARE the file (NO copy). Gated on the RECIPE owner
+    (rec.owner == current_user) — writing recipes.image is the recipe owner's call, even if the photo/cook is
+    yours. Reuses the hero-upload write (update Recipe .values(image=path)). Returns the new hero path."""
+    with orm_session() as s:
+        photo = s.get(CookPhoto, photo_id)
+        if photo is None:
+            return jsonify({"error": "photo not found"}), 404
+        rec = s.get(Recipe, photo.recipe_id)
+        if rec is None:
+            return jsonify({"error": "recipe not found"}), 404
+        if rec.owner != current_user.id:                      # recipe-owner gate (writing recipes.image)
+            return jsonify({"error": "not your recipe"}), 403
+        path = photo.path                                     # capture before commit (ORM obj detaches after)
+        s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rec.id).values(image=path))
+        s.commit()
+    return jsonify({"image": path})
+
+
 @app.route("/api/photos/<int:photo_id>", methods=["DELETE"])
 def delete_cook_photo(photo_id):
-    """Delete a cook photo — photo-owner gated (cook_photo.user_id == current_user). Removes the ROW then the
-    FILE (delete_image, 2a — idempotent, so a missing file is a no-op). 2b scope: NO hero-clear — 2c owns all
-    POINT/linked-hero logic on both deletion paths, and until 2c's promote exists no cook photo can be the
-    hero, so a 2b delete cannot orphan one."""
+    """Delete a cook photo — photo-owner gated (cook_photo.user_id == current_user). 2c POINT/linked-hero
+    clear: if this photo IS the recipe's hero (recipes.image == photo.path), NULL the hero too (-> empty
+    upload frame); deleting a NON-hero photo leaves the hero untouched. Then delete the row and unlink the
+    file (unlink_unreferenced — skips it if a copy still shares it)."""
     with orm_session() as s:
         photo = s.get(CookPhoto, photo_id)
         if photo is None:
@@ -950,9 +1024,10 @@ def delete_cook_photo(photo_id):
         if photo.user_id != current_user.id:
             return jsonify({"error": "not your photo"}), 403
         path = photo.path
+        clear_hero_if_matches(s, photo.recipe_id, [path])     # 2c: if this photo is the hero, clear recipes.image
         s.delete(photo)
         s.commit()                                            # row authoritatively gone before the file unlink
-    images.delete_image(path)                                 # 2a seam: unlink the file (missing = clean no-op)
+    unlink_unreferenced([path])                               # unlink unless a copy still references it (2c guard)
     return jsonify({"ok": True})
 
 

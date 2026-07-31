@@ -983,6 +983,43 @@ promote-to-hero and no `recipes.image` write anywhere** — that's 2c.
 **Still to come:** **2c** — promote-to-hero + the POINT/linked-hero deletion logic (both paths) as above.
 **Build 3** — the album UI (preview-first).
 
+### Build 2c — promote-to-hero + POINT/linked-hero deletion (shipped — COMPLETES the album backend)
+
+The POINT/linked-hero model wired end-to-end. The hero (`recipes.image`) may point at a cook photo's
+**own** file (they SHARE it — no copy), so every way a cook photo can vanish must keep the hero honest.
+
+- **`POST /api/photos/<id>/promote`** — "make this the hero": sets `recipes.image = photo.path` (the
+  `images/cooks/<uuid>.jpg` path — POINT/linked, no file copy), via the same `update(Recipe).values(image=)`
+  the hero upload uses. Gated on the **recipe owner** (writing `recipes.image` is the recipe owner's call,
+  even when the photo/cook is yours). Returns the new hero path.
+- **Auto-promote-if-none** (in the 2b attach flow): when a photo is attached and the recipe has **no**
+  hero, it auto-becomes the hero — but **only when you own the recipe** (the no-hijack guard:
+  `not rec.image and rec.owner == current_user`), so photographing your cook of a friend's hero-less
+  recipe never sets their hero. The attach response carries `is_hero`.
+- **Linked-hero CLEAR on all three removal paths** — "is this the hero?" is a **path comparison**
+  (`recipes.image == photo.path`), applied consistently via `clear_hero_if_matches`:
+  - **explicit delete** (`DELETE /api/photos/<id>`) — clears the hero iff this photo is it (deleting a
+    NON-hero photo leaves it untouched), then deletes the row + unlinks the file.
+  - **`undo_cook` cascade** — the recipe SURVIVES, so gather the cook's photo paths BEFORE the
+    `delete(CookLog)` (which cascade-deletes the `cook_photos` rows), clear the hero if matched
+    in-transaction, commit, then unlink the files.
+  - **`delete_recipe` cascade** — the recipe row is gone (no hero-clear needed); gather all cook-photo
+    paths **+ the hero's own file** before delete, commit, then unlink.
+  Structure everywhere: **gather-before → delete → unlink-after-commit**, so a failed delete never
+  unlinks files and the cascade has run before cleanup.
+- **Hero-orphan fix** (folded in): `delete_recipe` now unlinks the hero's own `images/<slug>.jpg` file,
+  which it previously left orphaned (no file deletion existed before 2a's `delete_image`).
+- **`unlink_unreferenced` — the copy-shares-image guard.** `copy_recipe` carries the image PATH, so a
+  copy and its original can share one file. File cleanup therefore unlinks a path **only if no surviving
+  recipe still references it** as its hero (a post-commit reference check) — deleting one of two sharers
+  keeps the file; deleting the last one cleans it. Used on all three deletion paths. (Without this the
+  spec's raw unlink would break a copy's shared hero.)
+- **Renderer unchanged** — confirmed in the diagnostic: `dishPhoto` renders any `images/…` path and
+  `/images/<path:>` serves the `cooks/` subdir, so a hero pointing at a cook photo Just Works.
+
+**This COMPLETES the cook-photo album BACKEND** (2a seams + schema, 2b attach/caption/delete, 2c
+promote + linked-hero deletion). **Build 3** is the album UI (preview-first).
+
 ## Open questions
 
 - **Masthead title face** — Spectral vs Newsreader vs Fraunces, decided by eye after Stage B renders
