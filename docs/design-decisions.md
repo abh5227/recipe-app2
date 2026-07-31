@@ -857,6 +857,64 @@ is false for everyone else. They light up once rescoping wires login→ownership
   corpus** — re-owning 298 rows to chase a session mismatch moves data to the wrong account
   backwards. Re-owning is only correct if the daily login is deliberately not id 1, which it isn't.
 
+## Cook-photo album (Stage 4) — the foundation table (Build 1)
+
+A per-cook photo album: several photos per cook, accumulating into a scrollable **per-recipe** album
+that sits BESIDE the single hero (`recipes.image` unchanged). Build 1 is schema only — the
+`cook_photos` table + `CookPhoto` ORM model + dual-source migration (SQLite `migrations/025` + Alembic
+`f5a6b7c8d9e0`, `down_revision` the recipe_queue head); the `save_cook_photo` helper and the
+attach/promote/caption endpoints are **Build 2**, the album UI (preview-first) is **Build 3**.
+
+**Table shape** (`cook_photos`, one row per photo):
+
+| column | type | notes |
+|---|---|---|
+| `id` | INTEGER PK AUTOINCREMENT | surrogate; a photo is first-class, no natural key |
+| `cook_log_id` | INTEGER NOT NULL → cook_log(id) **ON DELETE CASCADE** | the cook this photo belongs to |
+| `recipe_id` | TEXT NOT NULL → recipes(id) **ON DELETE CASCADE** | **DENORMALIZED** (see below) |
+| `user_id` | INTEGER NOT NULL → users(id), no cascade | interim multi-user-shaped rule |
+| `path` | TEXT NOT NULL | stored image path (Build 2 fills via save_cook_photo) |
+| `caption` | TEXT **nullable** | optional; ~100-char cap enforced in Build 2/UI |
+| `added_at` | TEXT NOT NULL | `now_utc()`, set in code |
+
+Indexes: `idx_cook_photos_recipe` (recipe_id) + `idx_cook_photos_cook_log` (cook_log_id).
+
+- **Denormalized `recipe_id`** — the album view is *"all photos across all this recipe's cooks"*, so
+  carrying `recipe_id` makes it a single indexed `WHERE recipe_id = ?` instead of a join through
+  `cook_log` (the `shared_posts` idiom of carrying both keys). Its own `ON DELETE CASCADE` keeps it
+  consistent when a recipe is deleted.
+- **`user_id` from day one** — single-user now, but a new table gets the multi-user-shaped column free
+  (set to `current_user` at insert in Build 2), so no rescoping debt is added. Reference FK (no cascade),
+  matching `owner` / `cook_log.user_id` / `recipe_queue.user_id`.
+- **`added_at` code-set `now_utc()` TEXT (no DB default)** — the deliberate `recipe_queue` /
+  `shared_posts` / `comments` convention that dodges the SQLite `datetime('now')` vs Postgres
+  default-expression divergence (chosen over a DB default on purpose).
+- **Purely additive** — new table only; `cook_log` and `recipes` are untouched, and a new table starts
+  empty so there is **no backfill**.
+
+### Locked Stage-4 decisions (implemented in later builds — recorded so they aren't re-litigated)
+
+- **Hero promote = POINT / linked** — a cook photo becomes the hero (auto if the recipe has none, else
+  opt-in "make this the hero") by pointing `recipes.image` at the cook photo's OWN path (one file,
+  shared), NOT a byte-copy. *(Build 2.)*
+- **Cook-photo naming** — `images/cooks/<photo_id>.jpg` (per-photo id under an `images/cooks/`
+  subdir), distinct from the hero's `images/<slug>.jpg` so several photos per cook never collide and
+  never overwrite the hero. *(Build 2.)*
+- **Caption** — optional, ~100-char cap (enforced in Build 2/UI; the column is just nullable TEXT here).
+- **Date display** — each album photo shows its cook's full date.
+- **`save_cook_photo` sibling** — a sibling of `save_image()` sharing the resize/validate/atomic-write
+  core, writing to the `images/cooks/` destination — NOT a `dest` param bolted onto `save_image`. *(Build 2.)*
+
+### ⚠️ Build-2 requirement recorded at the foundation — CASCADE-clears the hero too
+
+Both FKs are `ON DELETE CASCADE`, so a `cook_photo` row can vanish **two** ways: (a) an explicit delete
+(Build 2), OR (b) a **cascade** when its `cook_log` (undo-cook) or `recipes` row is deleted. Because the
+hero is POINT/linked — `recipes.image` may point at a cook photo's path — **Build 2's hero-clearing
+logic must handle the cascade path, not only the explicit-delete path**: if the photo that vanished (by
+cascade) was the current hero, `recipes.image` must be cleared, or it dangles. (Undo-cook deletes a
+`cook_log` row → cascades its photos → one of them might be the hero.) This is the direct consequence of
+choosing POINT over COPY, flagged now so Build 2 doesn't ship a delete path that only covers case (a).
+
 ## Open questions
 
 - **Masthead title face** — Spectral vs Newsreader vs Fraunces, decided by eye after Stage B renders

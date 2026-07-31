@@ -303,6 +303,35 @@ class RecipeQueue(Base):
     )
 
 
+class CookPhoto(Base):
+    """A photo in a recipe's per-cook album (Stage 4, build 1 schema, migration 025; the save_cook_photo
+    helper + attach/promote/caption endpoints are build 2). One row = "this photo belongs to cook_log C
+    (recipe R), added by user U" — several photos per cook, accumulating into a per-recipe album BESIDE the
+    single hero (recipes.image is untouched). cook_log_id -> cook_log(id) ON DELETE CASCADE so undoing a
+    cook / deleting a recipe (which cascades cook_log) leaves no orphan photo (the shared_posts.cook_log_id
+    idiom). recipe_id -> recipes(id) ON DELETE CASCADE is DENORMALIZED (the cook already carries the recipe),
+    carried so the "all photos for this recipe" album query is a single indexed WHERE recipe_id = ? instead
+    of a join through cook_log; its own cascade keeps it consistent. recipe_id is Text to match recipes.id
+    (Text). user_id -> users(id) is a reference FK (no ondelete, matching recipe_queue.user_id) — the interim
+    multi-user-shaped rule: present from day one though single-user now, set to current_user at insert. path
+    is the stored image path (build 2 fills it via save_cook_photo); caption is optional (<=100 chars,
+    app-enforced later). Surrogate id PK (a photo is a first-class row; no natural key). added_at = now_utc().
+    Queried with explicit select() — no relationship() (house style)."""
+    __tablename__ = "cook_photos"
+    id = Column(Integer, primary_key=True)
+    cook_log_id = Column(Integer, ForeignKey("cook_log.id", ondelete="CASCADE"), nullable=False)  # the cook
+    recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)        # denormalized
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)             # who added it (no cascade)
+    path = Column(Text, nullable=False)                                           # stored image path (build 2)
+    caption = Column(Text)                                                        # optional (<=100 chars)
+    added_at = Column(Text, nullable=False)                                       # now_utc(): when added
+    __table_args__ = (
+        Index("idx_cook_photos_recipe", "recipe_id"),      # per-recipe album query
+        Index("idx_cook_photos_cook_log", "cook_log_id"),  # per-cook lookup
+        {"sqlite_autoincrement": True},
+    )
+
+
 # ingredient_weights has NO primary key in the live schema. ORM-mapped classes require a PK, so this
 # table is defined as a Core Table (part of the same metadata) — faithful in create_all (no synthetic
 # PK added, no structure change). It can be given an imperative ORM mapping in Stage 1b if it's queried.
