@@ -528,7 +528,7 @@ a:hover { color: var(--berry-lift); }
 .polaroid-empty .add-label { text-align: center; line-height: 1.35; }
 .polaroid-empty:focus-within .photo { border-color: var(--green); }
 .upload-zone:focus-visible { outline: none; }
-.photo-input { display: none; }
+.photo-input, .album-photo-input { display: none; }
 
 /* drag-over — solid green ring + faint fill */
 .polaroid-empty.dragover .photo { border: 2px solid var(--green);
@@ -779,6 +779,20 @@ a:hover { color: var(--berry-lift); }
 .album-photo:nth-child(3n+3) { transform: rotate(-.3deg); }
 .album-photo .ph { display: block; width: 100%; height: 150px; object-fit: cover; border-radius: 2px; background: #e8dcc4; }
 .album-photo .strip { padding: 7px 3px 10px; min-height: 26px; }
+
+/* aspect-matched MASONRY: photos WHOLE at native ratio, ragged heights, order-preserving left-to-right.
+   JS (layoutAlbum) distributes items round-robin into .album-col stacks (item i -> column i mod N) so the
+   newest sits top-left and the next-newest to its RIGHT (a CSS column-count would flow top-to-bottom and
+   scramble that). These rules only STYLE the columns + relax the photo fit; the ordering is the JS's job. */
+.album-grid.masonry { display: flex; align-items: flex-start; grid-template-columns: none; gap: 0 18px; }
+.album-col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 22px; }
+.album-grid.masonry .album-photo { width: 100%; }
+/* native ratio (no cover-crop); GUARDRAILS cap extremes so one odd photo can't blow out the layout —
+   a very tall portrait caps at 300px, a very wide panorama floors at 72px; contain -> capped extremes
+   letterbox (still whole), normal ratios (~0.6–2.3) render edge-to-edge with no letterbox. */
+.album-grid.masonry .album-photo .ph {
+  height: auto; max-height: 300px; min-height: 72px; object-fit: contain; background: var(--polaroid);
+}
 .album-photo .date { display: block; font-family: var(--font-sans); font-size: 10px; letter-spacing: .04em; color: var(--ink-soft); }
 .album-photo .cap { display: block; font-family: var(--font-hand); font-size: 15.5px; line-height: 1.08; color: #4b4636; margin-top: 3px; }
 /* the promoted (POINT/linked) hero: an ochre ring + badge, using the real --ochre token */
@@ -787,8 +801,8 @@ a:hover { color: var(--berry-lift); }
   position: absolute; top: -9px; left: 8px; font-family: var(--font-sans); font-size: 10px; letter-spacing: .05em;
   color: #fff; background: var(--ochre); padding: 2px 7px; border-radius: 999px; box-shadow: 0 1px 3px rgba(0,0,0,.2);
 }
-/* three-by-default: when collapsed, hide the 4th photo onward — one clean row (inline expand removes .collapsed) */
-.album-section.collapsed .album-grid .album-photo:nth-child(n+4) { display: none; }
+/* collapsed cap is done in JS now (layoutAlbum renders only the first ALBUM_CAP photos when .collapsed) —
+   no CSS nth-child hide, since masonry columns aren't a predictable "row" to clip. */
 .album-more { text-align: center; padding: 6px 0 2px; }
 .see-more {
   font-family: var(--font-sans); font-size: 13px; color: var(--green); background: none; border: none;
@@ -796,6 +810,30 @@ a:hover { color: var(--berry-lift); }
 }
 .see-more:hover { color: var(--green-lift); background: color-mix(in srgb, var(--green) 8%, transparent); }
 .see-more .chev { display: inline-block; margin-left: 5px; }
+
+/* Stage 4 (3b-i): the standalone "add to album" tile — the REAL hero uploader .upload-zone (dashed frame /
+   "+" / drag-or-click / real dragover·working·error states) SIZED into an album grid cell (not redrawn).
+   Owner-only; standalone (no cook -> no date), hence the (i) cook-logger nudge. Ported from the approved
+   preview (preview/cook-album-add-zone.html), real tokens throughout. */
+.album-add .polaroid-empty { display: block; }
+.album-add .photo.upload-zone { width: 100%; height: 150px; border-radius: 2px; }
+.album-add .add-label { font-size: 11.5px; }
+.album-add .strip { display: flex; align-items: center; gap: 6px; justify-content: center; }
+.add-cap { font-family: var(--font-sans); font-size: 10px; letter-spacing: .04em; color: var(--ink-soft); }
+/* the (i) cook-logger hint — quiet at rest, tooltip on hover/focus (informs, doesn't shout) */
+.add-hint { position: relative; display: inline-flex; }
+.add-hint .i { width: 15px; height: 15px; display: grid; place-items: center; border-radius: 999px;
+  border: 1px solid var(--border-defined); color: var(--ink-soft); font-family: var(--font-sans);
+  font-size: 9.5px; font-style: italic; cursor: help; line-height: 1; }
+.add-hint .i:hover { color: var(--ink); border-color: var(--ink-soft); }
+.add-hint .tip { position: absolute; bottom: 150%; left: 50%; transform: translateX(-50%);
+  width: 218px; background: #2a1c0d; color: #f4ead6; font-family: var(--font-sans); font-size: 11.5px;
+  line-height: 1.45; padding: 10px 12px; border-radius: 9px; opacity: 0; pointer-events: none;
+  transition: opacity .15s; box-shadow: 0 8px 22px -8px rgba(0,0,0,.55); z-index: 20; text-align: left; }
+.add-hint .tip b { color: #fff; }
+.add-hint:hover .tip, .add-hint:focus-within .tip { opacity: 1; }
+.add-hint .tip::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 6px solid transparent; border-top-color: #2a1c0d; }
 
 /* ---------- Clickable ingredient ("look this up") ---------- */
 .ingredient {

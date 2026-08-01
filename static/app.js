@@ -750,10 +750,11 @@ function dishPhoto(r, editable) {
 
 // The cook-photo ALBUM (Stage 4 build 3a — DISPLAY only). A dedicated "Album" section below the method:
 // a grid of mini-Polaroids (a lighter form than the hero — no clip), each with the cook's full date (if
-// cook-linked) + optional Kalam caption, the promoted photo flagged with the ★ Hero badge. THREE show by
-// default; "See all N photos" expands the rest inline on desktop (CSS-driven via .collapsed). No add
-// affordance (3b) and no per-photo actions (3c) here. Empty album -> no section (3b adds the entry points).
-const ALBUM_CAP = 3;   // 3 keeps the collapsed view to one clean row (4 wrapped); fixed (responsive = follow-up)
+// cook-linked) + optional Kalam caption, the promoted photo flagged with the ★ Hero badge. Photos render
+// WHOLE at their native aspect ratio in an order-preserving MASONRY (layoutAlbum); SIX show by default,
+// "See all N photos" expands the rest. No per-photo actions (3c). 3b-i adds the owner-only add-tile (below)
+// + shows the section (add-zone only) for an empty owner album; a non-owner empty album still renders nothing.
+const ALBUM_CAP = 6;   // masonry: ~1–2 ranks shown collapsed, then "See all" (one-clean-row no longer applies)
 function albumPhotoHTML(p) {
   const badge = p.is_hero ? `<span class="hero-badge">&#9733; Hero</span>` : "";
   const date = p.cooked_on ? `<span class="date">${esc(formatFullDate(p.cooked_on))}</span>` : "";   // cook-linked only
@@ -763,17 +764,76 @@ function albumPhotoHTML(p) {
       onerror="this.closest('.album-photo').remove();">
     <figcaption class="strip">${date}${cap}</figcaption></figure>`;
 }
+// The standalone "add to album" tile (3b-i): the REAL hero-uploader .upload-zone (dashed frame / "+" /
+// drag-or-click, MULTI-file) sized into an album grid cell, plus the (i) cook-logger nudge. Owner-only;
+// standalone = attaches with NO cook (cook_log_id NULL -> no date). Wired by wireAlbumUpload after paint.
+function albumAddTileHTML() {
+  return `<figure class="album-photo album-add" data-album-add>
+    <span class="polaroid-empty">
+      <span class="photo upload-zone" tabindex="0" role="button" aria-label="Add photos to the album">
+        <span class="add-photo-mark">+</span><span class="add-label">drag photos here<br>or click to choose</span>
+      </span>
+    </span>
+    <input class="album-photo-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true">
+    <figcaption class="strip"><span class="add-cap">add to album</span><span class="add-hint"><span class="i" tabindex="0" role="img" aria-label="About album photos">i</span><span class="tip">A photo added here <b>won&rsquo;t have a date</b>. To track <b>when &amp; how</b> you cook this over time, <b>log a cook</b> and add photos to it.</span></span></figcaption>
+  </figure>`;
+}
 function albumSectionHTML(data) {
   const photos = (data && data.photos) || [];
-  if (!photos.length) return "";   // no photos -> no section (calm empty state; 3b adds add-photo entries)
+  const canAdd = !!(data && data.is_editable);   // owner-only add-zone — same gate as the hero uploader (dishPhoto)
+  const addTile = canAdd ? albumAddTileHTML() : "";
+  if (!photos.length) {
+    // 3b-i change to 3a's empty state: an OWNER gets the section with just the add-zone (entry point for the
+    // first photo); a NON-owner still sees nothing (calm empty state — they can't add).
+    return canAdd
+      ? `<section class="album-section" id="album-section">
+    <div class="col-head"><h2 class="col-title">Album</h2></div>
+    <div class="album-grid masonry">${addTile}</div></section>`
+      : "";
+  }
   const many = photos.length > ALBUM_CAP;
   const more = many
     ? `<div class="album-more"><button class="see-more" data-album-toggle>See all ${photos.length} photos <span class="chev">&#8595;</span></button></div>`
     : "";
   return `<section class="album-section${many ? " collapsed" : ""}" id="album-section">
     <div class="col-head"><h2 class="col-title">Album</h2></div>
-    <div class="album-grid">${photos.map(albumPhotoHTML).join("")}</div>
+    <div class="album-grid masonry">${photos.map(albumPhotoHTML).join("")}${addTile}</div>
     ${more}</section>`;
+}
+
+// Aspect-matched MASONRY layout for the album. Photos render WHOLE at native ratio (no crop) with ragged
+// heights. Mechanism: order-preserving ROUND-ROBIN column distribution — item i -> column (i mod N),
+// stacked within each column. This reads LEFT-TO-RIGHT in source (cooked_on) order (newest top-left, the
+// next-newest to its RIGHT), unlike CSS column-count which flows top-to-bottom per column and would
+// scramble newest-first. No gap backfilling (no `dense`) -> order is never reshuffled to fill holes. The
+// column count N derives from width; columns stack naturally (+ reflow as images load) so no per-image
+// height measuring is needed. Collapsed shows the first ALBUM_CAP photos; the add-tile always trails last.
+const ALBUM_COLW = 168, ALBUM_GAP = 18, ALBUM_MAXCOL = 4;
+function layoutAlbum(grid) {
+  if (!grid) return;
+  if (!grid._items) grid._items = Array.from(grid.children);   // cache the flat items (photos in order + add-tile)
+  const sec = grid.closest(".album-section");
+  const collapsed = !!(sec && sec.classList.contains("collapsed"));
+  const photos = grid._items.filter((el) => !el.classList.contains("album-add"));
+  const addTile = grid._items.find((el) => el.classList.contains("album-add")) || null;
+  const shown = collapsed ? photos.slice(0, ALBUM_CAP) : photos;
+  const seq = addTile ? shown.concat(addTile) : shown;   // the add-tile trails the shown photos (end of the masonry)
+  const W = grid.clientWidth || 760;
+  const N = Math.max(1, Math.min(ALBUM_MAXCOL, Math.floor((W + ALBUM_GAP) / (ALBUM_COLW + ALBUM_GAP))));
+  const cols = [];
+  for (let i = 0; i < N; i++) { const c = document.createElement("div"); c.className = "album-col"; cols.push(c); }
+  seq.forEach((el, i) => cols[i % N].appendChild(el));   // round-robin: i -> col (i mod N), source order kept -> row-major reading
+  grid.replaceChildren(...cols);
+}
+let _albumResizeBound = false;
+function bindAlbumResize() {
+  if (_albumResizeBound) return;                          // one listener for the app's lifetime (paint re-finds the grid)
+  _albumResizeBound = true;
+  let raf = 0;
+  window.addEventListener("resize", () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => layoutAlbum(app.querySelector(".album-grid.masonry")));
+  });
 }
 
 // The owner Edit/Delete row, and the inline two-step delete confirmation it swaps to. The
@@ -869,6 +929,9 @@ function paintRecipe() {
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(setupHeadnote);
     else setupHeadnote();
     wirePhotoUpload();   // Stage 3: the editable Polaroid becomes an upload/replace surface (no-op otherwise)
+    wireAlbumUpload();   // Stage 4 (3b-i): the album add-tile becomes a multi-file upload surface (no-op if none)
+    const albumGrid = app.querySelector(".album-grid.masonry");
+    if (albumGrid) { layoutAlbum(albumGrid); bindAlbumResize(); }   // aspect-matched masonry (order-preserving columns)
   }
 }
 
@@ -964,6 +1027,100 @@ function wirePhotoUpload() {
     wrap.classList.remove("dragover");
     const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
     send(f);                                    // f undefined (Photos reference) -> guarded no-op in send()
+  });
+}
+
+// Stage 4 (3b-i) standalone "add to album" upload: the album add-tile (owner-only) is a MULTI-FILE upload
+// surface. Reuses the hero uploader's state-painting (rest/uploading/error via uploadErrorHTML) and drag/drop
+// + picker wiring, but POSTs to the album attach endpoint with NO cook_log_id (standalone -> no date) and
+// runs the batch best-effort via Promise.allSettled: the successes are kept (a repaint shows them) and the
+// misses are surfaced in the tile — never all-or-nothing. No-ops when there's no add-tile (non-owner / edit
+// mode). Rewired on every reading-mode paint, like wirePhotoUpload — no listener buildup.
+function wireAlbumUpload() {
+  const wrap = app.querySelector(".album-photo.album-add[data-album-add]");
+  if (!wrap) return;
+  const input = wrap.querySelector(".album-photo-input");
+  const zone = wrap.querySelector(".upload-zone");
+  const pe = wrap.querySelector(".polaroid-empty");
+  const rid = view && view.slug;
+  if (!input || !zone || !pe || !rid) return;
+
+  const rest = () => {
+    pe.classList.remove("dragover", "error");
+    zone.className = "photo upload-zone";
+    zone.innerHTML = '<span class="add-photo-mark">+</span><span class="add-label">drag photos here<br>or click to choose</span>';
+  };
+  const uploading = (n) => {
+    pe.classList.remove("dragover", "error");
+    zone.className = "photo upload-zone working";
+    zone.innerHTML = `<div class="uploading"><span class="spinner"></span>uploading ${n > 1 ? n + " photos" : "photo"}&hellip;</div>`;
+  };
+  const fail = (html) => {
+    pe.classList.remove("dragover");
+    pe.classList.add("error");
+    zone.className = "photo upload-zone";
+    zone.innerHTML = html;
+  };
+  const setDrag = (on) => {   // preview's "drop to add" label swap (skip while working/errored)
+    if (zone.classList.contains("working") || pe.classList.contains("error")) return;
+    pe.classList.toggle("dragover", on);
+    const lbl = zone.querySelector(".add-label");
+    if (lbl) lbl.innerHTML = on ? "drop to add" : 'drag photos here<br>or click to choose';
+  };
+
+  // POST one file as a STANDALONE album photo (no cook_log_id); resolves to the HTTP status, rejects on
+  // network error. allSettled below turns each into fulfilled(status) / rejected(err) — nothing aborts the batch.
+  const postOne = async (file) => {
+    const fd = new FormData();
+    fd.append("image", file);                             // NO cook_log_id -> STANDALONE (cook_log_id NULL, no date)
+    const res = await fetch(`/api/recipes/${encodeURIComponent(rid)}/photos`,
+                            { method: "POST", credentials: "same-origin", body: fd });
+    return res.status;
+  };
+
+  const uploadMany = async (files) => {
+    const list = Array.from(files || []).filter(Boolean);   // Photos may hand a reference -> filter it out
+    if (!list.length) { rest(); return; }                   // nothing pickable -> guarded no-op (never hang)
+    uploading(list.length);
+    const results = await Promise.allSettled(list.map(postOne));   // best-effort batch — settle them all
+    if (results.some((r) => r.status === "fulfilled" && r.value === 401)) { showAuth(); return; }   // session gone
+    let ok = 0, failCount = 0, firstStatus = 0;
+    for (const r of results) {
+      const st = r.status === "fulfilled" ? r.value : 0;    // rejected (network/abort) -> 0 (generic recoverable)
+      if (st >= 200 && st < 300) ok++;
+      else { failCount++; firstStatus = firstStatus || st; }
+    }
+    if (ok && failCount) {                                  // PARTIAL: keep the good ones (repaint), flag the misses
+      await renderRecipe(rid);
+      const t = app.querySelector(".album-photo.album-add[data-album-add]");
+      if (t) {
+        const tpe = t.querySelector(".polaroid-empty"), tz = t.querySelector(".upload-zone");
+        tpe.classList.add("error"); tz.className = "photo upload-zone";
+        tz.innerHTML = `<span class="err-msg">Added ${ok}; ${failCount} couldn&rsquo;t be added.</span><span class="err-sub">JPEG, PNG, WebP, or HEIC</span><button class="err-retry">Try again</button>`;
+      }
+      return;
+    }
+    if (ok) { renderRecipe(rid); return; }                  // all succeeded -> repaint; the new photos appear
+    fail(uploadErrorHTML(firstStatus));                     // none succeeded -> in-frame error (nothing changed)
+  };
+
+  wrap.addEventListener("click", (e) => {
+    if (e.target.closest(".add-hint")) return;              // the (i) hint isn't a trigger
+    if (e.target.closest(".err-retry")) { rest(); return; } // "Try again" -> back to rest (no picker)
+    if (e.target.closest(".upload-zone")) input.click();
+  });
+  zone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); input.click(); }
+  });
+  input.addEventListener("change", () => { uploadMany(input.files); input.value = ""; });  // clear -> re-picking the same files re-fires
+
+  ["dragenter", "dragover"].forEach((ev) => wrap.addEventListener(ev, (e) => { e.preventDefault(); setDrag(true); }));
+  ["dragleave", "dragend"].forEach((ev) => wrap.addEventListener(ev, (e) => {
+    if (!wrap.contains(e.relatedTarget)) setDrag(false);    // ignore moves between the tile's own children
+  }));
+  wrap.addEventListener("drop", (e) => {
+    e.preventDefault(); setDrag(false);
+    uploadMany(e.dataTransfer && e.dataTransfer.files);     // empty / reference -> guarded no-op in uploadMany
   });
 }
 
@@ -1935,11 +2092,13 @@ document.addEventListener("click", (e) => {
   const albumToggle = e.target.closest("[data-album-toggle]");
   if (albumToggle) {
     const sec = app.querySelector("#album-section");
-    if (sec) {
+    const grid = sec && sec.querySelector(".album-grid.masonry");
+    if (sec && grid) {
       const collapsed = sec.classList.toggle("collapsed");
-      const n = sec.querySelectorAll(".album-photo").length;
+      const total = (grid._items || []).filter((el) => !el.classList.contains("album-add")).length;
+      layoutAlbum(grid);   // re-distribute: collapsed -> first ALBUM_CAP, expanded -> all (masonry, order preserved)
       albumToggle.innerHTML = collapsed
-        ? `See all ${n} photos <span class="chev">&#8595;</span>`
+        ? `See all ${total} photos <span class="chev">&#8595;</span>`
         : `See less <span class="chev">&#8593;</span>`;
     }
     return;

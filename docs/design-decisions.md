@@ -1060,10 +1060,40 @@ display — no add affordance (3b), no per-photo actions (3c).
   add-photo entry points). The hero Polaroid / clip / reading card / cook block are **untouched** — the
   album is a wholly new section added below the method.
 
-**Album roadmap (remaining builds):** **3b** — the add-photo entry points (standalone album add reusing
-the hero uploader, + at-log-time attach in the cook flow); **3c** — the per-photo actions (the hover ⋯
-menu: make-hero / edit-caption / delete, with the two-step delete-confirm); **3d** — drag-to-reorder;
-**3e** — anchor a photo to a specific method step (the reserved `.step-body` per-step-photo hook).
+### Build 3b-i — standalone "add to album" upload + aspect-matched masonry (shipped)
+
+Two things landed together (client-only: `static/app.js` + `static/styles.css`):
+
+**The standalone "add to album" upload.** An **in-grid add-tile** at the end of the album grid — the
+**real** hero-uploader `.upload-zone` (dashed frame / "+" / drag-or-click / real dragover·working·error
+states) sized into a grid cell, not redrawn. **Owner-only** (gated on `data.is_editable`, the same gate
+the hero uploader uses; the server still enforces `rec.owner` on the standalone attach). **Multi-file**:
+several photos at once run best-effort through **`Promise.allSettled`** — the ones that succeed are kept
+(a repaint shows them) and the misses are surfaced in the tile (*"Added X; Y couldn't be added"*), never
+all-or-nothing. **Standalone = `cook_log_id` NULL** (no cook, no date). A quiet **(i) cook-logger hint**
+nudges: a dated cook captures more signal than a bare album photo. **Empty-album change to 3a:** an
+**owner** now sees the section with **just the add-zone** (an entry point for the first photo); a
+**non-owner** empty album still renders nothing.
+
+**Album layout → aspect-matched MASONRY.** Photos render **WHOLE at their native aspect ratio** (no
+`object-fit: cover` crop) with **ragged heights** — portrait tall, landscape wide. Mechanism:
+`layoutAlbum` distributes items **round-robin into column stacks** (`item i → column i mod N`), *not* CSS
+`column-count` (which flows top-to-bottom per column and would scramble newest-first). N derives from
+width; columns stack naturally so no per-image height measuring is needed (they reflow as images load);
+re-run on resize + on the see-all toggle. **Ordering is roughly-newest-first, NOT strict row-major at
+every width** — the exact sequence can shift with the column count; Andy **accepted this as the tradeoff**
+for the organic masonry look (a deliberate design choice, not a bug). **Extreme-aspect guardrail:** a
+very tall portrait caps at `max-height: 300px`, a very wide panorama floors at `min-height: 72px`, with
+`object-fit: contain` so a capped extreme letterboxes (still whole) while normal ratios (~0.6–2.3) render
+edge-to-edge — one odd photo can't blow out the layout. The collapsed cap moved from CSS (`nth-child`
+hide) to JS (render only the first `ALBUM_CAP` = **6**); the see-all/see-less toggle re-distributes.
+
+The hero Polaroid / clip / reading card / cook block / mini-Polaroid strip are **untouched**.
+
+**Album roadmap (remaining builds):** **3b-ii** — at-log-time attach (photos in the backdate cook modal);
+**3b-iii** — the "Cooked it" one-click flow; **3c** — the per-photo actions (the hover ⋯ menu: make-hero /
+edit-caption / delete, with the two-step delete-confirm); **3d** — drag-to-reorder; **3e** — anchor a
+photo to a specific method step (the reserved `.step-body` per-step-photo hook).
 
 ## Open questions
 
