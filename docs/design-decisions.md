@@ -724,7 +724,17 @@ the locked spec — recorded so future work reads them as **decisions, not bugs*
   parked pass**. Two deliberate body-vs-page adaptations (the feed paints on a sized page element; here the
   target is the shared `body`): `position: relative` (anchors the absolute `::before`) and
   `min-height: 100vh` (keeps the desk full-viewport behind a short recipe). Content sits above the desk via
-  `body.recipe-bg > * { z-index: 1 }` (no offsets → no movement).
+  a `z-index: 1` lift on the reading card (see the fix note below).
+  - **Fix — the lift was over-broad (`> *` → `> #app`).** As first shipped (3654de7), the lift was
+    `body.recipe-bg > * { position: relative; z-index: 1 }`, which matches **every** body-level child. Its
+    specificity (0,1,1) beats the body-level **fixed overlays** — `.backdate-modal` / `.scrim` / `.panel`
+    (each 0,1,0) — so on a recipe page it **clobbered their `position: fixed`** to `relative`: the
+    "Log a past cook" modal dropped out of the viewport into document flow at the page bottom (its open
+    `.focus()` then scrolled to it), the scrim backdrop collapsed, and the field-guide drawer mispositioned.
+    Narrowed to **`body.recipe-bg > #app`** (the reading-card container; the back-link lives inside `#app`,
+    so it stays lifted) — the overlays keep their own `position: fixed` + `z-index` (40/50, already above the
+    desk `::before` at `z-index: 0`), so they position correctly again while the desk still renders behind
+    the card. One-selector CSS fix; the modal/scrim/drawer CSS was already correct and untouched.
 - **Resize core extracted to a shared `images.py` (photo uploader, Stage 1).** The image-resize logic —
   open → EXIF-orient → convert to a JPEG-safe mode → downscale the long edge to 1600 (never upscale,
   LANCZOS) → JPEG q85 — was lifted verbatim out of `scripts/backfill_photos.py::process_photo` into a

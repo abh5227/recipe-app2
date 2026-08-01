@@ -145,7 +145,7 @@ body.recipe-bg::before {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='l'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012 0.5' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23l)'/%3E%3C/svg%3E");
   background-size: 200px 200px; opacity: .13; mix-blend-mode: multiply;   /* feed .13 linen, verbatim */
 }
-body.recipe-bg > * { position: relative; z-index: 1; }   /* reading card + back-link sit above the desk */
+body.recipe-bg > #app { position: relative; z-index: 1; }   /* lift ONLY the reading card above the desk ::before — NOT the body-level fixed overlays (.scrim/.panel/.backdate-modal keep their own position:fixed + z-index; 3654de7's `> *` clobbered them) */
 /* Stage 4: EDIT mode widens the page to ~1000px so the two-field ingredient row (quantity + unit +
    name + controls) isn't pinched — the extra width goes to the name column. Reading stays 760px.
    (No max-width transition yet — feeling the raw toggle jump before deciding whether to ease it.) */
