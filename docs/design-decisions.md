@@ -1030,6 +1030,41 @@ The POINT/linked-hero model wired end-to-end. The hero (`recipes.image`) may poi
 **This COMPLETES the cook-photo album BACKEND** (2a seams + schema, 2b attach/caption/delete, 2c
 promote + linked-hero deletion). **Build 3** is the album UI (preview-first).
 
+### Build 3a — the album DISPLAY (shipped)
+
+The first VISIBLE piece of the feature: a dedicated **"Album" section on the recipe page, below the
+method** (the alternate placement chosen from the preview, not an inline cook-block roll). Read-only
+display — no add affordance (3b), no per-photo actions (3c).
+
+- **Data — folded into `GET /api/recipes/<id>`** (not a separate endpoint): a `photos` array rides along
+  with `stats`/`ingredients`/`steps` so the album paints with the page (no second request; the client
+  already re-fetches canonical state after mutations). Per photo, **least-exposure**:
+  `{id, path, caption, cooked_on, is_hero}` — `cooked_on` via a `cook_log` LEFT JOIN (NULL for a
+  standalone photo), `is_hero` = `recipes.image == path` (the POINT/linked hero).
+- **Order — newest cook first, undated last.** `ORDER BY (cooked_on IS NULL) asc, cooked_on desc,
+  added_at desc, id desc`: cook-linked photos by cook date descending, then standalone/undated photos
+  last (by add-time). `(cooked_on IS NULL)` pushes NULLs last **portably** (no reliance on `NULLS LAST`
+  syntax — works on SQLite + Postgres). **The hero is NOT floated** — it wears the badge in its natural
+  `cooked_on` position (with newest-first ordering the arrangement is already meaningful).
+- **Treatment — the real mini-Polaroid** (the approved preview, real tokens): the `--polaroid` frame +
+  bottom strip, smaller than the hero, casually rotated, **no clip**. Each shows the photo; the **full
+  date** ("March 12, 2024" — `formatFullDate`, `month:"long"`, distinct from the cook-summary's short
+  "Mar") for cook-linked, **no date** for standalone; the optional **caption beneath in Kalam**
+  (`--font-hand`); the promoted photo carries the **★ Hero badge** (ochre badge + ring). A broken image
+  drops its card (`onerror`).
+- **Cap — three, then "See all".** **Three** show by default (one clean row — four wrapped); a quiet
+  green **"See all N photos ↓"** toggles the `.collapsed` class (CSS hides the 4th onward) for an inline
+  desktop expand, and flips to **"See less ↑"** to collapse back. `N` counts the full set. A dedicated
+  **mobile album view is deferred** (inline expand serves mobile for now).
+- **Empty state:** a recipe with no cook photos renders **no album section** (calm; 3b adds the
+  add-photo entry points). The hero Polaroid / clip / reading card / cook block are **untouched** — the
+  album is a wholly new section added below the method.
+
+**Album roadmap (remaining builds):** **3b** — the add-photo entry points (standalone album add reusing
+the hero uploader, + at-log-time attach in the cook flow); **3c** — the per-photo actions (the hover ⋯
+menu: make-hero / edit-caption / delete, with the two-step delete-confirm); **3d** — drag-to-reorder;
+**3e** — anchor a photo to a specific method step (the reserved `.step-body` per-step-photo hook).
+
 ## Open questions
 
 - **Masthead title face** — Spectral vs Newsreader vs Fraunces, decided by eye after Stage B renders

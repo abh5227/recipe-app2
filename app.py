@@ -467,12 +467,39 @@ def get_recipe(rid):
             select(RecipeQueue.id)
             .where(RecipeQueue.recipe_id == rid, RecipeQueue.user_id == current_user.id)
         ) is not None
+        # Cook-photo album (Stage 4 build 3a — display). Rides along in the recipe payload (like stats/
+        # ingredients/steps) so the album paints with the page, no second request. Per photo: path, caption,
+        # the cook's DATE (cook_log.cooked_on, LEFT JOIN — NULL for a standalone photo), and is_hero
+        # (recipes.image == path — the POINT/linked hero). Least-exposure: no user_id/added_at in the output.
+        # ORDER: cook-linked photos NEWEST cook first (cooked_on desc), then undated/standalone photos last
+        # (added_at desc among themselves). `(cooked_on IS NULL)` asc pushes NULLs last portably (no reliance
+        # on NULLS LAST). The hero is NOT floated — it wears the badge in its natural cooked_on position.
+        photo_rows = s.execute(
+            select(CookPhoto.id, CookPhoto.path, CookPhoto.caption, CookPhoto.cook_log_id, CookLog.cooked_on)
+            .join(CookLog, CookLog.id == CookPhoto.cook_log_id, isouter=True)
+            .where(CookPhoto.recipe_id == rid)
+            .order_by(
+                CookLog.cooked_on.is_(None),      # cook-linked (False=0) before standalone (True=1) — NULLs last
+                CookLog.cooked_on.desc(),         # newest cook first
+                CookPhoto.added_at.desc(), CookPhoto.id.desc(),   # tiebreak + ordering among undated photos
+            )
+        ).all()
+        hero_path = r["image"]
+        photos = [
+            {
+                "id": p.id, "path": p.path, "caption": p.caption,
+                "cooked_on": p.cooked_on,                          # the cook's date if cook-linked, else None
+                "is_hero": bool(hero_path and p.path == hero_path),
+            }
+            for p in photo_rows
+        ]
     return jsonify(
         {
             "recipe": dict(r),
             "ingredients": ingredients,
             "steps": serialize_steps(steps),
             "stats": stats,
+            "photos": photos,                           # stage 4 (3a): the album — newest cook first, undated last
             "is_editable": r["source"] in EDITABLE_SOURCES,   # app + test recipes get edit/delete
             "is_seed": r["source"] == "seed",           # seed tier stays read-only (edit in seed.py)
             "is_test": r["source"] == "test",           # scratch tier — gets the visible test marker

@@ -113,6 +113,16 @@ function formatDate(iso) {
   });
 }
 
+// The album's date treatment: the FULL month ("March 12, 2024"), distinct from the cook-summary's
+// short "Mar" (history-recedes). Pure — 'YYYY-MM-DD' in, formatted string (or null) out; unit-tested.
+function formatFullDate(iso) {
+  if (!iso) return null;
+  const [y, m, d] = iso.split("-").map(Number);   // 'YYYY-MM-DD'
+  return new Date(y, m - 1, d).toLocaleDateString("en", {
+    month: "long", day: "numeric", year: "numeric",
+  });
+}
+
 // Five star buttons, filled up to the current rating.
 function starsHTML(rating) {
   let out = "";
@@ -738,6 +748,34 @@ function dishPhoto(r, editable) {
   return "";   // seed recipe with no photo: collapse (seed recipes aren't editable — no dead add link)
 }
 
+// The cook-photo ALBUM (Stage 4 build 3a — DISPLAY only). A dedicated "Album" section below the method:
+// a grid of mini-Polaroids (a lighter form than the hero — no clip), each with the cook's full date (if
+// cook-linked) + optional Kalam caption, the promoted photo flagged with the ★ Hero badge. THREE show by
+// default; "See all N photos" expands the rest inline on desktop (CSS-driven via .collapsed). No add
+// affordance (3b) and no per-photo actions (3c) here. Empty album -> no section (3b adds the entry points).
+const ALBUM_CAP = 3;   // 3 keeps the collapsed view to one clean row (4 wrapped); fixed (responsive = follow-up)
+function albumPhotoHTML(p) {
+  const badge = p.is_hero ? `<span class="hero-badge">&#9733; Hero</span>` : "";
+  const date = p.cooked_on ? `<span class="date">${esc(formatFullDate(p.cooked_on))}</span>` : "";   // cook-linked only
+  const cap = p.caption ? `<span class="cap">${esc(p.caption)}</span>` : "";
+  return `<figure class="album-photo${p.is_hero ? " is-hero" : ""}">${badge}
+    <img class="ph" src="/${esc(p.path)}" alt="" loading="lazy"
+      onerror="this.closest('.album-photo').remove();">
+    <figcaption class="strip">${date}${cap}</figcaption></figure>`;
+}
+function albumSectionHTML(data) {
+  const photos = (data && data.photos) || [];
+  if (!photos.length) return "";   // no photos -> no section (calm empty state; 3b adds add-photo entries)
+  const many = photos.length > ALBUM_CAP;
+  const more = many
+    ? `<div class="album-more"><button class="see-more" data-album-toggle>See all ${photos.length} photos <span class="chev">&#8595;</span></button></div>`
+    : "";
+  return `<section class="album-section${many ? " collapsed" : ""}" id="album-section">
+    <div class="col-head"><h2 class="col-title">Album</h2></div>
+    <div class="album-grid">${photos.map(albumPhotoHTML).join("")}</div>
+    ${more}</section>`;
+}
+
 // The owner Edit/Delete row, and the inline two-step delete confirmation it swaps to. The
 // confirmation names the recipe and needs a deliberate second click (replaces a single confirm()).
 function ownerActionsHTML(r) {
@@ -822,6 +860,7 @@ function paintRecipe() {
             ${editing ? ieNoteHTML(r) : (r.notes ? `<div class="notes"><strong>Note.</strong> ${esc(r.notes)}</div>` : "")}
           </section>
         </div>
+        ${editing ? "" : albumSectionHTML(data)}
       </div>
     </div>
     ${editing ? inlineSaveBarHTML() : ""}`;
@@ -1888,6 +1927,21 @@ document.addEventListener("click", (e) => {
   if (dekToggle) {
     const dek = app.querySelector(".dek");
     if (dek) dekToggle.textContent = dek.classList.toggle("clamped") ? "more" : "less";
+    return;
+  }
+
+  // Album "See all N photos" <-> "See less" — desktop inline expand (CSS .collapsed hides beyond four).
+  // Mobile keeps the same inline expand for now; a dedicated mobile album view is a deferred follow-up.
+  const albumToggle = e.target.closest("[data-album-toggle]");
+  if (albumToggle) {
+    const sec = app.querySelector("#album-section");
+    if (sec) {
+      const collapsed = sec.classList.toggle("collapsed");
+      const n = sec.querySelectorAll(".album-photo").length;
+      albumToggle.innerHTML = collapsed
+        ? `See all ${n} photos <span class="chev">&#8595;</span>`
+        : `See less <span class="chev">&#8593;</span>`;
+    }
     return;
   }
 

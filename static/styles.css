@@ -761,6 +761,42 @@ a:hover { color: var(--berry-lift); }
   font-style: italic; font-family: var(--display);
 }
 
+/* ---------- Cook-photo album (Stage 4 build 3a — DISPLAY) ----------
+   A dedicated section below the method: a grid of mini-Polaroids (a lighter form than the hero — the
+   real --polaroid frame + bottom strip, smaller, casually rotated, NO clip). Ported from the approved
+   preview (preview/cook-album-*.html), real tokens throughout. Display only — no hover actions (3c). */
+.album-section { margin-top: 34px; padding-top: 4px; }
+.album-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));   /* ~4 across at the 760px column */
+  gap: 22px 18px; padding: 14px 0 4px;
+}
+.album-photo {
+  position: relative; margin: 0; background: var(--polaroid); padding: 8px 8px 0; border-radius: 3px;
+  border: 1px solid #ece4d0; box-shadow: 0 3px 8px -3px rgba(45,32,12,.34), 0 1px 0 rgba(0,0,0,.04);
+  transform: rotate(-.7deg);   /* casual snapshot tilt, alternated below */
+}
+.album-photo:nth-child(3n+2) { transform: rotate(.8deg); }
+.album-photo:nth-child(3n+3) { transform: rotate(-.3deg); }
+.album-photo .ph { display: block; width: 100%; height: 150px; object-fit: cover; border-radius: 2px; background: #e8dcc4; }
+.album-photo .strip { padding: 7px 3px 10px; min-height: 26px; }
+.album-photo .date { display: block; font-family: var(--font-sans); font-size: 10px; letter-spacing: .04em; color: var(--ink-soft); }
+.album-photo .cap { display: block; font-family: var(--font-hand); font-size: 15.5px; line-height: 1.08; color: #4b4636; margin-top: 3px; }
+/* the promoted (POINT/linked) hero: an ochre ring + badge, using the real --ochre token */
+.album-photo.is-hero { box-shadow: 0 0 0 2px var(--ochre), 0 3px 8px -3px rgba(45,32,12,.34); }
+.hero-badge {
+  position: absolute; top: -9px; left: 8px; font-family: var(--font-sans); font-size: 10px; letter-spacing: .05em;
+  color: #fff; background: var(--ochre); padding: 2px 7px; border-radius: 999px; box-shadow: 0 1px 3px rgba(0,0,0,.2);
+}
+/* three-by-default: when collapsed, hide the 4th photo onward — one clean row (inline expand removes .collapsed) */
+.album-section.collapsed .album-grid .album-photo:nth-child(n+4) { display: none; }
+.album-more { text-align: center; padding: 6px 0 2px; }
+.see-more {
+  font-family: var(--font-sans); font-size: 13px; color: var(--green); background: none; border: none;
+  cursor: pointer; padding: 8px 14px; border-radius: 999px;
+}
+.see-more:hover { color: var(--green-lift); background: color-mix(in srgb, var(--green) 8%, transparent); }
+.see-more .chev { display: inline-block; margin-left: 5px; }
+
 /* ---------- Clickable ingredient ("look this up") ---------- */
 .ingredient {
   font: inherit; color: var(--berry); background: none; border: none;
