@@ -1090,10 +1090,40 @@ hide) to JS (render only the first `ALBUM_CAP` = **6**); the see-all/see-less to
 
 The hero Polaroid / clip / reading card / cook block / mini-Polaroid strip are **untouched**.
 
-**Album roadmap (remaining builds):** **3b-ii** — at-log-time attach (photos in the backdate cook modal);
-**3b-iii** — the "Cooked it" one-click flow; **3c** — the per-photo actions (the hover ⋯ menu: make-hero /
-edit-caption / delete, with the two-step delete-confirm); **3d** — drag-to-reorder; **3e** — anchor a
-photo to a specific method step (the reserved `.step-body` per-step-photo hook).
+### Build 3b-ii — at-log-time photo attach in the backdate modal (shipped)
+
+Attach photo(s) **when logging a past cook**. The modal's design is unchanged — the "add a photo" stub
+(a bare "coming soon" div) is **activated** as a real multi-file **pick/drop** that **stages** files
+client-side (the cook doesn't exist until submit): thumbnail previews (object-URLs) in the existing
+`.bd-photo` box, each with a **corner × client-only remove** (iPhone "delete app" badge — a small circle
+straddling the top-right corner, covering none of the photo; drops the file from the staged set + revokes
+its URL, **not** a server delete), + a `＋` add-more tile. **Non-images are rejected AT staging**
+(`isStageableImage` mirrors the server allowlist JPEG/PNG/WebP/HEIF — known mime must be allowlisted,
+empty-type HEIC trusts the extension) with a brief nudge, so a wrong-type file never becomes a broken
+thumbnail or a doomed upload; a JS test keeps that gate synced to `images.ALLOWED_INPUT_FORMATS`.
+
+**Single-button submit:** "Log this cook" logs the cook → reads the returned `cook_log_id` (2b already
+returned it; the client used to discard it) → attaches each staged photo to that cook (**dated**) via the
+album endpoint, best-effort `Promise.allSettled`. **Hold-until-both-succeed:** the modal stays open on a
+photo failure with a retry. **The correctness crux — retry-holds-the-`cook_log_id`:** the log→attach
+sequencing is a pure, DOM-free orchestrator (`static/backdate-submit.js`) that **holds the cook id once
+logged**, so a retry re-attaches to the *same* cook and **never re-logs it** (a re-log = duplicate cook);
+`reset()` on open/close clears it. Unit-tested (`tests/js/backdate-submit.test.js`: a retry after a photo
+failure asserts the cook was logged **exactly once**). Full success repaints (`renderRecipe`) so the album
+shows the new dated photos. **The photoless path is unchanged** (log + in-place stats patch + close).
+
+**Folded in — the calendar fixed-height fix** (a pre-existing month-change jitter, per Andy's call): the
+calendar grid changed row count by month (5 vs 6 weeks), resizing the modal and shifting the "Log this
+cook" button under the mouse. `render()` now **pads trailing empties to a constant 42 day-cells (6 rows)**,
+so every month occupies the same height and month-nav no longer moves the modal.
+
+Client-only: `static/app.js` + `static/index.html` + `static/styles.css` + the new
+`static/backdate-submit.js` (orchestrator + `isStageableImage`) + its test. No `3b-iii`/`3c` code.
+
+**Album roadmap (remaining builds):** **3b-iii** — the "Cooked it" one-click flow; **3c** — the per-photo
+actions (the hover ⋯ menu: make-hero / edit-caption / delete, with the two-step delete-confirm); **3d** —
+drag-to-reorder; **3e** — anchor a photo to a specific method step (the reserved `.step-body`
+per-step-photo hook).
 
 ## Open questions
 

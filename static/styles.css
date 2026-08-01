@@ -528,7 +528,7 @@ a:hover { color: var(--berry-lift); }
 .polaroid-empty .add-label { text-align: center; line-height: 1.35; }
 .polaroid-empty:focus-within .photo { border-color: var(--green); }
 .upload-zone:focus-visible { outline: none; }
-.photo-input, .album-photo-input { display: none; }
+.photo-input, .album-photo-input, .bd-photo-input { display: none; }
 
 /* drag-over — solid green ring + faint fill */
 .polaroid-empty.dragover .photo { border: 2px solid var(--green);
@@ -973,6 +973,31 @@ a:hover { color: var(--berry-lift); }
 .bd-photo-ico { font-size: 34px; line-height: 1; opacity: 0.55; }
 .bd-photo-lbl { font-size: 14px; }
 .bd-photo-cap { font-size: 12px; font-style: italic; opacity: 0.8; }
+
+/* Stage 4 (3b-ii): the add-a-photo area, activated as a multi-file pick/drop with client-side thumbnail
+   staging (the cook doesn't exist until "Log this cook"). Reuses the real .bd-photo box; thumbnails grow it
+   DOWNWARD within the .bd-right column's slack and scroll beyond via the modal's overflow-y:auto. No redesign. */
+.bd-photo.zone { cursor: pointer; transition: border-color .15s, background .15s, color .15s; }
+.bd-photo.zone:hover, .bd-photo.zone:focus-visible { border-color: var(--green); color: var(--green); outline: none; }
+.bd-photo.dragover { border-color: var(--green); color: var(--green); background: color-mix(in srgb, var(--green) 9%, var(--paper)); }
+.bd-photo-actions { font-family: var(--font-sans); font-size: 12px; margin-top: 2px; }
+/* staged: the thumbnail grid replaces the invite; the box hugs its content (top-aligned, snug padding) */
+.bd-photo.has-thumbs { justify-content: flex-start; gap: 12px; padding: 14px; min-height: 0; }
+.bd-thumbs { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; padding-top: 4px; }
+/* NO overflow:hidden on the tile — the corner × badge half-overhangs the edge and MUST render outside the
+   tile bounds; the <img> rounds ITSELF so the photo corners still look clipped. The wider grid gap leaves
+   room for the overhanging badges so they don't collide with adjacent thumbnails. */
+.bd-thumb { position: relative; width: 56px; height: 56px; border-radius: 8px;
+  border: 1px solid var(--paper-edge); background: #e8dcc4; }
+.bd-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 8px; }
+/* iPhone "delete app" treatment: a small filled circle straddling the top-right CORNER (offset outward),
+   so it covers none of the photo; a light ring keeps the × legible over a dark photo edge OR the background. */
+.bd-thumb .x { position: absolute; top: -7px; right: -7px; width: 18px; height: 18px; border-radius: 50%;
+  border: none; padding: 0; background: #2a1c0d; color: #fff; font-size: 12px; line-height: 18px;
+  text-align: center; cursor: pointer; box-shadow: 0 0 0 1.5px var(--card), 0 1px 2px rgba(0,0,0,.3); }
+.bd-thumb-add { width: 56px; height: 56px; border-radius: 8px; border: 2px dashed var(--line);
+  background: var(--card); color: var(--ink-soft); font-size: 22px; line-height: 1; cursor: pointer; }
+.bd-thumb-add:hover { border-color: var(--green); color: var(--green); }
 
 .bd-actions { display: flex; align-items: center; gap: 14px; margin-top: 24px; }
 .bd-error { color: var(--danger); font-size: 13px; font-style: italic; min-height: 1.2em; }

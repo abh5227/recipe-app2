@@ -7,6 +7,7 @@ import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingre
 import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
 import { uploadErrorHTML } from "./upload-status.js";
+import { makeBackdateSubmit, isStageableImage } from "./backdate-submit.js";
 import { mountStepEditors, destroyStepEditors } from "./step-editor.js";
 import heroUrl from "./login-hero.jpg";   // auth-4 login hero — Vite hashes it into dist/assets (served via /assets)
 
@@ -1791,6 +1792,8 @@ let backdateTrigger = null;   // the button that opened it (focus returns here)
 let backdateStats = null;     // the .stats element to re-render on a successful log
 let backdateRid = null;
 let bdCal = null;             // the live calendar controller
+let bdStaged = [];            // 3b-ii: [{file, url}] photos staged client-side (object-URL previews) before submit
+let bdSubmitter = null;       // 3b-ii: the pure log-once-then-attach orchestrator (holds the cook id across retries)
 let bdYearPopClose = null;    // close() of the open year popover (Escape routes through it), else null
 
 const isoToDisplay = (iso) => { const [y, m, d] = iso.split("-"); return `${m}/${d}/${y}`; };
@@ -1842,6 +1845,9 @@ function makeBackdateCalendar(hostEl, onPick) {
       if (iso === today) cls.push("today");
       cells += `<button class="${cls.join(" ")}" data-iso="${iso}"${iso > today ? " disabled" : ""}>${day}</button>`;
     }
+    // Pad trailing empties so the grid is ALWAYS 6 week-rows (42 day-cells) — every month occupies the same
+    // height, so changing months never resizes the calendar/modal (the "Log this cook" button stays put).
+    for (let i = startDow + daysInMonth; i < 42; i++) cells += `<button class="bd-day empty" tabindex="-1" disabled></button>`;
     const nextDisabled = (viewY >= ty && viewM >= tm - 1);   // can't step into a future month
     hostEl.innerHTML = `
       <div class="bd-cal-head">
@@ -1933,10 +1939,122 @@ function wireYearPopover(hostEl, setYear) {
   });
 }
 
+// 3b-ii staging: render the backdate modal's add-a-photo box from bdStaged — the REST invite when empty,
+// else the thumbnail grid (each with a × client-only remove) + a ＋ add-more tile. Object-URL previews.
+function renderBdPhoto() {
+  const box = backdateModal.querySelector("[data-bd-photo]");
+  if (!box) return;
+  if (!bdStaged.length) {
+    box.className = "bd-photo zone";
+    box.innerHTML = '<span class="bd-photo-ico">&oplus;</span><span class="bd-photo-lbl">add a photo</span><span class="bd-photo-cap">drag or click · optional</span>';
+    return;
+  }
+  box.className = "bd-photo has-thumbs";
+  const thumbs = bdStaged.map((s, i) =>
+    `<span class="bd-thumb"><img src="${s.url}" alt="" onerror="this.style.opacity=.3"><button class="x" data-bd-remove="${i}" type="button" aria-label="Remove photo">&times;</button></span>`
+  ).join("");
+  const n = bdStaged.length;
+  box.innerHTML = `<div class="bd-thumbs">${thumbs}<button class="bd-thumb-add" data-bd-add type="button" aria-label="Add more photos">＋</button></div>` +
+    `<span class="bd-photo-cap">${n} photo${n > 1 ? "s" : ""} · drag or click to add</span>`;
+}
+
+// Stage picked/dropped files client-side (NO upload — the cook doesn't exist yet). Each VALID image gets an
+// object-URL preview; a non-image is REJECTED at staging (isStageableImage mirrors the server allowlist) so
+// it never becomes a broken thumbnail or a doomed upload — a brief nudge explains. The !file case (Photos
+// hands a reference) is a graceful no-op.
+function bdStageFiles(files) {
+  const list = Array.from(files || []).filter(Boolean);
+  let added = 0, rejected = 0;
+  for (const f of list) {
+    if (!isStageableImage(f)) { rejected++; continue; }
+    bdStaged.push({ file: f, url: URL.createObjectURL(f) });
+    added++;
+  }
+  if (added) renderBdPhoto();
+  const errEl = backdateModal.querySelector("[data-bd-error]");
+  if (errEl) {
+    if (rejected) errEl.textContent = rejected === 1
+      ? "That's not an image — JPEG, PNG, WebP, or HEIC only."
+      : `${rejected} files skipped — images only (JPEG, PNG, WebP, HEIC).`;
+    else if (added) errEl.textContent = "";   // a clean stage clears any prior nudge
+  }
+}
+
+// Wire the add-a-photo box's pick/drop/remove ONCE (the box is a persistent DOM node; renderBdPhoto only
+// swaps its innerHTML, so delegated listeners on the box survive). Picking stages; it never uploads here.
+function wireBdPhoto() {
+  const box = backdateModal.querySelector("[data-bd-photo]");
+  const input = backdateModal.querySelector(".bd-photo-input");
+  if (!box || !input) return;
+  box.addEventListener("click", (e) => {
+    const rm = e.target.closest("[data-bd-remove]");
+    if (rm) {                                   // × : client-only unstage (drop the file, free its preview) — NOT a server delete
+      const i = Number(rm.dataset.bdRemove), s = bdStaged[i];
+      if (s) { URL.revokeObjectURL(s.url); bdStaged.splice(i, 1); renderBdPhoto(); }
+      return;
+    }
+    if (e.target.closest("[data-bd-add]") || e.target.closest(".bd-photo.zone")) input.click();
+  });
+  box.addEventListener("keydown", (e) => {      // the rest invite is a role=button; Enter/Space opens the picker
+    if ((e.key === "Enter" || e.key === " ") && !bdStaged.length) { e.preventDefault(); input.click(); }
+  });
+  input.addEventListener("change", () => { bdStageFiles(input.files); input.value = ""; });   // clear -> re-pick same files re-fires
+  ["dragenter", "dragover"].forEach((ev) => box.addEventListener(ev, (e) => { e.preventDefault(); box.classList.add("dragover"); }));
+  ["dragleave", "dragend"].forEach((ev) => box.addEventListener(ev, (e) => { if (!box.contains(e.relatedTarget)) box.classList.remove("dragover"); }));
+  box.addEventListener("drop", (e) => { e.preventDefault(); box.classList.remove("dragover"); bdStageFiles(e.dataTransfer && e.dataTransfer.files); });
+}
+
+// Discard every staged file + free its object URL, and reset the box to the rest invite (called on open + close).
+function bdClearStaged() {
+  bdStaged.forEach((s) => URL.revokeObjectURL(s.url));
+  bdStaged = [];
+  renderBdPhoto();
+}
+
+// The log-cook -> attach-staged-photos orchestrator (pure core in backdate-submit.js; the DOM/network live
+// in these injected callbacks). logCook creates the cook ONCE (and patches stats in place, as the flow does
+// today); attachPhotos POSTs each staged photo to the album endpoint WITH the held cook_log_id (so they're
+// DATED), best-effort via Promise.allSettled, returning the subset that failed (kept staged for retry).
+function bdGetSubmitter() {
+  if (bdSubmitter) return bdSubmitter;
+  bdSubmitter = makeBackdateSubmit({
+    logCook: async () => {
+      const iso = bdCal ? bdCal.getSelected() : null;
+      const { ok, data } = await sendJSON("POST", `/api/recipes/${backdateRid}/cooked`, { date: iso });
+      if (!ok) return { ok: false, error: (data && data.error) || "Could not log that date." };
+      if (view) view.undoneCook = null;                    // a fresh log ends any redo window
+      if (view && view.data) view.data.stats = data;
+      if (backdateStats) { backdateStats.innerHTML = statsInner(data); setCookCount(app, data.cook_count); }   // patch stats now (cook IS logged)
+      return { ok: true, cookId: data.cook_log_id };       // READ the id 2b returns (the client used to discard it)
+    },
+    attachPhotos: async (cookId, staged) => {
+      const post = (s) => {
+        const fd = new FormData();
+        fd.append("image", s.file);
+        fd.append("cook_log_id", String(cookId));          // DATED -> attach to the just-logged cook
+        return fetch(`/api/recipes/${encodeURIComponent(backdateRid)}/photos`,
+                     { method: "POST", credentials: "same-origin", body: fd }).then((r) => r.status);
+      };
+      const results = await Promise.allSettled(staged.map(post));   // best-effort batch (3b-i)
+      if (results.some((r) => r.status === "fulfilled" && r.value === 401)) { showAuth(); throw new Error("__auth__"); }
+      const failed = [];
+      results.forEach((r, i) => {
+        const st = r.status === "fulfilled" ? r.value : 0;
+        if (st >= 200 && st < 300) URL.revokeObjectURL(staged[i].url);   // succeeded -> free its preview
+        else failed.push(staged[i]);                       // failed -> keep staged (with its preview) for retry
+      });
+      return failed;
+    },
+  });
+  return bdSubmitter;
+}
+
 function openBackdate(rid, statsEl, trigger) {
   backdateRid = rid;
   backdateStats = statsEl;
   backdateTrigger = trigger || null;
+  bdClearStaged();                              // fresh add-a-photo area (rest invite)
+  if (bdSubmitter) bdSubmitter.reset();         // fresh cook next submit — no held id from a prior open
   const typed = backdateModal.querySelector("[data-bd-typed]");
   const errEl = backdateModal.querySelector("[data-bd-error]");
   errEl.textContent = "";
@@ -1964,27 +2082,45 @@ function closeBackdate() {
     scrim.hidden = true;
     backdateModal.hidden = true;
   }, 260);
+  bdClearStaged();                              // discard any un-logged staged previews (free their URLs)
+  if (bdSubmitter) bdSubmitter.reset();         // next open logs a fresh cook (drop any held id)
   if (backdateTrigger && document.contains(backdateTrigger)) backdateTrigger.focus();
 }
 
+// 3b-ii: single-button submit — log the cook, then attach the staged photos to it (dated), holding the
+// modal open until BOTH succeed. The retry-holds-the-id guard lives in the orchestrator (backdate-submit.js):
+// once the cook is logged its id is held, so a retry re-attaches to the SAME cook and never re-logs it.
+// Photoless path is unchanged (log + close). Full success repaints so the album shows the new dated photos.
 async function submitBackdate() {
   const errEl = backdateModal.querySelector("[data-bd-error]");
+  const logBtn = backdateModal.querySelector("[data-backdate-log]");
   const iso = bdCal ? bdCal.getSelected() : null;
   if (!iso) { errEl.textContent = "Pick or type a date first."; return; }
-  const { ok, data } = await sendJSON("POST", `/api/recipes/${backdateRid}/cooked`, { date: iso });
-  if (ok) {
-    if (view) view.undoneCook = null;   // logging a (backdated) cook ends any redo window
-    if (view && view.data) view.data.stats = data;
-    const statsEl = backdateStats;
-    closeBackdate();
-    if (statsEl) {
-      statsEl.innerHTML = statsInner(data);
-      setCookCount(app, data.cook_count);
-      statsEl.querySelector("[data-backdate-open]")?.focus();
-    }
-  } else {
-    errEl.textContent = (data && data.error) || "Could not log that date.";
+  errEl.textContent = "";
+  logBtn.disabled = true;                        // guard the async window against a double-submit
+  let res;
+  try {
+    res = await bdGetSubmitter().run(bdStaged);
+  } catch (_) {                                  // auth bail (showAuth already fired) -> stop quietly
+    return;
+  } finally {
+    logBtn.disabled = false;
   }
+  if (res.status === "cook-failed") { errEl.textContent = res.error; return; }
+  if (res.status === "photos-failed") {          // cook logged (id HELD); keep the failed ones staged for retry
+    bdStaged = res.failed;
+    renderBdPhoto();
+    const n = res.failed.length;
+    errEl.textContent = `Cook logged — ${n} photo${n > 1 ? "s" : ""} didn't upload. Try again.`;
+    return;                                       // HOLD the modal open; retry reuses the held cook id (no re-log)
+  }
+  // res.status === "done": cook logged + all staged photos attached (or none were staged)
+  const hadPhotos = bdStaged.length > 0;
+  bdStaged = [];                                  // succeeded photos' URLs were freed in attachPhotos
+  const statsEl = backdateStats, rid = backdateRid;
+  closeBackdate();
+  if (hadPhotos) renderRecipe(rid);              // full repaint AFTER attach -> the album shows the new dated photos
+  else statsEl?.querySelector("[data-backdate-open]")?.focus();   // photoless: stats already patched -> just restore focus
 }
 
 /* ---------- events ---------- */
@@ -2161,6 +2297,7 @@ scrim.addEventListener("click", () => {
 });
 backdateModal.querySelector("[data-backdate-close]").addEventListener("click", closeBackdate);
 backdateModal.querySelector("[data-backdate-log]").addEventListener("click", submitBackdate);
+wireBdPhoto();   // 3b-ii: wire the add-a-photo pick/drop/remove ONCE (the box persists; renderBdPhoto swaps innerHTML)
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && backdateModal && !backdateModal.hidden) {
     if (bdYearPopClose) { bdYearPopClose(); return; }   // first Escape closes the year popover…

@@ -64,11 +64,14 @@
                inputmode="numeric" autocomplete="off" aria-label="Cook date (MM/DD/YYYY)">
       </div>
       <div class="bd-right">
-        <div class="bd-photo" aria-hidden="true">
+        <!-- 3b-ii: the add-a-photo area is a real multi-file pick/drop that STAGES photos client-side
+             (no cook exists until submit); app.js re-renders this box (rest invite <-> thumbnail grid). -->
+        <div class="bd-photo zone" data-bd-photo tabindex="0" role="button" aria-label="Add photos to this cook">
           <span class="bd-photo-ico">&oplus;</span>
           <span class="bd-photo-lbl">add a photo</span>
-          <span class="bd-photo-cap">(photo — coming soon)</span>
+          <span class="bd-photo-cap">drag or click · optional</span>
         </div>
+        <input class="bd-photo-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true">
       </div>
     </div>
     <div class="bd-actions">
