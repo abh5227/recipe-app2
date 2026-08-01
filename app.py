@@ -679,10 +679,20 @@ def copy_recipe(rid):
 def delete_test_recipes():
     """Delete ALL test-tier recipes at once (their children cascade via ON DELETE CASCADE).
     Inherently safe — matches only source='test', never app/seed. Sibling namespace to
-    /api/recipes/<rid> so it can't be shadowed by a recipe slugged 'test'."""
+    /api/recipes/<rid> so it can't be shadowed by a recipe slugged 'test'. Mirrors delete_recipe's 2c
+    file cleanup: the cascade removes ROWS but not FILES, so gather every test recipe's cook-photo paths
+    + hero files BEFORE the delete and unlink them AFTER commit — otherwise a bulk test-delete orphans
+    those files on disk. unlink_unreferenced skips any file a surviving recipe still references as its hero
+    (the copy-shares-image guard: a test recipe whose hero is shared with a surviving app copy keeps it)."""
     with orm_session() as s:
+        files = list(s.scalars(select(CookPhoto.path)
+                               .join(Recipe, CookPhoto.recipe_id == Recipe.id)
+                               .where(Recipe.source == "test")))          # every test recipe's album files
+        files += list(s.scalars(select(Recipe.image)
+                                .where(Recipe.source == "test", Recipe.image.isnot(None))))   # + their heroes
         n = s.execute(delete(Recipe).where(Recipe.source == "test")).rowcount   # children cascade (FK ON)
         s.commit()
+    unlink_unreferenced(files)   # AFTER commit: unlink files no surviving recipe uses (copy-share guarded)
     return jsonify({"deleted": n})
 
 

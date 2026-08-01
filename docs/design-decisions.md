@@ -1030,6 +1030,19 @@ The POINT/linked-hero model wired end-to-end. The hero (`recipes.image`) may poi
 **This COMPLETES the cook-photo album BACKEND** (2a seams + schema, 2b attach/caption/delete, 2c
 promote + linked-hero deletion). **Build 3** is the album UI (preview-first).
 
+**Follow-up fix — `delete_test_recipes` was missing 2c's file cleanup.** The bulk "Delete all test
+recipes" endpoint (`DELETE /api/test-recipes`) dropped the rows and let the FK cascade remove the
+`cook_photos` rows, but — unlike its sibling `delete_recipe` — it **never gathered the paths and never
+called `unlink_unreferenced`**, so every bulk-deleted test recipe **orphaned its cook-photo + hero files
+on disk** (surfaced by 2 real orphans left from a "Copy as test" recipe deleted during testing). Fixed to
+mirror `delete_recipe`: **gather every test recipe's cook-photo paths + hero files before the delete,
+unlink after commit** — with the **copy-share guard preserved** (a test recipe whose hero is shared with a
+surviving app copy keeps that file; regression-tested). The diagnostic confirmed the other three deletion
+paths (explicit `delete_cook_photo`, `undo_cook`, `delete_recipe`) were already correct, and that
+`copy_recipe` doesn't duplicate `cook_photos` rows (so cook-photo files are never cross-recipe-shared —
+only the hero path is, which is exactly what the guard checks). Pinned by
+`tests/test_delete_test_recipes_cleanup.py` (file-unlink + unshared-hero-unlink + shared-hero-preserved).
+
 ### Build 3a — the album DISPLAY (shipped)
 
 The first VISIBLE piece of the feature: a dedicated **"Album" section on the recipe page, below the
