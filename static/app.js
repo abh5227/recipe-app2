@@ -213,9 +213,146 @@ async function updateStats(el, path, body) {
     if (view && view.data) view.data.stats = s;   // keep cached stats fresh so the cook-gate reads the new cook_count
     el.innerHTML = statsInner(s);
     setCookCount(app, s.cook_count);   // sync the reserved wear signal from the refreshed stats
+    return s;   // 3b-iii: expose the response (incl. cook_log_id) so "Cooked it" can offer the photo chip
   } catch (_) {
     /* leave the bar as-is if the write fails */
   }
+}
+
+// ---- 3b-iii: the "Cooked it" follow-on photo chip -------------------------------------------------
+// After the one-click "Cooked it" logs a cook, a quiet auto-fading chip offers to attach photo(s) to THAT
+// cook (dated). Purely additive — the no-photo path is unchanged; ignore the chip and it fades away. The
+// cook already exists (logged on the click), so the attach is a plain best-effort batch to the held
+// cook_log_id (no cook-create to sequence -> none of 3b-ii's hold-until-both / retry-holds-the-id needs).
+let cookChip = null;   // { block, rid (raw slug), cookLogId, staged: [{file,url}], timer, el } | null
+
+function clearCookChip() {
+  if (!cookChip) return;
+  if (cookChip.timer) clearTimeout(cookChip.timer);
+  cookChip.staged.forEach((s) => URL.revokeObjectURL(s.url));   // free any staged previews
+  if (cookChip.el && cookChip.el.parentNode) cookChip.el.remove();
+  cookChip = null;
+}
+
+function fadeCookChip() {   // quiet auto-fade when the offer is ignored
+  if (!cookChip || !cookChip.el) return;
+  const el = cookChip.el;
+  el.classList.add("fading");
+  setTimeout(() => { if (cookChip && cookChip.el === el) clearCookChip(); }, 420);
+}
+
+function offerCookPhotoChip(block, rid, cookLogId) {
+  clearCookChip();                                  // one offer at a time
+  const el = document.createElement("div");
+  el.className = "cook-followon";
+  el.innerHTML = '<span class="cf-check">&#10003;</span> Cooked &mdash; ' +
+    '<button class="cf-add" type="button" data-cf-add>add photos</button>' +
+    '<button class="cf-x" type="button" data-cf-x aria-label="Dismiss">&times;</button>';
+  block.appendChild(el);                            // sits under the cook-actions, in-context
+  cookChip = { block, rid, cookLogId, staged: [], timer: null, el };
+  cookChip.timer = setTimeout(fadeCookChip, 8000);  // calm 8s window if untouched — an offer, not a nag
+  wireCookChipDnd(el);   // drag-drop + keyboard for the (later) staging zone; el persists across inner re-renders
+}
+
+// Drag-drop + keyboard for the chip's staging zone. Wired ONCE on the persistent chip element (el); the
+// inner .bd-photo box is recreated by renderCookChipStaging, but these live on el and act on whatever
+// .bd-photo is currently inside. Click-to-browse is the delegated [data-cc-add] handler.
+function wireCookChipDnd(el) {
+  const zone = () => el.querySelector(".bd-photo");
+  ["dragenter", "dragover"].forEach((ev) => el.addEventListener(ev, (e) => { e.preventDefault(); const z = zone(); if (z) z.classList.add("dragover"); }));
+  ["dragleave", "dragend"].forEach((ev) => el.addEventListener(ev, (e) => { if (!el.contains(e.relatedTarget)) { const z = zone(); if (z) z.classList.remove("dragover"); } }));
+  el.addEventListener("drop", (e) => { e.preventDefault(); const z = zone(); if (z) z.classList.remove("dragover"); cookChipStage(e.dataTransfer && e.dataTransfer.files); });
+  el.addEventListener("keydown", (e) => {   // Enter/Space on the empty zone (role=button) opens the picker
+    if ((e.key === "Enter" || e.key === " ") && e.target.closest("[data-cc-add]")) { e.preventDefault(); el.querySelector(".cc-input").click(); }
+  });
+}
+
+// Render the chip's staging surface — the SHIPPED .bd-photo thumbnail staging (reused verbatim) + an
+// Attach button. Recreated on each change; the file input's change bubbles to the delegated listener.
+function renderCookChipStaging() {
+  if (!cookChip) return;
+  const staged = cookChip.staged;
+  const n = staged.length;
+  let box;
+  if (!n) {   // EMPTY: the real upload-zone invite (click-to-browse / drag) — no OS dialog ambush
+    box = `<div class="bd-photo zone" data-cc-add tabindex="0" role="button" aria-label="Add photos to this cook">` +
+      `<span class="bd-photo-ico">&oplus;</span><span class="bd-photo-lbl">add photos</span>` +
+      `<span class="bd-photo-cap">drag here or click to choose</span></div>`;
+  } else {    // STAGED: the shipped thumbnail grid + ＋ add-more
+    const thumbs = staged.map((s, i) =>
+      `<span class="bd-thumb"><img src="${s.url}" alt="" onerror="this.style.opacity=.3"><button class="x" type="button" data-cc-remove="${i}" aria-label="Remove photo">&times;</button></span>`
+    ).join("");
+    box = `<div class="bd-photo has-thumbs"><div class="bd-thumbs">${thumbs}` +
+      `<button class="bd-thumb-add" type="button" data-cc-add aria-label="Add photos">＋</button></div>` +
+      `<span class="bd-photo-cap">${n} photo${n > 1 ? "s" : ""} staged</span></div>`;
+  }
+  const attachBtn = n ? `<button class="btn sm" type="button" data-cc-attach>Attach ${n > 1 ? n + " photos" : "photo"}</button>` : "";
+  cookChip.el.className = "cook-followon picking";
+  cookChip.el.innerHTML = box +
+    `<div class="cc-actions">${attachBtn}` +
+    `<button class="btn ghost sm" type="button" data-cc-cancel>Cancel</button>` +
+    `<span class="cc-err" data-cc-err></span></div>` +
+    `<input class="cc-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true">`;
+}
+
+function openCookChipPick() {   // chip "add photos" -> stop the fade, SHOW the drop zone (user clicks/drags — no auto-open)
+  if (!cookChip) return;
+  if (cookChip.timer) { clearTimeout(cookChip.timer); cookChip.timer = null; }
+  renderCookChipStaging();
+}
+
+function cookChipStage(files) {                      // stage picked images (isStageableImage rejects non-images)
+  if (!cookChip) return;
+  const list = Array.from(files || []).filter(Boolean);
+  let rejected = 0;
+  for (const f of list) {
+    if (!isStageableImage(f)) { rejected++; continue; }
+    cookChip.staged.push({ file: f, url: URL.createObjectURL(f) });
+  }
+  renderCookChipStaging();
+  if (rejected) {
+    const err = cookChip.el.querySelector("[data-cc-err]");
+    if (err) err.textContent = rejected === 1
+      ? "That's not an image — JPEG, PNG, WebP, or HEIC only."
+      : `${rejected} files skipped — images only (JPEG, PNG, WebP, HEIC).`;
+  }
+}
+
+function cookChipRemove(i) {                          // × : client-only unstage (pre-upload)
+  if (!cookChip) return;
+  const s = cookChip.staged[i];
+  if (s) { URL.revokeObjectURL(s.url); cookChip.staged.splice(i, 1); renderCookChipStaging(); }
+}
+
+async function cookChipAttach(btn) {
+  if (!cookChip || !cookChip.staged.length) return;
+  const { rid, cookLogId, staged } = cookChip;      // rid is the RAW slug; cook already exists (no create/sequence)
+  btn.disabled = true;
+  const post = (s) => {
+    const fd = new FormData();
+    fd.append("image", s.file);
+    fd.append("cook_log_id", String(cookLogId));    // DATED -> attach to the just-logged cook
+    return fetch(`/api/recipes/${encodeURIComponent(rid)}/photos`,
+                 { method: "POST", credentials: "same-origin", body: fd }).then((r) => r.status);
+  };
+  const results = await Promise.allSettled(staged.map(post));   // best-effort batch (3b-i)
+  if (results.some((r) => r.status === "fulfilled" && r.value === 401)) { showAuth(); return; }
+  let ok = 0; const failed = [];
+  results.forEach((r, i) => {
+    const st = r.status === "fulfilled" ? r.value : 0;
+    if (st >= 200 && st < 300) { URL.revokeObjectURL(staged[i].url); ok++; }
+    else failed.push(staged[i]);                    // keep the misses staged -> retry re-uploads to the SAME cook (no double-log)
+  });
+  if (failed.length) {
+    cookChip.staged = failed;
+    renderCookChipStaging();
+    const err = cookChip.el.querySelector("[data-cc-err]");
+    if (err) err.textContent = `Added ${ok}; ${failed.length} didn't upload. Try again.`;
+    if (btn.isConnected) btn.disabled = false;
+    return;
+  }
+  clearCookChip();                                  // all attached -> repaint so the album shows the new dated photos
+  renderRecipe(rid);
 }
 
 /* ---------- router ---------- */
@@ -854,6 +991,7 @@ function deleteConfirmHTML(r) {
 }
 
 async function renderRecipe(rid) {
+  clearCookChip();   // 3b-iii: any pending "add photos?" offer is stale once we refetch/repaint
   const data = await api("/api/recipes/" + encodeURIComponent(rid));
   view = { slug: rid, data, scale: 1,
            pendingRating: null, undoneCook: null, editMode: false, draft: null, dirty: false };
@@ -2132,6 +2270,16 @@ document.addEventListener("click", (e) => {
   // Inline recipe editor: enter / save / cancel (namespaced data-inline-edit-*). Handled first.
   if (handleInlineEdit(e)) return;
 
+  // 3b-iii: the "Cooked it" follow-on photo chip (offer -> pick -> attach). Handled before the .stats
+  // block since the chip lives inside the cook block but its buttons are its own.
+  if (e.target.closest("[data-cf-add]")) { openCookChipPick(); return; }
+  if (e.target.closest("[data-cf-x]") || e.target.closest("[data-cc-cancel]")) { clearCookChip(); return; }
+  if (e.target.closest("[data-cc-add]")) { if (cookChip) cookChip.el.querySelector(".cc-input").click(); return; }
+  const ccRemove = e.target.closest("[data-cc-remove]");
+  if (ccRemove) { cookChipRemove(Number(ccRemove.dataset.ccRemove)); return; }
+  const ccAttach = e.target.closest("[data-cc-attach]");
+  if (ccAttach) { cookChipAttach(ccAttach); return; }
+
   // Bulk-delete all test recipes (home header) — inline two-step confirm, like the recipe delete.
   const bulk = document.getElementById("test-bulk");
   if (e.target.closest("[data-delete-test]")) {
@@ -2178,7 +2326,13 @@ document.addEventListener("click", (e) => {
       stats.innerHTML = statsInner(view ? view.data.stats : { cook_count: 0 });
       return;
     }
-    if (e.target.closest("[data-cook]"))   { if (view) view.pendingRating = null; updateStats(stats, `/api/recipes/${rid}/cooked`, {}); return; }
+    if (e.target.closest("[data-cook]")) {   // one-click log stays instant; then offer the photo chip (3b-iii)
+      if (view) view.pendingRating = null;
+      updateStats(stats, `/api/recipes/${rid}/cooked`, {}).then((s) => {
+        if (s && s.cook_log_id != null) offerCookPhotoChip(stats, stats.dataset.rid, s.cook_log_id);
+      });
+      return;
+    }
     if (e.target.closest("[data-uncook]")) {
       if (view) view.pendingRating = null;
       (async () => {
@@ -2298,6 +2452,14 @@ scrim.addEventListener("click", () => {
 backdateModal.querySelector("[data-backdate-close]").addEventListener("click", closeBackdate);
 backdateModal.querySelector("[data-backdate-log]").addEventListener("click", submitBackdate);
 wireBdPhoto();   // 3b-ii: wire the add-a-photo pick/drop/remove ONCE (the box persists; renderBdPhoto swaps innerHTML)
+// 3b-iii: the cook-chip's file input is recreated on each staging render; `change` bubbles, so one
+// delegated listener stages whatever it picks (isStageableImage filtering happens in cookChipStage).
+document.addEventListener("change", (e) => {
+  if (e.target && e.target.classList && e.target.classList.contains("cc-input")) {
+    cookChipStage(e.target.files);
+    e.target.value = "";   // clear so re-picking the same files re-fires
+  }
+});
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && backdateModal && !backdateModal.hidden) {
     if (bdYearPopClose) { bdYearPopClose(); return; }   // first Escape closes the year popover…

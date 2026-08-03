@@ -1133,10 +1133,34 @@ so every month occupies the same height and month-nav no longer moves the modal.
 Client-only: `static/app.js` + `static/index.html` + `static/styles.css` + the new
 `static/backdate-submit.js` (orchestrator + `isStageableImage`) + its test. No `3b-iii`/`3c` code.
 
-**Album roadmap (remaining builds):** **3b-iii** — the "Cooked it" one-click flow; **3c** — the per-photo
-actions (the hover ⋯ menu: make-hero / edit-caption / delete, with the two-step delete-confirm); **3d** —
-drag-to-reorder; **3e** — anchor a photo to a specific method step (the reserved `.step-body`
-per-step-photo hook).
+### Build 3b-iii — "Cooked it" instant-path photo attach (shipped — COMPLETES the three add-flows)
+
+The one-click **"Cooked it"** logs a cook instantly (no modal), and 3b-iii lets you attach photo(s) to that
+just-logged cook **without breaking the instant no-photo path**. The instant log is **completely unchanged**
+— `data-cook` still calls `updateStats` exactly as before; the only addition is an ignorable `.then()` that
+offers a chip. After the cook logs, a **quiet auto-fading inline chip** (*"✓ Cooked — add photos ×"*) appears
+under the cook-actions and **fades on its own after ~8 s** (a calm offer, not a nag; `×` dismisses; ignoring
+it loses nothing). Clicking **"add photos"** cancels the fade and opens a **pick/drop zone first** — the real
+upload-zone treatment (⊕ / "add photos" / "drag here or click to choose"), **no OS file-dialog ambush**,
+consistent with how 3b-i/3b-ii show the zone and let the user act (click-to-browse or drag). Then
+stage → review (thumbnails, corner-× remove, `＋` add-more; non-images rejected via the shared
+`isStageableImage`) → **"Attach N photos"**.
+
+**Simpler mechanic than 3b-ii:** the cook already exists (logged on the click), so there is **no
+cook-create to sequence** — none of 3b-ii's hold-until-both / retry-holds-the-`cook_log_id` machinery is
+needed. The attach is a plain best-effort `Promise.allSettled` batch to the held `cook_log_id` (dated); a
+partial failure just keeps the misses staged, and a retry re-uploads them to the *same* existing cook (no
+double-log possible — there's no cook-create). `updateStats` gained a `return s` so the `data-cook` handler
+can read the `cook_log_id` the `/cooked` endpoint already returned. Full success repaints so the album shows
+the new dated photos. Client-only: `static/app.js` + `static/styles.css` (the chip; the pick reuses the
+shipped `.bd-photo` staging). No `3c` code. Browser-gated (UI + network; the attach mirrors 3b-i's batch).
+
+**This COMPLETES the three add-flows:** **3b-i** standalone "add to album", **3b-ii** at-log-time (backdate
+modal), **3b-iii** "Cooked it" instant-path.
+
+**Album roadmap (remaining builds):** **3c** — the per-photo actions (the hover ⋯ menu: make-hero /
+edit-caption / delete, with the two-step delete-confirm); **3d** — drag-to-reorder; **3e** — anchor a photo
+to a specific method step (the reserved `.step-body` per-step-photo hook).
 
 ## Open questions
 
