@@ -495,6 +495,22 @@ out. Optionally record how long it **actually** took (feeds time calibration, Ph
   each to which cook?); (d) **display/UX** — showing an average (halves? — a granular-rating display
   choice), rating a specific cook, whether the cook log shows each cook's score, editing a past cook's
   rating. Needs its own real design pass when tackled.
+- **5f — The Cooking Journal (the reflective per-recipe history; big, its own project).** The full
+  realization of this per-cook layer: each cook becomes an **annotatable ENTRY**, with notes that are
+  **both free-text AND optionally LINKED to specific tracked recipe changes** (ties into the existing
+  edit-tracking layer — `recipe_line_changes` / `recipe_additions`), so a note can capture *"changed X on
+  this cook → here's how it went,"* forming a record of how a dish **evolves across attempts**. This is the
+  **"used cookbook" thesis made into a feature** — the accumulated personal layer made explicit.
+  **Composes several existing layers:** the cook-photo **album** (P4 / Stage 4), the **cook-gated ratings**,
+  and the **edit-tracking** tables.
+  - **Deferred design decisions (settle at its own design pass):** *page-vs-drawer* (a separate route/page
+    vs. a panel over the recipe); and the *journal-vs-album relationship* (do cook-photos live INSIDE
+    journal entries, or does the recipe-page album coexist?).
+  - **A significant standalone project**, not a quick add: a new surface/route + a journal/notes model +
+    the change-linkage. Needs its **own diagnostic** (understand `cook_log`, `ratings`, the edit-tracking
+    tables, and photos — all the layers it composes) and is **preview-first** (a whole new surface).
+  - **Sequencing:** after the album's remaining stages — 3c (per-photo ⋮ actions) → 3d (drag-reorder) →
+    3e (anchor-photo-to-step).
 
 ### Analytics Dashboard (P18)
 
@@ -604,6 +620,30 @@ recipes table.
 - **Why here:** substitutes (Phase 13c), the dietary-derivation upgrade (Phase 8c), and
   richer pairings (Phase 10e) all need these attributes.
 - *Depends on clean ingredient identity — see the Ingredient-line data model note (top).*
+
+### Recipe Cost — cost-effective meals (new)
+
+Surface which recipes are **cheap**: a cost dimension on the existing recipe/ingredient data — *"what do
+these ingredients cost → rank/flag cost-effective meals."* A wanted Chef's Choice **feature** (in-app, not
+a separate tool).
+
+**Feasibility findings (from a research pass — these RESHAPE the idea; recorded honestly):** the original
+*"live Instacart prices"* premise has a real hole.
+- **No clean official Instacart pricing API** — only third-party **scrapers** (~$10 / 1k products,
+  legally + technically fragile).
+- **Bigger: Instacart now uses PERSONALIZED algorithmic pricing** — the same item shows **different prices
+  to different shoppers** (~75% of items, up to ~23% variance, per a **Dec 2025 Consumer Reports**
+  investigation). So *"the live Instacart price of an ingredient"* **isn't a single number anymore.**
+- **Implication:** the live-precise-Instacart version is **NOT viable.**
+
+**Viable shape:** use a **STABLE source** instead — **USDA average retail food prices** (public, free),
+store-**circular** data, OR just **RELATIVE / APPROXIMATE** costing (rank recipes cheap→expensive from rough
+ingredient-cost estimates, no live feed). Capture this as **"approximate / relative cost per recipe from a
+stable source"** — **NOT "live Instacart prices."**
+
+- **Needs its own design + a data-source decision** (which stable source). *Depends on clean ingredient
+  identity (the linking prerequisite — see the Ingredient-line data model note, top). Synergy: the shopping
+  list (13d) and pantry (13b).*
 
 ### Pantry & Planning (P13)
 
@@ -1169,6 +1209,44 @@ worth knowing before they bite. None of the limitations occur in the current rec
   `import_cleanup.classify_line` on save to harvest it. This is a NEW capability — *not* the
   grams-wipe fix, which already landed (`0c3f6ae`: it preserves EXISTING harvested grams across an
   edit but can't recover a paren the import already stripped from the editable text).
+
+## Adjacent product ideas (separate apps — NOT Chef's Choice features)
+
+Ideas for **separate applications** — explicitly *not* Chef's Choice features — that **could reuse the
+infrastructure Chef's Choice is building** (the recipe / ingredient model, the Flask / SQLAlchemy / Postgres
+stack, the import pipeline, the user / ownership structure). Recorded here so they're durable, **with their
+feasibility findings stated honestly** — each has open questions that reshape or gate it.
+
+### A. Kids nutrition education (separate app)
+
+A fun / interactive tool for **parents + kids to learn about food** — e.g. non-shaming food-**FREQUENCY**
+bucketing (**Always / Sometimes / Almost Never**, like the reference screenshot). Aligns with Kenji
+López-Alt's kids-book philosophy (*"Every Night is Pizza Night"*).
+
+**Feasibility / open questions (research pass):**
+- **Could NOT confirm a specific Kenji *app / tool*** to model on — found his kids' **book** + Patreon /
+  YouTube, **not** a bucketing app. Need the **specific source that inspired this** + the real gap.
+- The space already has education-focused entries (**This Is My Food**, **Eat and Move-O-Matic**,
+  **Nutrition.gov** games).
+- **Least fraught of the three** (simple data: food→bucket; no medical / financial risk) and **most
+  buildable** — but needs a **sharper target** (what specifically, and what's the actual gap).
+
+### B. IBS / FODMAP food journal (separate app)
+
+Track **foods + symptoms**, correlate triggers, and filter recipes to a restricted (**low-FODMAP**) diet.
+
+**Feasibility / open questions (research pass — these RESHAPE the idea; recorded honestly):**
+- **(i) The CORE DATA is the wall.** FODMAP content **cannot be derived from ingredient lists** — foods must
+  be **LAB-TESTED** (Monash built a certification lab for this). So the data is **empirical clinical IP**,
+  not derivable or hand-rollable. Monash's is the world's largest DB, cited in **ACG clinical guidelines**. A
+  real product needs **LICENSED tested data** or another validated source — you can't copy Monash or wing it,
+  and getting FODMAP data **wrong has health consequences.**
+- **(ii)** Monash's app is **~$8–10 (one-time), NOT $80** — the *"$80, heard it's trash"* premise appears to
+  be a **different product**; re-check what was actually seen.
+- **(iii) The space is CROWDED** (IBS Coach, Nerva, FODMAP A–Z already exist).
+- **(iv) The genuine opportunity** is a **PRODUCT / UX gap** (Monash's app draws maintenance / UX complaints —
+  Android not updated since Oct 2025) — **but a better UX doesn't solve the data-IP wall.**
+- **Verdict:** **HIGH value, HIGH responsibility, BLOCKED on the data source.**
 
 ## Prior art / why our model differs
 
