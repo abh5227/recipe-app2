@@ -1077,6 +1077,36 @@ def delete_cook_photo(photo_id):
     return jsonify({"ok": True})
 
 
+@app.route("/api/recipes/<rid>/photos/order", methods=["PATCH"])
+def reorder_cook_photos(rid):
+    """Persist a dragged album order (Stage 4 build 3d-ii) — set cook_photos.position from the given order.
+    Body: {"order": [id, id, …]} — the FULL ordered list of THIS recipe's cook_photo ids. Recipe-owner gated
+    (rec.owner == current_user, mirroring promote — the stored album order is the recipe owner's arrangement).
+    Validation is load-bearing: the body must be an EXACT permutation of the recipe's photo ids — a foreign/
+    unknown id, a missing id (partial list), or a duplicate is rejected 400 with NOTHING written (a malformed
+    reorder must not corrupt positions). On accept, sets position = the id's INDEX in the list, all in ONE
+    transaction (atomic — all or nothing). Reads come back in the new order via 3d-i's ORDER BY position."""
+    order = (request.get_json(silent=True) or {}).get("order")
+    with orm_session() as s:
+        rec = s.get(Recipe, str(rid))
+        if rec is None:
+            return jsonify({"error": "recipe not found"}), 404
+        if rec.owner != current_user.id:                      # recipe-owner gate (mirrors promote)
+            return jsonify({"error": "not your recipe"}), 403
+        # EXACT-PERMUTATION validation — reject before any write (atomic: a rejected reorder leaves positions intact)
+        if not isinstance(order, list) or not all(isinstance(x, int) for x in order):
+            return jsonify({"error": "order must be a list of photo ids"}), 400
+        if len(set(order)) != len(order):                     # a duplicate id
+            return jsonify({"error": "order has a duplicate id"}), 400
+        existing = set(s.execute(select(CookPhoto.id).where(CookPhoto.recipe_id == rec.id)).scalars().all())
+        if set(order) != existing:                            # a foreign/unknown id, or a missing one (partial)
+            return jsonify({"error": "order must be exactly this recipe's photo ids"}), 400
+        for i, pid in enumerate(order):                       # set position = index in the list, one transaction
+            s.execute(update(CookPhoto.__table__).where(CookPhoto.__table__.c.id == pid).values(position=i))
+        s.commit()
+    return jsonify({"ok": True})
+
+
 # ---- want-to-make queue (stage 2) ---------------------------------------------------------------
 # Per-user planning state promoted out of the old GLOBAL "To Make" tag (recipe_queue, migration 024,
 # backfilled stage 1). Login-gated by default (NOT in PUBLIC_ENDPOINTS); current_user is ALWAYS the

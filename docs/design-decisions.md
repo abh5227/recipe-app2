@@ -1244,10 +1244,25 @@ dragged). 3d-i is the **data foundation** — no reorder endpoint (3d-ii) or dra
   coupled `test_build_db` (26→27) and `test_cook_photos` (schema/index) updates; PG integration gained a
   position/NULLs-last dialect test.
 
-**Album roadmap (remaining builds):** **3d-ii** — the reorder endpoint (full ordered id-list, recipe-owner
-gated, atomic set-position-by-index); **3d-iii** — the drag UI (preview-first, the linearized-reorder-view);
-**3e** — anchor a photo to a specific method step (the reserved `.step-body` per-step-photo hook); then the
-**Cooking Journal**.
+### Build 3d-ii — the reorder endpoint (shipped)
+
+The WRITE that lets positions change: **`PATCH /api/recipes/<rid>/photos/order`**, body `{"order": [id, …]}` —
+the FULL ordered list of the recipe's cook_photo ids. **Recipe-owner gated** (`rec.owner == current_user`,
+mirroring `promote` — the stored album order is the owner's arrangement; `404` if the recipe is missing,
+`403` if not the owner). **Exact-permutation validation** (load-bearing): the body must be a complete, exact
+permutation of the recipe's photo ids — the **duplicate check runs BEFORE** the `set(order) != {recipe ids}`
+comparison (so a duplicate can't ride through set-dedup as a partial), and that one set-equality catches both
+a **foreign/unknown** id and a **missing** id (partial). On accept, `position = the id's index in the list`
+for each, in **one transaction** (atomic). Guards that matter: **auth before validation**, and **atomic-on-
+reject** — a `400` returns before any write, so a malformed reorder leaves positions intact (proven by the
+foreign/partial/duplicate rejection tests, each asserting positions unchanged). Returns `{"ok": true}`.
+Backend-only (no drag UI yet); the pytest suite is the gate — happy-path (order persists + GET reflects it
+via 3d-i's ORDER BY), idempotent, owner-gate, and the three rejection cases. **No PG test** — a plain per-id
+`UPDATE … SET position`, no dialect surface (like the delete-cleanup fix).
+
+**Album roadmap (remaining builds):** **3d-iii** — the drag UI (preview-first, the linearized-reorder-view)
+that calls this endpoint; **3e** — anchor a photo to a specific method step (the reserved `.step-body`
+per-step-photo hook); then the **Cooking Journal**.
 
 ## Open questions
 

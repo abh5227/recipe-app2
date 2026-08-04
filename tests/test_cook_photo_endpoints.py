@@ -311,3 +311,88 @@ def test_position_and_cooked_on_are_independent(kitchen):
         c.execute("UPDATE cook_photos SET position = 7 WHERE id = ?", (pid,))
     photo = next(p for p in _album(a, rid) if p["id"] == pid)
     assert photo["cooked_on"] == "2024-05-01"        # date unchanged by the position edit
+
+
+# ---- REORDER endpoint (3d-ii: PATCH .../photos/order — full ordered id-list, exact-permutation) ---
+
+def _positions(kitchen, rid):
+    with kitchen.conn() as c:
+        return dict(c.execute("SELECT id, position FROM cook_photos WHERE recipe_id = ?", (rid,)).fetchall())
+
+
+def _reorder(client, rid, order):
+    return client.patch(f"/api/recipes/{rid}/photos/order", json={"order": order})
+
+
+def test_reorder_persists_new_order_and_get_reflects_it(kitchen):
+    a = kitchen.client
+    rid = _own_recipe(a)
+    ids = [_post_photo(a, rid).get_json()["id"] for _ in range(4)]   # positions 0,1,2,3 (append)
+    new_order = [ids[2], ids[0], ids[3], ids[1]]
+    assert _reorder(a, rid, new_order).status_code == 200
+    pos = _positions(kitchen, rid)
+    assert [pos[i] for i in new_order] == [0, 1, 2, 3]               # position == index in the list
+    assert [p["id"] for p in _album(a, rid)] == new_order           # GET returns the new order (3d-i ORDER BY position)
+
+
+def test_reorder_is_idempotent(kitchen):
+    a = kitchen.client
+    rid = _own_recipe(a)
+    ids = [_post_photo(a, rid).get_json()["id"] for _ in range(3)]
+    order = [ids[1], ids[2], ids[0]]
+    assert _reorder(a, rid, order).status_code == 200
+    first = _positions(kitchen, rid)
+    assert _reorder(a, rid, order).status_code == 200               # re-send the same list
+    assert _positions(kitchen, rid) == first                        # no change
+
+
+def test_reorder_non_owner_403_unchanged(kitchen):
+    a = kitchen.client
+    rid = _own_recipe(a)
+    ids = [_post_photo(a, rid).get_json()["id"] for _ in range(3)]
+    before = _positions(kitchen, rid)
+    _bid, b = _user_client("reorder-b@test.local")
+    assert _reorder(b, rid, list(reversed(ids))).status_code == 403
+    assert _positions(kitchen, rid) == before                       # nothing written
+
+
+def test_reorder_missing_recipe_404(kitchen):
+    assert _reorder(kitchen.client, "no-such-recipe", []).status_code == 404
+
+
+def test_reorder_foreign_id_400_unchanged(kitchen):
+    a = kitchen.client
+    rid = _own_recipe(a)
+    ids = [_post_photo(a, rid).get_json()["id"] for _ in range(3)]
+    other = _own_recipe(a, name="Other Dish")
+    foreign = _post_photo(a, other).get_json()["id"]                # belongs to a DIFFERENT recipe
+    before = _positions(kitchen, rid)
+    assert _reorder(a, rid, [ids[0], ids[1], foreign]).status_code == 400   # foreign id -> set mismatch
+    assert _positions(kitchen, rid) == before                       # atomic: nothing written
+
+
+def test_reorder_partial_list_400_unchanged(kitchen):
+    a = kitchen.client
+    rid = _own_recipe(a)
+    ids = [_post_photo(a, rid).get_json()["id"] for _ in range(3)]
+    before = _positions(kitchen, rid)
+    assert _reorder(a, rid, ids[:2]).status_code == 400             # missing one id (partial)
+    assert _positions(kitchen, rid) == before
+
+
+def test_reorder_duplicate_id_400_unchanged(kitchen):
+    a = kitchen.client
+    rid = _own_recipe(a)
+    ids = [_post_photo(a, rid).get_json()["id"] for _ in range(3)]
+    before = _positions(kitchen, rid)
+    assert _reorder(a, rid, [ids[0], ids[0], ids[1]]).status_code == 400   # duplicate id
+    assert _positions(kitchen, rid) == before
+
+
+def test_reorder_bad_body_400(kitchen):
+    a = kitchen.client
+    rid = _own_recipe(a)
+    _post_photo(a, rid)
+    assert a.patch(f"/api/recipes/{rid}/photos/order", json={}).status_code == 400            # no "order"
+    assert _reorder(a, rid, "notalist").status_code == 400                                    # not a list
+    assert _reorder(a, rid, ["x"]).status_code == 400                                         # non-int id
