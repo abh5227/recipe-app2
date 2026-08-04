@@ -9,6 +9,7 @@ import { isToMake } from "./tomake.js";
 import { uploadErrorHTML } from "./upload-status.js";
 import { makeBackdateSubmit, isStageableImage } from "./backdate-submit.js";
 import { mountStepEditors, destroyStepEditors } from "./step-editor.js";
+import { heroCaption } from "./hero-caption.js";
 import heroUrl from "./login-hero.jpg";   // auth-4 login hero — Vite hashes it into dist/assets (served via /assets)
 
 // This file runs in the browser. It has no recipe content of its own — it asks
@@ -847,7 +848,7 @@ function clipDefs() {
 // (wired to POST /api/recipes/<id>/image by wirePhotoUpload); a non-editable (seed) recipe returns "" so
 // the masthead collapses to a full-width title. A broken URL collapses via the <img> onerror (adds
 // .no-photo to the stage, removes the Polaroid) — that graceful-degradation stays on the filled branch.
-function dishPhoto(r, editable) {
+function dishPhoto(r, editable, photos) {
   if (r.image) {
     // Part 2: an EDITABLE owner gets the hover-reveal "Update photo" pill + drop-to-replace, wired to the
     // SAME upload path as the empty zone (wirePhotoUpload). Non-editable (seed / other users) is byte-for-
@@ -856,6 +857,11 @@ function dishPhoto(r, editable) {
     const editAttr   = editable ? " data-upload-zone" : "";
     const updatePill = editable ? `<button class="update-photo" type="button" aria-label="Update photo">Update photo</button>` : "";
     const fileInput  = editable ? `<input class="photo-input" type="file" accept="image/*" tabindex="-1" aria-hidden="true">` : "";
+    // SHARED hero caption: if recipes.image is a promoted cook photo, show that photo's caption in the strip
+    // (heroCaption reads the is_hero photo from the payload). null -> empty strip, as before (uncaptioned hero,
+    // or a hero with no matching cook_photo row). Edited via that photo's 3c ⋮ menu — same field, re-read here.
+    const cap = heroCaption(photos);
+    const capHTML = cap ? `<span class="cap">${esc(cap)}</span>` : "";
     return `<div class="dish-photo polaroid-hero${editHook}"${editAttr}>
     ${clipDefs()}
     ${clipSvg("back")}
@@ -864,7 +870,7 @@ function dishPhoto(r, editable) {
       <img class="photo" src="/${esc(r.image)}" alt="${esc(r.name)}" loading="lazy"
         onerror="this.closest('.recipe-stage').classList.add('no-photo'); this.closest('.dish-photo').remove();">
       ${updatePill}
-      <span class="strip"></span>
+      <span class="strip">${capHTML}</span>
     </span></figure>
     ${clipSvg("front")}
     ${fileInput}
@@ -1092,7 +1098,7 @@ function paintRecipe() {
   const data = view.data;                        // fetched payload (source flags: is_editable/is_seed/…)
   const src = editing ? view.draft : view.data;  // where displayed field VALUES come from
   const r = src.recipe;
-  const photoSlot = dishPhoto(r, data.is_editable);
+  const photoSlot = dishPhoto(r, data.is_editable, data.photos);   // data.photos carries the is_hero caption (SHARED)
   const owner = (data.is_editable && !editing) ? `<div class="owner-actions">${ownerActionsHTML(data.recipe)}</div>` : "";
 
   const mastheadInner = editing

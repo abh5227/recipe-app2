@@ -482,9 +482,10 @@ a:hover { color: var(--berry-lift); }
 .polaroid { display: block; background: var(--polaroid); padding: 11px 11px 0; border-radius: 3px; width: 224px; }
 .polaroid .photo { display: block; width: 202px; height: 202px; object-fit: cover;
   background: #e6e0d0; box-shadow: 0 0 0 1px rgba(31,42,32,.06) inset; }
-.polaroid .strip { display: block; height: 54px; padding: 8px 4px 10px; }   /* thick bottom; empty until the caption feature */
-/* reserved for the typed-caption feature (strip is empty for now) */
-.polaroid .cap  { font-family: var(--font-hand); font-size: 19px; line-height: 1; color: #4b4636; }
+.polaroid .strip { display: block; min-height: 54px; padding: 8px 4px 10px; }   /* thick Polaroid bottom; now holds the SHARED hero caption (grows for a long one, stays ≥54px when empty) */
+/* the SHARED hero caption (Stage 4 hero-caption slot): the promoted (is_hero) photo's caption shown on the
+   hero Polaroid — the album's Kalam caption face, sized up for the larger hero frame, centered under the image */
+.polaroid .cap  { display: block; font-family: var(--font-hand); font-size: 17px; line-height: 1.14; color: #4b4636; text-align: center; }
 .polaroid .date { font-family: var(--font-sans); font-size: 10px; letter-spacing: .04em; color: var(--ink-soft); }
 
 /* tighter contact shadow where the Polaroid meets the page, along the masthead's top edge */

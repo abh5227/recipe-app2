@@ -1194,12 +1194,27 @@ test update; browser-gated (UI + network); the endpoints stay pytest-covered (2b
 **This COMPLETES the album's core loop** — add every way (3b-i/ii/iii) + manage (3c: promote / caption /
 delete).
 
-**Follow-up — the hero caption slot (SHARED, a small next build):** the hero Polaroid renders an **empty
-`.strip`** today (the slot + `.cap`/`.date` CSS are reserved). Diagnosed decision: **SHARED** — the hero should
-show the **live caption of the cook photo at `recipes.image`** (already in the payload as the `is_hero` photo),
-read client-side in `dishPhoto` with **no schema/promote/endpoint change**; edited via the photo's existing ⋮.
-Its one gap (a *directly-uploaded* hero, which has no `cook_photo` row, can't be captioned) is the only reason
-to consider SEPARATE (`recipes.image_caption`) later.
+### Build — hero caption slot (SHARED, shipped — resolves the 3c follow-up)
+
+The hero Polaroid (`dishPhoto`) predated cook-photo captions and rendered an **empty `.strip`**. Decided
+**SHARED**: the hero shows the **live caption of the cook photo at `recipes.image`**. The recipe payload already
+carries the album `photos[]` with `is_hero` computed (`recipes.image == path`) and each photo's caption, so a
+tiny pure helper **`static/hero-caption.js` → `heroCaption(photos)`** returns the `is_hero` photo's caption (or
+`null`), and `dishPhoto` fills the strip with the album's Kalam `.cap` face (sized up for the larger hero frame,
+centered). **Render-only — NO schema, NO endpoint, NO promote change, NO caption editor on the hero.**
+
+- **Editing is free via 3c:** editing that photo's caption through the album ⋮ menu → `PATCH` → `renderRecipe`
+  re-reads `data.photos` → the hero shows the new text. Same field, one edit path (no ⋮ on the hero itself).
+- **Promote carries the caption** with no new code: `promote` sets the path, and the caption follows because the
+  hero reads the (now-`is_hero`) photo's live caption.
+- **Graceful fallbacks** (the load-bearing part, unit-tested in `tests/js/hero-caption.test.js`): an
+  **uncaptioned** hero → empty strip (as before); a hero with **no matching `cook_photo` row** (legacy/backfilled/
+  direct Polaroid upload) → `find` returns undefined → `null` → no caption area, **doesn't break**.
+
+The reserved `.polaroid .strip`/`.cap` CSS is brought to life (`height:54px` → `min-height:54px` so a long
+caption grows the strip but it stays ≥54px when empty). Diff = `static/hero-caption.js` + `static/app.js` +
+`static/styles.css` + the test; browser-gated. Its one limitation (a directly-uploaded hero still can't be
+captioned) is the only reason to consider SEPARATE (`recipes.image_caption`) later — not currently needed.
 
 **Album roadmap (remaining builds):** **3d** — drag-to-reorder; **3e** — anchor a photo to a specific method
 step (the reserved `.step-body` per-step-photo hook); then the **Cooking Journal**.
