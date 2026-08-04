@@ -1,6 +1,6 @@
 """Cook-photo album DISPLAY data (Stage 4 build 3a): the `photos` array folded into GET /api/recipes/<id>.
-Proves the read the album renders from — per-photo shape (least-exposure), hero-first-then-recent order,
-the cook's date present for cook-linked / absent for standalone, and is_hero (recipes.image == path).
+Proves the read the album renders from — per-photo shape (least-exposure), stored-position (append) order
+(3d-i), the cook's date present for cook-linked / absent for standalone, and is_hero (recipes.image == path).
 State is driven through the REAL attach/promote endpoints; disk isolated to the temp images dir."""
 import io
 
@@ -67,23 +67,26 @@ def test_photos_shape_date_and_hero(kitchen):
     assert by_id[solo["id"]]["is_hero"] is False
 
 
-def test_photos_ordered_by_cook_date_hero_stays_in_place(kitchen):
-    # Finalized order: cook-linked NEWEST cook first, undated last. The hero is NOT floated — it wears the
-    # badge in its natural cooked_on position.
+def test_photos_ordered_by_stored_position_append(kitchen):
+    # 3d-i: the album orders by STORED position, and new photos APPEND (max+1) — so photos show in ATTACH
+    # order, NOT cooked_on order. (cooked_on still governs each photo's displayed DATE, independently.)
     a = kitchen.client
     rid = _own_recipe(a, "Order Dish")
-    old = _post_photo(a, rid, cook_log_id=_log_cook(a, rid, "2023-01-05"))   # older cook; first attach -> auto-hero
-    new = _post_photo(a, rid, cook_log_id=_log_cook(a, rid, "2024-06-20"))   # newer cook
-    solo = _post_photo(a, rid)                                               # standalone (no date) -> last
+    first = _post_photo(a, rid, cook_log_id=_log_cook(a, rid, "2023-01-05"))   # OLDER cook, attached 1st -> pos 0 (auto-hero)
+    second = _post_photo(a, rid, cook_log_id=_log_cook(a, rid, "2024-06-20"))  # NEWER cook, attached 2nd -> pos 1
+    solo = _post_photo(a, rid)                                                 # standalone, attached 3rd -> pos 2
 
     photos = _photos(a, rid)
-    assert [p["id"] for p in photos] == [new["id"], old["id"], solo["id"]]   # newest cook, older cook, then undated
+    # append order (pos 0,1,2) DIFFERS from cooked_on-desc ([second, first, solo]) -> proves it's position-ordered
+    assert [p["id"] for p in photos] == [first["id"], second["id"], solo["id"]]
     by_id = {p["id"]: p for p in photos}
-    assert by_id[old["id"]]["is_hero"] is True                               # the hero wears the badge...
-    assert photos[0]["id"] == new["id"]                                      # ...but does NOT float to the top
+    assert by_id[first["id"]]["is_hero"] is True                               # the hero wears the badge in its position (0)
+    assert by_id[first["id"]]["cooked_on"] == "2023-01-05"                     # date still from cooked_on...
+    assert by_id[second["id"]]["cooked_on"] == "2024-06-20"                    # ...independent of the position order
+    assert by_id[solo["id"]]["cooked_on"] is None
 
 
-def test_photos_recency_when_no_cook_photo_is_hero(kitchen):
+def test_photos_appended_in_attach_order_when_no_cook_photo_is_hero(kitchen):
     a = kitchen.client
     rid = _own_recipe(a, "Recency Dish")
     _upload_hero(a, rid)                                      # a NORMAL hero -> cook-photo attaches don't auto-promote
@@ -92,5 +95,5 @@ def test_photos_recency_when_no_cook_photo_is_hero(kitchen):
     p3 = _post_photo(a, rid)
 
     photos = _photos(a, rid)
-    assert [p["id"] for p in photos] == [p3["id"], p2["id"], p1["id"]]   # pure most-recently-added order
+    assert [p["id"] for p in photos] == [p1["id"], p2["id"], p3["id"]]   # 3d-i: append order (position 0,1,2), oldest-added first
     assert all(p["is_hero"] is False for p in photos)        # the hero is the normal image, not a cook photo

@@ -467,21 +467,23 @@ def get_recipe(rid):
             select(RecipeQueue.id)
             .where(RecipeQueue.recipe_id == rid, RecipeQueue.user_id == current_user.id)
         ) is not None
-        # Cook-photo album (Stage 4 build 3a — display). Rides along in the recipe payload (like stats/
-        # ingredients/steps) so the album paints with the page, no second request. Per photo: path, caption,
-        # the cook's DATE (cook_log.cooked_on, LEFT JOIN — NULL for a standalone photo), and is_hero
-        # (recipes.image == path — the POINT/linked hero). Least-exposure: no user_id/added_at in the output.
-        # ORDER: cook-linked photos NEWEST cook first (cooked_on desc), then undated/standalone photos last
-        # (added_at desc among themselves). `(cooked_on IS NULL)` asc pushes NULLs last portably (no reliance
-        # on NULLS LAST). The hero is NOT floated — it wears the badge in its natural cooked_on position.
+        # Cook-photo album (Stage 4 build 3a — display; 3d-i — STORED order). Rides along in the recipe
+        # payload (like stats/ingredients/steps) so the album paints with the page, no second request. Per
+        # photo: path, caption, the cook's DATE (cook_log.cooked_on, LEFT JOIN — NULL for a standalone photo),
+        # and is_hero (recipes.image == path — the POINT/linked hero). Least-exposure: no user_id/added_at.
+        # ORDER (3d-i, Model B): by the STORED cook_photos.position — seeded from the old cooked_on order
+        # (scripts/backfill_cook_photo_position.py), authoritative once dragged, new photos APPEND (max+1).
+        # position governs ORDER only; cooked_on is still returned + governs the displayed DATE (independent —
+        # reordering never changes dates). `position IS NULL` asc pushes any not-yet-seeded/appended row last
+        # portably (the same NULLs-last trick the cooked_on ordering used — SQLite sorts NULLs first, PG last).
         photo_rows = s.execute(
             select(CookPhoto.id, CookPhoto.path, CookPhoto.caption, CookPhoto.cook_log_id, CookLog.cooked_on)
             .join(CookLog, CookLog.id == CookPhoto.cook_log_id, isouter=True)
             .where(CookPhoto.recipe_id == rid)
             .order_by(
-                CookLog.cooked_on.is_(None),      # cook-linked (False=0) before standalone (True=1) — NULLs last
-                CookLog.cooked_on.desc(),         # newest cook first
-                CookPhoto.added_at.desc(), CookPhoto.id.desc(),   # tiebreak + ordering among undated photos
+                CookPhoto.position.is_(None),     # not-yet-seeded (True=1) sorts after seeded (False=0) — NULLs last
+                CookPhoto.position.asc(),         # the stored album order (seeded from cooked_on, then authoritative)
+                CookPhoto.id.asc(),               # stable tiebreak
             )
         ).all()
         hero_path = r["image"]
@@ -989,9 +991,15 @@ def add_cook_photo(rid):
             path = images.save_cook_photo(f.read())           # 2a seam: validate + resize + strip + atomic write
         except images.ImageValidationError as e:
             return jsonify({"error": str(e)}), 400            # bad/blocked/bomb input -> 400, nothing inserted
+        # 3d-i: APPEND — a new photo lands at the END of the recipe's stored album order (max position + 1,
+        # -1 for the first photo -> 0). Keeps every row non-NULL after the backfill, so nothing relies on the
+        # NULLs-last fallback; the user drags it elsewhere later (3d-ii/iii).
+        next_pos = s.execute(
+            select(func.coalesce(func.max(CookPhoto.position), -1) + 1).where(CookPhoto.recipe_id == rec.id)
+        ).scalar_one()
         res = s.execute(insert(CookPhoto.__table__).values(
             cook_log_id=cook_log_id, recipe_id=rec.id, user_id=current_user.id,
-            path=path, caption=caption, added_at=now_utc(),
+            path=path, caption=caption, added_at=now_utc(), position=next_pos,
         ))
         photo_id = res.inserted_primary_key[0]
         # 2c AUTO-PROMOTE: if the recipe has NO hero yet, this photo becomes it (POINT/linked, same path).

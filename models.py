@@ -325,9 +325,11 @@ class CookPhoto(Base):
     path = Column(Text, nullable=False)                                           # stored image path (build 2)
     caption = Column(Text)                                                        # optional (<=100 chars)
     added_at = Column(Text, nullable=False)                                       # now_utc(): when added
+    position = Column(Integer)          # stored album order (3d-i, migration 027); nullable until seeded/set on insert
     __table_args__ = (
         Index("idx_cook_photos_recipe", "recipe_id"),      # per-recipe album query
         Index("idx_cook_photos_cook_log", "cook_log_id"),  # per-cook lookup
+        Index("idx_cook_photos_recipe_position", "recipe_id", "position"),  # per-recipe album ORDER BY position (3d-i)
         {"sqlite_autoincrement": True},
     )
 

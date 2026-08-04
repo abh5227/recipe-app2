@@ -272,3 +272,25 @@ def test_comments_pg_dialect(pg):
     assert ca.delete(f"/api/recipes/{rid}").status_code == 200
     assert _count(pg.engine, "SELECT COUNT(*) FROM shared_posts WHERE id=:p", p=pid) == 0
     assert _count(pg.engine, "SELECT COUNT(*) FROM comments WHERE post_id=:p", p=pid) == 0
+
+
+# ---- 10. cook-photo album STORED position ordering (3d-i) — NULLs-last differs SQLite<->PG ---------
+
+def test_cook_photo_album_orders_by_position_nulls_last(pg):
+    """The album payload orders by cook_photos.position (3d-i, migration 027 via `alembic upgrade head`),
+    with a not-yet-seeded NULL position sorting LAST. PG sorts NULLs last by default and SQLite first, so
+    this pins the portable `position IS NULL` construct on the PG dialect (and that the ADD COLUMN ran)."""
+    uid = harness.ensure_test_user()          # pg.client's user
+    rid = "gai-yang"                           # a seeded recipe; reset_and_seed leaves it photo-less
+    rows = [("images/cooks/pgp0.jpg", 2), ("images/cooks/pgp1.jpg", 0),
+            ("images/cooks/pgp2.jpg", 1), ("images/cooks/pgpN.jpg", None)]
+    ids = {}
+    with pg.engine.begin() as conn:
+        for path, pos in rows:
+            ids[path] = conn.execute(text(
+                "INSERT INTO cook_photos (recipe_id, user_id, path, added_at, position) "
+                "VALUES (:r, :u, :p, :t, :pos) RETURNING id"),
+                {"r": rid, "u": uid, "p": path, "t": "2024-01-01T00:00Z", "pos": pos}).scalar_one()
+    order = [p["id"] for p in pg.client.get(f"/api/recipes/{rid}").get_json()["photos"]]
+    assert order == [ids["images/cooks/pgp1.jpg"], ids["images/cooks/pgp2.jpg"],
+                     ids["images/cooks/pgp0.jpg"], ids["images/cooks/pgpN.jpg"]]   # 0,1,2 then NULL last

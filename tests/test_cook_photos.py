@@ -50,10 +50,11 @@ def test_migration_creates_cook_photos_table(kitchen):
         insp = inspect(s.get_bind())
         assert "cook_photos" in insp.get_table_names()             # migration 025 applied by build_db
         cols = {c["name"] for c in insp.get_columns("cook_photos")}
-        assert cols == {"id", "cook_log_id", "recipe_id", "user_id", "path", "caption", "added_at"}
+        assert cols == {"id", "cook_log_id", "recipe_id", "user_id", "path", "caption", "added_at", "position"}
         idx = {i["name"] for i in insp.get_indexes("cook_photos")}
         assert "idx_cook_photos_recipe" in idx                      # per-recipe album query
         assert "idx_cook_photos_cook_log" in idx                    # per-cook lookup
+        assert "idx_cook_photos_recipe_position" in idx             # per-recipe album ORDER BY position (3d-i)
 
 
 # ---- model round-trips: caption nullable (with + without) -----------------------------------------

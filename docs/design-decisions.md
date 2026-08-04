@@ -1216,8 +1216,38 @@ caption grows the strip but it stays ≥54px when empty). Diff = `static/hero-ca
 `static/styles.css` + the test; browser-gated. Its one limitation (a directly-uploaded hero still can't be
 captioned) is the only reason to consider SEPARATE (`recipes.image_caption`) later — not currently needed.
 
-**Album roadmap (remaining builds):** **3d** — drag-to-reorder; **3e** — anchor a photo to a specific method
-step (the reserved `.step-body` per-step-photo hook); then the **Cooking Journal**.
+### Build 3d-i — the position column + cooked_on-seeding backfill + order-by-position (shipped)
+
+3d adds **drag-to-reorder** (**Model B**: `cooked_on` SEEDS a stored order that becomes authoritative once
+dragged). 3d-i is the **data foundation** — no reorder endpoint (3d-ii) or drag UI (3d-iii) yet:
+
+- **Column:** a nullable `cook_photos.position` INTEGER (the house-convention name — `recipe_ingredients`/
+  `recipe_steps` already store + `ORDER BY position`). **Migration 027 is a plain `ADD COLUMN`** on both
+  dialects — **no table rebuild** (026 rebuilt only because SQLite can't DROP NOT NULL; adding a column
+  has no such limit) — mirrored by the Alembic revision `b8c9d0e1f2a3` for the PG CI path. A composite
+  `(recipe_id, position)` index backs the album read. **No data change IN the migration.**
+- **Seed backfill (the data-transforming part, gated):** `scripts/backfill_cook_photo_position.py` assigns
+  `position = 0,1,2,…` **per recipe in the album's current display order** (cook-linked newest-first, undated
+  last) — so ordering by position looks **identical** to before. Standalone (not in `migrate.py` — the
+  qty/unit lesson), idempotent (`WHERE position IS NULL`, continues from a recipe's max — never disturbs a
+  set row), **backup → dry-run → review → apply**. Live run: **7 rows / 2 recipes** (shawarma `#44..#39 →
+  0..5`, agedashi-copy `#47 → 0`), backup at `backups/recipes-20260804-142342.db`, verified byte-for-byte
+  against the reviewed dry-run mapping.
+- **Read by position:** the payload `ORDER BY` is now `position IS NULL` → `position ASC` → `id ASC` (the
+  portable **NULLs-last** idiom — SQLite sorts NULLs first, PG last). `cooked_on` is still returned and
+  still governs each photo's **DATE**: **position governs ORDER, cooked_on governs DATE — independent**
+  (reordering never changes dates; pinned by a test).
+- **New photos APPEND** (`position = MAX(position)+1`, set at the single attach insert), so no row is ever
+  NULL after the backfill. ⚠️ **Intended behavior change (okayed):** a new photo now lands at the **END**
+  of the album (previously newest-added showed **first**) — Model B: you drag it where you want. Surfaced
+  as honest rewrites of two `test_album_payload` ordering tests (now assert append/position order) + the
+  coupled `test_build_db` (26→27) and `test_cook_photos` (schema/index) updates; PG integration gained a
+  position/NULLs-last dialect test.
+
+**Album roadmap (remaining builds):** **3d-ii** — the reorder endpoint (full ordered id-list, recipe-owner
+gated, atomic set-position-by-index); **3d-iii** — the drag UI (preview-first, the linearized-reorder-view);
+**3e** — anchor a photo to a specific method step (the reserved `.step-body` per-step-photo hook); then the
+**Cooking Journal**.
 
 ## Open questions
 

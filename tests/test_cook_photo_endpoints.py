@@ -258,3 +258,56 @@ def test_delete_with_missing_file_still_succeeds(kitchen):
 
 def test_delete_missing_photo_404(kitchen):
     assert kitchen.client.delete("/api/photos/999999").status_code == 404
+
+
+# ---- STORED album order (3d-i: position column, append-on-attach, payload ORDER BY position) ------
+
+def _album(client, rid):
+    """The recipe payload's album photos, in server (position) order."""
+    return client.get(f"/api/recipes/{rid}").get_json()["photos"]
+
+
+def test_attach_appends_position(kitchen):
+    a = kitchen.client
+    rid = _own_recipe(a)
+    ids = [_post_photo(a, rid).get_json()["id"] for _ in range(3)]
+    with kitchen.conn() as c:
+        pos = dict(c.execute(
+            "SELECT id, position FROM cook_photos WHERE recipe_id = ?", (rid,)).fetchall())
+    assert [pos[i] for i in ids] == [0, 1, 2]        # each new photo appends: max(position)+1 (first -> 0)
+
+
+def test_album_orders_by_position_not_insert_order(kitchen):
+    a = kitchen.client
+    rid = _own_recipe(a)
+    p0, p1, p2 = (_post_photo(a, rid).get_json()["id"] for _ in range(3))
+    with kitchen.conn() as c:                         # scramble the stored order: p2, p0, p1
+        c.execute("UPDATE cook_photos SET position = 0 WHERE id = ?", (p2,))
+        c.execute("UPDATE cook_photos SET position = 1 WHERE id = ?", (p0,))
+        c.execute("UPDATE cook_photos SET position = 2 WHERE id = ?", (p1,))
+    assert [p["id"] for p in _album(a, rid)] == [p2, p0, p1]   # payload reads position order, not insert order
+
+
+def test_null_position_sorts_last(kitchen):
+    # The window between migration and backfill (or any not-yet-seeded row): NULL position must sort LAST,
+    # not break the ORDER BY. (SQLite sorts NULLs first by default; the `position IS NULL` key forces last.)
+    a = kitchen.client
+    rid = _own_recipe(a)
+    p0, p1, p2 = (_post_photo(a, rid).get_json()["id"] for _ in range(3))   # positions 0,1,2
+    with kitchen.conn() as c:
+        c.execute("UPDATE cook_photos SET position = NULL WHERE id = ?", (p0,))
+    order = [p["id"] for p in _album(a, rid)]
+    assert order == [p1, p2, p0]                     # positioned rows keep order (1,2); NULL sorts last
+
+
+def test_position_and_cooked_on_are_independent(kitchen):
+    # position governs ORDER; cooked_on still governs the displayed DATE. Reordering (here: scrambling
+    # position) must not change any photo's cooked_on in the payload.
+    a = kitchen.client
+    rid = _own_recipe(a)
+    clid = _log_cook(a, rid, date="2024-05-01")["cook_log_id"]
+    pid = _post_photo(a, rid, cook_log_id=clid).get_json()["id"]
+    with kitchen.conn() as c:
+        c.execute("UPDATE cook_photos SET position = 7 WHERE id = ?", (pid,))
+    photo = next(p for p in _album(a, rid) if p["id"] == pid)
+    assert photo["cooked_on"] == "2024-05-01"        # date unchanged by the position edit
