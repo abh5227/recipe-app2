@@ -172,7 +172,7 @@ def test_attach_missing_file_part_400(kitchen):
 def test_attach_overlength_caption_400(kitchen):
     a = kitchen.client
     rid = _own_recipe(a)
-    r = _post_photo(a, rid, caption="x" * 101)           # cap is 100
+    r = _post_photo(a, rid, caption="x" * 61)            # over the cap (60) -> rejected
     assert r.status_code == 400
     assert _rows(kitchen, rid) == []                      # rejected before any write
 
@@ -211,7 +211,8 @@ def test_caption_overlength_400(kitchen):
     a = kitchen.client
     rid = _own_recipe(a)
     pid = _attach(a, rid)
-    assert a.patch(f"/api/photos/{pid}", json={"caption": "x" * 101}).status_code == 400
+    assert a.patch(f"/api/photos/{pid}", json={"caption": "x" * 60}).status_code == 200   # at the cap -> OK
+    assert a.patch(f"/api/photos/{pid}", json={"caption": "x" * 61}).status_code == 400    # over the cap -> rejected
 
 
 def test_caption_missing_photo_404(kitchen):

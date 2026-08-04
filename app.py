@@ -932,7 +932,8 @@ def log_cook_and_rate(rid):
 # and NO POINT/linked-hero deletion logic here — that's 2c (so in 2b no cook photo can be a hero yet,
 # which is why the DELETE below needs no hero-clear).
 
-COOK_PHOTO_CAPTION_MAX = 100   # album captions are short; mirrors create_share's CAPTION_MAX rule (400 on over-length)
+COOK_PHOTO_CAPTION_MAX = 60    # album caption is a SHORT label under the polaroid (fits Kalam at readable size).
+                               # The feed/share caption (create_share's CAPTION_MAX=280) is a DIFFERENT field, untouched.
 
 
 def clean_caption(raw):

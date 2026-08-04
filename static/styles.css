@@ -835,6 +835,58 @@ a:hover { color: var(--berry-lift); }
 .add-hint .tip::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
   border: 6px solid transparent; border-top-color: #2a1c0d; }
 
+/* Stage 4 (3c): per-photo ⋮ actions — the ⋮ button, its menu, the inline caption-edit, the delete-confirm.
+   Ported from the approved preview (preview/album-photo-actions.html), real tokens. The ⋮ is calm at rest
+   (hidden), revealed on hover/focus; the menu opens on click and overhangs freely (the figure has no
+   overflow:hidden — the corner-× lesson). Owner-only (rendered only when data.is_editable). */
+.album-photo .pm-btn { position: absolute; top: 6px; right: 6px; z-index: 3; width: 26px; height: 26px;
+  border-radius: 50%; border: none; cursor: pointer; background: rgba(40,35,30,.55); color: #fff;
+  font-size: 17px; line-height: 1; display: grid; place-items: center; opacity: 0; transition: opacity .15s; }
+.album-photo:hover .pm-btn, .album-photo .pm-btn:focus-visible { opacity: 1; }
+.album-photo .pm-btn:hover { background: rgba(40,35,30,.82); }
+
+.photo-menu { position: absolute; top: 34px; right: 6px; z-index: 8; min-width: 140px;
+  background: var(--card); border: 1px solid var(--paper-edge); border-radius: 10px;
+  box-shadow: 0 10px 26px -8px rgba(31,42,32,.42); padding: 5px; }
+.photo-menu.up { top: auto; bottom: 34px; }   /* EDGE: flip above the ⋮ when it'd overflow the viewport bottom */
+.photo-menu button { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+  font-family: var(--font-sans); font-size: 13px; color: var(--ink); background: none; border: none;
+  border-radius: 7px; padding: 7px 10px; cursor: pointer; }
+.photo-menu button:hover { background: var(--paper); }
+.photo-menu button .mi { width: 15px; text-align: center; opacity: .85; }
+.photo-menu button.danger { color: var(--danger); }
+.photo-menu button.danger:hover { background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.photo-menu button[disabled] { color: var(--ink-soft); opacity: .5; cursor: default; }
+.photo-menu button[disabled]:hover { background: none; }
+.photo-menu .sep { height: 1px; background: var(--paper-edge); margin: 4px 6px; }
+
+/* inline caption edit — reuses the real Kalam caption face; live N/60 count + hard maxlength (UI matches the server) */
+.cap-edit { display: block; margin-top: 3px; }
+.cap-edit textarea { font-family: var(--font-hand); font-size: 15.5px; line-height: 1.12; color: #4b4636;
+  width: 100%; box-sizing: border-box; border: none; border-bottom: 1.5px solid var(--border-defined);
+  background: color-mix(in srgb, var(--ochre) 7%, transparent); border-radius: 5px 5px 0 0; padding: 4px 6px;
+  resize: none; }
+.cap-edit textarea:focus { outline: none; border-bottom-color: var(--green); background: color-mix(in srgb, var(--green) 7%, transparent); }
+.cap-edit textarea::placeholder { color: var(--ink-soft); opacity: .7; font-style: italic; }
+.cap-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; }
+.cap-count { font-family: var(--font-sans); font-size: 10px; color: var(--ink-soft); }
+.cap-count.near { color: var(--ochre); }
+.cap-count.at { color: var(--danger); font-weight: 600; }
+.cap-actions { display: inline-flex; gap: 5px; }
+.cap-edit .btn.sm { font-size: 11.5px; padding: 3px 10px; }
+
+/* two-step delete confirm — dims the whole mini-polaroid (inset:0, never clips), hero warning added on the hero */
+.del-confirm { position: absolute; inset: 0; z-index: 9; border-radius: 3px; background: rgba(30,22,12,.85);
+  color: #f4ead6; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 11px; padding: 16px; text-align: center; }
+.del-confirm .dc-q { font-family: var(--font-sans); font-size: 13.5px; line-height: 1.4; }
+.del-confirm .dc-hero { font-family: var(--font-sans); font-size: 11px; line-height: 1.35; color: #e8c98a; font-style: italic; }
+.del-confirm .dc-actions { display: inline-flex; gap: 8px; margin-top: 2px; }
+.del-confirm .btn.sm { font-size: 12px; padding: 5px 13px; }
+.del-confirm .btn.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.del-confirm .btn.ghost-light { background: transparent; border: 1px solid rgba(244,234,214,.5); color: #f4ead6; }
+.del-confirm .btn.ghost-light:hover { background: rgba(244,234,214,.12); }
+
 /* ---------- Clickable ingredient ("look this up") ---------- */
 .ingredient {
   font: inherit; color: var(--berry); background: none; border: none;

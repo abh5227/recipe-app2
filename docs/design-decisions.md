@@ -1158,9 +1158,51 @@ shipped `.bd-photo` staging). No `3c` code. Browser-gated (UI + network; the att
 **This COMPLETES the three add-flows:** **3b-i** standalone "add to album", **3b-ii** at-log-time (backdate
 modal), **3b-iii** "Cooked it" instant-path.
 
-**Album roadmap (remaining builds):** **3c** — the per-photo actions (the hover ⋯ menu: make-hero /
-edit-caption / delete, with the two-step delete-confirm); **3d** — drag-to-reorder; **3e** — anchor a photo
-to a specific method step (the reserved `.step-body` per-step-photo hook).
+**This COMPLETES the three add-flows** — see below for **3c** (manage) which closes the album's core loop.
+
+### Build 3c — per-photo ⋮ actions: make-hero / edit-caption / delete (shipped — COMPLETES the album core loop)
+
+Each album photo gets a per-photo **⋮ menu** (owner-only, gated by `data.is_editable` — the same gate the
+add-tile uses). The menu is **calm at rest** (hidden), the ⋮ **revealed on hover/focus**, and **opens on
+click** to a small on-theme card: **Make hero / Edit caption / — / Delete** (Delete in danger-red). A click
+anywhere outside closes it. The three actions wire to the endpoints **already shipped in build 2b/2c** —
+this build is mostly **wiring** known pieces + one render hook + one server constant:
+
+- **Make hero** → `POST /api/photos/<id>/promote` → `renderRecipe` (the ★ badge moves + the hero Polaroid
+  updates). On the photo that IS the hero, the item shows **disabled as "Already the hero."**
+- **Edit caption** → an inline editable field in the real **Kalam** caption face (pre-filled or placeholder),
+  a live **N/60** count + hard `maxlength=60` → `PATCH /api/photos/<id> {caption}` → `renderRecipe`. Blank
+  clears it. **Cancel** reverts locally (no network) by rebuilding the strip from `view.data.photos`.
+- **Delete** → a **two-step** confirm that dims the whole mini-polaroid (`inset:0`, never clips); on the
+  **hero** photo it adds the warning **"Deleting clears the hero."** → `DELETE /api/photos/<id>` →
+  `renderRecipe` (the server does 2c's linked-hero clear; the repaint surfaces the empty upload frame — the
+  linked-hero behavior driven from a button for the first time).
+
+**The one existing-render change** is the load-bearing **`data-photo-id`** hook on the `.album-photo` figure
+(the id was in the payload but not the DOM); everything else is additive. **Refresh** is `renderRecipe(view.slug)`
+after each action — the seam the diagnostic confirmed covers all three. **Edge positioning** (the corner-×
+lesson): the menu is right-anchored (fits inside a ~168px masonry column) and **flips up** (`.photo-menu.up`)
+when it would overflow the viewport bottom; the delete-confirm is `inset:0` so it never clips.
+
+**Caption cap lowered 100→60** (`COOK_PHOTO_CAPTION_MAX`): the album caption is a **short label** under the
+polaroid (fits Kalam at readable size). The **feed/share** caption (`create_share`'s `CAPTION_MAX`) is a
+**different field, untouched**; the Cooking Journal will hold longer prose. Zero existing cook-photo captions
+were >60 (in fact zero exist), so nothing was stranded. The pytest cap test now asserts **60 passes / 61 →
+400** on both attach and edit. Diff = `static/app.js` + `static/styles.css` + the one server constant + the
+test update; browser-gated (UI + network); the endpoints stay pytest-covered (2b/2c).
+
+**This COMPLETES the album's core loop** — add every way (3b-i/ii/iii) + manage (3c: promote / caption /
+delete).
+
+**Follow-up — the hero caption slot (SHARED, a small next build):** the hero Polaroid renders an **empty
+`.strip`** today (the slot + `.cap`/`.date` CSS are reserved). Diagnosed decision: **SHARED** — the hero should
+show the **live caption of the cook photo at `recipes.image`** (already in the payload as the `is_hero` photo),
+read client-side in `dishPhoto` with **no schema/promote/endpoint change**; edited via the photo's existing ⋮.
+Its one gap (a *directly-uploaded* hero, which has no `cook_photo` row, can't be captioned) is the only reason
+to consider SEPARATE (`recipes.image_caption`) later.
+
+**Album roadmap (remaining builds):** **3d** — drag-to-reorder; **3e** — anchor a photo to a specific method
+step (the reserved `.step-body` per-step-photo hook); then the **Cooking Journal**.
 
 ## Open questions
 

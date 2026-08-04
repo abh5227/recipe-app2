@@ -893,14 +893,20 @@ function dishPhoto(r, editable) {
 // "See all N photos" expands the rest. No per-photo actions (3c). 3b-i adds the owner-only add-tile (below)
 // + shows the section (add-zone only) for an empty owner album; a non-owner empty album still renders nothing.
 const ALBUM_CAP = 6;   // masonry: ~1–2 ranks shown collapsed, then "See all" (one-clean-row no longer applies)
-function albumPhotoHTML(p) {
-  const badge = p.is_hero ? `<span class="hero-badge">&#9733; Hero</span>` : "";
+const ALBUM_CAPTION_MAX = 60;   // client mirror of app.py::COOK_PHOTO_CAPTION_MAX (UI cap matches the server)
+function albumStripInner(p) {   // the resting figcaption body (date + caption) — reused by render + caption-edit cancel
   const date = p.cooked_on ? `<span class="date">${esc(formatFullDate(p.cooked_on))}</span>` : "";   // cook-linked only
   const cap = p.caption ? `<span class="cap">${esc(p.caption)}</span>` : "";
-  return `<figure class="album-photo${p.is_hero ? " is-hero" : ""}">${badge}
+  return `${date}${cap}`;
+}
+function albumPhotoHTML(p, canManage) {
+  const badge = p.is_hero ? `<span class="hero-badge">&#9733; Hero</span>` : "";
+  // 3c: the owner-only per-photo ⋮ (calm at rest, hover-revealed) + the data-photo-id hook every action targets
+  const menu = canManage ? `<button class="pm-btn" data-photo-menu aria-haspopup="true" aria-label="Photo actions">&#8942;</button>` : "";
+  return `<figure class="album-photo${p.is_hero ? " is-hero" : ""}" data-photo-id="${p.id}">${badge}${menu}
     <img class="ph" src="/${esc(p.path)}" alt="" loading="lazy"
       onerror="this.closest('.album-photo').remove();">
-    <figcaption class="strip">${date}${cap}</figcaption></figure>`;
+    <figcaption class="strip">${albumStripInner(p)}</figcaption></figure>`;
 }
 // The standalone "add to album" tile (3b-i): the REAL hero-uploader .upload-zone (dashed frame / "+" /
 // drag-or-click, MULTI-file) sized into an album grid cell, plus the (i) cook-logger nudge. Owner-only;
@@ -935,7 +941,7 @@ function albumSectionHTML(data) {
     : "";
   return `<section class="album-section${many ? " collapsed" : ""}" id="album-section">
     <div class="col-head"><h2 class="col-title">Album</h2></div>
-    <div class="album-grid masonry">${photos.map(albumPhotoHTML).join("")}${addTile}</div>
+    <div class="album-grid masonry">${photos.map((p) => albumPhotoHTML(p, canAdd)).join("")}${addTile}</div>
     ${more}</section>`;
 }
 
@@ -972,6 +978,79 @@ function bindAlbumResize() {
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => layoutAlbum(app.querySelector(".album-grid.masonry")));
   });
+}
+
+// Stage 4 (3c): per-photo album actions. The ⋮ opens a small menu (Make hero / Edit caption / Delete);
+// each action targets the figure's data-photo-id and refreshes via renderRecipe(view.slug) — the seam the
+// diagnostic confirmed covers all three (promote -> hero badge + hero Polaroid; caption -> new text; delete
+// -> photo gone, and if it was the hero, the empty upload frame returns). Endpoints shipped in build 2b/2c.
+function albumPhotoById(id) {
+  return ((view && view.data && view.data.photos) || []).find((p) => String(p.id) === String(id));
+}
+function capEditHTML(cur) {
+  const n = cur.length;
+  const cls = n >= ALBUM_CAPTION_MAX ? " at" : n >= 50 ? " near" : "";
+  return `<span class="cap-edit"><textarea class="cap-input" data-cap-input rows="2" maxlength="${ALBUM_CAPTION_MAX}"
+      placeholder="add a note about this cook…">${esc(cur)}</textarea>
+    <span class="cap-foot"><span class="cap-count${cls}" data-cap-count>${n} / ${ALBUM_CAPTION_MAX}</span>
+      <span class="cap-actions"><button class="btn sm" data-cap-save>Save</button>
+        <button class="btn ghost sm" data-cap-cancel>Cancel</button></span></span></span>`;
+}
+function delConfirmHTML(isHero) {
+  const heroLine = isHero
+    ? `<span class="dc-hero">Deleting clears the hero.</span>`
+    : "";
+  return `<div class="del-confirm"><span class="dc-q">Delete this photo?</span>${heroLine}
+    <span class="dc-actions"><button class="btn sm danger" data-del-confirm>Delete</button>
+      <button class="btn sm ghost-light" data-del-cancel>Cancel</button></span></div>`;
+}
+function closePhotoMenu() { const m = app.querySelector(".photo-menu"); if (m) m.remove(); }
+function openPhotoMenu(btn) {
+  closePhotoMenu();                                        // single-open: any other menu closes first
+  const fig = btn.closest(".album-photo");
+  const heroItem = fig.classList.contains("is-hero")
+    ? `<button disabled><span class="mi">&#9733;</span> Already the hero</button>`
+    : `<button data-pm-hero><span class="mi">&#9733;</span> Make hero</button>`;
+  fig.insertAdjacentHTML("beforeend", `<div class="photo-menu">${heroItem}
+    <button data-pm-caption><span class="mi">&#9998;</span> Edit caption</button>
+    <div class="sep"></div>
+    <button class="danger" data-pm-delete><span class="mi">&#128465;</span> Delete</button></div>`);
+  const menu = fig.querySelector(".photo-menu");           // EDGE: flip above the ⋮ if it'd overflow the viewport bottom
+  if (menu.getBoundingClientRect().bottom > window.innerHeight - 8) menu.classList.add("up");
+}
+function openCaptionEdit(fig) {
+  const p = albumPhotoById(fig.dataset.photoId);
+  const dateHTML = p && p.cooked_on ? `<span class="date">${esc(formatFullDate(p.cooked_on))}</span>` : "";
+  const strip = fig.querySelector(".strip");
+  strip.innerHTML = `${dateHTML}${capEditHTML(p && p.caption ? p.caption : "")}`;
+  const ta = strip.querySelector("[data-cap-input]");
+  if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
+}
+async function promotePhoto(id, rid) { const { ok } = await sendJSON("POST", `/api/photos/${id}/promote`, {}); if (ok) renderRecipe(rid); }
+async function deletePhoto(id, rid)  { const { ok } = await sendJSON("DELETE", `/api/photos/${id}`, null);     if (ok) renderRecipe(rid); }
+async function saveCaption(fig, rid) {
+  const ta = fig.querySelector("[data-cap-input]");
+  const { ok } = await sendJSON("PATCH", `/api/photos/${fig.dataset.photoId}`, { caption: ta ? ta.value.trim() : "" });
+  if (ok) renderRecipe(rid);                               // blank clears it (server allows blank)
+}
+// Delegated handler — returns true if it owned the click. Wired into the main document click listener.
+function handleAlbumPhotoAction(e) {
+  const rid = view ? view.slug : null;
+  const pm = e.target.closest("[data-photo-menu]");
+  if (pm) { const f = pm.closest(".album-photo");
+    f.querySelector(".photo-menu") ? closePhotoMenu() : openPhotoMenu(pm); return true; }
+  const fig = e.target.closest(".album-photo");
+  if (!fig) return false;
+  if (e.target.closest("[data-pm-hero]"))     { closePhotoMenu(); promotePhoto(fig.dataset.photoId, rid); return true; }
+  if (e.target.closest("[data-pm-caption]"))  { closePhotoMenu(); openCaptionEdit(fig); return true; }
+  if (e.target.closest("[data-pm-delete]"))   { closePhotoMenu();
+    fig.insertAdjacentHTML("beforeend", delConfirmHTML(fig.classList.contains("is-hero"))); return true; }
+  if (e.target.closest("[data-cap-save]"))    { saveCaption(fig, rid); return true; }
+  if (e.target.closest("[data-cap-cancel]"))  { const p = albumPhotoById(fig.dataset.photoId);
+    if (p) fig.querySelector(".strip").innerHTML = albumStripInner(p); return true; }   // revert, no network
+  if (e.target.closest("[data-del-confirm]")) { deletePhoto(fig.dataset.photoId, rid); return true; }
+  if (e.target.closest("[data-del-cancel]"))  { const dc = e.target.closest(".del-confirm"); if (dc) dc.remove(); return true; }
+  return false;
 }
 
 // The owner Edit/Delete row, and the inline two-step delete confirmation it swaps to. The
@@ -2267,6 +2346,9 @@ async function submitBackdate() {
 // happens, we look at what was clicked — e.target.closest("X") finds the nearest
 // matching element at or above the click — and act on the first kind we recognize.
 document.addEventListener("click", (e) => {
+  // 3c: a click anywhere outside an open ⋮ menu (and not on the ⋮ itself) closes it — no return, other handlers still run.
+  if (!e.target.closest(".photo-menu") && !e.target.closest("[data-photo-menu]")) closePhotoMenu();
+
   // Inline recipe editor: enter / save / cancel (namespaced data-inline-edit-*). Handled first.
   if (handleInlineEdit(e)) return;
 
@@ -2279,6 +2361,9 @@ document.addEventListener("click", (e) => {
   if (ccRemove) { cookChipRemove(Number(ccRemove.dataset.ccRemove)); return; }
   const ccAttach = e.target.closest("[data-cc-attach]");
   if (ccAttach) { cookChipAttach(ccAttach); return; }
+
+  // 3c: per-photo album ⋮ menu + make-hero / edit-caption / delete (acts on data-photo-id, refresh via renderRecipe)
+  if (handleAlbumPhotoAction(e)) return;
 
   // Bulk-delete all test recipes (home header) — inline two-step confirm, like the recipe delete.
   const bulk = document.getElementById("test-bulk");
@@ -2516,6 +2601,15 @@ document.addEventListener("focusin", (e) => {
   if (el) el.value = el.value.replace(/[^\d.]/g, "");   // drop the "×" so the number edits cleanly
 });
 document.addEventListener("input", (e) => {
+  // 3c: live N/60 count for the album caption edit (maxlength already hard-stops at 60; this only recolors the count)
+  const capIn = e.target.closest("[data-cap-input]");
+  if (capIn) {
+    const foot = capIn.parentElement.querySelector("[data-cap-count]");
+    const n = capIn.value.length;
+    if (foot) { foot.textContent = `${n} / ${ALBUM_CAPTION_MAX}`;
+      foot.className = "cap-count" + (n >= ALBUM_CAPTION_MAX ? " at" : n >= 50 ? " near" : ""); }
+    return;
+  }
   const el = e.target.closest(".scale-custom");
   if (el) { el.value = el.value.replace(/[^\d.]/g, ""); return; }   // digits + decimal point only while editing
   // Inline editor: buffer the scalar field into the draft ONLY — never re-render here, or the input
