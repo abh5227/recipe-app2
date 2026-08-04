@@ -12,6 +12,10 @@ static/images/*.jpeg
 static/images/*.png
 static/images/*.webp
 
+# Runtime cook-photo uploads (album + hero) — user data written by the app at run time. The *.jpg glob
+# above doesn't recurse into this subdir, so ignore it explicitly (keeps runtime uploads out of commits).
+static/images/cooks/
+
 # Local backups (made by backup.py)
 backups/
 
