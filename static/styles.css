@@ -888,6 +888,40 @@ a:hover { color: var(--berry-lift); }
 .del-confirm .btn.ghost-light { background: transparent; border: 1px solid rgba(244,234,214,.5); color: #f4ead6; }
 .del-confirm .btn.ghost-light:hover { background: rgba(244,234,214,.12); }
 
+/* Stage 4 (3d-iii): drag-to-reorder — a dedicated Reorder MODE. Ported from the approved preview
+   (preview/album-reorder.html), real tokens. The scatter masonry stays for DISPLAY; reorder re-lays the
+   photos into a clean LINEAR draggable sequence (the real .album-photo, UN-tilted) with the ⋮⋮ grip, an
+   ochre drop-insertion bar, and the origin dimmed to a ghost while dragging. */
+.album-reorder-enter { font-family: var(--font-sans); font-size: 12.5px; color: var(--green); background: none;
+  border: none; cursor: pointer; padding: 5px 10px; border-radius: 999px; margin-left: 12px; }
+.album-reorder-enter:hover { color: var(--green-lift); background: color-mix(in srgb, var(--green) 8%, transparent); }
+.album-section.reordering .album-head { display: flex; align-items: center; justify-content: space-between; padding-bottom: 6px; }
+.reorder-actions { display: inline-flex; align-items: center; gap: 8px; }
+.reorder-err { font-family: var(--font-sans); font-size: 12px; color: var(--danger); }
+.reorder-mode { background: color-mix(in srgb, var(--ochre) 6%, transparent); border: 1px dashed var(--border-defined);
+  border-radius: 12px; padding: 14px 14px 16px; margin-top: 8px; }
+.reorder-hint { font-family: var(--font-sans); font-size: 12px; color: var(--ink-soft); margin: 0 0 12px;
+  display: flex; align-items: center; gap: 7px; }
+.reorder-strip { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; }
+.reorder-strip .album-photo { transform: none; width: 150px; margin: 0; cursor: grab; position: relative;
+  transition: box-shadow .12s; }
+.reorder-strip .album-photo:hover { box-shadow: 0 6px 16px -7px rgba(45,32,12,.5); }
+.reorder-strip .album-photo .ph { height: auto; max-height: 120px; object-fit: contain; }
+.reorder-strip .album-photo .strip { min-height: 0; padding: 5px 3px 6px; }
+/* the origin while dragging — dimmed so you see where the photo came from (the native drag image carries it) */
+.reorder-strip .album-photo.ghost-origin { opacity: .35; }
+/* the GRAB handle — the affordance that says "drag me": a quiet ⋮⋮ pill, hover-revealed (echoes 3c's ⋮) */
+.reorder-strip .grip { position: absolute; top: 6px; left: 50%; transform: translateX(-50%); z-index: 4;
+  font-size: 13px; line-height: 1; letter-spacing: -1px; color: #fff; background: rgba(40,35,30,.55);
+  padding: 2px 8px; border-radius: 999px; opacity: 0; transition: opacity .12s; pointer-events: none; }
+.reorder-strip .album-photo:hover .grip { opacity: 1; }
+/* the DROP-INSERTION indicator — where it'll land: a tall ochre bar with end-caps, between two photos */
+.reorder-strip .drop-bar { width: 4px; align-self: stretch; min-height: 120px; background: var(--ochre);
+  border-radius: 3px; position: relative; box-shadow: 0 0 0 3px color-mix(in srgb, var(--ochre) 22%, transparent); }
+.reorder-strip .drop-bar::before, .reorder-strip .drop-bar::after { content: ""; position: absolute; left: 50%;
+  transform: translateX(-50%); width: 11px; height: 11px; border-radius: 50%; background: var(--ochre); }
+.reorder-strip .drop-bar::before { top: -6px; } .reorder-strip .drop-bar::after { bottom: -6px; }
+
 /* ---------- Clickable ingredient ("look this up") ---------- */
 .ingredient {
   font: inherit; color: var(--berry); background: none; border: none;

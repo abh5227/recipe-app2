@@ -10,6 +10,7 @@ import { uploadErrorHTML } from "./upload-status.js";
 import { makeBackdateSubmit, isStageableImage } from "./backdate-submit.js";
 import { mountStepEditors, destroyStepEditors } from "./step-editor.js";
 import { heroCaption } from "./hero-caption.js";
+import { reorderBefore } from "./reorder.js";
 import heroUrl from "./login-hero.jpg";   // auth-4 login hero — Vite hashes it into dist/assets (served via /assets)
 
 // This file runs in the browser. It has no recipe content of its own — it asks
@@ -945,8 +946,11 @@ function albumSectionHTML(data) {
   const more = many
     ? `<div class="album-more"><button class="see-more" data-album-toggle>See all ${photos.length} photos <span class="chev">&#8595;</span></button></div>`
     : "";
+  // 3d-iii: the owner-only "Reorder" entry — needs ≥2 photos to be meaningful; calm at rest, in the header.
+  const reorderEntry = (canAdd && photos.length >= 2)
+    ? `<button class="album-reorder-enter" data-album-reorder aria-label="Reorder photos">&#8645; Reorder</button>` : "";
   return `<section class="album-section${many ? " collapsed" : ""}" id="album-section">
-    <div class="col-head"><h2 class="col-title">Album</h2></div>
+    <div class="col-head"><h2 class="col-title">Album</h2>${reorderEntry}</div>
     <div class="album-grid masonry">${photos.map((p) => albumPhotoHTML(p, canAdd)).join("")}${addTile}</div>
     ${more}</section>`;
 }
@@ -1059,6 +1063,102 @@ function handleAlbumPhotoAction(e) {
   return false;
 }
 
+// Stage 4 (3d-iii): drag-to-reorder — a dedicated Reorder MODE. The scatter masonry stays for DISPLAY;
+// "Reorder" re-lays the photos into a clean LINEAR draggable sequence (albumReorder holds the working
+// order), you drag to rearrange (native HTML5 DnD — the ⋮⋮-gripped photo's origin dims to a ghost, an ochre
+// bar tracks the drop point), and "Done" commits the FULL order ONCE via the 3d-ii endpoint (PATCH
+// .../photos/order) -> renderRecipe -> back to the scatter masonry in the new order. "Cancel" discards
+// (re-fetch). Nothing persists until Done; the reorder is client-side + a single write.
+let albumReorder = null;   // { order:[ids], original:[ids] } while reordering, else null
+let albumDragId = null;    // the photo id being dragged (native DnD)
+
+function albumReorderPhotoHTML(p) {
+  const badge = p.is_hero ? `<span class="hero-badge">&#9733; Hero</span>` : "";
+  return `<figure class="album-photo${p.is_hero ? " is-hero" : ""}" data-photo-id="${p.id}" draggable="true">
+    ${badge}<span class="grip" aria-hidden="true">&#8942;&#8942;</span>
+    <img class="ph" src="/${esc(p.path)}" alt="">
+    <figcaption class="strip">${albumStripInner(p)}</figcaption></figure>`;
+}
+function reorderStripHTML(order) {
+  const byId = Object.fromEntries((view.data.photos || []).map((p) => [p.id, p]));
+  return order.map((id) => albumReorderPhotoHTML(byId[id])).join("");
+}
+function albumReorderSectionHTML(order) {   // replaces #album-section while reordering (auto-expanded: ALL photos)
+  return `<section class="album-section reordering" id="album-section">
+    <div class="album-head"><h2 class="col-title">Album</h2>
+      <span class="reorder-actions"><span class="reorder-err" data-reorder-err hidden></span>
+        <button class="btn sm" data-album-reorder-done>Done</button>
+        <button class="btn ghost sm" data-album-reorder-cancel>Cancel</button></span></div>
+    <div class="reorder-mode">
+      <p class="reorder-hint"><span aria-hidden="true">&#8645;</span> Drag photos to rearrange — the album keeps its scatter look; this view is just for ordering.</p>
+      <div class="reorder-strip" id="reorder-strip">${reorderStripHTML(order)}</div>
+    </div></section>`;
+}
+function enterAlbumReorder() {
+  if (!view || !view.data || albumReorder) return;
+  const order = (view.data.photos || []).map((p) => p.id);
+  if (order.length < 2) return;                            // need ≥2 to reorder (matches the entry gate)
+  albumReorder = { order, original: [...order] };
+  const sec = app.querySelector("#album-section");         // auto-expand happens for free: the strip lists ALL photos
+  if (sec) sec.outerHTML = albumReorderSectionHTML(order);
+}
+function repaintReorderStrip() {
+  const strip = app.querySelector("#reorder-strip");
+  if (strip && albumReorder) strip.innerHTML = reorderStripHTML(albumReorder.order);
+}
+async function commitAlbumReorder() {
+  if (!albumReorder || !view) return;
+  const rid = view.slug;
+  const { ok } = await sendJSON("PATCH", `/api/recipes/${encodeURIComponent(rid)}/photos/order`, { order: albumReorder.order });
+  if (ok) { albumReorder = null; renderRecipe(rid); return; }
+  const err = app.querySelector("[data-reorder-err]");     // keep the mode + the arrangement; allow retry
+  if (err) { err.textContent = "Couldn't save the order — try again."; err.hidden = false; }
+}
+function cancelAlbumReorder() {
+  if (!view) { albumReorder = null; return; }
+  const rid = view.slug;
+  albumReorder = null;
+  renderRecipe(rid);                                       // discard: re-fetch the server order -> scatter unchanged
+}
+// The drag itself (native HTML5 DnD, scoped to #reorder-strip — nothing persists until Done)
+function reorderDragStart(e) {
+  const fig = e.target.closest("#reorder-strip .album-photo");
+  if (!fig || !albumReorder) return;
+  albumDragId = Number(fig.dataset.photoId);
+  try { e.dataTransfer.setData("text/plain", String(albumDragId)); e.dataTransfer.effectAllowed = "move"; } catch (_) {}
+  requestAnimationFrame(() => fig.classList.add("ghost-origin"));   // after the drag-image snapshot -> dim the origin
+}
+function reorderDragOver(e) {
+  const strip = e.target.closest("#reorder-strip");
+  if (!strip || albumDragId == null) return;
+  e.preventDefault();
+  let bar = strip.querySelector(".drop-bar");
+  if (!bar) { bar = document.createElement("div"); bar.className = "drop-bar"; }
+  const target = [...strip.querySelectorAll(".album-photo")].find((f) => {
+    if (Number(f.dataset.photoId) === albumDragId) return false;    // never target the dragged photo
+    const r = f.getBoundingClientRect();
+    return e.clientX < r.left + r.width / 2;
+  });
+  if (target) strip.insertBefore(bar, target); else strip.appendChild(bar);
+}
+function reorderDrop(e) {
+  const strip = e.target.closest("#reorder-strip");
+  if (!strip || albumDragId == null || !albumReorder) return;
+  e.preventDefault();
+  const bar = strip.querySelector(".drop-bar");
+  let n = bar ? bar.nextElementSibling : null;
+  while (n && !n.classList.contains("album-photo")) n = n.nextElementSibling;
+  const beforeId = n ? Number(n.dataset.photoId) : null;   // null -> dropped at the end
+  albumReorder.order = reorderBefore(albumReorder.order, albumDragId, beforeId);
+  albumDragId = null;
+  repaintReorderStrip();
+}
+function reorderDragEnd() {
+  albumDragId = null;
+  const g = app.querySelector("#reorder-strip .ghost-origin"); if (g) g.classList.remove("ghost-origin");
+  const b = app.querySelector("#reorder-strip .drop-bar"); if (b) b.remove();
+}
+
 // The owner Edit/Delete row, and the inline two-step delete confirmation it swaps to. The
 // confirmation names the recipe and needs a deliberate second click (replaces a single confirm()).
 function ownerActionsHTML(r) {
@@ -1077,6 +1177,7 @@ function deleteConfirmHTML(r) {
 
 async function renderRecipe(rid) {
   clearCookChip();   // 3b-iii: any pending "add photos?" offer is stale once we refetch/repaint
+  albumReorder = null;   // 3d-iii: leaving reorder mode on any repaint (defensive; commit/cancel already clear it)
   const data = await api("/api/recipes/" + encodeURIComponent(rid));
   view = { slug: rid, data, scale: 1,
            pendingRating: null, undoneCook: null, editMode: false, draft: null, dirty: false };
@@ -2371,6 +2472,11 @@ document.addEventListener("click", (e) => {
   // 3c: per-photo album ⋮ menu + make-hero / edit-caption / delete (acts on data-photo-id, refresh via renderRecipe)
   if (handleAlbumPhotoAction(e)) return;
 
+  // 3d-iii: album reorder mode — enter / Done (commit via 3d-ii) / Cancel (discard)
+  if (e.target.closest("[data-album-reorder]"))        { enterAlbumReorder();  return; }
+  if (e.target.closest("[data-album-reorder-done]"))   { commitAlbumReorder(); return; }
+  if (e.target.closest("[data-album-reorder-cancel]")) { cancelAlbumReorder(); return; }
+
   // Bulk-delete all test recipes (home header) — inline two-step confirm, like the recipe delete.
   const bulk = document.getElementById("test-bulk");
   if (e.target.closest("[data-delete-test]")) {
@@ -2606,6 +2712,14 @@ document.addEventListener("focusin", (e) => {
   const el = e.target.closest(".scale-custom");
   if (el) el.value = el.value.replace(/[^\d.]/g, "");   // drop the "×" so the number edits cleanly
 });
+// 3d-iii: the album reorder drag (native HTML5 DnD), delegated at the document level — the #reorder-strip
+// is re-created each time reorder mode is entered, so scoping the handlers by closest("#reorder-strip") keeps
+// them valid across repaints without rebinding.
+document.addEventListener("dragstart", reorderDragStart);
+document.addEventListener("dragover", reorderDragOver);
+document.addEventListener("drop", reorderDrop);
+document.addEventListener("dragend", reorderDragEnd);
+
 document.addEventListener("input", (e) => {
   // 3c: live N/60 count for the album caption edit (maxlength already hard-stops at 60; this only recolors the count)
   const capIn = e.target.closest("[data-cap-input]");

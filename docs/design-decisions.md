@@ -1260,9 +1260,36 @@ Backend-only (no drag UI yet); the pytest suite is the gate — happy-path (orde
 via 3d-i's ORDER BY), idempotent, owner-gate, and the three rejection cases. **No PG test** — a plain per-id
 `UPDATE … SET position`, no dialect surface (like the delete-cleanup fix).
 
-**Album roadmap (remaining builds):** **3d-iii** — the drag UI (preview-first, the linearized-reorder-view)
-that calls this endpoint; **3e** — anchor a photo to a specific method step (the reserved `.step-body`
-per-step-photo hook); then the **Cooking Journal**.
+### Build 3d-iii — the drag-to-reorder UI (shipped — COMPLETES 3d)
+
+The **dedicated Reorder mode** (Option B / Treatment A, chosen at the preview). Keep the scatter masonry for
+**display**; a quiet **`⇅ Reorder`** entry in the album header (owner-only, `data.is_editable` + **≥2 photos**)
+re-lays the photos into a clean **linear draggable sequence** — the real `.album-photo`, **un-tilted**,
+**auto-expanded to ALL** photos ("you arrange what you can see"). Drag affordances (ported verbatim from
+`preview/album-reorder.html`): the hover-revealed **`⋮⋮` grip** (echoing 3c's ⋮), the origin **dimmed to a
+ghost** while dragging (native drag image carries the photo), and an **ochre insertion bar** (round caps)
+tracking the drop point. Framing: *"this view is just for ordering."* The reorder is **client-side** — the
+working order lives in `albumReorder.order`, nothing persists until Done.
+
+- **The pure op is extracted + unit-tested:** `static/reorder.js` → `reorderBefore(order, id, beforeId)`
+  (move id before beforeId, or to the end; no-op/unknown-id defensive branches; never mutates) — 7 cases in
+  `tests/js/reorder.test.js`. The drop handler's whole state change funnels through it.
+- **Done commits ONCE:** `PATCH /api/recipes/<rid>/photos/order` with the full ordered id-list → the 3d-ii
+  endpoint sets positions atomically → `renderRecipe` → back to the **scatter masonry in the new order** (the
+  hero badge is per-photo `is_hero`, unaffected by order). On PATCH failure the mode + arrangement are kept
+  with a retry message (won't happen in normal use — always a valid full permutation).
+- **Cancel discards:** exits and `renderRecipe` re-fetches the server order (scatter unchanged).
+
+**Client-only** (`app.py` untouched — wires to the shipped 3d-ii endpoint), the clean payoff of staging 3d.
+Diff = `static/reorder.js` + `static/app.js` + `static/styles.css` + the unit test; browser-gated (drag +
+persistence: Done → reload confirms the positions were written; Cancel → order unchanged). Scatter display,
+add-flows (3b), the ⋮ menu (3c), and hero + caption are all untouched.
+
+**This COMPLETES 3d — drag-to-reorder end-to-end:** 3d-i (store/read `position`, seeded + append), 3d-ii
+(the atomic full-list write endpoint), 3d-iii (the dedicated reorder mode UI).
+
+**Album roadmap (remaining builds):** **3e** — anchor a photo to a specific method step (the reserved
+`.step-body` per-step-photo hook); then the **Cooking Journal**.
 
 ## Open questions
 
