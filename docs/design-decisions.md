@@ -1289,7 +1289,56 @@ add-flows (3b), the ⋮ menu (3c), and hero + caption are all untouched.
 (the atomic full-list write endpoint), 3d-iii (the dedicated reorder mode UI).
 
 **Album roadmap (remaining builds):** **3e** — anchor a photo to a specific method step (the reserved
-`.step-body` per-step-photo hook); then the **Cooking Journal**.
+`.step-body` per-step-photo hook), itself deferred behind the change-tracking layer + the Cooking Journal
+(below). The album is otherwise **COMPLETE** (3a display · 3b add-flows · 3c per-photo actions · hero-caption
+· 3d drag-to-reorder).
+
+## The rich-text-editor framework project — DONE (correcting the roadmap)
+
+A read-only diagnostic (this session) found the "adopt a rich-text editor framework" project — once framed as
+a major **future** prerequisite to the Cooking Journal — is **already shipped**, so it should not be re-scoped:
+
+- **TipTap adopted, steps-only.** `static/step-editor.js` runs one TipTap `Editor` per non-heading step with
+  live `[[key|label]]` **link chips** (an inline atom `IngredientLink` node). Ingredients kept their plain
+  editor (they carry **0** inline markup; steps hold the `[[ ]]` links — 14 steps).
+- **The Vite build step is in place.** `package.json` (Vite + TipTap deps), `vite.config.js`, `node_modules`;
+  source is `<script type="module" src="app.js">`, built to `dist/assets/`, served by Flask from `dist/`.
+- **The parse/serialize adapter exists + is tested.** `static/step-adapter.js` — a **pure, dependency-free**
+  `[[key|label]] ↔ ProseMirror-JSON` adapter (keeps the JS suite zero-dep), over the **unchanged**
+  `recipe_steps.text` storage.
+- **The mature ingredient editor + PUT/`write_recipe_rows` save path** already handle recipe-text editing.
+- **The paintRecipe/mounted-editor friction is handled** — the "ISLAND INVARIANT": `paintRecipe`'s full
+  `innerHTML` re-render fires only at load/enter/exit, so mount-on-enter / destroy-on-exit suffices (a future
+  *mid-session* repaint must destroy+remount).
+- **Still future *within* the editor:** `{{…}}` scale markup + link autocomplete (marked 1c/1d).
+
+## Cooking Journal prerequisite — the change-tracking layer (LOCKED design; build needs its own diagnostic)
+
+**The tables the Journal was to "link into" were dropped.** `recipe_line_changes` / `recipe_additions` (+
+`people`) were removed in migration `020_drop_change_layer.sql` — a per-person overlay on read-only SEED
+recipes (`source='seed'`, 0 in prod), **always empty**, redundant under the box model. So editing today is a
+**destructive rewrite** (`write_recipe_rows` replaces rows in place): **no before/after, no timestamp, no
+per-change identity.** **There is no change-tracking today** — the Journal's real prerequisite is to build one
+from scratch (the *editor framework* is done, above — a different, smaller-surface project than the premise
+assumed).
+
+**LOCKED design (this session; recorded so it isn't re-litigated):**
+- **HYBRID (snapshot + derived diff):** **snapshots** (full recipe VERSIONS) are the stored truth; specific
+  "changes" are **DERIVED by diffing consecutive snapshots** — one source of truth + a diff function, not
+  separately-tracked per-line change rows.
+- **TRIGGER:** snapshot **on COOK** + a manual **"save a version"**, both from the start. A snapshot carries a
+  **REASON** (`cook` | `manual`) — the trigger is a **parameter**, not baked into the cook path.
+- **"The Journal IS the history":** no separate diff/history-view feature; the Journal is the surface that
+  shows recipe evolution (a cook-entry shows the **version-cooked-from** + the **diff-from-previous snapshot**).
+- **Notes link to changes:** a journal note references a specific change **from the derived diff** (the
+  "improvements associated with changes" core).
+- **Sequencing:** this layer is the Journal's prerequisite — **build it, THEN the Journal**; the album's last
+  stage (3e) is deferred behind both (order: change-tracking → Journal → 3e).
+- **Build needs its OWN read-only diagnostic FIRST** (flagged, not assumed): where the snapshot is captured in
+  the cook-log + manual-save paths; **what** a snapshot stores (full rows? a serialized blob?) + its
+  size/shape; how the **diff** computes over the stored form; how a **note attaches to a change** (its
+  referenceable identity from the diff); how it composes with `write_recipe_rows`' destructive rewrite + box-
+  model ownership. The next session opens with that diagnostic → then scope the build.
 
 ## Open questions
 

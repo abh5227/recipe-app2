@@ -497,20 +497,44 @@ out. Optionally record how long it **actually** took (feeds time calibration, Ph
   rating. Needs its own real design pass when tackled.
 - **5f — The Cooking Journal (the reflective per-recipe history; big, its own project).** The full
   realization of this per-cook layer: each cook becomes an **annotatable ENTRY**, with notes that are
-  **both free-text AND optionally LINKED to specific tracked recipe changes** (ties into the existing
-  edit-tracking layer — `recipe_line_changes` / `recipe_additions`), so a note can capture *"changed X on
+  **both free-text AND optionally LINKED to specific recipe changes**, so a note can capture *"changed X on
   this cook → here's how it went,"* forming a record of how a dish **evolves across attempts**. This is the
   **"used cookbook" thesis made into a feature** — the accumulated personal layer made explicit.
   **Composes several existing layers:** the cook-photo **album** (P4 / Stage 4), the **cook-gated ratings**,
-  and the **edit-tracking** tables.
+  and (once built) the **change-tracking layer** below.
+  - **⚠️ CORRECTION — change-tracking is NOT built (a diagnostic this session):** an earlier version of this
+    entry linked notes into "the existing edit-tracking layer (`recipe_line_changes` / `recipe_additions`)."
+    Those tables were **dropped in migration `020_drop_change_layer.sql`** — a per-person overlay on read-only
+    SEED recipes (`source='seed'`, 0 in prod), **always empty**, made redundant by the box model (recipes
+    owned + directly editable, copy = duplicate). Editing today is a **destructive rewrite**
+    (`write_recipe_rows` replaces the ingredient/step rows in place) — **no before/after, no timestamp, no
+    per-change identity.** So there is **no change-tracking today**; the Journal's real prerequisite is to
+    **build one from scratch** — NOT to adopt a rich-text editor framework (that's **DONE** — TipTap + the
+    Vite build + the `[[key|label]]` step adapter are shipped; see `docs/design-decisions.md`).
+  - **The change-tracking prerequisite — LOCKED design (this session):**
+    - **HYBRID (snapshot + derived diff):** **snapshots** (full recipe VERSIONS) are the stored truth; the
+      "specific changes" are **DERIVED by diffing consecutive snapshots** — one source of truth + a diff
+      function (no separately-tracked per-line change rows).
+    - **TRIGGER:** snapshot **on COOK** (capture recipe-state when a cook is logged) **+ a manual "save a
+      version"** — BOTH from the start. A snapshot carries a **REASON** (`cook` | `manual`), so the trigger
+      is a **parameter**, not baked into the cook path (keeps the model general).
+    - **"The Journal IS the history":** no separate diff/history-view feature; the **Journal is the surface**
+      that shows recipe evolution — a cook-entry shows the **version-cooked-from** AND the **diff-from-
+      previous-snapshot** ("what I changed since last time").
+    - **Notes link to changes:** a journal note can reference a **specific change from the derived diff** (the
+      "improvements associated with changes" core).
+  - **SEQUENCING:** the change-tracking layer is the Journal's **prerequisite** — build it, **THEN** the
+    Journal. The album's last stage (**3e — anchor-photo-to-method-step**) is itself deferred **behind both**
+    (order: change-tracking → Journal → 3e).
+  - **Build the tracking layer needs its OWN diagnostic FIRST** (flagged, not assumed): where the snapshot is
+    captured in the **cook-log** + **manual-save** paths; **WHAT** a snapshot stores (full recipe rows? a
+    serialized blob?) + its size/shape; how the **diff** computes over the stored form; how a **note attaches
+    to a change** (a change's referenceable identity **from the diff**); how it composes with
+    `write_recipe_rows`' destructive rewrite + the box-model ownership. The next session on this **opens with
+    that read-only diagnostic → then scope the build.**
   - **Deferred design decisions (settle at its own design pass):** *page-vs-drawer* (a separate route/page
     vs. a panel over the recipe); and the *journal-vs-album relationship* (do cook-photos live INSIDE
-    journal entries, or does the recipe-page album coexist?).
-  - **A significant standalone project**, not a quick add: a new surface/route + a journal/notes model +
-    the change-linkage. Needs its **own diagnostic** (understand `cook_log`, `ratings`, the edit-tracking
-    tables, and photos — all the layers it composes) and is **preview-first** (a whole new surface).
-  - **Sequencing:** after the album's remaining stages — 3c (per-photo ⋮ actions) → 3d (drag-reorder) →
-    3e (anchor-photo-to-step).
+    journal entries, or does the recipe-page album coexist?). **Preview-first** (a whole new surface).
 
 ### Analytics Dashboard (P18)
 
@@ -815,20 +839,23 @@ below reflect what's actually in the repo, not an idealized version of it.)
    `(recipe_id, user_id)`); `cook_log` has no user column; recipes have no owner (only a `source`
    tier). So real auth drags behind it a **rescoping of the core outcome tables** (`ratings` +
    `cook_log` — the app's stated scarce asset, currently global/single-user), plus an `owner_id`
-   and authorization on every mutating route. *Head start:* `recipe_line_changes` and
-   `recipe_additions` already carry `person_id`, so the multi-actor model is half-built there.
+   and authorization on every mutating route. *(A former "head start" note here — that
+   `recipe_line_changes` / `recipe_additions` already carried `person_id`, so the multi-actor model was
+   half-built there — **no longer applies:** those tables were dropped in migration
+   `020_drop_change_layer.sql` as vestigial (always empty). See the Journal (P5·5f) correction.)*
 
 5. **Hosting — a cloud platform.** Render for a simple Flask + React deploy; Docker / Nginx if it
    outgrows that.
 
-6. **Editor implication — TipTap is forward-compatible.** The chosen step editor is
-   framework-agnostic (runs in today's vanilla JS) and has first-class React bindings (carries into
-   the eventual React frontend), over the same unchanged `recipe_steps.text` storage via a
-   parse/serialize adapter. *Honest caveat:* this is not a totally free forward-compat win —
-   `paintRecipe`'s full `innerHTML` re-render is hostile to a mounted editor instance (it destroys
-   the node), so **TipTap-in-vanilla lives with mount/unmount friction; TipTap-in-React is precisely
-   what removes it** (React owns the DOM). So #2 (the React rebuild) and #6 are coupled — the React
-   frontend is what pays off the editor-integration tax.
+6. **Editor implication — TipTap is forward-compatible (and already ADOPTED).** The step editor is
+   **shipped today** — TipTap over vanilla JS, steps-only, with live `[[key|label]]` link chips, over the
+   unchanged `recipe_steps.text` storage via a pure parse/serialize adapter (`static/step-adapter.js`); see
+   `docs/design-decisions.md`. It's framework-agnostic and has first-class React bindings (carries into the
+   eventual React frontend). *Honest caveat:* `paintRecipe`'s full `innerHTML` re-render is hostile to a
+   mounted editor instance (it destroys the node) — **handled today** by the "ISLAND INVARIANT" (paint fires
+   only at load/enter/exit, so mount-on-enter / destroy-on-exit suffices), but **TipTap-in-React is what
+   removes the friction outright** (React owns the DOM). So #2 (the React rebuild) and #6 stay coupled — the
+   React frontend is what pays off the editor-integration tax; the *adoption* itself is not pending.
 
 7. **Image / file storage.** Images are currently **filesystem path strings** served off local
    `static/images/`, with **no upload endpoint**. On an ephemeral-filesystem host (e.g. Render),
