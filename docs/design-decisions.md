@@ -1504,6 +1504,23 @@ annotations accrue from **future** edits, and **O-c needs no field filtering at 
 zero noise by construction). The ~11 recipes' past hand-edits are lost *as annotations* (already baked into
 current content) — a bounded, accepted loss. Live data only (git-ignored `recipes.db`; backup taken).
 
+**O-c-0 (position + section on each change) — the anchoring foundation for the render.** `diff_snapshots`
+now emits, per change, **`new_pos`/`old_pos`** (positional changes) and **`section`** (removed items) — purely
+additive; the existing fields, the content-matching/similarity logic, and the 17 prior tests are untouched.
+Why: a duplicate-label diagnostic found **18.5%** of recipes carry within-recipe duplicate ingredient labels,
+so O-c-1 **cannot** anchor an annotation by matching text — it must anchor by **position**. Two deliberately
+different numbers, two purposes: **`new_pos`/`old_pos` index the HEADING-EXCLUDED real-ingredient/step
+sequence** (via `_indexer`, `id(row)`-keyed so it's stable across the ingredient phase-1/phase-2 match split)
+— **this is the O-c-1 anchoring contract: O-c-1 must index its rendered ingredient/step rows the same way
+(skip `is_heading` rows) or anchors misalign by the count of preceding headings**; **`section` uses the
+HEADING-INCLUSIVE full `position`** (naming the nearest heading that precedes a removed item needs the whole
+ordered list) so O-c-1 renders a struck removed item at that section's bottom, falling back to list-bottom
+when `section` is `None` (no preceding heading) or the section was since renamed/removed (O-c-0 emits the
+**original** heading regardless; O-c-1 resolves the fallback). Field changes are named, not positional — no
+`new_pos`/`old_pos`/`section`. Removed-item placement is **section-bottom by design, not nearest-surviving-
+neighbor** (simpler + clearer for duplicate-heavy recipes). Pure function + tests only — no render (O-c-1),
+no schema, no snapshot-format change; **stage-4 materialization inherits position + section for free.**
+
 ## Open questions
 
 - **Masthead title face** — Spectral vs Newsreader vs Fraunces, decided by eye after Stage B renders

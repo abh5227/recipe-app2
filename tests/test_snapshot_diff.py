@@ -54,8 +54,8 @@ def test_linked_amount_change_is_ONE_coherent_entry_not_three():
     new = _blob(ingredients=[_ing(ingredient_id="sugar", label="sugar", qty="¾ cup",
                                   quantity="¾", unit="cup", raw_text="¾ cup sugar")])
     ch = diff_snapshots(old, new)
-    assert ch == [{"kind": "ingredient", "type": "modified", "field": "amount",
-                   "label": "sugar", "from": "1 cup", "to": "¾ cup"}]
+    assert ch == [{"kind": "ingredient", "type": "modified", "field": "amount", "label": "sugar",
+                   "from": "1 cup", "to": "¾ cup", "new_pos": 0, "old_pos": 0}]
     assert len(ch) == 1                                    # NOT qty + quantity + unit field-noise
 
 
@@ -77,7 +77,7 @@ def test_insert_at_top_is_one_added_linked():
                              _ing(ingredient_id="flour", label="flour", qty="2 cups"),
                              _ing(ingredient_id="salt", label="salt", qty="1 tsp")])
     assert diff_snapshots(old, new) == [
-        {"kind": "ingredient", "type": "added", "text": "2 eggs", "label": "eggs"}]
+        {"kind": "ingredient", "type": "added", "text": "2 eggs", "label": "eggs", "new_pos": 0, "old_pos": None}]
 
 
 def test_insert_at_top_is_one_added_unlinked():
@@ -85,14 +85,15 @@ def test_insert_at_top_is_one_added_unlinked():
     new = _blob(ingredients=[_ing(qty="2", raw_text="eggs"),
                              _ing(qty="2 cups", raw_text="flour"), _ing(qty="1 tsp", raw_text="salt")])
     assert diff_snapshots(old, new) == [
-        {"kind": "ingredient", "type": "added", "text": "2 eggs", "label": "eggs"}]
+        {"kind": "ingredient", "type": "added", "text": "2 eggs", "label": "eggs", "new_pos": 0, "old_pos": None}]
 
 
 def test_remove_ingredient_is_one_removed():
     old = _blob(ingredients=[_ing(qty="2 cups", raw_text="flour"), _ing(qty="1 tsp", raw_text="salt")])
     new = _blob(ingredients=[_ing(qty="2 cups", raw_text="flour")])
-    assert diff_snapshots(old, new) == [
-        {"kind": "ingredient", "type": "removed", "text": "1 tsp salt", "label": "salt"}]
+    assert diff_snapshots(old, new) == [                    # old_pos 1 = salt is the 2nd real ingredient
+        {"kind": "ingredient", "type": "removed", "text": "1 tsp salt", "label": "salt",
+         "new_pos": None, "old_pos": 1, "section": None}]
 
 
 # ---- linked vs unlinked matching ----------------------------------------------------------------
@@ -100,9 +101,9 @@ def test_remove_ingredient_is_one_removed():
 def test_unlinked_amount_change_matched_by_similarity_is_modified():
     old = _blob(ingredients=[_ing(qty="1 cup", raw_text="sugar")])
     new = _blob(ingredients=[_ing(qty="¾ cup", raw_text="sugar")])
-    assert diff_snapshots(old, new) == [
-        {"kind": "ingredient", "type": "modified", "field": "amount",
-         "label": "sugar", "from": "1 cup", "to": "¾ cup"}]   # matched, not removed+added
+    assert diff_snapshots(old, new) == [                    # matched, not removed+added
+        {"kind": "ingredient", "type": "modified", "field": "amount", "label": "sugar",
+         "from": "1 cup", "to": "¾ cup", "new_pos": 0, "old_pos": 0}]
 
 
 def test_linked_matched_despite_large_text_change():
@@ -125,19 +126,23 @@ def test_step_reword_is_modified():
     old = _blob(steps=[_step("Beat the eggs")])
     new = _blob(steps=[_step("Beat the eggs well")])
     assert diff_snapshots(old, new) == [
-        {"kind": "step", "type": "modified", "from": "Beat the eggs", "to": "Beat the eggs well"}]
+        {"kind": "step", "type": "modified", "from": "Beat the eggs", "to": "Beat the eggs well",
+         "new_pos": 0, "old_pos": 0}]
 
 
 def test_step_insert_is_one_added_not_cascade():
     old = _blob(steps=[_step("Preheat the oven"), _step("Bake for 20 minutes")])
     new = _blob(steps=[_step("Preheat the oven"), _step("Grease the pan"), _step("Bake for 20 minutes")])
-    assert diff_snapshots(old, new) == [{"kind": "step", "type": "added", "text": "Grease the pan"}]
+    assert diff_snapshots(old, new) == [                    # new_pos 1 = inserted at the 2nd real-step slot
+        {"kind": "step", "type": "added", "text": "Grease the pan", "new_pos": 1, "old_pos": None}]
 
 
 def test_step_remove_is_one_removed():
     old = _blob(steps=[_step("Preheat the oven"), _step("Bake for 20 minutes")])
     new = _blob(steps=[_step("Preheat the oven")])
-    assert diff_snapshots(old, new) == [{"kind": "step", "type": "removed", "text": "Bake for 20 minutes"}]
+    assert diff_snapshots(old, new) == [                    # old_pos 1 = the 2nd real step
+        {"kind": "step", "type": "removed", "text": "Bake for 20 minutes",
+         "new_pos": None, "old_pos": 1, "section": None}]
 
 
 # ---- headings don't pollute line matching -------------------------------------------------------
@@ -147,8 +152,9 @@ def test_heading_change_is_heading_kind_and_line_untouched():
                              _ing(qty="1 cup", raw_text="sugar", position=1)])
     new = _blob(ingredients=[_ing(is_heading=1, raw_text="For the batter"),
                              _ing(qty="1 cup", raw_text="sugar", position=1)])
-    assert diff_snapshots(old, new) == [
-        {"kind": "heading", "type": "modified", "from": "For the base", "to": "For the batter"}]
+    assert diff_snapshots(old, new) == [                    # new_pos/old_pos = index in the headings sequence
+        {"kind": "heading", "type": "modified", "from": "For the base", "to": "For the batter",
+         "new_pos": 0, "old_pos": 0}]
 
 
 # ---- the similarity-threshold boundary (pins + documents the knob) ------------------------------
@@ -156,7 +162,7 @@ def test_heading_change_is_heading_kind_and_line_untouched():
 def test_threshold_boundary_reword_vs_replacement():
     reword = diff_snapshots(_blob(steps=[_step("Fold in the cream gently")]),
                             _blob(steps=[_step("Fold in the cream")]))
-    assert reword == [{"kind": "step", "type": "modified",
+    assert reword == [{"kind": "step", "type": "modified", "new_pos": 0, "old_pos": 0,
                        "from": "Fold in the cream gently", "to": "Fold in the cream"}]   # >= threshold
     swap = diff_snapshots(_blob(steps=[_step("Fold in the cream")]),
                           _blob(steps=[_step("Roast the whole chicken")]))
@@ -181,3 +187,117 @@ def test_accepts_json_string_blobs():
     new = json.dumps(_blob(recipe={"servings": "6"}))
     assert diff_snapshots(old, new) == [
         {"kind": "field", "type": "modified", "field": "servings", "from": "4", "to": "6"}]
+
+
+# ---- O-c-0: POSITION + section identity on each change ------------------------------------------
+# new_pos/old_pos index the HEADING-EXCLUDED real sequence (the O-c-1 anchor); section (removed items)
+# uses the HEADING-INCLUSIVE full position (ordering among headings). Two numbers, two purposes.
+
+def test_modified_ingredient_carries_positions():
+    old = _blob(ingredients=[_ing(ingredient_id="s", label="sugar", qty="1 cup", position=0)])
+    new = _blob(ingredients=[_ing(ingredient_id="s", label="sugar", qty="¾ cup", position=0)])
+    (c,) = diff_snapshots(old, new)
+    assert c["new_pos"] == 0 and c["old_pos"] == 0
+
+
+def test_added_at_position_is_real_index_not_append():
+    old = _blob(ingredients=[_ing(ingredient_id="flour", label="flour", qty="2 cups", position=0)])
+    new = _blob(ingredients=[_ing(ingredient_id="eggs", label="eggs", qty="2", position=0),
+                             _ing(ingredient_id="flour", label="flour", qty="2 cups", position=1)])
+    (c,) = diff_snapshots(old, new)
+    assert c["type"] == "added" and c["new_pos"] == 0 and c["old_pos"] is None   # inserted at TOP, not appended
+
+
+def test_removed_carries_old_pos():
+    old = _blob(ingredients=[_ing(qty="2 cups", raw_text="flour", position=0),
+                             _ing(qty="1 tsp", raw_text="salt", position=1)])
+    new = _blob(ingredients=[_ing(qty="2 cups", raw_text="flour", position=0)])
+    (c,) = diff_snapshots(old, new)
+    assert c["type"] == "removed" and c["old_pos"] == 1 and c["new_pos"] is None
+
+
+def test_duplicate_label_modified_carries_the_RIGHT_position():
+    # THE 18.5% fix: two same-label rows, the SECOND edited -> the change anchors to the second's index, not
+    # the first. Content alone ("oil") can't disambiguate; the heading-excluded position does.
+    old = _blob(ingredients=[_ing(qty="1 tbsp", raw_text="oil", position=0),
+                             _ing(qty="2 tbsp", raw_text="oil", position=1)])
+    new = _blob(ingredients=[_ing(qty="1 tbsp", raw_text="oil", position=0),
+                             _ing(qty="3 tbsp", raw_text="oil", position=1)])
+    mods = [c for c in diff_snapshots(old, new) if c["type"] == "modified"]
+    assert len(mods) == 1
+    assert mods[0]["from"] == "2 tbsp" and mods[0]["to"] == "3 tbsp"
+    assert mods[0]["new_pos"] == 1 and mods[0]["old_pos"] == 1   # the SECOND oil, unambiguously
+
+
+def test_insert_shift_positions_track():
+    # Insert at top + edit a shifted row: inserted new_pos=0; the shifted salt (now index 2) carries 2.
+    old = _blob(ingredients=[_ing(ingredient_id="flour", label="flour", qty="2 cups", position=0),
+                             _ing(ingredient_id="salt", label="salt", qty="1 tsp", position=1)])
+    new = _blob(ingredients=[_ing(ingredient_id="eggs", label="eggs", qty="2", position=0),
+                             _ing(ingredient_id="flour", label="flour", qty="2 cups", position=1),
+                             _ing(ingredient_id="salt", label="salt", qty="2 tsp", position=2)])
+    ch = diff_snapshots(old, new)
+    added = [c for c in ch if c["type"] == "added"][0]
+    mod = [c for c in ch if c["type"] == "modified"][0]
+    assert added["new_pos"] == 0                            # inserted at top
+    assert mod["old_pos"] == 1 and mod["new_pos"] == 2      # salt shifted index 1 -> 2, amount edited
+
+
+def test_removed_item_carries_section_identity():
+    # heading "For the base": [flour, eggs]; heading "For the sauce": [cream]. Removing an item names its
+    # ORIGINAL section (its old_pos is the heading-excluded index; section uses the full position).
+    def build(with_eggs=True, with_cream=True):
+        rows = [_ing(is_heading=1, raw_text="For the base", position=0),
+                _ing(qty="1 cup", raw_text="flour", position=1)]
+        if with_eggs:
+            rows.append(_ing(qty="2", raw_text="eggs", position=2))
+        rows.append(_ing(is_heading=1, raw_text="For the sauce", position=3))
+        if with_cream:
+            rows.append(_ing(qty="1 cup", raw_text="cream", position=4))
+        return _blob(ingredients=rows)
+    (c,) = [c for c in diff_snapshots(build(), build(with_eggs=False)) if c["type"] == "removed"]
+    assert c["label"] == "eggs" and c["section"] == "For the base" and c["old_pos"] == 1
+    (c,) = [c for c in diff_snapshots(build(), build(with_cream=False)) if c["type"] == "removed"]
+    assert c["label"] == "cream" and c["section"] == "For the sauce" and c["old_pos"] == 2
+
+
+def test_removed_before_any_heading_has_no_section():
+    old = _blob(ingredients=[_ing(qty="1 cup", raw_text="flour", position=0),
+                             _ing(is_heading=1, raw_text="For the sauce", position=1),
+                             _ing(qty="1 cup", raw_text="cream", position=2)])
+    new = _blob(ingredients=[_ing(is_heading=1, raw_text="For the sauce", position=1),
+                             _ing(qty="1 cup", raw_text="cream", position=2)])
+    (c,) = [c for c in diff_snapshots(old, new) if c["type"] == "removed"]
+    assert c["label"] == "flour" and c["section"] is None   # sat before any heading -> list bottom
+
+
+def test_removed_section_emitted_even_if_current_lacks_it():
+    # The heading is RENAMED in current; O-c-0 still emits the ORIGINAL section (O-c-1 resolves the fallback).
+    old = _blob(ingredients=[_ing(is_heading=1, raw_text="For the glaze", position=0),
+                             _ing(qty="2 tbsp", raw_text="honey", position=1)])
+    new = _blob(ingredients=[_ing(is_heading=1, raw_text="For the topping", position=0)])
+    (c,) = [c for c in diff_snapshots(old, new) if c["kind"] == "ingredient" and c["type"] == "removed"]
+    assert c["section"] == "For the glaze"                  # the ORIGINAL section, not current's "topping"
+
+
+def test_step_positions_and_section():
+    old = _blob(steps=[_step("Prep", position=0, is_heading=1),
+                       _step("Chop onions", position=1), _step("Dice garlic", position=2)])
+    new = _blob(steps=[_step("Prep", position=0, is_heading=1), _step("Chop onions", position=1)])
+    (c,) = [c for c in diff_snapshots(old, new) if c["type"] == "removed"]
+    assert c["kind"] == "step" and c["old_pos"] == 1 and c["section"] == "Prep"   # 2nd real step, under "Prep"
+
+
+def test_step_modified_and_added_positions():
+    old = _blob(steps=[_step("Preheat the oven", position=0)])
+    new = _blob(steps=[_step("Preheat the oven to 400", position=0), _step("Grease the pan", position=1)])
+    ch = diff_snapshots(old, new)
+    mod = [c for c in ch if c["type"] == "modified"][0]
+    add = [c for c in ch if c["type"] == "added"][0]
+    assert mod["new_pos"] == 0 and mod["old_pos"] == 0
+    assert add["new_pos"] == 1 and add["old_pos"] is None
+
+
+def test_field_change_has_no_position():
+    (c,) = diff_snapshots(_blob(recipe={"servings": "4"}), _blob(recipe={"servings": "6"}))
+    assert "new_pos" not in c and "old_pos" not in c and "section" not in c   # named, not positional
