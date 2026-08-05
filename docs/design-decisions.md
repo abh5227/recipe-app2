@@ -1340,6 +1340,34 @@ assumed).
   referenceable identity from the diff); how it composes with `write_recipe_rows`' destructive rewrite + box-
   model ownership. The next session opens with that diagnostic → then scope the build.
 
+### Change-tracking stage 1 — the `recipe_snapshots` table + capture-on-cook (shipped)
+
+The foundation from the diagnostic + locked design. **Migration 028** adds `recipe_snapshots(id, recipe_id →
+recipes CASCADE, cook_log_id → cook_log CASCADE [nullable], user_id → users, reason, content, created_at)` +
+indexes `(recipe_id, created_at)` and `(cook_log_id)` — a **plain additive `CREATE TABLE`** (dual-source
+SQLite + Alembic), **no backfill** (retroactive snapshots are impossible — past states weren't retained — so
+tracking **starts fresh**).
+
+- **`serialize_recipe_content(s, rid)`** builds the JSON **blob**: the 11 content fields + all ingredient rows
+  (incl. import-harvested `grams`/`secondary_measure`) + all step rows, **excluding** non-content
+  (`id/created_at/source/uid/hash/owner`). **Stable** for stage-3 diffing: rows ordered by `position, id`,
+  `sort_keys=True`. ⚠️ The JSON step key is pinned to `"text"` even though the ORM maps that column to
+  `RecipeStep.body` (avoids shadowing `sqlalchemy.text`) — decoupling the blob format from the ORM attr name
+  so a future rename can't silently drift the blob and break stage 3's diff. (A typical recipe blob is a few
+  KB; the shawarma live-check blob was ~5 KB.)
+- **`snapshot_recipe(s, rid, cook_log_id, reason)`** writes one row on the caller's session (before commit),
+  `reason='cook'`, `user_id=current_user`, `created_at=now_utc()`. Wired into **all three** cook INSERT points
+  — `log_cook` (instant **+** backdate), `log_cook_and_rate`, `redo_cook` — so no cook path misses a snapshot
+  (a redo is a new cook → its own snapshot). Tested **per path**.
+- **Cook-undo = ON DELETE CASCADE:** `undo_cook` deletes the `cook_log` row → the snapshot goes with it via
+  the FK (no explicit handling — same as `cook_photos`). ⚠️ **Stage-4 revisit:** once notes reference derived
+  changes, cascading a snapshot could orphan a note — revisit then (no notes yet).
+
+**Snapshots are WRITTEN, not yet read** — invisible foundation. Remaining stages: **stage 2** manual "save a
+version" (`reason='manual'`, nullable `cook_log_id`); **stage 3** the derived diff (a pure function over two
+consecutive blobs — with the position-vs-content **matching-strategy** decision); **stage 4** note-linkage
+(derive-by-coordinate vs **materialize** `recipe_changes` for stable ids). The Journal consumes this later.
+
 ## Open questions
 
 - **Masthead title face** — Spectral vs Newsreader vs Fraunces, decided by eye after Stage B renders

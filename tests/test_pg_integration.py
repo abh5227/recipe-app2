@@ -294,3 +294,19 @@ def test_cook_photo_album_orders_by_position_nulls_last(pg):
     order = [p["id"] for p in pg.client.get(f"/api/recipes/{rid}").get_json()["photos"]]
     assert order == [ids["images/cooks/pgp1.jpg"], ids["images/cooks/pgp2.jpg"],
                      ids["images/cooks/pgp0.jpg"], ids["images/cooks/pgpN.jpg"]]   # 0,1,2 then NULL last
+
+
+# ---- 11. change-tracking stage 1: recipe_snapshots capture-on-cook (ADD TABLE + FK cascade on PG) --
+
+def test_recipe_snapshot_captured_on_cook_and_cascades_pg(pg):
+    """Exercises migration 028 (the ADD TABLE via `alembic upgrade head`) on PG + the capture-on-cook
+    write, then that undoing the cook cascade-removes the snapshot (FK ON DELETE CASCADE, PG-native)."""
+    c = pg.client
+    rid = c.post("/api/recipes", json={"name": "PG Snapshot", "is_test": True,
+                 "ingredients": [{"qty": "1", "text": "flour"}], "steps": ["mix"]}).get_json()["id"]
+    clid = c.post(f"/api/recipes/{rid}/cooked", json={}).get_json()["cook_log_id"]
+    assert _count(pg.engine,
+                  "SELECT COUNT(*) FROM recipe_snapshots WHERE recipe_id=:r AND cook_log_id=:c AND reason='cook'",
+                  r=rid, c=clid) == 1
+    assert c.post(f"/api/recipes/{rid}/uncook").status_code == 200
+    assert _count(pg.engine, "SELECT COUNT(*) FROM recipe_snapshots WHERE recipe_id=:r", r=rid) == 0   # cascade

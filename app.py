@@ -11,6 +11,7 @@ seed.py (source='seed') are read-only here (edit them in seed.py).
 Run it with:  python3 app.py   then open http://localhost:8000
 """
 import datetime
+import json
 import os
 import re
 from pathlib import Path
@@ -31,7 +32,8 @@ from import_cleanup import split_qty   # shared qty->quantity+unit split (backfi
 # (see docs/migration-plan.md).
 from models import (
     Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
-    Rating, CookLog, CookPhoto, User, Friendship, SharedPost, Comment, RecipeQueue, ingredient_weights,
+    Rating, CookLog, CookPhoto, RecipeSnapshot, User, Friendship, SharedPost, Comment, RecipeQueue,
+    ingredient_weights,
 )
 from auth import auth_bp   # JSON auth endpoints (auth-2); auth.py imports models only, so no import cycle
 import images              # shared image brain: resize + the save_image storage seam (Stage 1/2)
@@ -312,6 +314,63 @@ def write_recipe_rows(s, rid, clean, preserve=None):
         else:
             text_val = step if isinstance(step, str) else ""
             s.execute(insert(rs).values(recipe_id=rid, position=pos, is_heading=0, text=text_val))
+
+
+# ---- change-tracking (stage 1): recipe_snapshots — capture-on-cook ------------------------------
+# The Cooking Journal's foundation (HYBRID): a snapshot is a JSON blob of a recipe's editable CONTENT,
+# captured when a cook is logged. Snapshots are the STORED TRUTH; diffs are DERIVED from consecutive
+# snapshots later (stage 3). Stage 1 only WRITES them (reason='cook') — nothing reads them yet.
+
+# The recipe's CONTENT fields a snapshot captures (per the diagnostic Part A): the 11 editable recipe
+# fields, EXCLUDING non-content (id/created_at/source/uid/hash/owner — those live on the recipe, not the
+# version). Ingredient/step columns are listed below. Kept as tuples so serialize order is deterministic.
+_SNAPSHOT_RECIPE_FIELDS = (
+    "name", "author", "source_url", "category", "servings", "prep_time",
+    "cook_time", "total_time", "descr", "notes", "image",
+)
+_SNAPSHOT_ING_FIELDS = (
+    "position", "is_heading", "qty", "ingredient_id", "label", "note",
+    "raw_text", "grams", "secondary_measure", "quantity", "unit",
+)
+# NB: RecipeStep maps the DB column "text" to the attribute `.body` (avoids shadowing sqlalchemy.text),
+# so steps are built explicitly below — the JSON key stays "text" (the content field name).
+
+
+def serialize_recipe_content(s, rid):
+    """Serialize a recipe's editable CONTENT to a STABLE JSON blob (change-tracking stage 1) — the 11
+    content fields + all ingredient rows + all step rows, rows ordered by position (then id), keys sorted,
+    so future diffs (stage 3) compare like-for-like. Excludes non-content (id/created_at/source/uid/hash/
+    owner). Pure w.r.t. the given session (a read + a deterministic dump; no writes)."""
+    r = s.execute(select(Recipe).where(Recipe.id == rid)).scalar_one()
+    recipe = {k: getattr(r, k) for k in _SNAPSHOT_RECIPE_FIELDS}
+    ingredients = [
+        {k: getattr(row, k) for k in _SNAPSHOT_ING_FIELDS}
+        for row in s.execute(
+            select(RecipeIngredient).where(RecipeIngredient.recipe_id == rid)
+            .order_by(RecipeIngredient.position, RecipeIngredient.id)
+        ).scalars()
+    ]
+    steps = [
+        {"position": row.position, "is_heading": row.is_heading, "text": row.body}   # .body = the DB "text" column
+        for row in s.execute(
+            select(RecipeStep).where(RecipeStep.recipe_id == rid)
+            .order_by(RecipeStep.position, RecipeStep.id)
+        ).scalars()
+    ]
+    return json.dumps({"recipe": recipe, "ingredients": ingredients, "steps": steps},
+                      sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+
+
+def snapshot_recipe(s, rid, cook_log_id, reason):
+    """Capture the recipe's current content as a versioned snapshot (change-tracking stage 1). Writes one
+    recipe_snapshots row on the caller's session (before their commit): the JSON-blob content, the trigger
+    reason ('cook' | 'manual'), the cook it belongs to (cook_log_id; NULL for manual), the actor
+    (current_user), and a real UTC timestamp. Stage 1 wires it into every cook-log INSERT with reason='cook'
+    (manual is stage 2). Nothing reads snapshots yet."""
+    s.execute(insert(RecipeSnapshot.__table__).values(
+        recipe_id=rid, cook_log_id=cook_log_id, user_id=current_user.id,
+        reason=reason, content=serialize_recipe_content(s, rid), created_at=now_utc(),
+    ))
 
 
 @app.route("/")
@@ -808,6 +867,7 @@ def log_cook(rid):
         else:
             res = s.execute(insert(cl).values(recipe_id=rid, user_id=current_user.id))   # cooked_on omitted -> DB default date('now')
         cook_log_id = res.inserted_primary_key[0]   # returned so the client can attach a photo to THIS cook (2b)
+        snapshot_recipe(s, rid, cook_log_id, "cook")   # change-tracking stage 1: capture the recipe-state cooked
         stats = recipe_stats(s, rid, current_user.id)
         s.commit()
     return jsonify({**stats, "cook_log_id": cook_log_id})
@@ -884,7 +944,9 @@ def redo_cook(rid):
     with orm_session() as s:
         if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
-        s.execute(insert(CookLog.__table__).values(recipe_id=rid, user_id=current_user.id, cooked_on=cooked_on, source=source))
+        res = s.execute(insert(CookLog.__table__).values(recipe_id=rid, user_id=current_user.id, cooked_on=cooked_on, source=source))
+        # change-tracking stage 1: a redo is a NEW cook row -> its own snapshot of the CURRENT recipe-state
+        snapshot_recipe(s, rid, res.inserted_primary_key[0], "cook")
         if rating is not None:
             upsert_rating(s, rid, current_user.id, rating)
         stats = recipe_stats(s, rid, current_user.id)
@@ -921,6 +983,7 @@ def log_cook_and_rate(rid):
             return jsonify({"error": "recipe not found"}), 404
         res = s.execute(insert(CookLog.__table__).values(recipe_id=rid, user_id=current_user.id))   # today's cook, source default 'app'
         cook_log_id = res.inserted_primary_key[0]   # returned for at-log-time photo attach (2b), like log_cook
+        snapshot_recipe(s, rid, cook_log_id, "cook")   # change-tracking stage 1: capture the recipe-state cooked
         upsert_rating(s, rid, current_user.id, rating)
         stats = recipe_stats(s, rid, current_user.id)
         s.commit()

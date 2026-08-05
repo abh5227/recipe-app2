@@ -334,6 +334,30 @@ class CookPhoto(Base):
     )
 
 
+class RecipeSnapshot(Base):
+    """A versioned JSON-blob snapshot of a recipe's editable CONTENT (change-tracking stage 1, migration
+    028). Captured when a cook is logged (reason='cook'; a manual 'save a version' with reason='manual' is
+    stage 2). The Cooking Journal's foundation (HYBRID): snapshots are the STORED TRUTH; diffs are DERIVED
+    from consecutive snapshots later (stage 3) and materialized for note-linkage later (stage 4). Stage 1
+    only WRITES snapshots — nothing reads them yet. cook_log_id -> cook_log ON DELETE CASCADE (undo a cook
+    -> its snapshot goes; NULL for a manual snapshot); recipe_id -> recipes ON DELETE CASCADE. user_id is
+    the actor (reference FK, no cascade). content = serialize_recipe_content()'s JSON. created_at = now_utc()
+    (a real UTC timestamp; cook_log carries only a date). Queried with explicit select() — no relationship()."""
+    __tablename__ = "recipe_snapshots"
+    id = Column(Integer, primary_key=True)
+    recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)   # TEXT = recipes.id
+    cook_log_id = Column(Integer, ForeignKey("cook_log.id", ondelete="CASCADE"))              # the cook (NULL for manual, stage 2)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)                         # who triggered it (no cascade)
+    reason = Column(Text, nullable=False)                                                     # 'cook' | 'manual'
+    content = Column(Text, nullable=False)                                                    # the JSON-blob recipe content
+    created_at = Column(Text, nullable=False)                                                 # now_utc(): a real UTC timestamp
+    __table_args__ = (
+        Index("idx_recipe_snapshots_recipe", "recipe_id", "created_at"),   # per-recipe history (stage-3 diff)
+        Index("idx_recipe_snapshots_cook_log", "cook_log_id"),             # the cook <-> snapshot link
+        {"sqlite_autoincrement": True},
+    )
+
+
 # ingredient_weights has NO primary key in the live schema. ORM-mapped classes require a PK, so this
 # table is defined as a Core Table (part of the same metadata) — faithful in create_all (no synthetic
 # PK added, no structure change). It can be given an imperative ORM mapping in Stage 1b if it's queried.
