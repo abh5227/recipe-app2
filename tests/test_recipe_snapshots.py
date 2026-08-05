@@ -23,11 +23,17 @@ def _recipe_with_content(client, name="Snapshot Dish"):
     }).get_json()["id"]
 
 
-def _snaps(kitchen, rid):
+def _snaps(kitchen, rid, reason=None):
+    # NB: since O-a, creating a recipe writes a reason='original' baseline too — cook tests pass
+    # reason='cook' to scope to the cook snapshots they're about.
+    q = ("SELECT id, recipe_id, cook_log_id, user_id, reason, content, created_at "
+         "FROM recipe_snapshots WHERE recipe_id = ?")
+    args = [rid]
+    if reason is not None:
+        q += " AND reason = ?"
+        args.append(reason)
     with kitchen.conn() as c:
-        return c.execute(
-            "SELECT id, recipe_id, cook_log_id, user_id, reason, content, created_at "
-            "FROM recipe_snapshots WHERE recipe_id = ? ORDER BY id", (rid,)).fetchall()
+        return c.execute(q + " ORDER BY id", args).fetchall()
 
 
 # ---- the table exists (migration 028 applied by build_db) ---------------------------------------
@@ -71,7 +77,7 @@ def test_serialize_captures_content_excludes_noncontent_and_is_stable(kitchen):
 # ---- capture on EACH cook path ------------------------------------------------------------------
 
 def _assert_one_cook_snapshot(kitchen, rid, cook_log_id, uid):
-    rows = _snaps(kitchen, rid)
+    rows = _snaps(kitchen, rid, "cook")
     assert len(rows) == 1
     r = rows[0]
     assert r["reason"] == "cook"
@@ -111,10 +117,10 @@ def test_snapshot_on_redo_cook(kitchen):
     rid = _recipe_with_content(a)
     a.post(f"/api/recipes/{rid}/cooked", json={"date": "2024-05-01"})
     undone = a.post(f"/api/recipes/{rid}/uncook", json={}).get_json()["undone"]   # removes the cook + its snapshot
-    assert _snaps(kitchen, rid) == []                                            # (cascade also proven below)
+    assert _snaps(kitchen, rid, "cook") == []                                     # cook snapshot gone (cascade below)
     a.post(f"/api/recipes/{rid}/redo-cook",
            json={"cooked_on": undone["cooked_on"], "source": undone["source"]})   # a redo = a NEW cook
-    rows = _snaps(kitchen, rid)
+    rows = _snaps(kitchen, rid, "cook")
     assert len(rows) == 1
     assert rows[0]["reason"] == "cook" and rows[0]["cook_log_id"] is not None      # its own fresh snapshot
 
@@ -125,6 +131,7 @@ def test_undo_cook_cascade_removes_snapshot(kitchen):
     a = kitchen.client
     rid = _recipe_with_content(a)
     a.post(f"/api/recipes/{rid}/cooked", json={})
-    assert len(_snaps(kitchen, rid)) == 1
+    assert len(_snaps(kitchen, rid, "cook")) == 1
     a.post(f"/api/recipes/{rid}/uncook", json={})
-    assert _snaps(kitchen, rid) == []       # ON DELETE CASCADE removed it with the cook_log row
+    assert _snaps(kitchen, rid, "cook") == []       # ON DELETE CASCADE removed the cook snapshot with cook_log
+    assert len(_snaps(kitchen, rid, "original")) == 1   # the cook-less O-a original SURVIVES the undo

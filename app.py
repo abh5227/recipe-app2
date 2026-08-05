@@ -37,6 +37,7 @@ from models import (
 )
 from auth import auth_bp   # JSON auth endpoints (auth-2); auth.py imports models only, so no import cycle
 import images              # shared image brain: resize + the save_image storage seam (Stage 1/2)
+import snapshot_serialize  # single-source recipe-content snapshot FORMAT (shared ORM/serve + raw import)
 
 # Anchor everything to this file's folder so the app runs from any directory.
 BASE_DIR = Path(__file__).resolve().parent
@@ -321,35 +322,18 @@ def write_recipe_rows(s, rid, clean, preserve=None):
 # captured when a cook is logged. Snapshots are the STORED TRUTH; diffs are DERIVED from consecutive
 # snapshots later (stage 3). Stage 1 only WRITES them (reason='cook') — nothing reads them yet.
 
-# The recipe's CONTENT fields a snapshot captures (per the diagnostic Part A): the 11 editable recipe
-# fields, EXCLUDING non-content (id/created_at/source/uid/hash/owner — those live on the recipe, not the
-# version). Ingredient/step columns are listed below. Kept as tuples so serialize order is deterministic.
-_SNAPSHOT_RECIPE_FIELDS = (
-    "name", "author", "source_url", "category", "servings", "prep_time",
-    "cook_time", "total_time", "descr", "notes", "image",
-)
-_SNAPSHOT_ING_FIELDS = (
-    "position", "is_heading", "qty", "ingredient_id", "label", "note",
-    "raw_text", "grams", "secondary_measure", "quantity", "unit",
-)
-# NB: RecipeStep maps the DB column "text" to the attribute `.body` (avoids shadowing sqlalchemy.text),
-# so steps are built explicitly below — the JSON key stays "text" (the content field name).
-
-
 def serialize_recipe_content(s, rid):
-    """Serialize a recipe's editable CONTENT to a STABLE JSON blob (change-tracking stage 1) — the 11
-    content fields + all ingredient rows + all step rows, rows ordered by position (then id), keys sorted,
-    so future diffs (stage 3) compare like-for-like. Excludes non-content (id/created_at/source/uid/hash/
-    owner). Pure w.r.t. the given session (a read + a deterministic dump; no writes)."""
+    """Serialize a recipe's editable CONTENT to a STABLE JSON blob (change-tracking) — the 11 content
+    fields + all ingredient rows + all step rows, rows ordered by position (then id). Fetches the live rows
+    (ORM) and delegates the FORMAT to snapshot_serialize.content_blob — the SINGLE SOURCE shared with the
+    raw-SQL import writer (import_write.commit_plan), so an import-origin ORIGINAL and an app-origin CURRENT
+    serialize byte-identically (the stage-3 diff depends on it). Steps resolve .body -> the 'text' key (the
+    ORM maps the DB "text" column to .body). Pure w.r.t. the given session (a read + a deterministic dump)."""
     r = s.execute(select(Recipe).where(Recipe.id == rid)).scalar_one()
-    recipe = {k: getattr(r, k) for k in _SNAPSHOT_RECIPE_FIELDS}
-    ingredients = [
-        {k: getattr(row, k) for k in _SNAPSHOT_ING_FIELDS}
-        for row in s.execute(
-            select(RecipeIngredient).where(RecipeIngredient.recipe_id == rid)
-            .order_by(RecipeIngredient.position, RecipeIngredient.id)
-        ).scalars()
-    ]
+    ingredients = list(s.execute(
+        select(RecipeIngredient).where(RecipeIngredient.recipe_id == rid)
+        .order_by(RecipeIngredient.position, RecipeIngredient.id)
+    ).scalars())
     steps = [
         {"position": row.position, "is_heading": row.is_heading, "text": row.body}   # .body = the DB "text" column
         for row in s.execute(
@@ -357,8 +341,7 @@ def serialize_recipe_content(s, rid):
             .order_by(RecipeStep.position, RecipeStep.id)
         ).scalars()
     ]
-    return json.dumps({"recipe": recipe, "ingredients": ingredients, "steps": steps},
-                      sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    return snapshot_serialize.content_blob(r, ingredients, steps)
 
 
 def snapshot_recipe(s, rid, cook_log_id, reason):
@@ -371,6 +354,22 @@ def snapshot_recipe(s, rid, cook_log_id, reason):
         recipe_id=rid, cook_log_id=cook_log_id, user_id=current_user.id,
         reason=reason, content=serialize_recipe_content(s, rid), created_at=now_utc(),
     ))
+
+
+def snapshot_original(s, rid):
+    """Capture a recipe's PRISTINE content as a reason='original' snapshot — the birth baseline the
+    recipe-page annotations (O-c) will diff the CURRENT version against (original-baseline capture O-a).
+    Reuses snapshot_recipe's stage-1 machinery; cook_log_id NULL (no cook). Guarded WHERE NOT EXISTS so a
+    recipe's original is captured ONCE — belt-and-suspenders here (create/import are create-only) and the
+    guard the O-b backfill relies on. Wired into app-create; the raw-SQL import path mirrors this guard +
+    insert with the SAME shared serializer (import_write.commit_plan)."""
+    already = s.execute(
+        select(RecipeSnapshot.id)
+        .where(RecipeSnapshot.recipe_id == rid, RecipeSnapshot.reason == "original")
+    ).first()
+    if already:
+        return
+    snapshot_recipe(s, rid, None, "original")
 
 
 @app.route("/")
@@ -458,6 +457,7 @@ def create_recipe():
             owner=current_user.id,   # R4: a created recipe lands in the creator's box
         ))
         write_recipe_rows(s, slug, clean)
+        snapshot_original(s, slug)   # O-a: capture the pristine reason='original' baseline at birth (for O-c annotations)
         s.commit()
     return jsonify({"id": slug}), 201
 
@@ -741,6 +741,7 @@ def copy_recipe(rid):
             """INSERT INTO recipe_steps (recipe_id, position, is_heading, text)
                SELECT :new_id, position, is_heading, text FROM recipe_steps WHERE recipe_id = :rid ORDER BY position"""
         ), {"new_id": new_id, "rid": rid})
+        snapshot_original(s, new_id)   # O-a: the copy's original = its copied content at birth (before editing)
         s.commit()
     return jsonify({"id": new_id}), 201
 

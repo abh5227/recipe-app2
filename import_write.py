@@ -41,6 +41,8 @@ import zipfile
 from collections import Counter
 from pathlib import Path
 
+import snapshot_serialize  # single-source snapshot FORMAT — the original-baseline blob matches app.py's byte-for-byte
+
 import import_cleanup as cleanup
 import paprika_native_reader as reader
 
@@ -263,6 +265,21 @@ def commit_plan(conn, plan, owner_id=None):
         conn.execute(
             "INSERT INTO recipe_steps (recipe_id, position, is_heading, text) VALUES (?,?,?,?)",
             (r["id"], row["position"], row["is_heading"], row["text"]))
+    # O-a: capture the recipe's PRISTINE ORIGINAL baseline (reason='original') for the recipe-page
+    # annotations diff (O-c) — in THIS import batch transaction (atomic). The blob uses the SHARED
+    # serializer (snapshot_serialize.content_blob), byte-identical to the ORM path (app.serialize_recipe_
+    # content), so an import-origin original diffs cleanly against an app-origin current. Guarded WHERE NOT
+    # EXISTS so a recipe's original is captured once (belt-and-suspenders; commit_plan is create-only —
+    # uid-dedup skips existing recipes). cook_log_id NULL; user_id = the import owner; created_at = the
+    # recipe's birth timestamp (r["created_at"]).
+    if not conn.execute(
+        "SELECT 1 FROM recipe_snapshots WHERE recipe_id = ? AND reason = 'original'", (r["id"],)
+    ).fetchone():
+        conn.execute(
+            "INSERT INTO recipe_snapshots (recipe_id, cook_log_id, user_id, reason, content, created_at) "
+            "VALUES (?, NULL, ?, 'original', ?, ?)",
+            (r["id"], owner_id, snapshot_serialize.content_blob(r, plan["ingredients"], plan["steps"]),
+             r["created_at"]))
     if plan["rating"] is not None:
         conn.execute("INSERT INTO ratings (recipe_id, user_id, rating) VALUES (?,?,?)",
                      (r["id"], owner_id, plan["rating"]))

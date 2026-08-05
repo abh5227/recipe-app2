@@ -296,17 +296,26 @@ def test_cook_photo_album_orders_by_position_nulls_last(pg):
                      ids["images/cooks/pgp0.jpg"], ids["images/cooks/pgpN.jpg"]]   # 0,1,2 then NULL last
 
 
-# ---- 11. change-tracking stage 1: recipe_snapshots capture-on-cook (ADD TABLE + FK cascade on PG) --
+# ---- 11. change-tracking: recipe_snapshots — O-a original-capture + cook-capture + FK cascade on PG --
 
 def test_recipe_snapshot_captured_on_cook_and_cascades_pg(pg):
-    """Exercises migration 028 (the ADD TABLE via `alembic upgrade head`) on PG + the capture-on-cook
-    write, then that undoing the cook cascade-removes the snapshot (FK ON DELETE CASCADE, PG-native)."""
+    """Exercises migration 028 (the ADD TABLE via `alembic upgrade head`) on PG + BOTH capture paths:
+    O-a's reason='original' baseline written at CREATE, and the reason='cook' capture on cook. Then that
+    undoing the cook cascade-removes ONLY the cook snapshot (FK ON DELETE CASCADE, PG-native) while the
+    cook-less original SURVIVES."""
     c = pg.client
     rid = c.post("/api/recipes", json={"name": "PG Snapshot", "is_test": True,
                  "ingredients": [{"qty": "1", "text": "flour"}], "steps": ["mix"]}).get_json()["id"]
+    # O-a: create wrote a cook-less reason='original' baseline (the original-capture insert, on PG)
+    assert _count(pg.engine,
+                  "SELECT COUNT(*) FROM recipe_snapshots WHERE recipe_id=:r AND reason='original' AND cook_log_id IS NULL",
+                  r=rid) == 1
     clid = c.post(f"/api/recipes/{rid}/cooked", json={}).get_json()["cook_log_id"]
     assert _count(pg.engine,
                   "SELECT COUNT(*) FROM recipe_snapshots WHERE recipe_id=:r AND cook_log_id=:c AND reason='cook'",
                   r=rid, c=clid) == 1
     assert c.post(f"/api/recipes/{rid}/uncook").status_code == 200
-    assert _count(pg.engine, "SELECT COUNT(*) FROM recipe_snapshots WHERE recipe_id=:r", r=rid) == 0   # cascade
+    assert _count(pg.engine,   # the cook snapshot cascaded away with cook_log; the original remains
+                  "SELECT COUNT(*) FROM recipe_snapshots WHERE recipe_id=:r AND reason='cook'", r=rid) == 0
+    assert _count(pg.engine,
+                  "SELECT COUNT(*) FROM recipe_snapshots WHERE recipe_id=:r AND reason='original'", r=rid) == 1

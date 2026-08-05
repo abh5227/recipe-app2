@@ -194,6 +194,43 @@ def test_commit_writes_all_tables(kitchen):
         ).fetchone()[0] >= 1
 
 
+# ----------------------------------------------------------------- O-a: original-baseline snapshot
+def test_commit_writes_original_snapshot(kitchen):
+    # Every imported recipe gets a reason='original' baseline snapshot (cook-less), captured atomically
+    # in the same import transaction — the pristine content the annotations (O-c) diff the current against.
+    c = _cleaned(name="Original Dish", ingredient_lines=["2 tbsp oil"], directions="Step one.", uid="ORIG-UID")
+    with kitchen.conn() as conn:
+        assert iw.commit_plan(conn, _plan(c)) is True
+    with kitchen.conn() as conn:
+        rows = conn.execute(
+            "SELECT cook_log_id, reason, content FROM recipe_snapshots WHERE recipe_id='original-dish'"
+        ).fetchall()
+    assert len(rows) == 1
+    assert rows[0]["reason"] == "original"
+    assert rows[0]["cook_log_id"] is None                  # cook-less baseline
+    assert '"name":"Original Dish"' in rows[0]["content"]   # the pristine content captured
+
+
+def test_original_blob_matches_orm_serialization(kitchen):
+    # THE load-bearing Option-A test: the import-plan-serialized ORIGINAL blob and the ORM
+    # serialize_recipe_content blob for the SAME recipe are BYTE-IDENTICAL. Both route through the single
+    # shared formatter (snapshot_serialize.content_blob), so an import-origin original diffs cleanly against
+    # an app-origin current — a drifted format would break the annotations diff for import-origin recipes.
+    import app
+    c = _cleaned(name="Byte Dish", source="BA", categories=["Fish"],
+                 ingredient_lines=["SAUCE:", "2 tbsp oil", "1 cup water"],
+                 directions="Mix.\nBake.", servings_raw="4", uid="BYTE-UID")
+    with kitchen.conn() as conn:
+        assert iw.commit_plan(conn, _plan(c)) is True
+    with kitchen.conn() as conn:
+        import_blob = conn.execute(
+            "SELECT content FROM recipe_snapshots WHERE recipe_id='byte-dish' AND reason='original'"
+        ).fetchone()["content"]
+    with app.orm_session() as s:
+        orm_blob = app.serialize_recipe_content(s, "byte-dish")
+    assert import_blob == orm_blob                          # byte-identical -> the diff won't drift by origin
+
+
 def test_commit_skip_writes_nothing(kitchen):
     # a real tagged seed twin uid -> dedup must skip and write nothing
     c = _cleaned(name="Dup", uid="21FB182C-8CED-4E3A-B20C-893310AA4631")

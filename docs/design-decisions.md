@@ -1463,6 +1463,31 @@ script ships with `tests/test_backfill_hero_album_rows.py` (cook-less shape, ski
 append, owner-NULL/no-hero skips, idempotency). Now **every** hero is an album photo — the
 promoted-vs-uploaded-vs-imported inconsistency is fully resolved.
 
+## Original-baseline capture (O-a) — the annotations' pristine baseline
+
+The recipe-page annotations ("handwriting in the margins", current-vs-ORIGINAL) need a **pristine
+original** to diff the current version against — but the destructive edit path (`write_recipe_rows`)
+keeps no original in the DB. O-a captures one going forward: **every NEW recipe gets a `reason='original'`
+snapshot at birth**, reusing stage-1's `recipe_snapshots` machinery (`cook_log_id` NULL; no schema change
+— `reason` was kept general).
+
+**All THREE creation paths** capture it: **app-create** (`create_recipe`, ORM — `snapshot_original` between
+`write_recipe_rows` and commit), **copy** (`copy_recipe`, ORM — same hook; a copy's original = its copied
+content at birth, which O-b can't backfill since a copy is in neither seed.py nor Paprika), and **import**
+(`commit_plan`, raw-SQL insert **in the same import batch transaction** — atomic). Captured **once**
+(guarded `WHERE NOT EXISTS reason='original'`; the create/copy/import paths are create-only anyway), and
+**never on edit** — the original is the birth state; edits are what annotations diff *against* it.
+
+**The Option-A correctness guarantee — one serialization format.** The ORM path and the raw-SQL import
+path must serialize identically, or the stage-3 diff (which compares an original against a later current)
+drifts for import-origin recipes. So the format is single-sourced in a new pure module
+**`snapshot_serialize.py`** (`SNAPSHOT_*_FIELDS` + `content_blob`, `_get()` bridging plan-dicts and ORM
+rows — mirrors `snapshot_diff.py`'s shape). `serialize_recipe_content` (ORM/serve) now delegates to it
+(format byte-preserved — the stage-1/3 tests + a **byte-identity test** prove import-plan blob ==
+ORM blob for the same content). **Nothing reads the originals yet** — O-c renders the annotations
+(preview-first); **O-b** backfills existing recipes' originals from seed.py/Paprika; then stage 4, 3e,
+the Journal.
+
 ## Open questions
 
 - **Masthead title face** — Spectral vs Newsreader vs Fraunces, decided by eye after Stage B renders
