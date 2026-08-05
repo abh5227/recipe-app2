@@ -1,6 +1,11 @@
 """Photo upload endpoint (Stage 2): POST /api/recipes/<id>/image — owner-checked multipart upload that
-resizes + strips metadata + stores via the images.save_image seam. Hits the endpoint directly (no browser).
-Disk writes are isolated to the kitchen's temp images dir (harness rebinds images.IMAGES_DIR)."""
+resizes + strips metadata + stores via the images.save_cook_photo seam. Hits the endpoint directly (no
+browser). Disk writes are isolated to the kitchen's temp images dir (harness rebinds images.IMAGES_DIR).
+
+Hero↔album unification: an uploaded hero is stored uuid-unique ('images/cooks/<uuid>.jpg', like an album
+photo), inserted as a COOK-LESS cook_photos row, AND promoted to the hero — so it appears in the album,
+and replacing it leaves the previous hero as a plain album photo. These tests read the SERVER-minted path
+from the response (no longer the predictable slug-flat 'images/<rid>.jpg')."""
 import io
 from pathlib import Path
 
@@ -47,6 +52,19 @@ def _db_image(kitchen, rid):
         return c.execute("SELECT image FROM recipes WHERE id = ?", (rid,)).fetchone()[0]
 
 
+def _disk(path):
+    """A stored DB path ('images/cooks/<uuid>.jpg') -> the file under the temp images dir."""
+    return images.IMAGES_DIR / path[len("images/"):]
+
+
+def _cook_photos(kitchen, rid):
+    with kitchen.conn() as c:
+        return c.execute(
+            "SELECT id, cook_log_id, user_id, path, position FROM cook_photos WHERE recipe_id = ? "
+            "ORDER BY position, id", (rid,),
+        ).fetchall()
+
+
 # ---- happy path ---------------------------------------------------------------------------------
 
 def test_owner_upload_success(kitchen):
@@ -55,9 +73,30 @@ def test_owner_upload_success(kitchen):
     r = _post(a, rid, _img_bytes())
     assert r.status_code == 200
     body = r.get_json()
-    assert body == {"image": f"images/{rid}.jpg"}          # least-exposure: ONLY the path
-    assert _db_image(kitchen, rid) == f"images/{rid}.jpg"  # DB updated
-    assert (images.IMAGES_DIR / f"{rid}.jpg").exists()     # file in the (temp) images dir
+    assert list(body) == ["image"]                         # least-exposure: ONLY the path
+    path = body["image"]
+    assert path.startswith("images/cooks/") and path.endswith(".jpg")   # uuid-unique, like album photos
+    assert _db_image(kitchen, rid) == path                 # DB hero updated (promoted)
+    assert _disk(path).exists()                            # file in the (temp) images dir
+    # "a photo is a photo": the uploaded hero is ALSO a cook-less album row (is_hero derives via recipes.image)
+    rows = _cook_photos(kitchen, rid)
+    assert len(rows) == 1
+    assert rows[0]["cook_log_id"] is None                  # cook-less (a direct hero upload, no cook)
+    assert rows[0]["path"] == path and rows[0]["position"] == 0
+
+
+def test_replace_hero_keeps_old_as_album_photo(kitchen):
+    # "a photo is a photo": replacing the hero (a 2nd upload) leaves the FIRST as a plain album photo —
+    # its row + file stay, it just stops matching recipes.image; the new one is the hero.
+    a = kitchen.client
+    rid = _own_recipe(a)
+    first = _post(a, rid, _img_bytes()).get_json()["image"]
+    second = _post(a, rid, _img_bytes()).get_json()["image"]
+    assert first != second                                 # uuid-unique -> distinct files/rows
+    assert _db_image(kitchen, rid) == second               # the NEW one is the hero
+    rows = _cook_photos(kitchen, rid)
+    assert [r["path"] for r in rows] == [first, second]    # BOTH rows survive, in append order (position 0,1)
+    assert _disk(first).exists() and _disk(second).exists()   # nothing deleted
 
 
 # ---- authorization (security-critical) ----------------------------------------------------------
@@ -118,7 +157,7 @@ def test_client_filename_is_ignored(kitchen):
     rid = _own_recipe(a)
     r = _post(a, rid, _img_bytes(), filename="../../evil.jpg")
     assert r.status_code == 200
-    assert (images.IMAGES_DIR / f"{rid}.jpg").exists()                        # stored under the server slug
+    assert _disk(r.get_json()["image"]).exists()                             # stored under a server uuid
     assert not (images.IMAGES_DIR.parent.parent / "evil.jpg").exists()       # nothing escaped the dir
 
 
@@ -137,8 +176,9 @@ def test_save_image_containment_guard_rejects_escaping_slug():
 def test_exif_gps_stripped(kitchen):
     a = kitchen.client
     rid = _own_recipe(a)
-    assert _post(a, rid, _img_bytes(exif_gps=True)).status_code == 200
-    saved = Image.open(images.IMAGES_DIR / f"{rid}.jpg")
+    r = _post(a, rid, _img_bytes(exif_gps=True))
+    assert r.status_code == 200
+    saved = Image.open(_disk(r.get_json()["image"]))
     exif = saved.getexif()
     assert 34853 not in exif and len(dict(exif)) == 0        # no GPS, no EXIF at all
 
@@ -151,7 +191,8 @@ def test_decompression_bomb_400(kitchen, monkeypatch):
     monkeypatch.setattr(images.Image, "MAX_IMAGE_PIXELS", 10)  # 100x100 = 10_000 px >> 2*10 -> bomb
     r = _post(a, rid, _img_bytes(size=(100, 100)))
     assert r.status_code == 400
-    assert not (images.IMAGES_DIR / f"{rid}.jpg").exists()
+    assert _cook_photos(kitchen, rid) == []                 # nothing inserted on validation failure
+    assert _db_image(kitchen, rid) is None                  # hero not set either
 
 
 # ---- HEIC/HEIF input (iPhone/Photos) ------------------------------------------------------------
@@ -174,9 +215,10 @@ def test_owner_heic_upload_success_stored_as_jpeg(kitchen):
     rid = _own_recipe(a)
     r = _post(a, rid, _heic_bytes(), filename="IMG_1234.heic")
     assert r.status_code == 200
-    assert r.get_json() == {"image": f"images/{rid}.jpg"}
-    assert _db_image(kitchen, rid) == f"images/{rid}.jpg"
-    saved = images.IMAGES_DIR / f"{rid}.jpg"
+    path = r.get_json()["image"]
+    assert path.startswith("images/cooks/") and path.endswith(".jpg")   # uuid-unique, input HEIC -> JPEG out
+    assert _db_image(kitchen, rid) == path
+    saved = _disk(path)
     assert saved.exists()
     assert Image.open(saved).format == "JPEG"           # decoded HEIC re-encoded to JPEG on disk
 
@@ -187,8 +229,9 @@ def test_heic_exif_gps_stripped(kitchen):
     rid = _own_recipe(a)
     src = _heic_bytes(gps=True)
     assert 34853 in Image.open(io.BytesIO(src)).getexif()   # precondition: the source really has GPS
-    assert _post(a, rid, src, filename="IMG_1234.heic").status_code == 200
-    exif = Image.open(images.IMAGES_DIR / f"{rid}.jpg").getexif()
+    r = _post(a, rid, src, filename="IMG_1234.heic")
+    assert r.status_code == 200
+    exif = Image.open(_disk(r.get_json()["image"])).getexif()
     assert 34853 not in exif and len(dict(exif)) == 0
 
 
@@ -202,7 +245,7 @@ def test_real_iphone_heic_upload_success(kitchen):
     rid = _own_recipe(a)
     r = _post(a, rid, fixture.read_bytes(), filename="IMG_5424.heic")
     assert r.status_code == 200
-    saved = images.IMAGES_DIR / f"{rid}.jpg"
+    saved = _disk(r.get_json()["image"])
     assert saved.exists()
     out = Image.open(saved)
     assert out.format == "JPEG" and max(out.size) == 1600     # 12 MP downscaled to long-edge 1600
@@ -216,4 +259,4 @@ def test_oversize_rejected_413(kitchen):
     rid = _own_recipe(a)
     r = _post(a, rid, b"\0" * (11 * 1024 * 1024))            # > MAX_CONTENT_LENGTH (10 MB)
     assert r.status_code == 413
-    assert not (images.IMAGES_DIR / f"{rid}.jpg").exists()
+    assert _cook_photos(kitchen, rid) == []                 # nothing inserted (rejected at the wire cap)

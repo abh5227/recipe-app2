@@ -171,8 +171,10 @@ def test_undo_cook_non_hero_photo_unlinks_but_hero_untouched(kitchen):
     clid = _log_cook(a, rid)
     photo = _post_photo(a, rid, cook_log_id=clid)          # hero exists -> not the hero
     a.post(f"/api/recipes/{rid}/uncook")
-    assert _rows(kitchen, rid) == []                        # photo row cascade-gone
-    assert not _on_disk(photo["path"]).exists()            # its file unlinked
+    # the COOK's photo cascades on undo; the uploaded hero's row is COOK-LESS (cook_log_id NULL) -> it SURVIVES.
+    surviving = _rows(kitchen, rid)
+    assert [row["path"] for row in surviving] == [hero_before]   # only the cook-less hero row remains
+    assert not _on_disk(photo["path"]).exists()            # the cook photo's file unlinked
     assert _hero(kitchen, rid) == hero_before               # hero untouched
     assert _on_disk(hero_before).exists()                   # hero file intact
 
@@ -195,16 +197,21 @@ def test_delete_recipe_unlinks_all_cook_photo_files(kitchen):
     assert _cook_files() == []                              # no orphans left in images/cooks
 
 
-def test_delete_recipe_unlinks_normal_hero_file_orphan_fix(kitchen):
-    # HERO-ORPHAN FIX: a recipe with a normal hero (images/<slug>.jpg) -> delete unlinks that file too
-    # (previously it was orphaned on disk).
+def test_delete_recipe_unlinks_legacy_slugflat_hero_orphan_fix(kitchen):
+    # HERO-ORPHAN FIX (legacy path): an IMPORTED/legacy hero is a slug-flat images/<slug>.jpg with NO
+    # cook_photos row (uploads now make uuid cook-photos instead — see test_upload_image). delete_recipe
+    # still appends recipes.image's own file to the unlink list, so a legacy hero isn't orphaned on disk.
     a = kitchen.client
     rid = _own_recipe(a)
-    assert _upload_hero(a, rid).status_code == 200
-    hero_file = images.IMAGES_DIR / f"{rid}.jpg"
+    hero_path = images.save_image(_img_bytes(), slug=rid)  # the legacy slug-flat hero shape, no cook_photos row
+    with kitchen.conn() as c:
+        c.execute("UPDATE recipes SET image = ? WHERE id = ?", (hero_path, rid))
+        c.commit()
+    hero_file = _on_disk(hero_path)
     assert hero_file.exists()
+    assert _rows(kitchen, rid) == []                        # no cook_photos row — the genuine orphan case
     assert a.delete(f"/api/recipes/{rid}").status_code == 200
-    assert not hero_file.exists()                           # the hero file is now cleaned up
+    assert not hero_file.exists()                           # orphan-fix unlinked recipes.image's own file
 
 
 def test_delete_recipe_keeps_file_a_copy_still_shares(kitchen):

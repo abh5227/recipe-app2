@@ -101,7 +101,12 @@ def save_image(file_bytes, *, slug):
     """The storage SEAM: validate -> resize (re-encode, which strips EXIF/GPS) -> atomically write a
     metadata-free JPEG to IMAGES_DIR under a SERVER-DERIVED name -> return the DB path 'images/<slug>.jpg'.
     The ONLY disk-writing boundary — swap this body for object storage later; callers see only the
-    returned string. Raises ImageValidationError on bad input (endpoint -> 400)."""
+    returned string. Raises ImageValidationError on bad input (endpoint -> 400).
+
+    NOTE: as of the hero↔album unification the hero-upload endpoint routes through save_cook_photo
+    (uuid-unique, so an uploaded hero is also an album row); save_image is currently APP-UNUSED but kept
+    as the slug-named seam + its containment/validation tests. The legacy import heroes still carry
+    'images/<slug>.jpg' paths written here historically."""
     _validate(file_bytes)                                              # S2/S3
     jpeg = resize_image_bytes(file_bytes)                              # Stage 1: orient-then-strip; fresh pixels (S4)
     name = f"{slug}.jpg"                                               # S1: name derived ENTIRELY from the server slug

@@ -86,14 +86,18 @@ def test_photos_ordered_by_stored_position_append(kitchen):
     assert by_id[solo["id"]]["cooked_on"] is None
 
 
-def test_photos_appended_in_attach_order_when_no_cook_photo_is_hero(kitchen):
+def test_uploaded_hero_is_an_album_photo_and_appends_in_order(kitchen):
+    # Hero↔album unification: an uploaded hero is ITSELF an album photo (is_hero=True), at album position 0;
+    # subsequent cook-photo attaches append after it and are NOT the hero. ("a photo is a photo.")
     a = kitchen.client
     rid = _own_recipe(a, "Recency Dish")
-    _upload_hero(a, rid)                                      # a NORMAL hero -> cook-photo attaches don't auto-promote
+    _upload_hero(a, rid)                                      # now creates a cook-less album row + promotes it
     p1 = _post_photo(a, rid)
     p2 = _post_photo(a, rid)
     p3 = _post_photo(a, rid)
 
     photos = _photos(a, rid)
-    assert [p["id"] for p in photos] == [p1["id"], p2["id"], p3["id"]]   # 3d-i: append order (position 0,1,2), oldest-added first
-    assert all(p["is_hero"] is False for p in photos)        # the hero is the normal image, not a cook photo
+    assert [p["id"] for p in photos[1:]] == [p1["id"], p2["id"], p3["id"]]   # attaches append after the hero (positions 1,2,3)
+    assert photos[0]["is_hero"] is True                      # the uploaded hero IS the album's first photo
+    assert all(p["is_hero"] is False for p in photos[1:])    # the later attaches are not the hero
+    assert len(photos) == 4                                  # hero + 3 attaches

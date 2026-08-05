@@ -1428,6 +1428,30 @@ correctly (the `.ph-label` placeholder sits beneath the `<img>`; `onerror="this.
 `app.js` render only — no data/schema change. Verified in the browser (a temporarily-broken pointer → the
 degrade showed the blank Polaroid **and** an upload into it worked, then reverted).
 
+## Hero ↔ album unification — "a photo is a photo" (Stage 1: forward)
+
+The album (`cook_photos`) is every photo of a dish; the hero is `recipes.image` (a path; `is_hero` is
+**derived**, never stored — `path == recipes.image`). These had drifted apart: a **promoted** hero (from
+an album photo) stayed a `cook_photos` row → in the album; a **directly-uploaded** or **imported** hero
+set only `recipes.image` with **no** `cook_photos` row → NOT in the album. (Diagnosed live: 1 hero in the
+album, 121 hero-only.)
+
+**Stage 1 (forward) — hero-upload mirrors into the album.** `POST /api/recipes/<id>/image` now routes
+through the album machinery instead of the slug-flat seam: store uuid-unique via `images.save_cook_photo`
+(`images/cooks/<uuid>.jpg`, like album photos), **insert a cook-less `cook_photos` row** (`cook_log_id`
+NULL, appended at the album's end), then **promote** (`recipes.image = its path` → `is_hero` derives
+true). So an uploaded hero appears **both** as the hero **and** in the album, exactly like a promoted one.
+**Replacing** a hero (a 2nd upload) leaves the previous one as a **plain album photo** — its row + file
+stay, it just stops matching `recipes.image` — nothing deleted (uuid-unique files make each upload a
+distinct entry; slug-flat would have overwritten). Reuses `add_cook_photo`'s insert; composes with
+promote / album-add-auto-promote / clear-hero-on-undo/delete (all still key off `path == recipes.image`).
+**No schema change** (`cook_log_id` already nullable, `is_hero` already derived). `save_image` (slug-flat)
+is now **app-unused** but kept as a tested seam (its containment/validation tests + the legacy import
+heroes still carry `images/<slug>.jpg` paths). The three tests encoding the old "uploaded hero ≠ album"
+behavior were **rewritten** to assert the new model (not contorted to pass on the false premise), and the
+delete-recipe hero-orphan test now exercises the genuine **legacy** slug-flat case. **Stage 2** backfills
+the 121 existing hero-only recipes with a cook-less album row for their hero.
+
 ## Open questions
 
 - **Masthead title face** — Spectral vs Newsreader vs Fraunces, decided by eye after Stage B renders

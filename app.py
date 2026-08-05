@@ -661,11 +661,13 @@ def delete_recipe(rid):
 
 @app.route("/api/recipes/<rid>/image", methods=["POST"])
 def upload_recipe_image(rid):
-    """Upload a dish photo for a recipe you OWN (multipart, field 'image'). Owner-checked (mirrors the
-    shares owner-gate); resizes + strips metadata + stores via images.save_image (the swappable
-    local-disk seam); updates recipes.image through the same ORM path as update_recipe. Returns ONLY the
-    new path (least-exposure — no owner/uid/hash). First endpoint that writes user bytes to disk; the
-    S1–S7 hardening lives in images.py. Login-gated by before_request (NOT in PUBLIC_ENDPOINTS)."""
+    """Upload a dish photo for a recipe you OWN (multipart, field 'image'): store it, ADD it to the album,
+    and make it the hero — "a photo is a photo" (the album is every photo of this dish). Owner-checked
+    (mirrors the shares owner-gate). Stored uuid-unique via images.save_cook_photo (like album photos, NOT
+    the slug-flat save_image), inserted as a COOK-LESS cook_photos row (cook_log_id NULL) at the album's
+    end, then promoted: recipes.image = its path, so is_hero derives true. REPLACING a hero leaves the
+    previous one as a plain album photo (its row stays; it just stops matching recipes.image) — nothing
+    deleted. Returns ONLY the new path (least-exposure). Login-gated by before_request (NOT in PUBLIC_ENDPOINTS)."""
     with orm_session() as s:
         rec = s.get(Recipe, str(rid))
         if rec is None:
@@ -676,10 +678,17 @@ def upload_recipe_image(rid):
         if f is None:
             return jsonify({"error": "no image file provided"}), 400
         try:
-            path = images.save_image(f.read(), slug=rec.id)  # validate + resize + strip + atomic write (S1–S6)
+            path = images.save_cook_photo(f.read())          # uuid-unique (images/cooks/<uuid>.jpg), like album photos
         except images.ImageValidationError as e:
             return jsonify({"error": str(e)}), 400           # bad/blocked/bomb input -> 400, nothing written
-        s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rec.id).values(image=path))
+        next_pos = s.execute(                                # APPEND at the album's end (mirrors add_cook_photo)
+            select(func.coalesce(func.max(CookPhoto.position), -1) + 1).where(CookPhoto.recipe_id == rec.id)
+        ).scalar_one()
+        s.execute(insert(CookPhoto.__table__).values(        # a COOK-LESS album row (cook_log_id NULL)
+            cook_log_id=None, recipe_id=rec.id, user_id=current_user.id,
+            path=path, caption=None, added_at=now_utc(), position=next_pos,
+        ))
+        s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rec.id).values(image=path))  # promote -> hero
         s.commit()                                           # DB updated ONLY after the file is on disk (S6)
     return jsonify({"image": path})
 
