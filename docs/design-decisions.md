@@ -1485,8 +1485,24 @@ drifts for import-origin recipes. So the format is single-sourced in a new pure 
 rows — mirrors `snapshot_diff.py`'s shape). `serialize_recipe_content` (ORM/serve) now delegates to it
 (format byte-preserved — the stage-1/3 tests + a **byte-identity test** prove import-plan blob ==
 ORM blob for the same content). **Nothing reads the originals yet** — O-c renders the annotations
-(preview-first); **O-b** backfills existing recipes' originals from seed.py/Paprika; then stage 4, 3e,
-the Journal.
+(preview-first); **O-b** backfills existing recipes; then stage 4, 3e, the Journal.
+
+**O-b (backfill) — existing recipes' baseline is their CURRENT content, NOT the archive.** A quality
+investigation killed the archive-re-derivation plan: re-deriving all 298 imports from the retained Paprika
+archive (uid-keyed, 298/298 coverage) and diffing against current is **~85% systematic post-import noise**
+— unit-abbreviation (`tablespoon→tbsp`), the qty/unit split, name→unit extraction (`'Pinch of salt'→'salt'`),
+heading promotion (`'For the dal'`), note extraction (`''→', finely grated'`) — all backfills the archive
+predates; and the 5 former-seed recipes' archive `uid` is a **dedup-twin lookalike**, not their real
+original. After excluding those, the genuine hand-edit signal was only **~11 recipes (89% of it in the 5
+former-seed)**, inseparable from the noise — so `image`+`category` filtering (or any O-c field filter)
+can't rescue it. Decision: `scripts/backfill_original_snapshots.py` captures each existing recipe's
+**current** content as its `reason='original'` (via the O-a shared `serialize_recipe_content`; `cook_log_id`
+NULL, `user_id=owner`, `created_at=recipe.created_at`; guarded `WHERE NOT EXISTS`, idempotent). Applied to
+**298** (recipe_snapshots 0→298 originals). So existing recipes get a clean current-state birth-baseline
+exactly like O-a's new ones — `diff_snapshots(original, current)` is **empty** for all right now (proven),
+annotations accrue from **future** edits, and **O-c needs no field filtering at all** (original==current →
+zero noise by construction). The ~11 recipes' past hand-edits are lost *as annotations* (already baked into
+current content) — a bounded, accepted loss. Live data only (git-ignored `recipes.db`; backup taken).
 
 ## Open questions
 
