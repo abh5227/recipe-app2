@@ -843,41 +843,11 @@ function clipDefs() {
       <stop offset="1" stop-color="#3d2e07"/></linearGradient></defs></svg>`;
 }
 
-// The finished-dish photo (top-right of the masthead) as a Polaroid straddling the recipe card's top
-// edge, held by a brass clip. The strip is empty for now (the typed caption is a separate feature).
-// No image: an EDITABLE recipe gets an empty clipped Polaroid that IS a photo drop-zone + click-to-pick
-// (wired to POST /api/recipes/<id>/image by wirePhotoUpload); a non-editable (seed) recipe returns "" so
-// the masthead collapses to a full-width title. A broken URL collapses via the <img> onerror (adds
-// .no-photo to the stage, removes the Polaroid) — that graceful-degradation stays on the filled branch.
-function dishPhoto(r, editable, photos) {
-  if (r.image) {
-    // Part 2: an EDITABLE owner gets the hover-reveal "Update photo" pill + drop-to-replace, wired to the
-    // SAME upload path as the empty zone (wirePhotoUpload). Non-editable (seed / other users) is byte-for-
-    // byte the original filled Polaroid — no affordance. The <img> onerror degradation is preserved verbatim.
-    const editHook   = editable ? " polaroid-filled" : "";
-    const editAttr   = editable ? " data-upload-zone" : "";
-    const updatePill = editable ? `<button class="update-photo" type="button" aria-label="Update photo">Update photo</button>` : "";
-    const fileInput  = editable ? `<input class="photo-input" type="file" accept="image/*" tabindex="-1" aria-hidden="true">` : "";
-    // SHARED hero caption: if recipes.image is a promoted cook photo, show that photo's caption in the strip
-    // (heroCaption reads the is_hero photo from the payload). null -> empty strip, as before (uncaptioned hero,
-    // or a hero with no matching cook_photo row). Edited via that photo's 3c ⋮ menu — same field, re-read here.
-    const cap = heroCaption(photos);
-    const capHTML = cap ? `<span class="cap">${esc(cap)}</span>` : "";
-    return `<div class="dish-photo polaroid-hero${editHook}"${editAttr}>
-    ${clipDefs()}
-    ${clipSvg("back")}
-    <div class="edge-contact"></div>
-    <figure class="polaroid-wrap"><span class="polaroid">
-      <img class="photo" src="/${esc(r.image)}" alt="${esc(r.name)}" loading="lazy"
-        onerror="this.closest('.recipe-stage').classList.add('no-photo'); this.closest('.dish-photo').remove();">
-      ${updatePill}
-      <span class="strip">${capHTML}</span>
-    </span></figure>
-    ${clipSvg("front")}
-    ${fileInput}
-  </div>`;
-  }
-  if (editable) return `<div class="dish-photo polaroid-hero polaroid-empty" data-upload-zone>
+// The empty, uploadable hero Polaroid (dashed frame / "+" / drag-or-click). Used BOTH by dishPhoto's
+// image-falsy+editable branch AND by wirePhotoUpload's broken-<img> degrade (Stage B) — one source so
+// the two never drift.
+function emptyDishPhotoHTML() {
+  return `<div class="dish-photo polaroid-hero polaroid-empty" data-upload-zone>
     ${clipDefs()}
     ${clipSvg("back")}
     <div class="edge-contact"></div>
@@ -890,6 +860,47 @@ function dishPhoto(r, editable, photos) {
     ${clipSvg("front")}
     <input class="photo-input" type="file" accept="image/*" tabindex="-1" aria-hidden="true">
   </div>`;
+}
+
+// The finished-dish photo (top-right of the masthead) as a Polaroid straddling the recipe card's top
+// edge, held by a brass clip. The strip is empty for now (the typed caption is a separate feature).
+// No image: an EDITABLE recipe gets an empty clipped Polaroid that IS a photo drop-zone + click-to-pick
+// (wired to POST /api/recipes/<id>/image by wirePhotoUpload); a non-editable (seed) recipe returns "" so
+// the masthead collapses to a full-width title. A broken URL: an EDITABLE recipe DEGRADES to that empty
+// uploadable Polaroid (Stage B, bound in wirePhotoUpload); a non-editable one collapses via the inline
+// <img> onerror (adds .no-photo to the stage, removes the Polaroid).
+function dishPhoto(r, editable, photos) {
+  if (r.image) {
+    // Part 2: an EDITABLE owner gets the hover-reveal "Update photo" pill + drop-to-replace, wired to the
+    // SAME upload path as the empty zone (wirePhotoUpload). Non-editable (seed / other users) is byte-for-
+    // byte the original filled Polaroid — no affordance. The <img> onerror degradation is preserved verbatim.
+    const editHook   = editable ? " polaroid-filled" : "";
+    const editAttr   = editable ? " data-upload-zone" : "";
+    const updatePill = editable ? `<button class="update-photo" type="button" aria-label="Update photo">Update photo</button>` : "";
+    const fileInput  = editable ? `<input class="photo-input" type="file" accept="image/*" tabindex="-1" aria-hidden="true">` : "";
+    // Stage B: an editable recipe's broken hero <img> degrades to the empty upload zone (bound in
+    // wirePhotoUpload) — so NO inline collapse here. A NON-editable broken image still collapses inline.
+    const brokenCollapse = editable ? "" :
+      ` onerror="this.closest('.recipe-stage').classList.add('no-photo'); this.closest('.dish-photo').remove();"`;
+    // SHARED hero caption: if recipes.image is a promoted cook photo, show that photo's caption in the strip
+    // (heroCaption reads the is_hero photo from the payload). null -> empty strip, as before (uncaptioned hero,
+    // or a hero with no matching cook_photo row). Edited via that photo's 3c ⋮ menu — same field, re-read here.
+    const cap = heroCaption(photos);
+    const capHTML = cap ? `<span class="cap">${esc(cap)}</span>` : "";
+    return `<div class="dish-photo polaroid-hero${editHook}"${editAttr}>
+    ${clipDefs()}
+    ${clipSvg("back")}
+    <div class="edge-contact"></div>
+    <figure class="polaroid-wrap"><span class="polaroid">
+      <img class="photo" src="/${esc(r.image)}" alt="${esc(r.name)}" loading="lazy"${brokenCollapse}>
+      ${updatePill}
+      <span class="strip">${capHTML}</span>
+    </span></figure>
+    ${clipSvg("front")}
+    ${fileInput}
+  </div>`;
+  }
+  if (editable) return emptyDishPhotoHTML();
   return "";   // seed recipe with no photo: collapse (seed recipes aren't editable — no dead add link)
 }
 
@@ -1337,6 +1348,21 @@ function wirePhotoUpload() {
     });
   }
   input.addEventListener("change", () => { send(input.files[0]); });   // undefined on cancel -> guarded no-op
+
+  if (filled) {   // Stage B robustness: a broken hero <img> (a dead image pointer) degrades to the empty
+    const heroImg = wrap.querySelector("img.photo");   // uploadable Polaroid + re-wires it, not a hole.
+    let degraded = false;                              // (Non-editable filled has no data-upload-zone -> never here.)
+    const degrade = () => {
+      if (degraded || !heroImg) return;
+      degraded = true;
+      wrap.outerHTML = emptyDishPhotoHTML();
+      wirePhotoUpload();                               // bind the fresh empty zone's upload path
+    };
+    if (heroImg) {
+      heroImg.addEventListener("error", degrade);
+      if (heroImg.complete && heroImg.naturalWidth === 0) degrade();   // already 404'd before this wiring ran
+    }
+  }
 
   // drag-and-drop (Finder/Desktop files land here too). preventDefault on dragover is what enables the
   // drop; scoped to this zone so a stray file dropped elsewhere on the page keeps the browser default.

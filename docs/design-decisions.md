@@ -1415,6 +1415,19 @@ list-card thumbnail ([app.js](../static/app.js) `~531`) stops silently dropping 
 no schema/migration. Verified over the authenticated endpoint (`image=None`, `is_editable=True` →
 BLANK-uploadable branch) and in the browser.
 
+**Render hardening (Stage B) — a broken image degrades instead of vanishing.** With the data fixed there
+are no dead pointers left, so this changes no *current* behavior — it future-proofs the bug-class. The
+filled-branch `<img>` `onerror` used to `remove()` the whole `.dish-photo`, so a broken pointer left **no
+affordance**. Now: an **editable** recipe's broken hero `<img>` **degrades to the blank uploadable
+Polaroid** (bound in `wirePhotoUpload`: an `error` listener + a `complete && naturalWidth===0` cached-404
+guard + a once-only flag → swaps in `emptyDishPhotoHTML()` and **re-wires the zone for upload**); a
+**non-editable** one still collapses via the inline `onerror` (unchanged). The empty-Polaroid markup was
+extracted to `emptyDishPhotoHTML()` so the falsy-editable branch and the degrade share **one source** (no
+drift). The **list-card** ([app.js](../static/app.js) `~526`) was left untouched — it *already* degrades
+correctly (the `.ph-label` placeholder sits beneath the `<img>`; `onerror="this.remove()"` reveals it).
+`app.js` render only — no data/schema change. Verified in the browser (a temporarily-broken pointer → the
+degrade showed the blank Polaroid **and** an upload into it worked, then reverted).
+
 ## Open questions
 
 - **Masthead title face** — Spectral vs Newsreader vs Fraunces, decided by eye after Stage B renders
