@@ -1363,10 +1363,38 @@ tracking **starts fresh**).
   the FK (no explicit handling — same as `cook_photos`). ⚠️ **Stage-4 revisit:** once notes reference derived
   changes, cascading a snapshot could orphan a note — revisit then (no notes yet).
 
-**Snapshots are WRITTEN, not yet read** — invisible foundation. Remaining stages: **stage 2** manual "save a
-version" (`reason='manual'`, nullable `cook_log_id`); **stage 3** the derived diff (a pure function over two
-consecutive blobs — with the position-vs-content **matching-strategy** decision); **stage 4** note-linkage
-(derive-by-coordinate vs **materialize** `recipe_changes` for stable ids). The Journal consumes this later.
+**Snapshots are WRITTEN, not yet read** — invisible foundation. (Stage 2 — a manual "save a version" — was
+later **DROPPED**: versioning is **cook-only**. The `reason` column stays, `'cook'`-only for now, keeping the
+schema general in case a non-cook trigger returns.)
+
+### Change-tracking stage 3 — the snapshot diff (shipped; pure engine, nothing consumes it yet)
+
+`snapshot_diff.py` → **`diff_snapshots(old_blob, new_blob)`**: a **pure**, dependency-light (`json` + `difflib`
+only) function that computes "what changed between two consecutive cook snapshots" — two stage-1 blobs in
+(the JSON string or a parsed dict), a flat/ordered/deterministic list of change objects out. No DB, no side
+effects; **nothing imports it yet** — stage 4 will materialize its OUTPUT (`recipe_changes`) and the Journal
+will render it.
+
+- **CONTENT-MATCHED, per type** (not position-based — position-based cascades false "modified" on
+  insert/delete): **ingredient lines** match by `ingredient_id` when both rows carry one (a linked ingredient
+  is an unambiguous key), the rest by **text similarity** on the full `"amount name"` line via `difflib`;
+  **steps/headings** by `difflib` LCS + similarity for rewords; **the 11 content fields** by direct compare.
+- **AMOUNT COHERENCE (a simplification):** an ingredient's amount is split across `qty`/`quantity`/`unit`, but
+  the diff reads the amount from **`qty` alone** — the single combined form — so an amount edit is **ONE**
+  change (`sugar: 1 cup → ¾ cup`), never three field-noise entries. This **relies on the invariant** that
+  `qty` and its `quantity`/`unit` split stay consistent (guaranteed by `write_recipe_rows`' `_row_qty_parts`).
+- **Similarity threshold = `0.6`**, tuned + pinned by boundary tests (a reword ≈0.76–0.82 → `modified`; a
+  wholesale swap ≈0.2 → `removed`+`added`). **Linked ingredients bypass it** (an id-match is unambiguous
+  regardless of text change). Headings are split out of line/step matching so they never pollute it.
+- **Change shape:** `{kind: field|ingredient|step|heading, type: added|removed|modified, …}` (documented in the
+  module). **Contract:** consumes `serialize_recipe_content`'s exact blob shape — keep the two in sync.
+- **Proven by tests** (17, the gate): the amount-collapse-is-ONE-entry, insert-at-top = ONE `added` (linked
+  **and** unlinked — proving content-matching beats position), unlinked-modify-by-similarity, linked-matched-
+  despite-large-text-change, the step LCS cases, and the threshold boundary. Pure → no PG surface.
+
+Remaining: **stage 4** note-linkage — materialize the diff into a `recipe_changes` table (stable ids a note can
+FK to) + the notes model; then the **Journal** renders the snapshot-per-cook + its diff-from-previous. **3e**
+(anchor-photo-to-step) still last.
 
 ## Open questions
 
