@@ -1449,8 +1449,19 @@ promote / album-add-auto-promote / clear-hero-on-undo/delete (all still key off 
 is now **app-unused** but kept as a tested seam (its containment/validation tests + the legacy import
 heroes still carry `images/<slug>.jpg` paths). The three tests encoding the old "uploaded hero ≠ album"
 behavior were **rewritten** to assert the new model (not contorted to pass on the false premise), and the
-delete-recipe hero-orphan test now exercises the genuine **legacy** slug-flat case. **Stage 2** backfills
-the 121 existing hero-only recipes with a cook-less album row for their hero.
+delete-recipe hero-orphan test now exercises the genuine **legacy** slug-flat case.
+
+**Stage 2 (backfill) — the existing hero-only recipes join the album.** `scripts/backfill_hero_album_rows.py`
+(gated: backup → dry-run → apply; idempotent) inserts one **cook-less** `cook_photos` row per hero-only
+recipe — `WHERE image IS NOT NULL AND NOT EXISTS (a cook_photos row with path == recipes.image)`, so it
+auto-skips the already-consistent/promoted hero **and** any Stage-1 upload (both already album rows).
+`user_id = recipes.owner`, `path = recipes.image` (the row points at the hero's **existing** file — no
+rename; slug-flat import heroes and uuid uploads coexist), appended at `max(position)+1`. Applied to
+**120** recipes (all `owner=1`; `cook_photos` 8 → 128); `chicken-shawarma-…` shows the append case (hero
+at position 8 behind its 8 existing photos). Live data only (git-ignored `recipes.db`; backup taken); the
+script ships with `tests/test_backfill_hero_album_rows.py` (cook-less shape, skip-already-consistent,
+append, owner-NULL/no-hero skips, idempotency). Now **every** hero is an album photo — the
+promoted-vs-uploaded-vs-imported inconsistency is fully resolved.
 
 ## Open questions
 
