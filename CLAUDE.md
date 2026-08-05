@@ -157,12 +157,16 @@ empty `seed.py`'s `RECIPES`) was proven rebuild-safe on a DB dry-run and applied
 yet broke **31 pytest tests** — the suite builds every fixture DB from `seed.py`'s `RECIPES`
 (`make_kitchen` → `build_db`), coupling to the seed slugs (~90 references across `tests/`), not the
 `source` column the blast-radius had grepped. The DB dry-run passed because it only asserted on the
-DB; a `pytest` run in the same scratch copy would have caught all 31. Reverted cleanly. **Open
-follow-up:** the conversion (a numbered migration + the `seed.py` edit) is proven correct and
-rebuild-safe and will be re-applied *after* the tests seed their own fixtures instead of the 5 seed
-recipes — its own diagnostic + plan, whose dry-run includes `pytest`. `test_changes.py` in
-particular used those recipes as the only read-only `source='seed'` recipes, so the decouple
-intersects with what those per-person-change tests exercise.
+DB; a `pytest` run in the same scratch copy would have caught all 31. Reverted cleanly. **Resolved —
+shipped in migration 016 (a later session):** the tests were first decoupled to seed their own fixtures
+(`fixtures.TEST_RECIPES`), then the 5 (`aloo-gobhi`, `bulgogi-bowls`, `gai-yang`, `mussakhan`,
+`no-knead-bread`) were flipped to `source='app'` and their `seed.py` defs removed (`RECIPES` is now
+`[]`). They are ordinary owned app recipes that **no longer lag from build_db's seed-rebuild** — a
+rebuild leaves them intact (0 seed duplicates). This is DONE, not a pending follow-up. **NB:** the
+ingredient **library** (~36 rows) is *still* seed-rebuilt on every `build_db` (intended — the seed
+'bones' stay); any remaining 'stale linked-ingredient' symptom, if real, lives in the library
+records/labels, **not** the recipe source-tier, and is diagnosed separately — not re-fixed via a
+`source` flip.
 
 *Why the fourth exists (the Stage-1b CI miss):* the converted ORM read routes used `models.SessionLocal`
 (frozen at import to the default `recipes.db`). `make_kitchen` redirects `app.DB`/`build_db.DB`/`migrate.DB`
