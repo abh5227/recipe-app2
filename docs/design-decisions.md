@@ -1396,6 +1396,25 @@ Remaining: **stage 4** note-linkage — materialize the diff into a `recipe_chan
 FK to) + the notes model; then the **Journal** renders the snapshot-per-cook + its diff-from-previous. **3e**
 (anchor-photo-to-step) still last.
 
+## Dead hero-photo pointers on the 5 former-seed recipes (fixed)
+
+The 5 former-seed recipes (`aloo-gobhi`, `bulgogi-bowls`, `gai-yang`, `mussakhan`, `no-knead-bread`)
+showed **no hero-photo affordance at all** — not even a blank Polaroid to upload into. Cause: the seed
+authoring path set `recipes.image = 'images/<slug>.jpg'` as a **pointer**, but those JPGs were **never
+shipped** (the Paprika-import path, by contrast, writes the file *and* the column — its 120 image-set
+recipes all have their files; the broken-pointer set was *exactly* these 5). So `dishPhoto`
+([app.js](../static/app.js) `~852`) took the **filled** branch (`image` truthy), the `<img>` 404'd, and
+its `onerror` **removed the entire `.dish-photo`** — the blank-uploadable branch only renders when
+`image` is *falsy*, so they never reached it.
+
+**Fix (data):** `scripts/null_dead_hero_pointers.py` NULLs `image` for the 5 (a one-off, gated backup →
+dry-run → apply; targets the known 5 explicitly, and a `_file_present()` guard only NULLs a *truly*
+missing file so a later-shipped JPG is never clobbered — idempotent). With `image=NULL` they route to the
+working blank-uploadable Polaroid ([app.js](../static/app.js) `~880`) and can take an uploaded photo; the
+list-card thumbnail ([app.js](../static/app.js) `~531`) stops silently dropping too. Pure data — 5 rows,
+no schema/migration. Verified over the authenticated endpoint (`image=None`, `is_editable=True` →
+BLANK-uploadable branch) and in the browser.
+
 ## Open questions
 
 - **Masthead title face** — Spectral vs Newsreader vs Fraunces, decided by eye after Stage B renders
