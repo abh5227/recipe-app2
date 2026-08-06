@@ -512,11 +512,11 @@ def get_recipe(rid):
             return jsonify({"error": "recipe not found"}), 404
         ings = s.execute(
             select(RecipeIngredient.__table__).where(RecipeIngredient.recipe_id == rid)
-            .order_by(RecipeIngredient.position)
+            .order_by(RecipeIngredient.position, RecipeIngredient.id)
         ).mappings().all()
         steps = s.execute(
             select(RecipeStep.__table__).where(RecipeStep.recipe_id == rid)
-            .order_by(RecipeStep.position)
+            .order_by(RecipeStep.position, RecipeStep.id)
         ).mappings().all()
         stats = recipe_stats(s, rid, current_user.id)
         ingredients = attach_weights(s, ings)
