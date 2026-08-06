@@ -670,20 +670,116 @@ function lineBodyHTML(row) {
   return `${esc(row.label || row.raw_text || "")}${readNote(row)}`;
 }
 
-// A plain ingredient line: used for the Original view and for app recipes.
-function plainRow(row) {
+// O-c-1: index the current-vs-original annotations (view.data.annotations) by heading-EXCLUDED new_pos,
+// per kind, for the PRESENT-position cases the reading view renders (amount/name modified, added). A
+// removed entry carries new_pos=null (no current row to attach to) and heading entries aren't rendered
+// here — both are skipped (removed placement is a later stage). A single new_pos may carry BOTH an amount
+// and a name edit; they're grouped into one slot so a row shows both.
+function annotationIndex(anns) {
+  const ing = new Map();
+  const step = new Map();
+  for (const a of (anns || [])) {
+    if (a.new_pos == null) continue;                 // removed -> no current row (skip this stage)
+    if (a.kind === "ingredient") {
+      const slot = ing.get(a.new_pos) || {};
+      if (a.type === "added") slot.added = a;
+      else if (a.type === "modified" && (a.field === "amount" || a.field === "name")) slot[a.field] = a;
+      ing.set(a.new_pos, slot);
+    } else if (a.kind === "step") {
+      const slot = step.get(a.new_pos) || {};
+      if (a.type === "added") slot.added = a;
+      else if (a.type === "modified") slot.mod = a;
+      step.set(a.new_pos, slot);
+    }
+    // kind === "heading": not rendered in the reading ledger — ignored.
+  }
+  return { ing, step };
+}
+
+// A plain ingredient line: used for the Original view and for app recipes. `ann` (O-c-1) is the row's
+// grouped annotation slot ({amount?, name?, added?}) or undefined — undefined falls through to today's
+// EXACT markup, so an unannotated row is byte-identical (clean recipes render unchanged).
+// O-c-1 refinement: a WORD-LEVEL diff for name/step edits — strike only removed words, ink only added
+// words, leave shared words as plain print. Token LCS on whitespace-split words. Order follows the walk:
+// a divergence emits the struck old word(s) then the inked new word(s), shared runs stay plain. Falls back
+// to a whole-field strike+ink when the two share NO words (LCS empty) — cleaner than striking every token.
+// Every token is esc()'d before it reaches the DOM (no raw HTML from names). Kept inline (not a module).
+function _wordLcsWalk(a, b) {
+  const n = a.length, m = b.length;
+  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const out = [];
+  let i = 0, j = 0;
+  while (i < n && j < m) {
+    if (a[i] === b[j]) { out.push({ t: "eq", w: a[i] }); i++; j++; }
+    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ t: "del", w: a[i] }); i++; }
+    else { out.push({ t: "ins", w: b[j] }); j++; }
+  }
+  while (i < n) out.push({ t: "del", w: a[i++] });
+  while (j < m) out.push({ t: "ins", w: b[j++] });
+  return out;
+}
+function wordDiffHTML(fromStr, toStr) {
+  const a = String(fromStr || "").split(/\s+/).filter(Boolean);
+  const b = String(toStr || "").split(/\s+/).filter(Boolean);
+  const walk = _wordLcsWalk(a, b);
+  if (!walk.some((x) => x.t === "eq")) {                 // no shared word -> whole-field strike+ink
+    return `<span class="was">${esc(fromStr || "")}</span> <span class="fix">${esc(toStr || "")}</span>`;
+  }
+  const parts = [];                                      // coalesce consecutive same-type tokens
+  for (const x of walk) {
+    const last = parts[parts.length - 1];
+    if (last && last.t === x.t) last.w.push(x.w);
+    else parts.push({ t: x.t, w: [x.w] });
+  }
+  return parts.map((p) => {
+    const text = esc(p.w.join(" "));
+    if (p.t === "del") return `<span class="was">${text}</span>`;
+    if (p.t === "ins") return `<span class="fix">${text}</span>`;
+    return text;
+  }).join(" ");
+}
+
+function plainRow(row, ann) {
   // Guard (belt-and-suspenders): never render an empty row as a bare divider line, even if one somehow
   // reaches the reading view — a heading with no text, or a line with no name, is skipped entirely.
   if (row.is_heading) return (row.raw_text || "").trim() ? `<li class="group">${esc(row.raw_text)}</li>` : "";
   if (!(row.label || row.raw_text || "").trim()) return "";
-  return `<li>${ledgerCells(row.qty, row.grams_per_ml)}<span class="iname">${lineBodyHTML(row)}</span></li>`;
+  // Added ingredient: the whole current line in the hand ink, "+"-prefixed (see li.added CSS).
+  if (ann && ann.added) return `<li class="added">${ledgerCells(row.qty, row.grams_per_ml)}<span class="iname">${lineBodyHTML(row)}</span></li>`;
+  const amt = ann && ann.amount, nm = ann && ann.name;
+  // Amount edit stacks the struck ABBREVIATED original over the Kalam ink value INSIDE the 5rem cell
+  // (li.edited); amountText(_, 1) abbreviates the authored amounts exactly like the ledger.
+  const amountCell = amt
+    ? `<span class="amount-cell"><span class="qty"><span class="was">${esc(amountText(amt.from, 1))}</span><span class="fix">${esc(amountText(amt.to, 1))}</span></span></span>`
+    : ledgerCells(row.qty, row.grams_per_ml);
+  let iname;
+  if (nm && amt) {
+    // BOTH amount AND name change on one row: stack the name whole-field (struck over ink) so the struck
+    // originals share the top line and the ink corrections share the bottom line — aligned with the amount
+    // stack, reading as one line across (rather than the amount stacked and the name starting elsewhere).
+    iname = `<span class="iname is-stacked"><span class="was">${esc(nm.from)}</span><span class="fix">${esc(nm.to)}</span>${readNote(row)}</span>`;
+  } else if (nm) {
+    // Name-only edit: WORD-LEVEL strike/ink — only the changed words are marked (see wordDiffHTML).
+    iname = `<span class="iname">${wordDiffHTML(nm.from, nm.to)}${readNote(row)}</span>`;
+  } else {
+    iname = `<span class="iname">${lineBodyHTML(row)}</span>`;
+  }
+  const cls = amt ? ' class="edited"' : "";
+  return `<li${cls}>${amountCell}${iname}</li>`;
 }
 
 // The whole Ingredients section — a plain list. R6 removed the per-person view switcher (the box
 // model has no "switch person"; every recipe is your own, edited directly via the recipe editor).
 // Re-rendered on its own (e.g. on a scale change) so the rest of the page doesn't flicker.
 function ingredientsSectionInner(view) {
-  const rows = view.data.ingredients.map(plainRow).join("");
+  const { ing } = annotationIndex(view.data.annotations);   // O-c-1: current-vs-original edits, keyed by new_pos
+  let i = 0;                                                 // heading-EXCLUDED index == snapshot_diff new_pos
+  const rows = view.data.ingredients
+    .map((row) => (row.is_heading ? plainRow(row) : plainRow(row, ing.get(i++))))
+    .join("");
   return `
     <div class="col-head"><h2 class="col-title">Ingredients</h2></div>
     <ul class="ingredient-list">${rows}</ul>`;
@@ -707,7 +803,7 @@ function rerenderScaler() {
 // Re-render the method steps so tagged "scale" quantities reflect the current factor.
 function rerenderSteps() {
   const el = document.getElementById("steps-list");
-  if (el) el.innerHTML = view.data.steps.map(renderStepRow).join("");
+  if (el) el.innerHTML = renderStepsList(view.data.steps);
 }
 
 // The masthead serving count reflects the current scale, but the masthead isn't rebuilt on rescale —
@@ -722,8 +818,12 @@ function rerenderServings() {
 // rescaled live with the 1a scaler (so they format identically to the ingredient list);
 // "plain" spans are linkified (and may contain [[ingredient]] links). Falls back to raw
 // text if a payload has no spans.
-function renderStepRow(row) {
+function renderStepRow(row, ann) {
   if (row.is_heading) return `<li class="group">${esc(row.text)}</li>`;
+  // O-c-1: an added step -> the whole line in the hand ink ("+"-prefixed); a reworded step -> the struck
+  // original + the Kalam correction. Both are plain prose (no scaling/abbreviation — that's amount-only).
+  if (ann && ann.added) return `<li class="step"><div class="step-body"><span class="step-add">${esc(row.text)}</span></div></li>`;
+  if (ann && ann.mod) return `<li class="step"><div class="step-body">${wordDiffHTML(ann.mod.from, ann.mod.to)}</div></li>`;
   const spans = row.spans || [{ t: "plain", text: row.text }];
   const html = spans
     .map((s) => (s.t === "scale"
@@ -733,6 +833,14 @@ function renderStepRow(row) {
   // .step-body wraps the step content inside li.step — the reserved attach point for future
   // per-step photos and R2 step-notes. Inert in R1 (a bare block that fills the same box).
   return `<li class="step"><div class="step-body">${html}</div></li>`;
+}
+
+// O-c-1: render the step list with its annotation layer. Own 0-based li.step counter (heading-EXCLUDED,
+// a SEPARATE index space from ingredients) == snapshot_diff step new_pos. Empty annotations -> byte-identical.
+function renderStepsList(steps) {
+  const { step } = annotationIndex(view.data.annotations);
+  let i = 0;
+  return steps.map((row) => (row.is_heading ? renderStepRow(row) : renderStepRow(row, step.get(i++)))).join("");
 }
 
 // Stage 1a (edit mode only): a non-heading step becomes an empty host that mountStepEditors() fills
@@ -1233,7 +1341,7 @@ function paintRecipe() {
   // paint by enterEditMode); headings stay display-only, and reading mode is unchanged.
   const steps = editing
     ? view.draft.steps.map(renderStepEditHost).join("")
-    : data.steps.map(renderStepRow).join("");
+    : renderStepsList(data.steps);
 
   app.innerHTML = `
     <a class="back" href="#/">← All recipes</a>

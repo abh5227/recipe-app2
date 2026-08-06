@@ -47,6 +47,7 @@
   --btn-fill:     #4A3220;   /* deep warm BROWN — "Cooked it" button + active pill anchor (cream text on it) */
   --btn-fill-lift:#5C4129;   /* hover lift of the brown button */
   --hand:         #9C4A2E;   /* USER hand layer — RESERVED for Round 2 (warm terracotta/rust; unused in R1, was --oxblood) */
+  --ink-pen:      #7a4718;   /* O-c-1 annotation ink — the recipe's "your changes" marginalia (Kalam over struck print). Sepia; DISTINCT from --hand (the feed's live token) — do not merge or reuse. */
 
   /* rules / hairlines */
   --rule:       #D5CAB0;   /* warm ledger separators, meta borders */
@@ -714,6 +715,33 @@ a:hover { color: var(--berry-lift); }
    smaller, slightly indented) — not part of the ingredient name. Applies to every reading-mode note. */
 .inote { display: block; margin-top: 1px; padding-left: 10px; font-family: var(--font-serif);
   font-style: italic; font-size: 13px; line-height: 1.35; color: var(--ink-soft); }
+
+/* ---- O-c-1 annotation layer: the recipe's "your changes" marginalia (current vs original) ----
+   ONE ink (--ink-pen); the edit TYPE is shown by TREATMENT, not colour. These classes are emitted ONLY
+   by the reading-view annotation render (plainRow / renderStepRow), so an UNEDITED recipe carries none of
+   them and renders byte-identical to today. Lifted from the approved preview (plain-A, oc1-faithful-bakeoff):
+   the struck PRINT original + the Kalam ink value; amount abbreviated exactly like the ledger. */
+/* struck PRINT original — a THIN proofreader's rule (2px -> 1px). Every .was: amount + name (ingredient-list) and step. */
+.ingredient-list .was, .step-body .was { text-decoration: line-through; text-decoration-color: var(--ink-pen); text-decoration-thickness: 1px; color: var(--ink-soft); opacity: .85; }
+/* name edit — Kalam ink correction in the 1fr name column (word-level tokens, or the stacked both-row). Ink stepped up 16px -> 18px. */
+.ingredient-list .iname .fix { font-family: var(--font-hand); color: var(--ink-pen); font-size: 18px; margin-left: 5px; display: inline-block; transform: rotate(-1.5deg); }
+/* amount edit — a deliberate two-line proofreader's stack INSIDE the fixed 5rem amount cell (no column widening) */
+.ingredient-list li.edited .qty { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.02; }
+.ingredient-list li.edited .qty .was { transform: rotate(-.6deg); }
+.ingredient-list li.edited .qty .fix { font-family: var(--font-hand); color: var(--ink-pen); font-size: 18px; margin: 1px 0 0; transform: rotate(-2deg); display: inline-block; }
+/* both amount AND name on one row: stack the name (struck over ink) too, so struck-originals share the top
+   line and ink-corrections share the bottom line — aligned with the amount stack (one line across). */
+.ingredient-list li.edited .iname.is-stacked { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.02; }
+.ingredient-list li.edited .iname.is-stacked .fix { margin-left: 0; }
+/* added ingredient — "+" in the left margin, the whole line in the hand (ink stepped up) */
+.ingredient-list li.added { position: relative; }
+.ingredient-list li.added::before { content: "+"; position: absolute; left: -17px; top: 0; font-family: var(--font-hand); color: var(--ink-pen); font-size: 21px; }
+.ingredient-list li.added .qty { font-family: var(--font-hand); color: var(--ink-pen); font-size: 18px; }
+.ingredient-list li.added .iname, .ingredient-list li.added .iname .ingredient { font-family: var(--font-hand); color: var(--ink-pen); font-size: 19px; text-decoration: none; }
+/* step edit — reworded uses word-level .was/.fix inside .step-body (.fix wraps as prose); added is the "+"-prefixed Kalam line. Ink 16.5px -> 18.5px. */
+.step-body .fix { font-family: var(--font-hand); color: var(--ink-pen); font-size: 18.5px; }
+.step-body .step-add { font-family: var(--font-hand); color: var(--ink-pen); font-size: 18.5px; }
+.step-body .step-add::before { content: "+ "; }
 
 .steps { list-style: none; counter-reset: step; padding: 0; margin: 0; }
 .steps li.step {
