@@ -171,7 +171,9 @@ def _ing_name(r):
 
 
 def _ing_line(r):
-    """The full "amount name" display, used as the similarity key + for added/removed text."""
+    """The full "amount name" display — the RAW emitted `text` for added/removed entries. (The phase-2
+    similarity KEY is _ing_line_canon, which canonicalizes the qty; this stays raw so the output text
+    shows what was actually there.)"""
     return f"{r.get('qty') or ''} {_ing_name(r)}".strip()
 
 
@@ -183,6 +185,17 @@ def _canon_amount(qty):
     edit. Detection only — the emitted from/to keep the RAW strings, so a genuine change shows real values.
     The number is never touched (only unit words match the rules), so a real amount change still differs."""
     return units.canon_unit_str(qty or "")
+
+
+def _ing_line_canon(r):
+    """The phase-2 similarity KEY: the "amount name" line with the qty CANONICALIZED (_canon_amount, the
+    same transform as the amount compare). Because the client canonicalizes units on every save
+    (teaspoon->tsp), the RAW line drifts (e.g. "1 teaspoon kosher salt" -> "1 tsp sea salt"), which can
+    push a borderline rename below SIMILARITY_THRESHOLD and split ONE modify into remove+add. Canonicalizing
+    the qty here holds the similarity stable across that representation drift. MATCHING only — the emitted
+    text/from/to stay raw (via _ing_line / _ing_name); the name portion is untouched, so a real rename that
+    genuinely diverges still falls below threshold."""
+    return f"{_canon_amount(r.get('qty'))} {_ing_name(r)}".strip()
 
 
 def _ingredient_pair_changes(o, n, new_pos=None, old_pos=None):
@@ -223,7 +236,7 @@ def _diff_ingredients(old_lines, new_lines, o_pos, n_pos, section_of=lambda p: N
     o_left = [r for i, r in enumerate(old_lines) if not o_used[i]]
     n_left = [r for j, r in enumerate(new_lines) if not n_used[j]]
     changes += _diff_seq(
-        o_left, n_left, _ing_line,
+        o_left, n_left, _ing_line_canon,   # MATCH on the canonical line (qty unit-normalized); emit raw text below
         on_pair=lambda o, n: _ingredient_pair_changes(o, n, n_pos(n), o_pos(o)),
         on_add=lambda r: {"kind": "ingredient", "type": "added", "text": _ing_line(r), "label": _ing_name(r),
                           "new_pos": n_pos(r), "old_pos": None},
