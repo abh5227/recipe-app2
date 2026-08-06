@@ -38,6 +38,7 @@ from models import (
 from auth import auth_bp   # JSON auth endpoints (auth-2); auth.py imports models only, so no import cycle
 import images              # shared image brain: resize + the save_image storage seam (Stage 1/2)
 import snapshot_serialize  # single-source recipe-content snapshot FORMAT (shared ORM/serve + raw import)
+import snapshot_diff        # derived change-tracking DIFF (O-c): current-vs-original recipe-page annotations
 
 # Anchor everything to this file's folder so the app runs from any directory.
 BASE_DIR = Path(__file__).resolve().parent
@@ -372,6 +373,26 @@ def snapshot_original(s, rid):
     snapshot_recipe(s, rid, None, "original")
 
 
+def _recipe_annotations(s, rid):
+    """The recipe-page annotation set (O-c-1): diff the recipe's CURRENT content against its
+    reason='original' baseline and return the RAW diff_snapshots entries (the client renders them —
+    abbreviation/anchoring are its concern). Single-recipe op: one original fetch + one serialize + one
+    diff. Two guards make the common case free and safe:
+      - no original row (a pre-O-b recipe that never got a baseline) -> [] (fail safe, never error);
+      - byte-equal short-circuit: content_blob is byte-stable, so string-equal == content-equal — every
+        UNEDITED recipe (the norm post-O-b, until its first edit) skips the diff entirely."""
+    original = s.execute(
+        select(RecipeSnapshot.content)
+        .where(RecipeSnapshot.recipe_id == rid, RecipeSnapshot.reason == "original")
+    ).scalar_one_or_none()
+    if original is None:
+        return []
+    current = serialize_recipe_content(s, rid)
+    if current == original:
+        return []
+    return snapshot_diff.diff_snapshots(original, current)   # old/original FIRST, new/current SECOND
+
+
 @app.route("/")
 def home():
     # Serve the Vite-built shell verbatim. It references content-hashed assets (/assets/*.[hash].*),
@@ -526,6 +547,10 @@ def get_recipe(rid):
             select(RecipeQueue.id)
             .where(RecipeQueue.recipe_id == rid, RecipeQueue.user_id == current_user.id)
         ) is not None
+        # Recipe-page annotations (O-c-1): the derived current-vs-original change set, rides along in the
+        # payload like stats/ingredients so the "your changes" layer paints with the page (no 2nd request).
+        # RAW diff entries — the client abbreviates + position-anchors them. [] until the recipe is edited.
+        annotations = _recipe_annotations(s, rid)
         # Cook-photo album (Stage 4 build 3a — display; 3d-i — STORED order). Rides along in the recipe
         # payload (like stats/ingredients/steps) so the album paints with the page, no second request. Per
         # photo: path, caption, the cook's DATE (cook_log.cooked_on, LEFT JOIN — NULL for a standalone photo),
@@ -565,6 +590,7 @@ def get_recipe(rid):
             "is_seed": r["source"] == "seed",           # seed tier stays read-only (edit in seed.py)
             "is_test": r["source"] == "test",           # scratch tier — gets the visible test marker
             "is_queued": is_queued,                     # stage 3a: my want-to-make queue membership
+            "annotations": annotations,                 # O-c-1: raw current-vs-original diff entries ([] if unedited)
         }
     )
 
