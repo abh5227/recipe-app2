@@ -39,6 +39,8 @@ CHANGE OBJECT SHAPE (a flat, ordered list):
 import json
 from difflib import SequenceMatcher
 
+import units   # pure unit abbreviator (mirrors scaler.js) — canonical amount COMPARE, kills unit-repr phantoms
+
 # The modified-vs-(added+removed) boundary for UNLINKED rows / steps, tuned via the unit tests: a reword
 # (a shared stem, e.g. "1 cup sugar" -> "¾ cup sugar" ~0.82, "sugar" -> "brown sugar" line ~0.76) reads as
 # ONE modified; a wholesale replacement ("1 cup sugar" -> "3 eggs" ~0.2) reads as removed + added. 0.6 sits
@@ -173,13 +175,23 @@ def _ing_line(r):
     return f"{r.get('qty') or ''} {_ing_name(r)}".strip()
 
 
+def _canon_amount(qty):
+    """The canonical COMPARISON form of an amount — unit-abbreviated + lowercased + trimmed (units.
+    canon_unit_str), mirroring the client's canonicalizeUnit. The client re-canonicalizes units on EVERY
+    save ("1 teaspoon" -> stored "1 tsp"), so an untouched row's baseline-vs-current differs in the unit
+    STRING only; comparing canonical forms means that representation-only drift doesn't read as an amount
+    edit. Detection only — the emitted from/to keep the RAW strings, so a genuine change shows real values.
+    The number is never touched (only unit words match the rules), so a real amount change still differs."""
+    return units.canon_unit_str(qty or "")
+
+
 def _ingredient_pair_changes(o, n, new_pos=None, old_pos=None):
     """The field-level diff of a MATCHED ingredient pair (id-matched or similarity-matched). AMOUNT is one
     coherent change from `qty`; name and note are their own changes. Emits only the aspects that differ.
     new_pos/old_pos are the heading-excluded real-ingredient indices (the O-c-1 anchor)."""
     label = _ing_name(n) or _ing_name(o)
     out = []
-    if (o.get("qty") or "") != (n.get("qty") or ""):       # amount coherence: the single combined `qty`
+    if _canon_amount(o.get("qty")) != _canon_amount(n.get("qty")):   # canonical compare: unit-repr drift is NOT a change
         out.append({"kind": "ingredient", "type": "modified", "field": "amount", "label": label,
                     "from": o.get("qty") or "", "to": n.get("qty") or "", "new_pos": new_pos, "old_pos": old_pos})
     if _ing_name(o) != _ing_name(n):
