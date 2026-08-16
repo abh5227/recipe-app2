@@ -304,6 +304,82 @@ adding a source never touches the hard logic.
 - Full **image storage** (extract `photos[]`; today `image` is primary-only / NULL).
 - **Use the harvested gram** as the authoritative display + scaling weight (captured now, not yet
   used — see Known limitations & tech debt).
+- **Importer hardening — catch errors at the door and DECLINE, don't silently mis-structure.** A
+  full-corpus survey (**[docs/import-damage-survey-2026-08.md](docs/import-damage-survey-2026-08.md)**)
+  measured what the import actually left behind: **78/3,345 ingredient rows (2.3%) across 59 recipes**,
+  plus **75 steps carrying a redundant `"1. "` numbering prefix** across 22 recipes. Thin, but the
+  *failure mode* is the problem — **79% of the damaged ingredient rows passed the importer with no flag
+  at all**, and steps are **100% unflagged by construction**. Silently mis-structuring is strictly more
+  dangerous than declining, which is the pipeline's own stated principle. Targets, in survey order:
+  - the damage classes themselves — stray punctuation stranded at a name's head/tail (32 rows, the
+    largest, almost always a dual-unit split like `'2 oz./75g'`); non-vocabulary compound units (23 —
+    `'small bunch'`, `'large head'`, `'tins'`, `'package'`); a measuring unit stranded in the name (11 —
+    `waffle#4 '480mL cups milk'`); compound quantities never split out (`'1 28 oz'`, `'2 x 6oz'`);
+    parenthetical duplicates (`'(120mL, 120mL)  heavy cream'`); underscore-wrapped pseudo-headings.
+  - **strip the redundant leading step number** (75 rows / 22 recipes). Priority is higher than the
+    count suggests: the source's numbering and the app's margin circle **contradict each other on the
+    page** — observed live, circle **3** beside text beginning **"2."** — because the source numbers
+    logical steps while the app numbers rows, and the import split some logical steps across several
+    rows. Wrong from import, on never-edited recipes; a reader following "2." lands on the wrong step.
+  - **promote ALL-CAPS `PREFIX:` section titles to `is_heading` rows** (24 rows / 11 recipes) — the same
+    class as the underscore-wrapped pseudo-headings but a different surface form, needing its own
+    detector. **18 of those rows sit in 9 recipes with ZERO real step headings**, and that propagates:
+    with no sections, a removed step there carries `section: null` and the annotation layer can only
+    place it at list bottom. **Importer damage degrades the annotation layer downstream** — fixing the
+    import is what makes annotations read properly on those recipes.
+  - **normalize Cyrillic homoglyphs** (2 rows: `'З. MAKE THE SEASONING'` where `З` is U+0417, and
+    `'МАКЕ THE CHICKEN'` in Cyrillic). Trivial in count but it must land *before* the prefix-stripper —
+    `'З.'` doesn't match `^\d+\.`, so a naive strip leaves the row with a bogus number. Also the one
+    class the scripted survey missed outright: it checked for mojibake and entities, not for characters
+    that render correctly as the wrong codepoint.
+  - **a step-level flag mechanism — none exists.** `_line_flag_rows` is only called from
+    `_ingredient_rows`, so `import_flags.position` indexes ingredients only.
+  - **surfacing the queue at all.** 593 flags across 209 recipes (69.7%) are written at import and read
+    by nothing but a one-off backfill script — no route, no page. Ties into the review-UI idea already
+    recorded under Known limitations.
+
+### Recipe annotations + editor parity (O-c) · IN PROGRESS
+
+The recipe page's handwritten annotation layer (current-vs-ORIGINAL) and the inline editor work it
+pulled in. Design + the shipped commit arc in
+**[docs/design-decisions.md](docs/design-decisions.md)**; standing code contracts in
+**[CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md)**; corpus measurements in
+**[docs/import-damage-survey-2026-08.md](docs/import-damage-survey-2026-08.md)**.
+
+- **Shipped (CI-green through `147c5a5`):** O-c-0 position+section anchoring, `(position, id)` ordering
+  so anchors align by guarantee rather than coincidence, the `annotations` block on `get_recipe`, the
+  two diff-correctness fixes (canonical amount compare; canonical phase-2 similarity key), and the
+  client render for amount / name / step / added.
+- **In flight (built, uncommitted):** annotation **Stage 3** (removed items struck at their section's
+  bottom) + editor-parity **Stages 1-2** (clearing a step's text deletes it; the destroy→re-render→
+  re-mount cycle and a per-step delete control). Open against it:
+  - **preamble placement.** A removed item whose `section` is `null` lands at the bottom of the whole
+    list. That's right only when the list has *no* headings; when it has some, `null` means "the unnamed
+    leading section" and belongs **before the first heading**. `insertRemovedRows` conflates the two.
+  - the per-step trash button is clipped by its 36px gutter.
+  - **the blank-step prune is CLIENT-SIDE ONLY** — a raw `PUT` carrying a blank step still stores it;
+    `validate_recipe_payload` / `write_recipe_rows` stay permissive. Belt-and-suspenders server pruning
+    was proposed and **deferred, not ruled on** — it also covers the orphaned `#/edit` form and direct
+    API calls.
+- **Next — editor-parity Stage 3:** an add-step control + a section-heading adder, reusing the remount
+  cycle Stage 2 built.
+- **Then — a per-row ACTIONS MENU.** Delete, add-above, add-below, heading toggle, and eventually the
+  reorder grip are accumulating past what a row edge can hold, on **both** lists. An overflow menu is
+  the likely shape; not decided.
+- **Then — DRAG-REORDER for both lists**, deliberately split out and **GATED on deciding the annotation
+  semantics first.** Reorder is diff-noisy: swapping two rows emits a `removed`+`added` phantom pair for
+  anything without a stable key, and only **50/3,345 ingredient lines (1.5%)** are id-linked while steps
+  have no id at all. Options: teach the engine a **"moved"** concept (detect `removed`+`added` with
+  identical text → emit `moved`, or suppress); ship and accept the phantoms; or linked-only, which helps
+  1.5% of rows. **The fix belongs in `snapshot_diff`, not the editor.** Note also that dragging a
+  *heading* silently re-sections every row beneath it — section membership is purely positional and
+  nowhere recorded.
+- **Parity gap — step headings are display-only in the inline editor.** Ingredient headings are
+  editable; step headings render through the reading-mode `li.group` and can't be retitled.
+- **Also pending (pre-existing):** O-c-2 per-user ink picker (`users.annotation_ink` → `--ink-pen`);
+  change-tracking **stage 4** (`recipe_changes` rows + the notes model); album **stage 3e** (anchor a
+  photo to a method step); and the Cooking Journal itself, which all of the above feeds. Sequencing is
+  recorded under Per-cook Journal (P5).
 
 ### Frontend design pass — "used cookbook" recipe page · IN PROGRESS
 
@@ -996,6 +1072,20 @@ clean corpus, not learned models. Depends on Phase 6 (linkage) + 8 (metadata) + 
 
 ## Parking lot / undecided
 
+- **Telling CLEANUP edits apart from PERSONAL changes in the annotation layer — DEFERRED, with
+  reasoning.** The worry: ~298 recipes came from Paprika, imports land slightly wrong, and if much
+  future editing is really janitorial cleanup then those corrections render as personal annotations and
+  dilute the outcome signal the whole app is built to capture. Measured before designing anything
+  (**[docs/import-damage-survey-2026-08.md](docs/import-damage-survey-2026-08.md)**) and deferred
+  because every leg of the argument came back thin: the damage is **2.3% of ingredient rows**; a
+  cleanup costs **~1 annotation entry, 1:1, no cascade**; **re-splitting a mis-parsed amount — the most
+  valuable cleanup class — already produces ZERO entries**; **298/300 recipes are still byte-equal to
+  baseline**, so the pollution is prospective rather than observed; and every cheap discriminating
+  signal is unavailable (`import_flags` miss 79% of ingredient damage and 100% of step damage; there is
+  no `updated_at`, no snapshot on manual save, and no non-`original` snapshots — so **no edit-time datum
+  exists** for a grace-window). The chosen direction is to **fix imports at the source** (importer
+  hardening under P15) rather than classify edits after the fact. Revisit only if real cleanup editing
+  starts making the margins noisy.
 - Backwards cook schedule ("start the rice at 6:40") — becomes feasible once per-step
   durations exist (Phase 9b refinement).
 - AI-ranked substitutes (paid upgrade to Phase 13c).

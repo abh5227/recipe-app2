@@ -112,6 +112,16 @@ How this project is run:
   default browser with the macOS `open` command (e.g. `open preview/feed-look.html`) — never just report
   the path and wait. A built preview that hasn't been opened isn't done. Exception: confirmed tiny CSS
   tweaks to a treatment already seen.
+- **Previews must exercise the REAL DISPLAY TRANSFORM, not just the real tokens and fonts.** Real
+  markup + real CSS is NOT sufficient when the value being judged is *computed* on its way to the
+  screen. Every early O-c-1 annotation preview injected the raw stored `qty` instead of running it
+  through the ledger's actual `amountText(_, 1)` → `abbrevUnits` pipeline. **Measured consequence:**
+  full-word amounts wrapped to **two lines** inside the fixed 80px amount column, where the abbreviated
+  forms production actually renders fit on **one** — so four rounds of treatment judgement were made
+  against a wrapping problem that does not exist, and nearly locked the wrong design. This is the same
+  rule as the verbatim-components rule above, one layer deeper: if the app transforms a value before
+  displaying it (scaling, abbreviation, unit conversion, truncation, linkify), the preview must call
+  that transform.
 - **Propose a spec and STOP for approval** before building anything non-trivial; don't
   draft-and-commit in one shot.
 - **Present a full diff and wait for approval** before applying edits.

@@ -76,7 +76,9 @@ paper/brown).
   off a warm desk.
 - **The user's hand layer** — a **reserved earthy tone** (`--hand`, a warm terracotta/rust,
   finalized at R2), replacing the old oxblood; warm-earth yet contrasting the green structure.
-  *Reserved in Round 1* (token defined, unused); rendered in Round 2.
+  *Reserved in Round 1* (token defined, unused); rendered in Round 2. ⚠️ **Superseded:** `--hand` was
+  claimed by the social feed before R2 arrived, so the annotation layer uses its own `--ink-pen` — see
+  the correction under Reserve-not-build.
 - **Category tags** — re-toned to a warm-earth set (brick / olive / ochre / terracotta / clay-rose),
   muted and distinct; **same category = same color** (cuisine kept as one crisper color, not a shade
   per cuisine). Status tags stay dashed/quiet; unlisted tags stay plain.
@@ -99,6 +101,8 @@ the user's layer**, with **brown** carrying the body text and the primary contro
   styles.css). **Spectral is still Google-Fonts-loaded** (index.html), so offline the *title* falls
   back to Georgia/serif while metadata stays local (see caveats).
 - **A pen-like hand** (Caveat / Kalam) — the Round-2 user layer; **reserved**, not loaded in R1.
+  ⚠️ **Superseded:** Kalam is now bundled self-hosted and in active use (the feed, then the annotation
+  layer) — see "Type — Kalam is the app's 'personal hand'" below.
 - **Masthead title face** — `--font-title` remains the one-line swap point (Spectral / Newsreader /
   Fraunces), kept for flexibility.
 
@@ -193,7 +197,12 @@ only.**
 
 Defined or structured in R1, but **not rendered on real data** — each reserved with its actual mechanism:
 
-- **`--hand`** / **`--font-hand`** — the hand color + pen-hand font tokens, declared and unused (the hand font is not loaded in R1).
+- **`--hand`** / **`--font-hand`** — the hand color + pen-hand font tokens. ⚠️ **CORRECTION (found during
+  O-c-1): neither is reserved any more.** The social feed shipped first and adopted both — `--hand` is
+  live in **11** feed/Polaroid rules and `--font-hand` (now **Kalam**, bundled self-hosted, not the
+  never-loaded Caveat) in **12**. So the annotation layer could NOT claim `--hand`: it introduced its
+  own **`--ink-pen`** instead, precisely so the per-user ink picker (O-c-2) can't repaint the feed. The
+  *font* stays shared. See "O-c-1 — the annotation render" below.
 - **`--hand-gutter`** — the reserved right margin, wired into the recipe reading column's `max-width` at **0** in R1.
 - **The amount cell** — the ledger's `.amount-cell` (addressable `.qty` inside) is the R2 **strike target**: R2 strikes the printed value and sets the edited value beside it in the hand color.
 - **The step-body wrapper** — each method step's body is wrapped in **`.step-body`** inside `li.step`, the attach point for future per-step photos and R2 step-notes.
@@ -1520,6 +1529,75 @@ when `section` is `None` (no preceding heading) or the section was since renamed
 `new_pos`/`old_pos`/`section`. Removed-item placement is **section-bottom by design, not nearest-surviving-
 neighbor** (simpler + clearer for duplicate-heavy recipes). Pure function + tests only — no render (O-c-1),
 no schema, no snapshot-format change; **stage-4 materialization inherits position + section for free.**
+
+## O-c-1 — the annotation render (shipped, CI-green through `147c5a5`)
+
+The R2 **handwritten edit treatment** (above) made real: the recipe page now renders
+current-vs-ORIGINAL annotations from the O-c-0 diff. Six commits, pushed as one stack.
+
+- **`d3cce10` (O-c-0)** — `diff_snapshots` emits `new_pos`/`old_pos` (0-based, **heading-EXCLUDED**,
+  ingredients and steps as **separate** sequences) plus `section` on removed items (the nearest
+  preceding heading's text, from the heading-**INCLUSIVE** `position`; `null` for headings). Detail in
+  the O-a section above.
+- **`f2e49a3`** — `get_recipe` orders ingredients and steps by **`(position, id)`**, matching
+  `serialize_recipe_content` exactly. Positions are unique in the data but **not** schema-enforced, so
+  anchor alignment was previously coincidental; now it is guaranteed.
+- **`b9e06fe`** — `get_recipe` attaches an **`annotations`** block: fetch the `reason='original'`
+  snapshot, serialize current, **byte-equal short-circuit → `[]`** (the common case — 99.3% of recipes),
+  else `diff_snapshots(original, current)`. **Raw entries; no abbreviation server-side** — the render
+  owns display (see the abbreviation contract in CODE_WALKTHROUGH).
+- **`18255f9`** — amounts are compared by **canonical unit form**. New pure `units.py` mirrors
+  `scaler.js`'s `UNIT_ABBREV`, guarded cross-language by `tests/js/unit-abbrev-sync.test.js` — the same
+  shared-brain pattern as `weights.py` ↔ `scaler.js`. **Why:** the client canonicalizes units on *every*
+  save (`teaspoon`→`tsp`) on *every* row, so untouched rows diverged from their baseline and rendered
+  phantom "amount changed" marks. Measured exposure: **66% of baselines (200/299)** would have lit up on
+  their recipe's first edit.
+- **`34ff1e2`** — the **phase-2 similarity string** canonicalizes `qty` too (`_ing_line_canon`, used
+  *only* as the matching `text_of`; `_ing_line` stays **raw** because it also emits the `text` of
+  added/removed entries). **Why:** unit drift alone dropped a real rename below the 0.6 threshold —
+  `"kosher salt"→"sea salt"` scored **0.556** (from 0.839), silently splitting one `modified` into
+  `removed`+`added`.
+- **`faca870`** — the client render: amount, name, step, and added, all position-anchored, with the
+  four approved treatment refinements below.
+
+### Locked treatment decisions
+
+- **`--ink-pen: #7a4718` (Sepia) is a NEW token, deliberately distinct from `--hand`.** `--hand` is
+  live across **11** feed/Polaroid rules; the planned per-user ink picker (O-c-2) writes
+  `--ink-pen`, and must not repaint the feed. `--font-hand` (Kalam) **is** shared — the *face* is the
+  app's personal hand, the *ink* is the annotation's.
+- **Amount treatment = "plain-A".** The struck **abbreviated** original stacked over the Kalam ink
+  value, **inside the existing 5rem `--col-amount`**, on **edited rows only** — clean rows stay
+  byte-identical to today's ledger. **Rejected, with reasons:** *Variant B* (widen the global amount
+  column to 13.5rem) — taxes every clean row to help the rare edited one; *A′* (inline overflow into
+  the name) — overwrites the ingredient name, illegible even in the common case; *A″* (nowrap struck
+  original) — collides with the name at real lengths.
+- **Word-level striking on name-only and step edits** — strike only the words that changed, via a
+  render-side token diff over the `from`/`to` the diff already carries. **Exception:** on a row where
+  amount **and** name both changed, the name reverts to a whole-field stack so both corrections align
+  on one line. A deliberate trade of word-level granularity for alignment, on those rows only.
+- **Sizes — two distinct facts, recorded separately because they're easy to conflate:**
+  - *Absolute:* body ledger text is `--fs-amount: 15px`; the Kalam ink is **18px** on ingredients and
+    **18.5px** on steps (Kalam renders optically smaller than Spectral at the same size); the strike is
+    **1px**.
+  - *Refinement deltas applied during the treatment pass:* ink **+2px** (step ink 16.5px → 18.5px) and
+    strike **2px → 1px** (a thin proofreader's rule, not a redaction bar).
+- **Removed items render struck at their section's bottom.** A renamed or since-deleted section falls
+  back to list bottom. **Removed steps are UNNUMBERED** — they carry a class that opts out of the
+  `.steps` counter (`li.step-removed`, deliberately *not* `li.step`), so live steps keep unbroken
+  numbering.
+- **Heading add/remove is NOT recorded — settled, and already implemented.** `annotationIndex` buckets
+  only `kind:"ingredient"` and `kind:"step"`; a `kind:"heading"` entry falls through every branch and
+  renders nothing. **Rationale:** a heading is an *organizational preference*, not a meaningful change
+  to the recipe — reordering your own sections isn't something the annotation layer should mark up. Not
+  an open question.
+- **Editor: clearing a step's text and saving DELETES that step** — steps now use the same blank-row
+  treatment as ingredients (`nonEmptySteps`, the sibling of `nonEmptyRows`). Focus after a delete lands
+  on the step that took the deleted one's place, or on the new last step when the deleted one was last.
+
+Empirical grounding for the decisions above — how much import damage exists, what a cleanup edit
+costs in annotation entries, and why reorder is gated — is in
+**[import-damage-survey-2026-08.md](import-damage-survey-2026-08.md)**.
 
 ## Open questions
 

@@ -306,6 +306,61 @@ and full **image storage** (`image` stays NULL; `photos[]` is not extracted yet)
 
 ---
 
+## The annotation render (O-c-1) — load-bearing contracts
+
+The recipe page renders current-vs-ORIGINAL annotations derived from `diff_snapshots`. The visual
+decisions live in [docs/design-decisions.md](docs/design-decisions.md); these are the **standing code
+rules** — each one was learned by breaking it, and each is cheap to re-break.
+
+### ⚠️ THE RULE THIS LAYER LIVES OR DIES BY
+
+> **The diff compares EXACTLY THREE ingredient aspects — and nothing else.**
+> `_ingredient_pair_changes` (`snapshot_diff.py:201-216`) looks at **`_canon_amount(qty)`**,
+> **`_ing_name`** (= `label or raw_text`), and **`note`**.
+>
+> This is *why* a save can NULL `label` and rewrite `raw_text` on **100%** of ingredient rows
+> (`app.py:298-311`) and still diff to **zero**. The representation churn is absorbed on purpose.
+>
+> **Widening the compared field set turns every save into a corpus-wide wall of phantom
+> annotations.** That is not hypothetical — it is the identical failure class that already shipped
+> twice and had to be fixed: `18255f9` (unit-representation drift made untouched rows read as edits,
+> exposure measured at 66% of baselines) and `34ff1e2` (the same drift pushed a real rename below the
+> similarity threshold and split it into remove+add).
+>
+> If a new field genuinely needs diffing, **it needs its own canonicalization first** — and a test
+> proving an untouched row still diffs to zero after a save round-trip.
+
+### The rest
+
+**THE ABBREVIATION CONTRACT.** The render MUST pass an amount `from`/`to` through
+`amountText(_, 1)` → `abbrevUnits`, exactly as the ledger does. `diff_snapshots` emits **raw,
+unabbreviated** values on purpose (the server has no display opinion); rendering them raw puts
+"1 teaspoon" next to clean rows showing "1 tsp".
+
+**Synthesized removed rows must NEVER advance the heading-excluded counter.** They aren't in the
+diff's *current* sequence — counting them shifts every subsequent anchor. Both list builders
+therefore increment only on real non-heading rows and splice the removals in afterwards.
+
+**TipTap steps are ISOLATED ProseMirror documents, and each `onUpdate` closure captures its index at
+mount** (the island invariant, `step-editor.js:8-12`). Any splice or reorder of `draft.steps`
+requires the full cycle — **destroy → re-render with fresh `data-i` → re-mount** — or surviving
+editors write to the *wrong* index. That is silent data corruption, not a visible error.
+
+**`onStepInput` must be a shared named function**, passed by both `enterEditMode` and every
+re-render, so a re-mounted editor wires back identically to the original mount. An inline arrow at
+one call site is how the two drift apart.
+
+**Focus a re-mounted step editor with `editor.commands.focus("end")`, not DOM `.focus()`.** A
+contenteditable focused through the DOM gets no selection; the editor's own command sets one.
+
+**`app.js` is not node-importable** (it calls `boot()`), so new logic is only unit-testable if
+extracted to a pure module — the `ingredient-row.js` / `step-row.js` / `scaler.js` pattern.
+Consequence worth stating plainly: **the index-rebinding behaviour has NO automated coverage.** It is
+verified by manual click-through — delete a middle step, type into several survivors, save, reopen,
+and confirm each edit landed on the step you typed into.
+
+---
+
 ## Critical pros & cons / future considerations
 
 Known tradeoffs and considerations before extending the app.
@@ -398,7 +453,24 @@ What's deliberately explicit, and why it reads the way it does:
 
 Newest first. Add an entry whenever the architecture or a feature changes.
 
-- **Recipe import — reader → cleanup core → write (Phase 15)** *(current)* — a three-stage import
+- **Recipe annotations on the page (O-c-1)** *(current)* — the recipe page now renders
+  current-vs-ORIGINAL annotations: `get_recipe` attaches an `annotations` block (original snapshot vs
+  current serialization, byte-equal short-circuit for the 99.3% unedited case), and the client renders
+  amount / name / step / added marks anchored by the heading-excluded position the diff emits. Six
+  commits `d3cce10`→`faca870`; the arc, the six commits, and the locked treatment decisions are in
+  [docs/design-decisions.md](docs/design-decisions.md), the standing code rules under "The annotation
+  render (O-c-1)" above, and the corpus measurements in
+  [docs/import-damage-survey-2026-08.md](docs/import-damage-survey-2026-08.md). Two fixes inside the
+  stack are worth knowing about because both were *invisible* until the render existed: amounts are now
+  compared by canonical unit form (new `units.py`, mirroring `scaler.js`, cross-language sync test), and
+  the phase-2 similarity key canonicalizes `qty` too — without them, the client's save-time unit
+  canonicalization made untouched rows read as edits and pushed real renames below the match threshold.
+  ⚠️ **A CI failure mode worth remembering:** pushing this six-commit stack registered **no GitHub
+  Actions run at all** — the run counter stayed frozen at #153 despite an active workflow, a valid
+  trigger, a public repo, and no throttling. An empty commit (`147c5a5`) triggered #154, which went
+  green. "Watch CI to green" has a mode where *nothing happens*, which reads like a slow queue rather
+  than a failure; if no run appears within a few minutes, re-trigger rather than wait.
+- **Recipe import — reader → cleanup core → write (Phase 15)** — a three-stage import
   pipeline: `paprika_native_reader.py` (Paprika NATIVE export → normalized shape),
   `import_cleanup.py` (source-agnostic cleanup core, decline-over-guess), and `import_write.py`
   (cleaned recipe → DB rows). Migration `009` added `recipes.uid` + `hash` (uid = dedup key,
