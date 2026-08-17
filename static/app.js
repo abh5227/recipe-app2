@@ -942,6 +942,18 @@ function editStepHeadingField(i, text) {
   return `<input type="text" class="ie e-step-heading" data-inline-edit-step="heading" data-i="${i}" value="${esc(text || "")}" placeholder="Section heading" aria-label="Section heading" spellcheck="false">`;
 }
 
+// Editor parity stage 3: the step list's adder — the SAME .adder control the ingredient list ends with,
+// so no new vocabulary. It lives OUTSIDE #steps-list for two reasons: rerenderEditSteps() owns that
+// <ol>'s innerHTML (anything inside would be destroyed and rebuilt on every add/remove), and a <div> is
+// not a legal <ol> child. Being a sibling, it survives every remount cycle untouched and needs no
+// re-render of its own. NB: no "+ section heading" here yet — the heading field lands in this stage;
+// the adder that uses it is stage 2.
+function stepAddersHTML() {
+  return `<div class="step-adders">
+      <button type="button" class="adder" data-inline-edit-add-step>+ add step</button>
+    </div>`;
+}
+
 // Long headnotes clamp to 3 lines + a "more" expander; short ones show in full. Measured after
 // fonts load so the clamped line-count is accurate (Spectral may change wrapping vs the fallback).
 function setupHeadnote() {
@@ -1452,6 +1464,7 @@ function paintRecipe() {
           <section>
             <h2 class="col-title">Method</h2>
             <ol class="steps" id="steps-list">${steps}</ol>
+            ${editing ? stepAddersHTML() : ""}
             ${editing ? ieNoteHTML(r) : (r.notes ? `<div class="notes"><strong>Note.</strong> ${esc(r.notes)}</div>` : "")}
           </section>
         </div>
@@ -1903,6 +1916,19 @@ function removeStep(i) {
   const f = focusIndexAfterRemove(i, arr.length);
   if (f != null) focusStepEditor(f);
 }
+// The step mirror of addIngredient (push -> markDirty -> re-render -> focus the new row). Two things
+// differ, both forced by the island invariant: the re-render MUST be the full destroy/re-mount cycle
+// (a bare innerHTML swap orphans every editor), and the caret is placed with focusStepEditor because a
+// ProseMirror instance can't be focused via DOM .focus(). The pushed row carries exactly the fields the
+// three readers use — renderStepEditHost, mountStepEditors, stepToPayload all read is_heading + text.
+// A new step is empty by definition, so saving without typing drops it again (nonEmptySteps): the same
+// contract as clearing an existing step's text, and it leaves the saved content byte-identical.
+function addStep() {
+  const arr = view.draft.steps;
+  arr.push({ is_heading: 0, text: "" });
+  markDirty(); rerenderEditSteps();
+  focusStepEditor(arr.length - 1);
+}
 function toggleIngredientHeading(i) {
   toggleRowType(view.draft.ingredients[i]);   // lossless in-place flip (Option A1; see ingredient-row.js)
   markDirty(); rerenderEditIngredients();
@@ -2040,6 +2066,7 @@ function handleInlineEdit(e) {
   const ani = e.target.closest("[data-inline-edit-addnote]");
   if (ani) { addNote(Number(ani.dataset.i)); return true; }
   // Editor parity — step structural actions (re-render + re-mount via rerenderEditSteps)
+  if (e.target.closest("[data-inline-edit-add-step]")) { addStep(); return true; }
   const rms = e.target.closest("[data-inline-edit-rm-step]");
   if (rms) { removeStep(Number(rms.dataset.i)); return true; }
   return false;
