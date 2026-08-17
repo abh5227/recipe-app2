@@ -747,10 +747,16 @@ a:hover { color: var(--berry-lift); }
 .ingredient-list li.added::before { content: "+"; position: absolute; left: -17px; top: 5px; margin-top: -2.8px; font-family: var(--font-hand); color: var(--ink-pen); font-size: 21px; }
 .ingredient-list li.added .qty { font-family: var(--font-hand); color: var(--ink-pen); font-size: 18px; }
 .ingredient-list li.added .iname, .ingredient-list li.added .iname .ingredient { font-family: var(--font-hand); color: var(--ink-pen); font-size: 19px; text-decoration: none; }
-/* step edit — reworded uses word-level .was/.fix inside .step-body (.fix wraps as prose); added is the "+"-prefixed Kalam line. Ink 16.5px -> 18.5px. */
+/* step edit — reworded uses word-level .was/.fix inside .step-body (.fix wraps as prose); added is a
+   whole line of Kalam ink. Ink 16.5px -> 18.5px.
+   An added STEP carries NO "+" marker, deliberately, while an added INGREDIENT does (li.added::before
+   above) — the asymmetry is the point, not an oversight. A step arrives as a full paragraph in the
+   hand ink against printed Spectral prose: it announces itself, and a "+" only clutters it. A ledger
+   row is terse enough that the ink alone can read as ordinary content, so there the marker earns its
+   keep. Both "−" markers stay for a further reason: removals STACK at their section's bottom, and the
+   marker is what delimits one struck row from the next. */
 .step-body .fix { font-family: var(--font-hand); color: var(--ink-pen); font-size: 18.5px; }
 .step-body .step-add { font-family: var(--font-hand); color: var(--ink-pen); font-size: 18.5px; }
-.step-body .step-add::before { content: "+ "; }
 /* removed item (stage 3) — struck at the bottom of its original section (list bottom when it had none).
    No new ink or vocabulary: the row is the SAME ledger structure, struck via the shared .was rule and
    sitting back a touch so it reads as a trace of what was there, not a live ingredient/step. */

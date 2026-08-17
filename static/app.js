@@ -880,8 +880,10 @@ function rerenderServings() {
 // text if a payload has no spans.
 function renderStepRow(row, ann) {
   if (row.is_heading) return `<li class="group">${esc(row.text)}</li>`;
-  // O-c-1: an added step -> the whole line in the hand ink ("+"-prefixed); a reworded step -> the struck
-  // original + the Kalam correction. Both are plain prose (no scaling/abbreviation — that's amount-only).
+  // O-c-1: an added step -> the whole line in the hand ink (NO "+" marker — a full paragraph of ink
+  // against printed prose announces itself; see the .step-add note in styles.css); a reworded step ->
+  // the struck original + the Kalam correction. Both are plain prose (no scaling/abbreviation — that's
+  // amount-only).
   if (ann && ann.added) return `<li class="step"><div class="step-body"><span class="step-add">${esc(row.text)}</span></div></li>`;
   if (ann && ann.mod) return `<li class="step"><div class="step-body">${wordDiffHTML(ann.mod.from, ann.mod.to)}</div></li>`;
   const spans = row.spans || [{ t: "plain", text: row.text }];
