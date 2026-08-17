@@ -911,11 +911,19 @@ function renderStepsList(steps) {
   return items.map((x) => x.html).join("");
 }
 
-// The per-step remove control: the SAME hover-revealed cluster the ingredient rows use (.rtools /
-// .rbtn.rm / ING_TRASH), just without the grip + heading-toggle siblings — those are ingredient-only
-// affordances. Wired through the delegated handleInlineEdit dispatch, not its own listener.
+// The per-step controls: the SAME hover-revealed cluster the ingredient rows use (.rtools / .rbtn.rm /
+// ING_TRASH), just without the heading-toggle sibling — that is an ingredient-only affordance. Wired
+// through the delegated handleInlineEdit dispatch, not its own listener.
+// A stage 1 appends the ⋯ AFTER the trash, so the persistent control is at the far right on BOTH
+// lists (the trash is the transient one — stage 2 moves step delete into the menu). Keeping the trash
+// FIRST also keeps styles.css's "alone in the cluster, the trash drops the fence" override true: the
+// fence divides the trash from what precedes it, and nothing does.
+// ⚠️ NO REORDER GRIP HERE YET, deliberately — see the gutter note in styles.css. A grip alongside the
+// still-inline trash makes this cluster 79px and would force the gutter to 89px for one stage and then
+// back to 62px, resizing it twice. The grip lands in stage 2 as the trash leaves (52px), which is what
+// the 62px gutter is cut for.
 function editStepRowTools(i) {
-  return `<span class="rtools"><button type="button" class="rbtn rm" data-inline-edit-rm-step data-i="${i}" title="Remove step" aria-label="Remove step">${ING_TRASH}</button></span>`;
+  return `<span class="rtools"><button type="button" class="rbtn rm" data-inline-edit-rm-step data-i="${i}" title="Remove step" aria-label="Remove step">${ING_TRASH}</button>${rowMoreHTML(i, "step")}</span>`;
 }
 
 // Stage 1a (edit mode only): a non-heading step becomes an empty host that mountStepEditors() fills
@@ -1285,6 +1293,63 @@ function handleAlbumPhotoAction(e) {
   if (e.target.closest("[data-del-confirm]")) { deletePhoto(fig.dataset.photoId, rid); return true; }
   if (e.target.closest("[data-del-cancel]"))  { const dc = e.target.closest(".del-confirm"); if (dc) dc.remove(); return true; }
   return false;
+}
+
+/* ---------- A stage 1: the inline editor's per-row ⋯ menu ----------
+   Not a new dropdown — the album's .photo-menu component with a second class on its selectors
+   (styles.css). Same box, same items, same .danger / [disabled] / .sep, same viewport-edge .up flip.
+   What is NOT shared is the OPEN STATE, and that is deliberate rather than incidental. The two
+   families need separate close() pairs because each one's "is this click exempt?" test names its own
+   trigger and its own container: the photo pre-branch exempts .photo-menu / [data-photo-menu], the row
+   pre-branch exempts .row-menu / [data-row-menu]. Give the row menu the .photo-menu CLASS and the
+   existing photo pre-branch matches it as a stranger and deletes it on the very click that opens it —
+   click ⋯, closePhotoMenu() removes the menu, the toggle then re-opens it, and the menu can never be
+   dismissed by its own trigger. Two classes, two closers, two pre-branches; mutual exclusion comes
+   from openRowMenu() calling BOTH closers, and from the row pre-branch firing on any photo-⋮ click. */
+function closeRowMenu() {
+  const m = app.querySelector(".row-menu");
+  if (!m) return;
+  const row = m.closest(".erow, li.step-edit");
+  if (row) {
+    row.classList.remove("menu-open");
+    const trig = row.querySelector("[data-row-menu]");
+    if (trig) trig.setAttribute("aria-expanded", "false");
+  }
+  m.remove();
+}
+// Stage 1 renders the COMPONENT only. Stage 2 relocates the existing actions here (ingredients: to
+// heading / to ingredient; steps: delete, .danger) and stage 3 adds the inserts. The placeholder is a
+// real disabled item rather than an empty box so the menu has honest size — an empty <div> would be a
+// 10px sliver and the .up flip could not be verified in the click-through.
+function rowMenuItemsHTML(kind) {
+  return `<button type="button" disabled>No actions yet</button>`;
+}
+function openRowMenu(trigger, i, kind) {
+  closePhotoMenu();                                        // single-open ACROSS both families
+  closeRowMenu();
+  const row = trigger.closest(".erow, li.step-edit");
+  const cluster = trigger.closest(".rtools");
+  row.classList.add("menu-open");                          // the cluster rests at opacity:0 — see styles.css
+  trigger.setAttribute("aria-expanded", "true");
+  cluster.insertAdjacentHTML("beforeend",
+    `<div class="row-menu" data-i="${i}" data-row-kind="${kind}">${rowMenuItemsHTML(kind)}</div>`);
+  const menu = cluster.querySelector(".row-menu");         // EDGE: flip above the ⋯ if it'd overflow the viewport bottom
+  if (menu.getBoundingClientRect().bottom > window.innerHeight - 8) menu.classList.add("up");
+}
+// Delegated handler — returns true if it owned the click. Scope-guarded on the ROW first, mirroring
+// handleAlbumPhotoAction's `.album-photo` guard, so a click anywhere else costs one closest() call.
+// The row index and kind are resolved ONCE here (from the trigger when opening, from the menu itself
+// once open) so stage 2's item branches read them off `i` / `kind` instead of re-deriving each.
+function handleRowMenuAction(e) {
+  const row = e.target.closest(".erow, li.step-edit");
+  if (!row) return false;
+  const host = e.target.closest("[data-row-menu], .row-menu");
+  if (!host) return false;
+  const i = Number(host.dataset.i);
+  const kind = host.dataset.rowMenu || host.dataset.rowKind;
+  const trigger = e.target.closest("[data-row-menu]");
+  if (trigger) { row.querySelector(".row-menu") ? closeRowMenu() : openRowMenu(trigger, i, kind); return true; }
+  return false;                                            // stage 2 wires the items here
 }
 
 // Stage 4 (3d-iii): drag-to-reorder — a dedicated Reorder MODE. The scatter masonry stays for DISPLAY;
@@ -1781,9 +1846,23 @@ const ING_SECT = `<svg viewBox="0 0 16 16" class="sect-ico" aria-hidden="true"><
 const ING_TRASH = `<svg viewBox="0 0 16 16" class="ic-trash" aria-hidden="true"><path d="M3 4.5h10"/><path d="M6.5 4.5V3h3v1.5"/><path d="M4.5 4.5l.6 8.5a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.5"/><path d="M7 7v4M9 7v4"/></svg>`;
 const ING_NOTEPLUS = `<svg viewBox="0 0 22 16" class="ic-note" aria-hidden="true"><path d="M3 2.5h10v7.5l-3 3.5H3z"/><path d="M13 10h-3v3.5"/><path d="M18 4v5M15.5 6.5h5"/></svg>`;
 const ING_NOTE = `<svg viewBox="0 0 16 16" class="ic-note-sm" aria-hidden="true"><path d="M3 2.5h10v7.5l-3 3.5H3z"/><path d="M13 10h-3v3.5"/></svg>`;
+// A stage 1: the row-actions ⋯ trigger. Deliberately NOT a third icon style — it is ING_GRIP's own
+// primitive (circle r=1.3, fill currentColor) laid out horizontally, so the cluster speaks one
+// vocabulary. 14×4 viewBox because the dots ARE the glyph; there is no surrounding box to reserve.
+const ING_MORE = `<svg viewBox="0 0 14 4" class="more-ico" aria-hidden="true"><g fill="currentColor"><circle cx="2" cy="2" r="1.3"/><circle cx="7" cy="2" r="1.3"/><circle cx="12" cy="2" r="1.3"/></g></svg>`;
 
-// Hover-revealed row-actions: a divider, then grip · heading-toggle (icon+word) · fenced red trash.
+// The ⋯ button itself, shared by both lists. `kind` ("ing" | "step") rides on the attribute so the
+// handler can branch without re-deriving it from the DOM, and `data-i` is the row index in the
+// matching view.draft array — the SAME convention every other row control uses.
+function rowMoreHTML(i, kind) {
+  return `<button type="button" class="rbtn more" data-row-menu="${kind}" data-i="${i}" title="More actions" aria-label="More actions" aria-haspopup="true" aria-expanded="false">${ING_MORE}</button>`;
+}
+
+// Hover-revealed row-actions: a divider, then grip · heading-toggle (icon+word) · fenced red trash · ⋯.
 // The divider + cluster are hidden at rest and slide in on hover/focus-within (link + note-icon stay).
+// A stage 1 adds the ⋯ LAST and changes nothing else: the trash and the heading-toggle keep working
+// exactly as they do today. Stage 2 relocates the toggle INTO the menu (the trash stays inline —
+// one-click delete on ingredients is the decided end state).
 function editIngRowTools(i, isHeading) {
   const word = isHeading ? "ingredient" : "heading";
   const tip = isHeading ? "Make this an ingredient line" : "Make this a section heading";
@@ -1791,6 +1870,7 @@ function editIngRowTools(i, isHeading) {
     <span class="rbtn grip" title="Reorder (coming soon)" aria-hidden="true">${ING_GRIP}</span>
     <button type="button" class="rbtn" data-inline-edit-toggle-ing data-i="${i}" title="${tip}">${ING_SECT}<span class="lbl">${word}</span></button>
     <button type="button" class="rbtn rm" data-inline-edit-rm-ing data-i="${i}" title="Remove" aria-label="Remove">${ING_TRASH}</button>
+    ${rowMoreHTML(i, "ing")}
   </span>`;
 }
 // A raw-field editable cell — the OVERLAY approach: a real <textarea> is the edit surface (plain-text
@@ -2740,9 +2820,16 @@ async function submitBackdate() {
 document.addEventListener("click", (e) => {
   // 3c: a click anywhere outside an open ⋮ menu (and not on the ⋮ itself) closes it — no return, other handlers still run.
   if (!e.target.closest(".photo-menu") && !e.target.closest("[data-photo-menu]")) closePhotoMenu();
+  // A stage 1: the same rule for the editor's row-actions ⋯ menus. A SEPARATE pre-branch rather than
+  // extra terms on the line above, because the two exemption tests are not interchangeable — see the
+  // note on closeRowMenu(). Also no return: this is a pre-branch, every handler below still runs.
+  if (!e.target.closest(".row-menu") && !e.target.closest("[data-row-menu]")) closeRowMenu();
 
   // Inline recipe editor: enter / save / cancel (namespaced data-inline-edit-*). Handled first.
   if (handleInlineEdit(e)) return;
+  // A stage 1: the editor's per-row ⋯ menu. After handleInlineEdit, not before — the ⋯ carries its own
+  // data-row-menu namespace, so the two dispatchers probe disjoint attributes and cannot race.
+  if (handleRowMenuAction(e)) return;
 
   // 3b-iii: the "Cooked it" follow-on photo chip (offer -> pick -> attach). Handled before the .stats
   // block since the chip lives inside the cook block but its buttons are its own.

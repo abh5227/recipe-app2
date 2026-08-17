@@ -405,8 +405,17 @@ a:hover { color: var(--berry-lift); }
 .linkchip .lx:hover { opacity: 1; color: var(--danger); }
 /* hover-revealed cluster: a divider then reorder-grip (Stage 4) · heading toggle · fenced red trash */
 .divider { display: inline-block; width: 1px; height: 16px; background: var(--rule); margin: 0 1px; align-self: center; opacity: 0; transition: opacity 0.12s; }
-.rtools { display: inline-flex; align-items: center; gap: 2px; opacity: 0; transition: opacity 0.12s; }
+/* position: relative so the ⋯ menu anchors to the CLUSTER (A stage 1). Harmless on the step rows,
+   which override it to absolute at line ~830 — absolute is a containing block too. */
+.rtools { display: inline-flex; align-items: center; gap: 2px; opacity: 0; transition: opacity 0.12s; position: relative; }
 .erow:hover .divider, .erow:focus-within .divider, .erow:hover .rtools, .erow:focus-within .rtools { opacity: 1; }
+/* A stage 1: while a row's ⋯ menu is open its cluster must STAY visible. The cluster rests at
+   opacity: 0 and the menu is its CHILD, so without this the whole menu fades out the instant the
+   pointer leaves the row — opacity applies to the subtree, and there is no hover to hold it up once
+   you move toward the menu itself. Set on the ROW (not the cluster) so the ingredient row's .divider
+   is held up with it and the cluster doesn't lose its left edge. */
+.erow.menu-open .divider, .erow.menu-open .rtools,
+.steps li.step-edit.menu-open > .rtools { opacity: 1; }
 .rbtn { height: 24px; min-width: 24px; border: 1px solid transparent; background: transparent; color: var(--ink-soft);
   border-radius: 6px; cursor: pointer; font-family: var(--font-sans); font-size: 13px; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 5px; }
@@ -417,6 +426,9 @@ a:hover { color: var(--berry-lift); }
 .rbtn.rm { margin-left: 5px; padding-left: 8px; border-left: 1px solid var(--rule); border-radius: 0 6px 6px 0; }
 .rbtn.rm:hover { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 6%, var(--card)); }
 .grip-ico { width: 9px; height: 14px; }
+/* the ⋯ trigger's glyph: ING_GRIP's dots on one row. Sized to the viewBox (14×4) rather than a square
+   — .rbtn's own min-width: 24px + align-items: center give it its hit area and vertical centring. */
+.more-ico { width: 14px; height: 4px; }
 .sect-ico, .ic-trash { stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .sect-ico { width: 14px; height: 14px; }
 .ic-trash { width: 13px; height: 13px; }
@@ -821,12 +833,31 @@ a:hover { color: var(--berry-lift); }
 /* Editor parity: the per-step remove control. No new vocabulary — it's the SAME .rtools cluster and
    .rbtn.rm trash the ingredient rows use, revealed on hover/focus exactly like .erow's.
    Edit mode only — .step-edit exists nowhere in the reading path, so reading stays byte-identical.
-   ⚠️ The 36px gutter fits exactly ONE 25px control, clearing the focused editor's raised card (which
-   bleeds 8px past its box via `margin: 0 -8px` below) by ~3px. That is the whole margin there is: a
-   TWO-control cluster measures 51px and overlaps the step text by 23px. So the gutter MUST be re-sized
-   the moment a second control lands here (the reorder grip is the next one due) — do not assume it
-   generalises. */
-.steps li.step-edit { position: relative; padding-right: 36px; }
+   The 36px gutter fitted exactly ONE 25px control, clearing the focused editor's raised card (which
+   bleeds 8px past its box via `margin: 0 -8px` below) by ~3px — so it had to be re-cut the moment a
+   second control landed. A stage 1 lands it (the ⋯), and the gutter is cut ONCE, for the END state,
+   NOT for this stage.
+
+   ⚠️ 62px IS A DECIDED VALUE, NOT A DERIVED ONE — do not "tighten" it to fit whatever cluster happens
+   to be in the row when you read this. All four widths below were measured in the browser on the real
+   page (li.step-edit = 820px, agedashi-tofu in edit mode), and 62px is chosen against ALL of them:
+       trash alone   (before)     25px  -> 36px gutter, 11px gap   [what shipped until now]
+       trash + ⋯     (stage 1)    53px  -> 62px gutter,  9px gap   [NOW — the trash is still inline]
+       grip  + ⋯     (stage 2+)   52px  -> 62px gutter, 10px gap   [END STATE: trash out, grip in]
+       grip + ⋯ + trash           79px  -> would need 89px         [why the grip is NOT added yet]
+   62px is the smallest value that clears BOTH the stage-1 cluster and the end-state cluster while
+   keeping the ~10px breathing room the 36px gutter had. 52px is the bare minimum that clears at all
+   (0px gap, cluster touching the text) and is NOT enough. Keeping 36px is not an option either: with
+   the stage-1 cluster it overlaps the step text by 17px (measured).
+
+   Why the reorder grip is absent from editStepRowTools this stage: adding it while the trash is STILL
+   inline makes the cluster 79px, forcing the gutter 36 -> 89 -> 62 — resized twice, for one
+   intermediate stage, purely to avoid resizing it twice. The grip lands in stage 2 on the same commit
+   that removes the trash, and the cluster goes 53px -> 52px, so this 62px never moves again.
+
+   Cost of the widening, measured on the real page: the step text box goes 746px -> 720px (-26px).
+   No step in the sample re-wrapped — rendered row heights are identical at 36px and 62px. */
+.steps li.step-edit { position: relative; padding-right: 62px; }
 .steps li.step-edit > .rtools { position: absolute; top: 0; right: 0; }
 .steps li.step-edit:hover > .rtools, .steps li.step-edit:focus-within > .rtools { opacity: 1; }
 /* a heading row is only ~25px tall against a 24px control, so the button's bottom sat 1.2px off the
@@ -962,20 +993,32 @@ a:hover { color: var(--berry-lift); }
 .album-photo:hover .pm-btn, .album-photo .pm-btn:focus-visible { opacity: 1; }
 .album-photo .pm-btn:hover { background: rgba(40,35,30,.82); }
 
-.photo-menu { position: absolute; top: 34px; right: 6px; z-index: 8; min-width: 140px;
+/* A stage 1: .row-menu rides on EVERY rule below — the inline editor's per-row ⋯ menu is this exact
+   component, not a second dropdown. Only its ANCHOR differs (it hangs off a 24px .rtools cluster
+   inside a list row, not a photo's 26px corner button), so only top/right/bottom are re-stated, in
+   the two rules after this block. Everything else — box, shadow, min-width, item metrics, .mi slot,
+   .danger, [disabled], .sep, the .up flip — is shared verbatim. */
+.photo-menu, .row-menu { position: absolute; top: 34px; right: 6px; z-index: 8; min-width: 140px;
   background: var(--card); border: 1px solid var(--paper-edge); border-radius: 10px;
   box-shadow: 0 10px 26px -8px rgba(31,42,32,.42); padding: 5px; }
-.photo-menu.up { top: auto; bottom: 34px; }   /* EDGE: flip above the ⋮ when it'd overflow the viewport bottom */
-.photo-menu button { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
+.photo-menu.up, .row-menu.up { top: auto; bottom: 34px; }   /* EDGE: flip above the ⋮ when it'd overflow the viewport bottom */
+.photo-menu button, .row-menu button { display: flex; align-items: center; gap: 9px; width: 100%; text-align: left;
   font-family: var(--font-sans); font-size: 13px; color: var(--ink); background: none; border: none;
   border-radius: 7px; padding: 7px 10px; cursor: pointer; }
-.photo-menu button:hover { background: var(--paper); }
-.photo-menu button .mi { width: 15px; text-align: center; opacity: .85; }
-.photo-menu button.danger { color: var(--danger); }
-.photo-menu button.danger:hover { background: color-mix(in srgb, var(--danger) 8%, transparent); }
-.photo-menu button[disabled] { color: var(--ink-soft); opacity: .5; cursor: default; }
-.photo-menu button[disabled]:hover { background: none; }
-.photo-menu .sep { height: 1px; background: var(--paper-edge); margin: 4px 6px; }
+.photo-menu button:hover, .row-menu button:hover { background: var(--paper); }
+.photo-menu button .mi, .row-menu button .mi { width: 15px; text-align: center; opacity: .85; }
+.photo-menu button.danger, .row-menu button.danger { color: var(--danger); }
+.photo-menu button.danger:hover, .row-menu button.danger:hover { background: color-mix(in srgb, var(--danger) 8%, transparent); }
+.photo-menu button[disabled], .row-menu button[disabled] { color: var(--ink-soft); opacity: .5; cursor: default; }
+.photo-menu button[disabled]:hover, .row-menu button[disabled]:hover { background: none; }
+.photo-menu .sep, .row-menu .sep { height: 1px; background: var(--paper-edge); margin: 4px 6px; }
+/* the row anchor: 30px clears the 24px .rbtn plus a 6px gap. right: 0 keeps the menu's right edge
+   FLUSH with the cluster's — measured: on a step row the cluster sits at the li's right edge, so a
+   negative right would hang the menu outside the row (the album can afford that overhang, a list row
+   inside a padded card reads as misalignment). Specificity (0,2,0)/(0,3,0) beats the shared rules
+   above, so the photo anchor is untouched. */
+.rtools .row-menu { top: 30px; right: 0; }
+.rtools .row-menu.up { top: auto; bottom: 30px; }
 
 /* inline caption edit — reuses the real Kalam caption face; live N/60 count + hard maxlength (UI matches the server) */
 .cap-edit { display: block; margin-top: 3px; }
