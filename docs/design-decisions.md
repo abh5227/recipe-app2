@@ -560,7 +560,40 @@ untouched except one fix** (plain-row notes now persist; see caveats). **Steps r
   **fixed qty column** + `align-items:start` + matched `line-height` keeps names aligned on the first
   line. A present note renders **on its own line below** the ingredient. The slim row fits at the
   reading width, so edit mode **stays 760px** (no widen → no toggle jump, no Polaroid slide, no new
-  responsive floor).
+  responsive floor). *(Superseded later: edit mode does widen — `.page.recipe-view.editing` is
+  `1000px + --hand-gutter` today. Recorded, not rewritten.)*
+- **Narrow widths — the name column yields, and WRAPPING IS DEFERRED (2026-08-17).** The edit row is
+  `calc(2.8rem + 4.5rem + 6px) 1fr auto`: a **fixed** amount zone, the name as the **only `1fr`**
+  track carrying `min-width: 0`, and an `auto` tail whose min-content is set by its controls. So the
+  name absorbs **100%** of any shortfall — it degrades by getting **narrower**, never taller. Reading
+  mode never truncates because it uses **two** tracks and `white-space: normal`; the obvious move is
+  to adopt that here. Diagnosed and **deferred**, on measurements across the real 3,385-row corpus in
+  the real font:
+
+  | viewport | rows truncated at rest | would become 2 lines |
+  |---|---|---|
+  | 900 | **3.1%** | 3.0% |
+  | 800 | **6.7%** | 6.4% |
+  | 700 | **14.0%** | 12.6% |
+  | 640 | 22.0% | 18.6% |
+
+  In the split-screen band actually in use (700–900px) that is 3–7% of rows, and a truncated value is
+  **not lost** — focusing the field expands it. The cost is permanent: at 700px, 12.6% of rows become
+  two lines, raggeding a long ledger for good to avoid an ellipsis. Most of the available win was
+  already taken by the **`.linksel` cap** (`2df8c69`), which freed 98px — 800px went from 254px of
+  name to 352px — which is precisely why the remaining gap is small.
+  **The revisit trigger is the PHONE decision, not split-screen.** At ~500px the name is 88px and
+  multi-line rows are unavoidable, so wrapping becomes necessary there rather than merely nicer.
+  Deferring **forecloses nothing**: the change is ~4 lines of CSS (scoped to `.e-name` — the same
+  `ieCell` builds the qty/heading/note cells, which must NOT wrap), and the only thing it would
+  invalidate is drag-reorder's drop-target maths, which is why C carries a height-agnostic build
+  constraint (see ROADMAP, O-c queued sequence). Note the knock-on for the **overlay** bullet above:
+  wrapping would obviate `.ie-disp` entirely — the `focusout` mirror and the `mousedown` caret
+  hit-test both exist *only* because the resting layout is one line while the focused one wraps.
+  **Rejected smaller alternative:** trimming the unit track `4.5rem → ~3rem` would hand the name
+  ~24px at every width (the widest real unit, `tbsp`, measures 28.7px in a 72px box). Declined — the
+  fixed amount zone exists so every row's name starts at the same x, and the headroom protects values
+  like `1 1/2`.
 - **Lossless heading-toggle (Option A1).** Heading text lives in a **dedicated `heading` field** (never
   shares `raw_text` with the name); ingredient fields (qty/label/note/link) stay **dormant** across a
   toggle, so a round-trip restores them exactly.

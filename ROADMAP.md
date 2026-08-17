@@ -463,6 +463,26 @@ same rows, or the same CSS, twice.
   is currently a flat `if`-chain of `closest()` probes. It is the one function all of A, B and C edit.
 - **Surface the `import_flags` queue before E** (see P15) so E's output is legible as it lands.
 
+**Build constraint on C** (not an ordering matter — read this *before* building C, not after):
+
+- **C MUST be height-agnostic.** Drop-target calculation must use **per-element `dragover` with
+  `getBoundingClientRect()` midpoints**, never `index = Math.floor(y / rowHeight)` or anything else
+  that assumes uniform rows. The album's existing reorder already works this way (`app.js`, the four
+  document-level DnD listeners) — there is no row-size arithmetic anywhere in it, and the drop
+  position is read back off the DOM position of the inserted `.drop-bar` rather than computed. So the
+  mechanism transfers; choosing the arithmetic shortcut instead would be silently fine today and
+  broken later.
+  **But the AXIS does not transfer.** The album is a horizontal strip and tests
+  `e.clientX < r.left + r.width / 2`. Both editor lists are vertical, so the test becomes
+  `e.clientY < r.top + r.height / 2`. That is the single axis assumption in the borrowed code, and
+  the one line that must change when it is lifted.
+  **Why:** ingredient rows are uniform at 44px *only because* the name column truncates rather than
+  wraps. If wrapping is ever adopted — deferred, not rejected, and the phone decision is its trigger
+  (see the inline-editor section of [docs/design-decisions.md](docs/design-decisions.md)) — measured
+  row heights range **44px to 140px** in a single list, and any uniform-height assumption breaks. C
+  built against uniform rows would have to be redone; C built height-agnostic survives the change
+  untouched.
+
 ### Frontend design pass — "used cookbook" recipe page · IN PROGRESS
 
 A redesign of the recipe page into a printed-cookbook aesthetic that embodies the outcome-data
@@ -1266,7 +1286,21 @@ joy, deliberately *not* a feature.
 ## Known limitations & tech debt
 
 Things that are actually *wrong* in edge cases (not just cosmetic), plus deferred cleanups —
-worth knowing before they bite. None of the limitations occur in the current recipes.
+worth knowing before they bite. None of the *data* limitations occur in the current recipes.
+
+- **`field-sizing: content` is Chromium-only — long ingredient names are unreadable while editing on
+  Safari and Firefox.** `styles.css` sets `field-sizing: content` on `.ie-ov textarea.ie`, and the
+  shipped focus-expand behaviour (Option B: the field wraps taller on focus to show the whole value)
+  **depends entirely on it**. Neither Safari nor Firefox supports the property, so there the textarea
+  stays one line and the user cannot see what they are editing. Measured with the property disabled,
+  on the 44-character row `soft or silken tofu (drained for 20 minutes)` at a 560px viewport: the
+  textarea renders **27.0px against a `scrollHeight` of 98** — clipped, with no scrollbar and no
+  ellipsis. **Not caused by any recent work; it ships today.** Fix shape: a JS auto-height fallback
+  (~10 lines) hung off the existing `input` handler — set `style.height = scrollHeight` when
+  `CSS.supports("field-sizing", "content")` is false. This gets **more** important if the name column
+  is ever made to wrap (see the wrapping deferral in
+  [docs/design-decisions.md](docs/design-decisions.md), inline-editor section): a wrapped textarea
+  without auto-height *clips* rather than ellipsising, which is strictly worse than today.
 
 - **Lowercase ingredient section-headers — narrow detection + flag, not silent auto-classify.**
   Bare lowercase headers (e.g. "crust", "filling") are promoted to section headings only via a
