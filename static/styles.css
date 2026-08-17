@@ -395,8 +395,24 @@ a:hover { color: var(--berry-lift); }
 /* the link control is a native <select> showing just the 🔗 icon (icon-only). Strip its OS chevron
    (appearance:none) so it reads as a calm icon button — the tooltip (title) + hover fill keep it
    discoverable. Still fully functional: picking an option links the row. */
+/* ⚠️ max-width is LOAD-BEARING, not cosmetic. A <select> with no width rule takes the intrinsic width
+   of its WIDEST OPTION, and ingOptions (app.js) emits the whole ingredient library — so without this
+   the box rendered 128px, set by whatever the longest library name happens to be ("White Peppercorns"
+   at the time of writing). That fed straight into the row's third track, which is `auto` and therefore
+   incompressible, and the name column is the only 1fr track WITH min-width: 0, so it absorbed the
+   entire shortfall: 398px of name at a 1000px viewport, collapsing to 0px by 500px. The library was
+   silently sizing every ingredient row's name column, and adding a longer ingredient would have
+   narrowed the name everywhere. Measured: 30px recovers 98px of name width and drops the tail's
+   min-content 275px -> 177px.
+   Why 30px: the control displays ONE glyph (the placeholder option's 🔗, measured 16.00px) inside 10px
+   of chrome (padding 4+4 + border 1+1, box-sizing: border-box), so 26px is the true minimum — 30px
+   keeps 4px of slack for emoji-width variation across platforms and makes this exactly as wide as
+   .note-add beside it, the other icon-only affordance in .tail. Do NOT shrink to 26px (no slack) and
+   do NOT remove this (the library resizes the name column again).
+   The native dropdown POPUP is unaffected: its width is UA-controlled and independent of the select's
+   box, so the full ingredient names still list in full. */
 .linksel { font-family: var(--font-sans); font-size: 13px; color: var(--green); background: transparent;
-  border: 1px solid transparent; border-radius: 7px; padding: 0 4px; height: 24px; cursor: pointer;
+  border: 1px solid transparent; border-radius: 7px; padding: 0 4px; height: 24px; cursor: pointer; max-width: 30px;
   text-align: center; opacity: 0.55; -webkit-appearance: none; -moz-appearance: none; appearance: none; }
 .linksel:hover, .linksel:focus { opacity: 1; border-color: var(--line); background: var(--card); outline: none; }
 .linkchip { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-sans); font-size: 11px; font-weight: 600;
