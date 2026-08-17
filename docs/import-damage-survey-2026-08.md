@@ -18,7 +18,7 @@ This is documentation, not recipe data — `recipes.db` is git-ignored.
 
 | | count |
 |---|---:|
-| recipes | **300** (298 `source='app'`, 2 `test`) |
+| recipes | **300** (298 `source='app'`, 2 `test`) — *2026-08-17: now **304** (298 `app`, 6 `test`); all 304 carry a `reason='original'` snapshot, 0 missing* |
 | ingredient rows | **3,570** — 225 headings + **3,345 real lines**, across 297 recipes |
 | step rows | **2,377** — 116 headings + **2,261 real steps**, across 274 recipes |
 
@@ -254,6 +254,16 @@ and all 5 underscore-wrapped steps were unflaggable, not merely unflagged.
 The only two with a non-empty diff are test copies made during this work (`french-fries-copy`, 1
 entry; `khichdi-copy`, 9 entries of which 8 are genuinely personal). **Cleanup pollution is
 prospective, not observed.**
+
+> *Re-counted 2026-08-17: **298 of 304** are byte-equal — the clean count is unchanged; the corpus grew
+> by 4 further test copies, all of them divergent. The conclusion holds.*
+>
+> *A later simulation put a number on what a **backfill** would cost, which this section did not
+> measure: restructuring the 25 recipes the importer corrections would touch generates **112
+> annotations, 91 of them visible**, 77 being `step/modified` — because `snapshot_original` captures
+> once and never re-captures, so corrected rows read as hand-edits against an uncorrected baseline. That
+> is the argument for splitting the work into door-only (safe) and backfill (needs a re-baselining
+> ruling). See ROADMAP → Recipe Import (P15).*
 
 Simulated read-only through the full round trip — original → what a save actually rewrites → the
 fix → `diff_snapshots`:
