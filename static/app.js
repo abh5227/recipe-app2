@@ -4,6 +4,7 @@ import {
   formatAmount, group, scaleQty, abbrevUnits, canonicalizeUnit, amountText, weightText, toUnicodeFractions,
 } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
+import { removedInsertIndex } from "./annotation-place.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
 import { uploadErrorHTML } from "./upload-status.js";
@@ -672,14 +673,24 @@ function lineBodyHTML(row) {
 
 // O-c-1: index the current-vs-original annotations (view.data.annotations) by heading-EXCLUDED new_pos,
 // per kind, for the PRESENT-position cases the reading view renders (amount/name modified, added). A
-// removed entry carries new_pos=null (no current row to attach to) and heading entries aren't rendered
-// here — both are skipped (removed placement is a later stage). A single new_pos may carry BOTH an amount
-// and a name edit; they're grouped into one slot so a row shows both.
+// removed entry has no current row to attach to (new_pos=null), so it is collected SEPARATELY and placed
+// by `section` (stage 3, see insertRemovedRows); heading entries aren't rendered here. A single new_pos may
+// carry BOTH an amount and a name edit; they're grouped into one slot so a row shows both.
 function annotationIndex(anns) {
   const ing = new Map();
   const step = new Map();
+  const removedIng = [];
+  const removedStep = [];
   for (const a of (anns || [])) {
-    if (a.new_pos == null) continue;                 // removed -> no current row (skip this stage)
+    if (a.type === "removed") {
+      // no new_pos to key on — kept as a flat list, placed at its original section's bottom. Ordered by
+      // old_pos so several removals out of one section keep their original relative order. (kind
+      // "heading" falls through both branches: a removed HEADING is not rendered in the ledger.)
+      if (a.kind === "ingredient") removedIng.push(a);
+      else if (a.kind === "step") removedStep.push(a);
+      continue;
+    }
+    if (a.new_pos == null) continue;
     if (a.kind === "ingredient") {
       const slot = ing.get(a.new_pos) || {};
       if (a.type === "added") slot.added = a;
@@ -693,7 +704,48 @@ function annotationIndex(anns) {
     }
     // kind === "heading": not rendered in the reading ledger — ignored.
   }
-  return { ing, step };
+  const byOldPos = (x, y) => (x.old_pos == null ? 0 : x.old_pos) - (y.old_pos == null ? 0 : y.old_pos);
+  removedIng.sort(byOldPos);
+  removedStep.sort(byOldPos);
+  return { ing, step, removedIng, removedStep };
+}
+
+// O-c-1 stage 3: place synthesized REMOVED rows at the BOTTOM of their original section — after the
+// heading whose text matches entry.section, just before the NEXT heading (or the list end). A null
+// section, or a section since renamed/removed (no match), falls back to the very bottom of the list.
+// `items` is the built row list ({isHeading, headingText, html}); rows are spliced in, so the caller's
+// heading-EXCLUDED counter is never advanced by them (they aren't in the diff's current sequence — see
+// ingredientsSectionInner/renderStepsList, where the counter is driven solely by REAL rows).
+function insertRemovedRows(items, removed, buildHTML) {
+  for (const entry of removed) {
+    // Placement is the pure rule in annotation-place.js (section bottom / preamble / list bottom).
+    // Already-inserted removals aren't headings, so the index recomputes past them and a later removal
+    // for the same section lands AFTER the earlier one — their old_pos order is preserved.
+    const at = removedInsertIndex(items, entry.section);
+    items.splice(at, 0, { isHeading: false, headingText: null, html: buildHTML(entry) });
+  }
+}
+
+// A struck REMOVED ingredient, synthesized from the entry (the row is gone from the current data, so
+// there is nothing to map over). `text` is the RAW combined "qty label" line and `label` is the name, so
+// the qty is what precedes the label; it renders through amountText(_, 1) to match the abbreviated
+// ledger display (the entry's text is unabbreviated). Same .amount-cell/.qty + .iname structure as a
+// live row, so it sits in the ledger grid; .was gives it the shared 1px strike.
+function removedIngredientRow(e) {
+  const text = String(e.text || "");
+  const label = String(e.label || "");
+  const qty = (label && text.endsWith(label)) ? text.slice(0, text.length - label.length).trim() : "";
+  const shown = qty ? amountText(qty, 1) : "";
+  return `<li class="removed">` +
+    `<span class="amount-cell"><span class="qty">${shown ? `<span class="was">${esc(shown)}</span>` : ""}</span></span>` +
+    `<span class="iname"><span class="was">${esc(label || text)}</span></span></li>`;
+}
+
+// A struck REMOVED step. Deliberately NOT li.step: that class carries the CSS step counter, so a removed
+// step rendered as one would consume a number and renumber the live method. li.step-removed is UNNUMBERED
+// and opts out of the counter, keeping 1,2,3… unbroken. .step-body gives .was the shared strike.
+function removedStepRow(e) {
+  return `<li class="step-removed"><div class="step-body"><span class="was">${esc(e.text || "")}</span></div></li>`;
 }
 
 // A plain ingredient line: used for the Original view and for app recipes. `ann` (O-c-1) is the row's
@@ -775,11 +827,18 @@ function plainRow(row, ann) {
 // model has no "switch person"; every recipe is your own, edited directly via the recipe editor).
 // Re-rendered on its own (e.g. on a scale change) so the rest of the page doesn't flicker.
 function ingredientsSectionInner(view) {
-  const { ing } = annotationIndex(view.data.annotations);   // O-c-1: current-vs-original edits, keyed by new_pos
+  const { ing, removedIng } = annotationIndex(view.data.annotations);   // O-c-1: edits keyed by new_pos + removals
   let i = 0;                                                 // heading-EXCLUDED index == snapshot_diff new_pos
-  const rows = view.data.ingredients
-    .map((row) => (row.is_heading ? plainRow(row) : plainRow(row, ing.get(i++))))
-    .join("");
+  // Headings are tracked alongside each row so a removed entry can find its section (exact-string match on
+  // the heading's raw_text). The counter advances ONLY on real non-heading rows — synthesized removed rows
+  // are spliced in afterwards and never touch it, so every other anchor stays aligned.
+  const items = view.data.ingredients.map((row) => ({
+    isHeading: !!row.is_heading,
+    headingText: row.is_heading ? (row.raw_text || "") : null,
+    html: row.is_heading ? plainRow(row) : plainRow(row, ing.get(i++)),
+  }));
+  insertRemovedRows(items, removedIng, removedIngredientRow);
+  const rows = items.map((x) => x.html).join("");
   return `
     <div class="col-head"><h2 class="col-title">Ingredients</h2></div>
     <ul class="ingredient-list">${rows}</ul>`;
@@ -838,9 +897,15 @@ function renderStepRow(row, ann) {
 // O-c-1: render the step list with its annotation layer. Own 0-based li.step counter (heading-EXCLUDED,
 // a SEPARATE index space from ingredients) == snapshot_diff step new_pos. Empty annotations -> byte-identical.
 function renderStepsList(steps) {
-  const { step } = annotationIndex(view.data.annotations);
-  let i = 0;
-  return steps.map((row) => (row.is_heading ? renderStepRow(row) : renderStepRow(row, step.get(i++)))).join("");
+  const { step, removedStep } = annotationIndex(view.data.annotations);
+  let i = 0;   // heading-EXCLUDED step index (its OWN sequence); synthesized removals never advance it
+  const items = steps.map((row) => ({
+    isHeading: !!row.is_heading,
+    headingText: row.is_heading ? (row.text || "") : null,
+    html: row.is_heading ? renderStepRow(row) : renderStepRow(row, step.get(i++)),
+  }));
+  insertRemovedRows(items, removedStep, removedStepRow);
+  return items.map((x) => x.html).join("");
 }
 
 // Stage 1a (edit mode only): a non-heading step becomes an empty host that mountStepEditors() fills

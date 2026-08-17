@@ -735,13 +735,52 @@ a:hover { color: var(--berry-lift); }
 .ingredient-list li.edited .iname.is-stacked .fix { margin-left: 0; }
 /* added ingredient — "+" in the left margin, the whole line in the hand (ink stepped up) */
 .ingredient-list li.added { position: relative; }
-.ingredient-list li.added::before { content: "+"; position: absolute; left: -17px; top: 0; font-family: var(--font-hand); color: var(--ink-pen); font-size: 21px; }
+/* top: 5px == .ingredient-list li's padding-top — an abspos top:0 anchors to the PADDING box, which sits
+   5px above line one, so the mark rode high. Same cause as the "−" marker below.
+   margin-top is an OPTICAL NUDGE, not a computable alignment — do not "correct" it away. A "+" is an
+   OPERATOR and reads against the row's DIGIT axis (the row opens with a quantity), but Kalam draws its
+   plus 1.77px BELOW its own digit axis at 21px; with the marker at 21px over an 18px qty that compounds
+   to 2.76px low on the page. No box/line-height alignment can fix a glyph the font draws low, so this
+   is the measured offset that lands it on the digit axis (+2.76px -> ~0). */
+.ingredient-list li.added::before { content: "+"; position: absolute; left: -17px; top: 5px; margin-top: -2.8px; font-family: var(--font-hand); color: var(--ink-pen); font-size: 21px; }
 .ingredient-list li.added .qty { font-family: var(--font-hand); color: var(--ink-pen); font-size: 18px; }
 .ingredient-list li.added .iname, .ingredient-list li.added .iname .ingredient { font-family: var(--font-hand); color: var(--ink-pen); font-size: 19px; text-decoration: none; }
 /* step edit — reworded uses word-level .was/.fix inside .step-body (.fix wraps as prose); added is the "+"-prefixed Kalam line. Ink 16.5px -> 18.5px. */
 .step-body .fix { font-family: var(--font-hand); color: var(--ink-pen); font-size: 18.5px; }
 .step-body .step-add { font-family: var(--font-hand); color: var(--ink-pen); font-size: 18.5px; }
 .step-body .step-add::before { content: "+ "; }
+/* removed item (stage 3) — struck at the bottom of its original section (list bottom when it had none).
+   No new ink or vocabulary: the row is the SAME ledger structure, struck via the shared .was rule and
+   sitting back a touch so it reads as a trace of what was there, not a live ingredient/step. */
+.ingredient-list li.removed { position: relative; opacity: .9; }
+/* the removed STEP is deliberately NOT li.step — it must not take a step number (li.step carries
+   counter-increment below), so it borrows li.step's indent/typography and stays UNNUMBERED. */
+.steps li.step-removed { position: relative; padding: 0 0 16px 38px; min-height: 26px; font-size: var(--fs-amount); opacity: .9; }
+/* The "−" marker — the symmetric counterpart of li.added's "+", and the DELIMITER an unnumbered removed
+   row otherwise lacks: without it two stacked removals read as one continuous block of struck prose.
+   U+2212 MINUS SIGN, not a hyphen: in Kalam it carries the SAME 22.56px advance as "+" at the same size
+   (a hyphen is 13.32px), so the pair reads as matched marks rather than two different punctuation marks.
+   Hand ink on both, because the marginal mark is the USER's — on a removed row the body stays struck
+   PRINT (the original typeset text) while the strike and this mark are the hand that did the deleting.
+   Neither rule increments a counter, so removed steps stay unnumbered and live numbering is untouched.
+   ALIGNMENT — the marker shares the row's FIRST line box (`line-height` = the row's own line box), it is
+   NOT centred in a fixed square. Centring a 21px Kalam glyph inside a 26px box pushes its baseline far
+   down, because Kalam's content area (big ascent/descent, for Devanagari) OVERFLOWS 26px: measured, that
+   put the mark's ink 17.07px BELOW the first line's optical centre — over half a line box, so on a
+   wrapping row it landed between line one and line two and read as "the middle of the row". Sharing the
+   line box instead lands it within 1px. (The live step's number circle escapes this because its 26px
+   RING is the visual anchor, so its inner baseline never shows.) */
+.ingredient-list li.removed::before {          /* ingredients: the same left margin slot li.added uses */
+  content: "−"; position: absolute; left: -17px; top: 5px;   /* 5px == .ingredient-list li's padding-top:
+                                 an abspos top:0 anchors to the PADDING box, which is 5px above line one */
+  line-height: calc(var(--fs-amount) * 1.6);   /* == the row's first line box */
+  font-family: var(--font-hand); color: var(--ink-pen); font-size: 21px; }
+.steps li.step-removed::before {               /* steps: the slot the live step's number circle occupies,
+                                                  minus the circle itself (that ring is live-step vocabulary) */
+  content: "−"; position: absolute; left: 0; top: 0;
+  width: 26px; text-align: center;
+  line-height: calc(var(--fs-amount) * 1.6);   /* == the row's first line box */
+  font-family: var(--font-hand); color: var(--ink-pen); font-size: 21px; }
 
 .steps { list-style: none; counter-reset: step; padding: 0; margin: 0; }
 .steps li.step {
