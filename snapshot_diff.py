@@ -13,6 +13,11 @@ Matching is CONTENT-MATCHED (not position-based — position-based cascades fals
   - STEPS / HEADINGS: no key -> difflib content-match on the text (LCS + similarity for rewords).
   - The 11 CONTENT FIELDS: direct key-by-key compare.
 
+MOVES EMIT NOTHING. Content matching is LCS-based, so a reordered row reads as a delete plus an insert
+by construction — for ~99% of rows (only id-linked ingredients, ~1.5%, match positionally-independently
+in phase 1; steps have no id). A final pass (_suppress_moves) pairs those halves back up and drops both,
+because reordering is not a change to the recipe. See that function for the cross-section cost.
+
 AMOUNT COHERENCE: an ingredient's amount is split across qty/quantity/unit, but `qty` is the single
 COMBINED form (quantity/unit are its split, always consistent — see write_recipe_rows), so an amount edit
 is reported as ONE change from `qty` alone ("sugar: 1 cup -> ¾ cup"), never three field-noise entries.
@@ -92,7 +97,7 @@ def diff_snapshots(old_blob, new_blob):
         on_add=lambda r: _added("heading", step_text(r), n_sh_pos(r)),
         on_remove=lambda r: _removed("heading", step_text(r), o_sh_pos(r), None),
     )
-    return changes
+    return _suppress_moves(changes)
 
 
 # ---- helpers ------------------------------------------------------------------------------------
@@ -244,6 +249,62 @@ def _diff_ingredients(old_lines, new_lines, o_pos, n_pos, section_of=lambda p: N
                              "new_pos": None, "old_pos": o_pos(r), "section": section_of(r.get("position"))},
     )
     return changes
+
+
+def _move_key(entry):
+    """The comparison key for move detection: (kind, canonical text).
+
+    CANONICAL, not raw, and that distinction is the whole correctness of this feature. A reorder in the
+    real app happens THROUGH A SAVE, and the client re-canonicalizes units on every row — so the REMOVED
+    entry carries the ORIGINAL snapshot's raw text ('1 litre filtered or soft water') while the ADDED
+    entry carries the current rows ('1 liter filtered or soft water'). Comparing raw text passes every
+    synthetic reorder test and then suppresses NOTHING in production. Measured, not theorized.
+
+    Reuses units.canon_unit_str — the same transform _ing_line_canon already uses as the phase-2 match
+    key — rather than inventing a second notion of "the same line". It normalizes unit WORDS only, never
+    numbers or names, so a moved-AND-edited row still differs and survives (see the tests).
+    Steps/headings compare raw: their text carries no amount for a unit rule to touch."""
+    text = entry.get("text") or ""
+    return (entry["kind"], units.canon_unit_str(text) if entry["kind"] == "ingredient" else text)
+
+
+def _suppress_moves(changes):
+    """Drop the removed+added PAIR a pure reorder produces, emitting nothing for a move.
+
+    WHY A POST-PASS AND NOT AN EARLIER SEAM: a moved row lands in a `delete` opcode at its old index and
+    an `insert` opcode at its new index — two DIFFERENT blocks of _diff_seq's loop. Nothing at pair
+    formation can see both halves, so this is the only seam where the pair is visible at all.
+
+    WHY IT DROPS RATHER THAN EMITS: a move is not a change to the recipe, so it gets no entry and no new
+    render vocabulary — decided, not incidental.
+
+    ALL moves are suppressed, INCLUDING moves across a section heading. Within-section-only gating was
+    considered and rejected: it needs a new-side section lookup that doesn't exist (section_of is built
+    from the ORIGINAL rows), and it would make drag behaviour position-dependent — overshooting a heading
+    mid-drag would emit annotations the user never intended. THE ACKNOWLEDGED COST: an item that changes
+    which section it belongs to leaves no trace. That is a real recipe change ("the salt goes in the
+    sauce now, not the marinade") and it is mechanically INDISTINGUISHABLE from a reorder — a delete-here
+    plus an identical-add-there produces byte-identical output to a move. Accepted deliberately.
+
+    GREEDY 1:1 — with N removed and M added sharing a key, exactly min(N, M) pairs are suppressed and the
+    remainder survive. Never many-to-many: that keeps a genuine deletion visible when a DIFFERENT row
+    with identical canonical text is merely moved.
+
+    Pure: drops entries, never rewrites one, so every surviving from/to/text stays RAW. Order among the
+    survivors is preserved (deterministic output is part of the contract)."""
+    removed_by_key = {}
+    for e in changes:
+        if e.get("type") == "removed":
+            removed_by_key.setdefault(_move_key(e), []).append(id(e))
+    drop = set()
+    for e in changes:
+        if e.get("type") != "added":
+            continue
+        pool = removed_by_key.get(_move_key(e))
+        if pool:                                  # a removed twin is still unclaimed -> it's a move
+            drop.add(pool.pop(0))                 # claim that ONE removed entry (greedy, 1:1)
+            drop.add(id(e))
+    return [e for e in changes if id(e) not in drop]
 
 
 def _diff_seq(old, new, text_of, on_pair, on_add, on_remove):
