@@ -403,7 +403,9 @@ a:hover { color: var(--berry-lift); }
   color: var(--green); background: color-mix(in srgb, var(--green) 10%, var(--card)); border: 1px solid color-mix(in srgb, var(--green) 30%, var(--line)); border-radius: 999px; padding: 1px 4px 1px 8px; white-space: nowrap; }
 .linkchip .lx { border: none; background: none; color: var(--green); cursor: pointer; font-size: 13px; line-height: 1; padding: 0 1px; opacity: 0.6; }
 .linkchip .lx:hover { opacity: 1; color: var(--danger); }
-/* hover-revealed cluster: a divider then reorder-grip (Stage 4) · heading toggle · fenced red trash */
+/* hover-revealed cluster: a divider then reorder-grip (Stage 4) · fenced red trash · ⋯ menu trigger.
+   The heading toggle used to sit between grip and trash carrying a visible word; A stage 2 moved it
+   into the ⋯ menu, which is what took this cluster from 134.75px to 87px. */
 .divider { display: inline-block; width: 1px; height: 16px; background: var(--rule); margin: 0 1px; align-self: center; opacity: 0; transition: opacity 0.12s; }
 /* position: relative so the ⋯ menu anchors to the CLUSTER (A stage 1). Harmless on the step rows,
    which override it to absolute at line ~830 — absolute is a containing block too. */
@@ -421,7 +423,6 @@ a:hover { color: var(--berry-lift); }
   display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 5px; }
 .rbtn:hover { background: var(--paper); border-color: var(--line); color: var(--ink); }
 .rbtn.grip { cursor: grab; opacity: 0.45; padding: 0 3px; }
-.rbtn .lbl { font-size: 11.5px; }
 /* the remove control is fenced off (Option 5): a hairline divider before it, red on hover */
 .rbtn.rm { margin-left: 5px; padding-left: 8px; border-left: 1px solid var(--rule); border-radius: 0 6px 6px 0; }
 .rbtn.rm:hover { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 6%, var(--card)); }
@@ -429,9 +430,8 @@ a:hover { color: var(--berry-lift); }
 /* the ⋯ trigger's glyph: ING_GRIP's dots on one row. Sized to the viewBox (14×4) rather than a square
    — .rbtn's own min-width: 24px + align-items: center give it its hit area and vertical centring. */
 .more-ico { width: 14px; height: 4px; }
-.sect-ico, .ic-trash { stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-.sect-ico { width: 14px; height: 14px; }
-.ic-trash { width: 13px; height: 13px; }
+/* was `.sect-ico, .ic-trash` — the heading-toggle's ≡ icon went with the button in A stage 2 */
+.ic-trash { width: 13px; height: 13px; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 /* The adder row under a list in edit mode. Shared by the ingredient list and (stage 3) the step list —
    pure layout, so the step block reuses it verbatim rather than growing a second look. */
 .ing-adders, .step-adders { display: flex; gap: 10px; margin-top: 12px; }
@@ -830,30 +830,31 @@ a:hover { color: var(--berry-lift); }
   padding: 1px 2px; margin: 0 -2px; border-radius: 0;
 }
 .step-editor-host .ProseMirror p { margin: 0; }
-/* Editor parity: the per-step remove control. No new vocabulary — it's the SAME .rtools cluster and
-   .rbtn.rm trash the ingredient rows use, revealed on hover/focus exactly like .erow's.
+/* Editor parity: the per-step row-actions cluster. No new vocabulary — it's the SAME .rtools cluster
+   and .rbtn controls the ingredient rows use, revealed on hover/focus exactly like .erow's.
    Edit mode only — .step-edit exists nowhere in the reading path, so reading stays byte-identical.
    The 36px gutter fitted exactly ONE 25px control, clearing the focused editor's raised card (which
    bleeds 8px past its box via `margin: 0 -8px` below) by ~3px — so it had to be re-cut the moment a
-   second control landed. A stage 1 lands it (the ⋯), and the gutter is cut ONCE, for the END state,
-   NOT for this stage.
+   second control landed.
 
-   ⚠️ 62px IS A DECIDED VALUE, NOT A DERIVED ONE — do not "tighten" it to fit whatever cluster happens
-   to be in the row when you read this. All four widths below were measured in the browser on the real
-   page (li.step-edit = 820px, agedashi-tofu in edit mode), and 62px is chosen against ALL of them:
-       trash alone   (before)     25px  -> 36px gutter, 11px gap   [what shipped until now]
-       trash + ⋯     (stage 1)    53px  -> 62px gutter,  9px gap   [NOW — the trash is still inline]
-       grip  + ⋯     (stage 2+)   52px  -> 62px gutter, 10px gap   [END STATE: trash out, grip in]
-       grip + ⋯ + trash           79px  -> would need 89px         [why the grip is NOT added yet]
-   62px is the smallest value that clears BOTH the stage-1 cluster and the end-state cluster while
-   keeping the ~10px breathing room the 36px gutter had. 52px is the bare minimum that clears at all
-   (0px gap, cluster touching the text) and is NOT enough. Keeping 36px is not an option either: with
-   the stage-1 cluster it overlaps the step text by 17px (measured).
+   ⚠️ 62px IS A DECIDED VALUE, NOT A DERIVED ONE — do not "tighten" it to fit the cluster you happen to
+   see. All four widths below were measured in the browser on the real page (li.step-edit = 820px,
+   agedashi-tofu in edit mode), and 62px was chosen against ALL of them, before the last two existed:
+       trash alone         25px  -> 36px gutter, 11px gap   [shipped before A]
+       trash + ⋯           53px  -> 62px gutter,  9px gap   [A stage 1, transitional]
+       grip  + ⋯           52px  -> 62px gutter, 10px gap   [A stage 2 — ✅ REACHED, this is the row now]
+       grip + ⋯ + trash    79px  -> would have needed 89px  [never built; see below]
+   ✅ The END STATE IS REACHED: the cluster is grip + ⋯ and this gutter is final. C makes the grip live
+   but adds no control, so 62px does not move again.
+   62px is the smallest value that clears BOTH the stage-1 and the end-state cluster while keeping the
+   ~10px breathing room the 36px gutter had. 52px is the bare minimum that clears at all (0px gap,
+   cluster touching the text) and is NOT enough — do not shrink to it now that the cluster is 52px.
+   36px is not an option either: it overlapped the stage-1 cluster by 17px (measured).
 
-   Why the reorder grip is absent from editStepRowTools this stage: adding it while the trash is STILL
-   inline makes the cluster 79px, forcing the gutter 36 -> 89 -> 62 — resized twice, for one
-   intermediate stage, purely to avoid resizing it twice. The grip lands in stage 2 on the same commit
-   that removes the trash, and the cluster goes 53px -> 52px, so this 62px never moves again.
+   Why the fourth row was never built: adding the reorder grip in stage 1, while the trash was still
+   inline, would have made the cluster 79px and forced the gutter 36 -> 89 -> 62 — resized twice, for
+   one intermediate stage, purely to avoid resizing it twice. The grip was deferred to stage 2 and
+   landed on the commit that removed the trash, so the gutter went 36 -> 62 once.
 
    Cost of the widening, measured on the real page: the step text box goes 746px -> 720px (-26px).
    No step in the sample re-wrapped — rendered row heights are identical at 36px and 62px. */
@@ -882,14 +883,11 @@ a:hover { color: var(--berry-lift); }
    none-style side can't be repainted by a colour-only rule — the bug that bit the trash's hover). */
 .e-step-heading { display: block; width: 100%; letter-spacing: 0.1em; text-transform: uppercase;
   border-bottom-color: transparent; }
-/* Alone in the cluster, the trash drops the FENCE — the ingredient row's hairline divides it from two
-   siblings and there are none here. Drop the fence's COLOUR, never the border BOX: `border-left: none`
-   also zeroes border-left-style, and :hover only sets border-COLOR, so a none-style side stays unpainted
-   and the red hover border came out open on the left (three sides only). The :hover rule below restores
-   it at matching specificity — without it, THIS selector outranks .rbtn.rm:hover and wins with
-   transparent. */
-.steps li.step-edit .rbtn.rm { margin-left: 0; padding-left: 5px; border-left-color: transparent; border-radius: 6px; }
-.steps li.step-edit .rbtn.rm:hover { border-left-color: var(--danger); }
+/* (A stage 2 removed the two `.steps li.step-edit .rbtn.rm` overrides that lived here — they unfenced
+   the step trash, which was alone in its cluster. There is no step trash any more: delete is a .danger
+   item in the row ⋯ menu. The lesson they recorded is still live in .rbtn.rm above — drop a fence's
+   COLOUR, never its border BOX, because `border-left: none` also zeroes border-left-style and a
+   colour-only :hover then can't repaint it.) */
 .detail-card.editing .step-editor-host .ProseMirror:hover {
   background: color-mix(in srgb, var(--berry) 5%, transparent); border-radius: 5px 5px 0 0;
 }

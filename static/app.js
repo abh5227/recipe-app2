@@ -911,19 +911,23 @@ function renderStepsList(steps) {
   return items.map((x) => x.html).join("");
 }
 
-// The per-step controls: the SAME hover-revealed cluster the ingredient rows use (.rtools / .rbtn.rm /
-// ING_TRASH), just without the heading-toggle sibling — that is an ingredient-only affordance. Wired
-// through the delegated handleInlineEdit dispatch, not its own listener.
-// A stage 1 appends the ⋯ AFTER the trash, so the persistent control is at the far right on BOTH
-// lists (the trash is the transient one — stage 2 moves step delete into the menu). Keeping the trash
-// FIRST also keeps styles.css's "alone in the cluster, the trash drops the fence" override true: the
-// fence divides the trash from what precedes it, and nothing does.
-// ⚠️ NO REORDER GRIP HERE YET, deliberately — see the gutter note in styles.css. A grip alongside the
-// still-inline trash makes this cluster 79px and would force the gutter to 89px for one stage and then
-// back to 62px, resizing it twice. The grip lands in stage 2 as the trash leaves (52px), which is what
-// the 62px gutter is cut for.
+// The per-step controls: the SAME hover-revealed cluster the ingredient rows use (.rtools / .rbtn /
+// ING_GRIP), minus the affordances that are ingredient-only.
+// A stage 2 completes this cluster. The inline trash is GONE — step delete is now a .danger item in
+// the ⋯ menu — and the deferred reorder grip lands in its place, so the cluster is grip + ⋯ = 52px and
+// the 62px gutter is settled for good (see the table in styles.css).
+// The two lists are deliberately ASYMMETRIC about delete: ingredients keep a one-click trash, steps do
+// not. That is not an oversight — a step row's cluster is absolutely positioned into a fixed gutter cut
+// out of the text column, so every inline control there costs step text width; the ingredient row's
+// cluster sits in a flexible .tail and costs only the name column's slack. Steps pay more for the same
+// control, and step deletion is rarer than ingredient deletion.
+// The grip is INERT this stage (aria-hidden, no handler) exactly like the ingredient row's has been
+// since Stage 4 — it exists so the gutter is sized once. C makes both live.
 function editStepRowTools(i) {
-  return `<span class="rtools"><button type="button" class="rbtn rm" data-inline-edit-rm-step data-i="${i}" title="Remove step" aria-label="Remove step">${ING_TRASH}</button>${rowMoreHTML(i, "step")}</span>`;
+  return `<span class="rtools">
+    <span class="rbtn grip" title="Reorder (coming soon)" aria-hidden="true">${ING_GRIP}</span>
+    ${rowMoreHTML(i, "step")}
+  </span>`;
 }
 
 // Stage 1a (edit mode only): a non-heading step becomes an empty host that mountStepEditors() fills
@@ -1317,12 +1321,22 @@ function closeRowMenu() {
   }
   m.remove();
 }
-// Stage 1 renders the COMPONENT only. Stage 2 relocates the existing actions here (ingredients: to
-// heading / to ingredient; steps: delete, .danger) and stage 3 adds the inserts. The placeholder is a
-// real disabled item rather than an empty box so the menu has honest size — an empty <div> would be a
-// 10px sliver and the .up flip could not be verified in the click-through.
-function rowMenuItemsHTML(kind) {
-  return `<button type="button" disabled>No actions yet</button>`;
+// A stage 2: the real items. Stage 3 adds Add above / Add below above the separator.
+// Labels are SHORT on purpose and must stay that way: .photo-menu's min-width is 140px (tuned for the
+// album's "Make hero" / "Edit caption"), and the natural long forms overflow it — "Make an ingredient"
+// wraps to two lines (46px vs 30px) and pushes the menu to 157px, undoing the point of a compact menu.
+// "To heading" / "To ingredient" fit on one line in both directions. Text-only, no .mi glyph: the
+// album's items all carry one, but no real icon exists for stage 3's add-above/add-below and inventing
+// one is exactly what the fidelity rule forbids — a half-populated icon column is worse than none.
+// The heading state is read from the DRAFT rather than passed in, so the label can never disagree with
+// the row it belongs to (the menu is rendered at open time, after any re-render).
+function rowMenuItemsHTML(kind, i) {
+  if (kind === "step") {
+    return `<button type="button" class="danger" data-rm-act="delete">Delete</button>`;
+  }
+  const row = view.draft.ingredients[i];
+  const toHeading = !(row && row.is_heading);
+  return `<button type="button" data-rm-act="toggle">${toHeading ? "To heading" : "To ingredient"}</button>`;
 }
 function openRowMenu(trigger, i, kind) {
   closePhotoMenu();                                        // single-open ACROSS both families
@@ -1332,14 +1346,19 @@ function openRowMenu(trigger, i, kind) {
   row.classList.add("menu-open");                          // the cluster rests at opacity:0 — see styles.css
   trigger.setAttribute("aria-expanded", "true");
   cluster.insertAdjacentHTML("beforeend",
-    `<div class="row-menu" data-i="${i}" data-row-kind="${kind}">${rowMenuItemsHTML(kind)}</div>`);
+    `<div class="row-menu" data-i="${i}" data-row-kind="${kind}">${rowMenuItemsHTML(kind, i)}</div>`);
   const menu = cluster.querySelector(".row-menu");         // EDGE: flip above the ⋯ if it'd overflow the viewport bottom
   if (menu.getBoundingClientRect().bottom > window.innerHeight - 8) menu.classList.add("up");
 }
 // Delegated handler — returns true if it owned the click. Scope-guarded on the ROW first, mirroring
 // handleAlbumPhotoAction's `.album-photo` guard, so a click anywhere else costs one closest() call.
-// The row index and kind are resolved ONCE here (from the trigger when opening, from the menu itself
-// once open) so stage 2's item branches read them off `i` / `kind` instead of re-deriving each.
+// The row index and kind are resolved ONCE here — from the trigger when opening, from the menu's own
+// data-i/data-row-kind once open — so the item branches below never re-probe the DOM for them.
+// A stage 2: the items dispatch HERE, not through new handleInlineEdit branches. They call the SAME
+// functions the removed inline controls called (toggleIngredientHeading / removeStep) — this stage
+// changes how an action is reached, never what it does. Each closes its menu first, mirroring
+// handleAlbumPhotoAction's items; the re-render that follows would take the menu with it anyway, but
+// relying on that would leave the menu orphaned the moment an action stops re-rendering.
 function handleRowMenuAction(e) {
   const row = e.target.closest(".erow, li.step-edit");
   if (!row) return false;
@@ -1349,7 +1368,12 @@ function handleRowMenuAction(e) {
   const kind = host.dataset.rowMenu || host.dataset.rowKind;
   const trigger = e.target.closest("[data-row-menu]");
   if (trigger) { row.querySelector(".row-menu") ? closeRowMenu() : openRowMenu(trigger, i, kind); return true; }
-  return false;                                            // stage 2 wires the items here
+  const item = e.target.closest("[data-rm-act]");
+  if (!item) return false;
+  closeRowMenu();
+  if (kind === "ing"  && item.dataset.rmAct === "toggle") { toggleIngredientHeading(i); return true; }
+  if (kind === "step" && item.dataset.rmAct === "delete") { removeStep(i); return true; }
+  return true;                                             // an item of this menu, but not one we know
 }
 
 // Stage 4 (3d-iii): drag-to-reorder — a dedicated Reorder MODE. The scatter masonry stays for DISPLAY;
@@ -1842,7 +1866,6 @@ function ieNoteHTML(r) {
 // an editable row reading RAW fields; the display name is label‖raw_text and edits write to `label`
 // (the convention ingToPayload reads). Kept fully separate from the seed line-editor.
 const ING_GRIP = `<svg viewBox="0 0 9 14" class="grip-ico" aria-hidden="true"><g fill="currentColor"><circle cx="2" cy="2" r="1.3"/><circle cx="7" cy="2" r="1.3"/><circle cx="2" cy="7" r="1.3"/><circle cx="7" cy="7" r="1.3"/><circle cx="2" cy="12" r="1.3"/><circle cx="7" cy="12" r="1.3"/></g></svg>`;
-const ING_SECT = `<svg viewBox="0 0 16 16" class="sect-ico" aria-hidden="true"><line x1="3" y1="4" x2="13" y2="4"/><line x1="3" y1="8" x2="10" y2="8"/><line x1="3" y1="12" x2="12" y2="12"/></svg>`;
 const ING_TRASH = `<svg viewBox="0 0 16 16" class="ic-trash" aria-hidden="true"><path d="M3 4.5h10"/><path d="M6.5 4.5V3h3v1.5"/><path d="M4.5 4.5l.6 8.5a1 1 0 0 0 1 .9h3.8a1 1 0 0 0 1-.9l.6-8.5"/><path d="M7 7v4M9 7v4"/></svg>`;
 const ING_NOTEPLUS = `<svg viewBox="0 0 22 16" class="ic-note" aria-hidden="true"><path d="M3 2.5h10v7.5l-3 3.5H3z"/><path d="M13 10h-3v3.5"/><path d="M18 4v5M15.5 6.5h5"/></svg>`;
 const ING_NOTE = `<svg viewBox="0 0 16 16" class="ic-note-sm" aria-hidden="true"><path d="M3 2.5h10v7.5l-3 3.5H3z"/><path d="M13 10h-3v3.5"/></svg>`;
@@ -1858,17 +1881,17 @@ function rowMoreHTML(i, kind) {
   return `<button type="button" class="rbtn more" data-row-menu="${kind}" data-i="${i}" title="More actions" aria-label="More actions" aria-haspopup="true" aria-expanded="false">${ING_MORE}</button>`;
 }
 
-// Hover-revealed row-actions: a divider, then grip · heading-toggle (icon+word) · fenced red trash · ⋯.
-// The divider + cluster are hidden at rest and slide in on hover/focus-within (link + note-icon stay).
-// A stage 1 adds the ⋯ LAST and changes nothing else: the trash and the heading-toggle keep working
-// exactly as they do today. Stage 2 relocates the toggle INTO the menu (the trash stays inline —
-// one-click delete on ingredients is the decided end state).
-function editIngRowTools(i, isHeading) {
-  const word = isHeading ? "ingredient" : "heading";
-  const tip = isHeading ? "Make this an ingredient line" : "Make this a section heading";
+// Hover-revealed row-actions: a divider, then grip · fenced red trash · ⋯. The divider + cluster are
+// hidden at rest and slide in on hover/focus-within (link + note-icon stay).
+// A stage 2 removed the labelled heading-toggle (an ≡ icon carrying a visible "heading"/"ingredient"
+// word) — it is now a menu item, so the cluster is 87px instead of 134.75px and the name column gets
+// the difference back. The TRASH DELIBERATELY STAYS INLINE: deleting an ingredient is the common
+// editing action, and one-click delete is the decided end state for this list (steps are the
+// asymmetric case — their delete moved into the menu because their cluster had no room for both).
+// This is the FINAL shape of the ingredient cluster; C only makes the grip live.
+function editIngRowTools(i) {
   return `<span class="divider" aria-hidden="true"></span><span class="rtools">
     <span class="rbtn grip" title="Reorder (coming soon)" aria-hidden="true">${ING_GRIP}</span>
-    <button type="button" class="rbtn" data-inline-edit-toggle-ing data-i="${i}" title="${tip}">${ING_SECT}<span class="lbl">${word}</span></button>
     <button type="button" class="rbtn rm" data-inline-edit-rm-ing data-i="${i}" title="Remove" aria-label="Remove">${ING_TRASH}</button>
     ${rowMoreHTML(i, "ing")}
   </span>`;
@@ -1906,7 +1929,7 @@ function editIngRowHTML(x, i) {
   if (x.is_heading) {
     return `<li class="erow group-row">
       ${ieCell("heading", i, headingText(x), "e-heading", "Section heading")}
-      <span class="tail">${editIngRowTools(i, true)}</span>
+      <span class="tail">${editIngRowTools(i)}</span>
     </li>`;
   }
   const name = x.label || x.raw_text || "";
@@ -1923,7 +1946,7 @@ function editIngRowHTML(x, i) {
   const main = `<li class="erow${noteOpen ? " has-note" : ""}">
     ${amountZoneHTML(x, i)}
     ${ieCell("name", i, name, "e-name", "ingredient")}
-    <span class="tail">${linkBit}${noteIcon}${editIngRowTools(i, false)}</span>
+    <span class="tail">${linkBit}${noteIcon}${editIngRowTools(i)}</span>
   </li>`;
   if (!noteOpen) return main;
   const below = `<li class="note-row"><span></span><span class="note-below"><span class="n-ico" aria-hidden="true">${ING_NOTE}</span>${ieCell("note", i, x.note, "e-note", "add a note…")}</span></li>`;
@@ -2141,16 +2164,16 @@ function handleInlineEdit(e) {
   if (e.target.closest("[data-inline-edit-add-head]")) { addIngredient(true); return true; }
   const rmi = e.target.closest("[data-inline-edit-rm-ing]");
   if (rmi) { removeIngredient(Number(rmi.dataset.i)); return true; }
-  const tgi = e.target.closest("[data-inline-edit-toggle-ing]");
-  if (tgi) { toggleIngredientHeading(Number(tgi.dataset.i)); return true; }
+  // NB: no toggle-ing branch — A stage 2 moved the heading toggle into the row ⋯ menu, which
+  // dispatches through handleRowMenuAction. toggleIngredientHeading() itself is unchanged.
   const unl = e.target.closest("[data-inline-edit-unlink]");
   if (unl) { unlinkIngredient(Number(unl.dataset.i)); return true; }
   const ani = e.target.closest("[data-inline-edit-addnote]");
   if (ani) { addNote(Number(ani.dataset.i)); return true; }
   // Editor parity — step structural actions (re-render + re-mount via rerenderEditSteps)
   if (e.target.closest("[data-inline-edit-add-step]")) { addStep(); return true; }
-  const rms = e.target.closest("[data-inline-edit-rm-step]");
-  if (rms) { removeStep(Number(rms.dataset.i)); return true; }
+  // NB: no rm-step branch — A stage 2 moved step delete into the row ⋯ menu (a .danger item), which
+  // dispatches through handleRowMenuAction. removeStep() itself is unchanged.
   return false;
 }
 
