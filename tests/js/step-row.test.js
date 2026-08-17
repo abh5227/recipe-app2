@@ -4,7 +4,7 @@
 // Pure transforms in static/step-row.js, so this runs under bare `node --test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stepIsBlank, nonEmptySteps } from "../../static/step-row.js";
+import { stepIsBlank, nonEmptySteps, focusIndexAfterRemove } from "../../static/step-row.js";
 
 test("stepIsBlank: empty and whitespace-only text is blank; real text is not", () => {
   assert.equal(stepIsBlank({ is_heading: 0, text: "" }), true);
@@ -42,4 +42,17 @@ test("nonEmptySteps: all-blank -> empty, none-blank -> unchanged", () => {
   assert.deepEqual(nonEmptySteps([{ text: "" }, { text: " " }]), []);
   const real = [{ is_heading: 0, text: "One" }, { is_heading: 0, text: "Two" }];
   assert.deepEqual(nonEmptySteps(real), real);
+});
+
+// Editor parity stage 2: after removeStep splices, the caret goes to whatever took the deleted step's
+// place. lenAfter is the length AFTER the splice, so a middle delete lands on the SAME index.
+test("focusIndexAfterRemove: a middle delete focuses the step that slid into that index", () => {
+  assert.equal(focusIndexAfterRemove(0, 4), 0);   // deleted the first of 5 -> the new first
+  assert.equal(focusIndexAfterRemove(2, 4), 2);   // deleted the middle    -> the one that took its slot
+});
+
+test("focusIndexAfterRemove: deleting the last step falls back to the new last; empty -> no focus", () => {
+  assert.equal(focusIndexAfterRemove(4, 4), 3);   // was last of 5 -> clamp to the new last
+  assert.equal(focusIndexAfterRemove(0, 0), null);
+  assert.equal(focusIndexAfterRemove(3, 0), null);
 });

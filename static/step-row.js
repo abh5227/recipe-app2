@@ -20,5 +20,11 @@
     return steps.filter((s) => !stepIsBlank(s));
   }
 
+  // Where the caret goes after step `i` is deleted, given the list length AFTER the splice: the step
+  // that TOOK its place, or the new last step when the deleted one was last. null when nothing is left.
+  function focusIndexAfterRemove(i, lenAfter) {
+    if (!(lenAfter > 0)) return null;
+    return Math.min(Math.max(i, 0), lenAfter - 1);
+  }
 
-  export { stepIsBlank, nonEmptySteps };
+  export { stepIsBlank, nonEmptySteps, focusIndexAfterRemove };

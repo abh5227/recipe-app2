@@ -4,13 +4,13 @@ import {
   formatAmount, group, scaleQty, abbrevUnits, canonicalizeUnit, amountText, weightText, toUnicodeFractions,
 } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
-import { nonEmptySteps } from "./step-row.js";
+import { nonEmptySteps, focusIndexAfterRemove } from "./step-row.js";
 import { removedInsertIndex } from "./annotation-place.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
 import { uploadErrorHTML } from "./upload-status.js";
 import { makeBackdateSubmit, isStageableImage } from "./backdate-submit.js";
-import { mountStepEditors, destroyStepEditors } from "./step-editor.js";
+import { mountStepEditors, destroyStepEditors, focusStepEditor } from "./step-editor.js";
 import { heroCaption } from "./hero-caption.js";
 import { reorderBefore } from "./reorder.js";
 import heroUrl from "./login-hero.jpg";   // auth-4 login hero — Vite hashes it into dist/assets (served via /assets)
@@ -909,12 +909,23 @@ function renderStepsList(steps) {
   return items.map((x) => x.html).join("");
 }
 
+// The per-step remove control: the SAME hover-revealed cluster the ingredient rows use (.rtools /
+// .rbtn.rm / ING_TRASH), just without the grip + heading-toggle siblings — those are ingredient-only
+// affordances. Wired through the delegated handleInlineEdit dispatch, not its own listener.
+function editStepRowTools(i) {
+  return `<span class="rtools"><button type="button" class="rbtn rm" data-inline-edit-rm-step data-i="${i}" title="Remove step" aria-label="Remove step">${ING_TRASH}</button></span>`;
+}
+
 // Stage 1a (edit mode only): a non-heading step becomes an empty host that mountStepEditors() fills
 // with a per-step TipTap editor. `data-i` indexes view.draft.steps, matching the mount lookup.
-// Heading steps reuse renderStepRow, so their display is byte-identical to reading mode.
+// Heading steps stay display-only (byte-identical to reading mode's li.group), but — matching the
+// ingredient side, where editIngRowHTML gives a heading row the same trash — they get the remove
+// control too. The heading markup is spelled out here rather than delegating to renderStepRow so the
+// annotation reading path stays untouched.
 function renderStepEditHost(row, i) {
-  if (row.is_heading) return renderStepRow(row);
-  return `<li class="step"><div class="step-editor-host" data-i="${i}"></div></li>`;
+  const tools = editStepRowTools(i);
+  if (row.is_heading) return `<li class="group step-edit">${esc(row.text)}${tools}</li>`;
+  return `<li class="step step-edit"><div class="step-editor-host" data-i="${i}"></div>${tools}</li>`;
 }
 
 // Long headnotes clamp to 3 lines + a "more" expander; short ones show in full. Measured after
@@ -1850,6 +1861,34 @@ function addIngredient(isHeading) {
   focusIngField(arr.length - 1, isHeading ? "heading" : "quantity");
 }
 function removeIngredient(i) { view.draft.ingredients.splice(i, 1); markDirty(); rerenderEditIngredients(); }
+
+// The ONE write-back callback the per-step TipTap editors are mounted with. Named (not an inline
+// arrow at the enterEditMode call site) so the ORIGINAL mount and every re-mount wire up identically.
+function onStepInput(i, text) { view.draft.steps[i].text = text; markDirty(); }
+
+// The steps' equivalent of rerenderEditIngredients — but it must also honour the island invariant
+// (step-editor.js:8-12): each step editor's onUpdate closure CAPTURED its index at mount, so after any
+// structural change to draft.steps the surviving editors would write to the WRONG index. Hence the
+// full cycle, in this order: destroy -> re-render #steps-list with FRESH data-i -> re-mount. Scoped to
+// #steps-list so the ingredient editors are never disturbed. Cost: caret + per-step undo history are
+// lost (text is already flushed to the draft by onUpdate on every keystroke, so nothing typed is).
+function rerenderEditSteps() {
+  const el = document.getElementById("steps-list");
+  if (!el || !view || !view.editMode) return;
+  try { destroyStepEditors(); } catch (e) { console.error("destroyStepEditors failed", e); }
+  el.innerHTML = view.draft.steps.map(renderStepEditHost).join("");
+  try { mountStepEditors(view.draft, onStepInput); } catch (e) { console.error("mountStepEditors failed", e); }
+}
+// Mirrors removeIngredient (splice -> markDirty -> re-render), then places the caret in the step that
+// took the deleted one's place — a heading (or an emptied list) simply gets no focus.
+function removeStep(i) {
+  const arr = view.draft.steps;
+  if (!arr || !arr[i]) return;
+  arr.splice(i, 1);
+  markDirty(); rerenderEditSteps();
+  const f = focusIndexAfterRemove(i, arr.length);
+  if (f != null) focusStepEditor(f);
+}
 function toggleIngredientHeading(i) {
   toggleRowType(view.draft.ingredients[i]);   // lossless in-place flip (Option A1; see ingredient-row.js)
   markDirty(); rerenderEditIngredients();
@@ -1896,7 +1935,7 @@ function enterEditMode() {
   // invariant); a mid-session repaint would orphan these and must re-mount. Wrapped so a step-editor
   // failure can't break the shared enter flow (ingredient editor + Save must survive it).
   try {
-    mountStepEditors(view.draft, (i, text) => { view.draft.steps[i].text = text; markDirty(); });
+    mountStepEditors(view.draft, onStepInput);
   } catch (e) { console.error("mountStepEditors failed", e); }
   // The ingredient link-select needs the library; it's otherwise only pre-loaded for seed recipes.
   if (!INGREDIENT_LIST.length) {
@@ -1986,6 +2025,9 @@ function handleInlineEdit(e) {
   if (unl) { unlinkIngredient(Number(unl.dataset.i)); return true; }
   const ani = e.target.closest("[data-inline-edit-addnote]");
   if (ani) { addNote(Number(ani.dataset.i)); return true; }
+  // Editor parity — step structural actions (re-render + re-mount via rerenderEditSteps)
+  const rms = e.target.closest("[data-inline-edit-rm-step]");
+  if (rms) { removeStep(Number(rms.dataset.i)); return true; }
   return false;
 }
 

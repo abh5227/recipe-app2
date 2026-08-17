@@ -810,6 +810,29 @@ a:hover { color: var(--berry-lift); }
   padding: 1px 2px; margin: 0 -2px; border-radius: 0;
 }
 .step-editor-host .ProseMirror p { margin: 0; }
+/* Editor parity: the per-step remove control. No new vocabulary — it's the SAME .rtools cluster and
+   .rbtn.rm trash the ingredient rows use, revealed on hover/focus exactly like .erow's.
+   Edit mode only — .step-edit exists nowhere in the reading path, so reading stays byte-identical.
+   ⚠️ The 36px gutter fits exactly ONE 25px control, clearing the focused editor's raised card (which
+   bleeds 8px past its box via `margin: 0 -8px` below) by ~3px. That is the whole margin there is: a
+   TWO-control cluster measures 51px and overlaps the step text by 23px. So the gutter MUST be re-sized
+   the moment a second control lands here (the reorder grip is the next one due) — do not assume it
+   generalises. */
+.steps li.step-edit { position: relative; padding-right: 36px; }
+.steps li.step-edit > .rtools { position: absolute; top: 0; right: 0; }
+.steps li.step-edit:hover > .rtools, .steps li.step-edit:focus-within > .rtools { opacity: 1; }
+/* a heading row is only ~25px tall against a 24px control, so the button's bottom sat 1.2px off the
+   heading's 1.5px bottom rule — it read as sitting ON the underline. Measured; independent of the
+   right-edge geometry. */
+.steps li.group.step-edit { padding-bottom: 9px; }
+/* Alone in the cluster, the trash drops the FENCE — the ingredient row's hairline divides it from two
+   siblings and there are none here. Drop the fence's COLOUR, never the border BOX: `border-left: none`
+   also zeroes border-left-style, and :hover only sets border-COLOR, so a none-style side stays unpainted
+   and the red hover border came out open on the left (three sides only). The :hover rule below restores
+   it at matching specificity — without it, THIS selector outranks .rbtn.rm:hover and wins with
+   transparent. */
+.steps li.step-edit .rbtn.rm { margin-left: 0; padding-left: 5px; border-left-color: transparent; border-radius: 6px; }
+.steps li.step-edit .rbtn.rm:hover { border-left-color: var(--danger); }
 .detail-card.editing .step-editor-host .ProseMirror:hover {
   background: color-mix(in srgb, var(--berry) 5%, transparent); border-radius: 5px 5px 0 0;
 }

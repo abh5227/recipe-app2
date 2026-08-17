@@ -76,3 +76,16 @@ export function destroyStepEditors() {
 
 // How many editors are currently mounted — used to VERIFY teardown (0 after every exit path).
 export function mountedStepEditorCount() { return editors.length; }
+
+// Put the caret in the editor mounted on step `i` (used after a structural re-render, e.g. delete).
+// A ProseMirror instance is NOT focused with DOM .focus() — that would leave it with no selection; the
+// editor's own focus command sets the selection ("end") as well. Returns false when step `i` has no
+// editor (a heading step, or an index past the end), so callers can just no-op.
+export function focusStepEditor(i) {
+  const host = document.querySelector(`.step-editor-host[data-i="${i}"]`);
+  if (!host) return false;
+  const ed = editors.find((e) => e.options && e.options.element === host);
+  if (!ed) return false;
+  try { ed.commands.focus("end"); } catch (_) { return false; }
+  return true;
+}
