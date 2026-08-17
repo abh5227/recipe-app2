@@ -86,6 +86,33 @@ def test_step_deletion_renumbers_contiguously(kitchen):
     assert [r["text"] for r in rows()] == ["first step", "", "last step"]
 
 
+def test_step_heading_retitle_round_trips(kitchen):
+    """Editor parity: step headings are editable inline, so a retitled heading has to survive the PUT.
+    The server path already handles it (stepToPayload -> {"heading": text} -> write_recipe_rows'
+    step.get("heading") branch), so this PINS the contract rather than changing it: the row stays a
+    heading, its text updates, and neither its position nor the steps around it move."""
+    rid = kitchen.client.post("/api/recipes", json={
+        "name": "Heading Retitle", "ingredients": [],
+        "steps": ["mise en place", {"heading": "TO SERVE:"}, "plate it up"],
+    }).get_json()["id"]
+
+    def rows():
+        with kitchen.conn() as c:
+            return [(r["position"], r["is_heading"], r["text"]) for r in c.execute(
+                "SELECT position, is_heading, text FROM recipe_steps WHERE recipe_id=? ORDER BY position", (rid,)
+            )]
+
+    assert rows() == [(0, 0, "mise en place"), (1, 1, "TO SERVE:"), (2, 0, "plate it up")]
+
+    assert kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Heading Retitle", "ingredients": [],
+        "steps": ["mise en place", {"heading": "TO FINISH:"}, "plate it up"],
+    }).status_code == 200
+
+    # only the heading's text changed: is_heading stays 1, positions are untouched, neighbours intact
+    assert rows() == [(0, 0, "mise en place"), (1, 1, "TO FINISH:"), (2, 0, "plate it up")]
+
+
 # ---- test-recipe tier (scratch recipes; source='test') ----
 
 def test_create_as_test_sets_source_test(kitchen):

@@ -27,4 +27,18 @@
     return Math.min(Math.max(i, 0), lenAfter - 1);
   }
 
-  export { stepIsBlank, nonEmptySteps, focusIndexAfterRemove };
+  // Buffer a typed value into a draft STEP row — the step twin of ingredient-row.js's writeIngField.
+  // Its existence IS the reason step headings get their own data-inline-edit-step namespace: every
+  // caller of writeIngField indexes view.draft.ingredients, so routing a heading through that path
+  // would write into the ingredient array at the STEP's index — silent cross-array corruption.
+  // A heading's label lives in `text`, the same field a non-heading step uses (see stepIsBlank and
+  // stepToPayload), so both keys land there. Tolerates a missing row on purpose: the delegated
+  // listeners can fire on a stale data-i between a splice and its re-render, and Esc-revert reads the
+  // row through an optional chain. Returns the row, like writeIngField.
+  function writeStepField(row, key, val) {
+    if (!row) return row;
+    if (key === "heading" || key === "text") row.text = val;
+    return row;
+  }
+
+  export { stepIsBlank, nonEmptySteps, focusIndexAfterRemove, writeStepField };

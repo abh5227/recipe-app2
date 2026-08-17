@@ -4,7 +4,7 @@
 // Pure transforms in static/step-row.js, so this runs under bare `node --test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stepIsBlank, nonEmptySteps, focusIndexAfterRemove } from "../../static/step-row.js";
+import { stepIsBlank, nonEmptySteps, focusIndexAfterRemove, writeStepField } from "../../static/step-row.js";
 
 test("stepIsBlank: empty and whitespace-only text is blank; real text is not", () => {
   assert.equal(stepIsBlank({ is_heading: 0, text: "" }), true);
@@ -55,4 +55,36 @@ test("focusIndexAfterRemove: deleting the last step falls back to the new last; 
   assert.equal(focusIndexAfterRemove(4, 4), 3);   // was last of 5 -> clamp to the new last
   assert.equal(focusIndexAfterRemove(0, 0), null);
   assert.equal(focusIndexAfterRemove(3, 0), null);
+});
+
+// Editor parity: step headings are editable inline. writeStepField is the draft write-back the
+// [data-inline-edit-step] input listener and its Esc-revert both go through.
+test("writeStepField: the 'heading' key writes the label into .text (where a heading keeps it)", () => {
+  const row = { is_heading: 1, text: "TO SERVE:" };
+  assert.equal(writeStepField(row, "heading", "TO FINISH:"), row);   // returns the row, like writeIngField
+  assert.deepEqual(row, { is_heading: 1, text: "TO FINISH:" });      // is_heading untouched
+});
+
+test("writeStepField: 'text' writes the same field, so a non-heading step round-trips too", () => {
+  const row = { is_heading: 0, text: "Mix" };
+  writeStepField(row, "text", "Mix well");
+  assert.deepEqual(row, { is_heading: 0, text: "Mix well" });
+});
+
+test("writeStepField: an empty string is written through, NOT ignored", () => {
+  // Clearing a heading must reach the draft — nonEmptySteps then drops it at save, which is the
+  // documented delete-by-clearing contract. Swallowing "" would make the field un-clearable.
+  const row = { is_heading: 1, text: "TO SERVE:" };
+  writeStepField(row, "heading", "");
+  assert.equal(row.text, "");
+  assert.equal(stepIsBlank(row), true);
+});
+
+test("writeStepField: an unknown key changes nothing, and a missing row never throws", () => {
+  const row = { is_heading: 1, text: "TO SERVE:" };
+  writeStepField(row, "qty", "2");
+  assert.deepEqual(row, { is_heading: 1, text: "TO SERVE:" });       // no stray property
+  // The delegated listeners can fire on a stale data-i between a splice and its re-render.
+  assert.equal(writeStepField(null, "heading", "x"), null);
+  assert.equal(writeStepField(undefined, "heading", "x"), undefined);
 });

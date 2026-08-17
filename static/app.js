@@ -4,7 +4,7 @@ import {
   formatAmount, group, scaleQty, abbrevUnits, canonicalizeUnit, amountText, weightText, toUnicodeFractions,
 } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
-import { nonEmptySteps, focusIndexAfterRemove } from "./step-row.js";
+import { nonEmptySteps, focusIndexAfterRemove, writeStepField } from "./step-row.js";
 import { removedInsertIndex } from "./annotation-place.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
@@ -924,8 +924,22 @@ function editStepRowTools(i) {
 // annotation reading path stays untouched.
 function renderStepEditHost(row, i) {
   const tools = editStepRowTools(i);
-  if (row.is_heading) return `<li class="group step-edit">${esc(row.text)}${tools}</li>`;
+  if (row.is_heading) return `<li class="group step-edit">${editStepHeadingField(i, row.text)}${tools}</li>`;
   return `<li class="step step-edit"><div class="step-editor-host" data-i="${i}"></div>${tools}</li>`;
+}
+
+// A step heading's editable field. A PLAIN <input> — not TipTap: a section label has no [[key|label]]
+// chips, no scale spans and no meaningful undo history, and keeping it out of step-editor.js means the
+// island invariant is never extended to a second row type.
+// It carries its OWN data-inline-edit-step namespace, deliberately NOT ieCell's data-inline-edit-ing:
+// four delegated handlers dispatch on that attribute and index view.draft.ingredients[data-i], so a
+// heading rendered with ieCell would silently write into the INGREDIENT array at the step's index.
+// No .ie-ov overlay either — that machinery (with the focusout mirror and the mousedown caret
+// hit-test) exists because the ingredient NAME column is narrow and a <textarea> can't ellipsize; a
+// step heading spans the full method column and is short. Placeholder copy matches the ingredient
+// heading's, so the two columns read the same when empty.
+function editStepHeadingField(i, text) {
+  return `<input type="text" class="ie e-step-heading" data-inline-edit-step="heading" data-i="${i}" value="${esc(text || "")}" placeholder="Section heading" aria-label="Section heading" spellcheck="false">`;
 }
 
 // Long headnotes clamp to 3 lines + a "more" expander; short ones show in full. Measured after
@@ -2927,6 +2941,20 @@ document.addEventListener("keydown", (e) => {
       return;
     }
   }
+  // Editor parity — the step-heading twin of the ingredient Enter/Escape handling above. Shares the
+  // same focus-time snapshot (iePreEdit covers both namespaces) since only one field is ever focused.
+  // writeStepField tolerates a missing row, so no guard is needed on the draft lookup.
+  if (view && view.editMode && e.target.dataset && e.target.dataset.inlineEditStep) {
+    if (e.key === "Enter") { e.preventDefault(); e.target.blur(); return; }
+    if (e.key === "Escape") {
+      e.preventDefault();
+      const el = e.target;
+      el.value = iePreEdit;
+      writeStepField(view.draft && view.draft.steps[Number(el.dataset.i)], el.dataset.inlineEditStep, iePreEdit);
+      el.blur();
+      return;
+    }
+  }
   if (view && view.editMode && e.key === "Enter" && e.target.classList && e.target.classList.contains("ie-line")) {
     e.preventDefault();
     return;
@@ -2990,6 +3018,18 @@ document.addEventListener("input", (e) => {
     writeIngField(row, ing.dataset.inlineEditIng, ing.value);   // real <textarea> -> draft (shared w/ Esc-revert)
     markDirty();
   }
+  // Editor parity — buffer a step HEADING into its draft row. Same no-re-render discipline as the
+  // ingredient branch (re-rendering here would destroy focus and caret mid-keystroke), and the flush
+  // MUST be on `input`, never on blur: rerenderEditSteps() destroys and rebuilds #steps-list from
+  // view.draft on every add/delete, so any text that hasn't reached the draft yet is re-rendered away
+  // — silently, since the rebuild happily paints the stale value instead of erroring.
+  const sh = e.target.closest("[data-inline-edit-step]");
+  if (sh && view && view.editMode && view.draft) {
+    const row = view.draft.steps[Number(sh.dataset.i)];
+    if (!row) return;
+    writeStepField(row, sh.dataset.inlineEditStep, sh.value);
+    markDirty();
+  }
 });
 document.addEventListener("focusout", (e) => {
   const nt = e.target.closest(".ie-tag-new");
@@ -3003,10 +3043,11 @@ document.addEventListener("focusout", (e) => {
 });
 // Snapshot a field's value when it gains focus, so Escape can revert it to exactly this (see keydown).
 // Any ingredient field (the quantity/name/note textareas AND the unit <input>), so Esc-revert works
-// on the unit combobox too — not just the overlay textareas.
+// on the unit combobox too — not just the overlay textareas — and (editor parity) the step-heading
+// field. ONE shared snapshot is correct for both namespaces: only one field can be focused at a time.
 let iePreEdit = "";
 document.addEventListener("focusin", (e) => {
-  const ta = e.target.closest("[data-inline-edit-ing]");
+  const ta = e.target.closest("[data-inline-edit-ing], [data-inline-edit-step]");
   if (ta && view && view.editMode) iePreEdit = ta.value;
 });
 // Overlay caret fix: the resting display div is one line while the textarea wraps on focus, so letting a

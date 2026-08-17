@@ -823,8 +823,26 @@ a:hover { color: var(--berry-lift); }
 .steps li.step-edit:hover > .rtools, .steps li.step-edit:focus-within > .rtools { opacity: 1; }
 /* a heading row is only ~25px tall against a 24px control, so the button's bottom sat 1.2px off the
    heading's 1.5px bottom rule — it read as sitting ON the underline. Measured; independent of the
-   right-edge geometry. */
+   right-edge geometry. ⚠️ This 9px is justified BY that underline, which variant B keeps (see the
+   .e-step-heading note below). If the section rule were ever suppressed the way the INGREDIENT
+   heading's is at line 343, this padding would lose its reason entirely and must be re-derived from
+   whatever the row looks like then — not carried over on the assumption it still applies. */
 .steps li.group.step-edit { padding-bottom: 9px; }
+/* Editor parity: the step heading's editable field (a plain input — see editStepHeadingField).
+   letter-spacing + text-transform are NOT decorative repetition and must not be "cleaned up": `.ie`
+   gives the field `font: inherit`, which carries li.group's family/size/weight, and `color: inherit`
+   carries the green — but the UA stylesheet RESETS letter-spacing and text-transform on form
+   controls, so without these two the heading renders un-tracked and lowercase, visibly unlike the
+   row it sits in. The shipping ingredient heading restates them for exactly this reason (line 359).
+   NO dashed baseline (measured bake-off, variant B): li.group keeps its own solid rule, which is the
+   ONLY non-dashed horizontal line anywhere in the method column, because li.step paints no row rule
+   at all. Suppressing it the way the ingredient side does at line 343 would leave the whole column
+   uniformly dashed and its sections findable only by reading. The ingredient column can afford that
+   trade — --rule-soft survives on every li.erow there; this column has no such fallback. The colour
+   is zeroed rather than the border BOX so the field's geometry is identical either way (and a
+   none-style side can't be repainted by a colour-only rule — the bug that bit the trash's hover). */
+.e-step-heading { display: block; width: 100%; letter-spacing: 0.1em; text-transform: uppercase;
+  border-bottom-color: transparent; }
 /* Alone in the cluster, the trash drops the FENCE — the ingredient row's hairline divides it from two
    siblings and there are none here. Drop the fence's COLOUR, never the border BOX: `border-left: none`
    also zeroes border-left-style, and :hover only sets border-COLOR, so a none-style side stays unpainted
