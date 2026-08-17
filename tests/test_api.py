@@ -50,6 +50,42 @@ def test_create_edit_delete_app_recipe(kitchen):
     assert kitchen.client.get(f"/api/recipes/{rid}").status_code == 404
 
 
+def test_step_deletion_renumbers_contiguously(kitchen):
+    """Editor parity stage 1: clearing a step's text deletes it. The client prunes blank steps
+    (nonEmptySteps in draftPayload, mirroring nonEmptyRows for ingredients), so the server receives a
+    SHORTER array — this pins what it does with one: the dropped step is gone, positions renumber
+    contiguously from 0 (write_recipe_rows assigns them by enumerate), and the survivors keep their
+    text byte-for-byte. That contract is what the annotations layer's clean step/removed entry rests on."""
+    rid = kitchen.client.post("/api/recipes", json={
+        "name": "Step Prune", "ingredients": [],
+        "steps": ["first step", "middle step", "last step"],
+    }).get_json()["id"]
+
+    def rows():
+        with kitchen.conn() as c:
+            return c.execute(
+                "SELECT position, is_heading, text FROM recipe_steps WHERE recipe_id=? ORDER BY position", (rid,)
+            ).fetchall()
+
+    assert [r["text"] for r in rows()] == ["first step", "middle step", "last step"]
+
+    # what the client now sends once the middle step is cleared: the blank is simply absent
+    assert kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Step Prune", "ingredients": [], "steps": ["first step", "last step"],
+    }).status_code == 200
+
+    after = rows()
+    assert [r["text"] for r in after] == ["first step", "last step"]   # the cleared step is GONE
+    assert [r["position"] for r in after] == [0, 1]                    # contiguous, no gap at the old index
+
+    # BOUNDARY: the prune is a CLIENT rule (like the ingredient one) — the server stays permissive, so a
+    # blank step sent directly is still stored. Pinned so nobody assumes server-side enforcement.
+    assert kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Step Prune", "ingredients": [], "steps": ["first step", "", "last step"],
+    }).status_code == 200
+    assert [r["text"] for r in rows()] == ["first step", "", "last step"]
+
+
 # ---- test-recipe tier (scratch recipes; source='test') ----
 
 def test_create_as_test_sets_source_test(kitchen):

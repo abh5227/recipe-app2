@@ -4,6 +4,7 @@ import {
   formatAmount, group, scaleQty, abbrevUnits, canonicalizeUnit, amountText, weightText, toUnicodeFractions,
 } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
+import { nonEmptySteps } from "./step-row.js";
 import { removedInsertIndex } from "./annotation-place.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
@@ -1942,7 +1943,7 @@ function draftPayload() {
     servings: t(r.servings), prep_time: t(r.prep_time), cook_time: t(r.cook_time), total_time: t(r.total_time),
     image: t(r.image), descr: t(r.descr), notes: t(r.notes),
     ingredients: nonEmptyRows(view.draft.ingredients).map(ingToPayload),   // drop blank rows the user left WIP
-    steps: view.draft.steps.map(stepToPayload),
+    steps: nonEmptySteps(view.draft.steps).map(stepToPayload),             // ditto — CLEARING a step's text deletes it
   };
 }
 
