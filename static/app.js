@@ -5,6 +5,7 @@ import {
 } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
 import { nonEmptySteps, focusIndexAfterRemove, writeStepField } from "./step-row.js";
+import { insertIndexFor } from "./row-insert.js";
 import { removedInsertIndex } from "./annotation-place.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
@@ -1330,13 +1331,19 @@ function closeRowMenu() {
 // one is exactly what the fidelity rule forbids — a half-populated icon column is worse than none.
 // The heading state is read from the DRAFT rather than passed in, so the label can never disagree with
 // the row it belongs to (the menu is rendered at open time, after any re-render).
+// B puts the two inserts FIRST, separated from the row's own actions by the same .sep the album menu
+// uses before its destructive item: the top group acts on the LIST (add a neighbour), the bottom group
+// acts on THIS row (retype it, delete it). Both labels fit on one line at min-width: 140px.
 function rowMenuItemsHTML(kind, i) {
+  const inserts = `<button type="button" data-rm-act="add-above">Add above</button>
+    <button type="button" data-rm-act="add-below">Add below</button>
+    <div class="sep"></div>`;
   if (kind === "step") {
-    return `<button type="button" class="danger" data-rm-act="delete">Delete</button>`;
+    return `${inserts}<button type="button" class="danger" data-rm-act="delete">Delete</button>`;
   }
   const row = view.draft.ingredients[i];
   const toHeading = !(row && row.is_heading);
-  return `<button type="button" data-rm-act="toggle">${toHeading ? "To heading" : "To ingredient"}</button>`;
+  return `${inserts}<button type="button" data-rm-act="toggle">${toHeading ? "To heading" : "To ingredient"}</button>`;
 }
 function openRowMenu(trigger, i, kind) {
   closePhotoMenu();                                        // single-open ACROSS both families
@@ -1370,9 +1377,20 @@ function handleRowMenuAction(e) {
   if (trigger) { row.querySelector(".row-menu") ? closeRowMenu() : openRowMenu(trigger, i, kind); return true; }
   const item = e.target.closest("[data-rm-act]");
   if (!item) return false;
+  const act = item.dataset.rmAct;
   closeRowMenu();
-  if (kind === "ing"  && item.dataset.rmAct === "toggle") { toggleIngredientHeading(i); return true; }
-  if (kind === "step" && item.dataset.rmAct === "delete") { removeStep(i); return true; }
+  // B: both lists share the index arithmetic (insertIndexFor) and differ only in which array is
+  // measured and which adder runs. A null index means the row this menu claimed to belong to is not a
+  // real row any more — do nothing rather than guess a position; see row-insert.js.
+  if (act === "add-above" || act === "add-below") {
+    const arr = kind === "step" ? view.draft.steps : view.draft.ingredients;
+    const at = insertIndexFor(act === "add-below" ? "below" : "above", i, arr.length);
+    if (at == null) return true;
+    if (kind === "step") addStep(at); else addIngredient(false, at);   // always a NORMAL row
+    return true;
+  }
+  if (kind === "ing"  && act === "toggle") { toggleIngredientHeading(i); return true; }
+  if (kind === "step" && act === "delete") { removeStep(i); return true; }
   return true;                                             // an item of this menu, but not one we know
 }
 
@@ -1985,12 +2003,17 @@ function focusIngField(i, key) {
   const el = document.querySelector(`[data-inline-edit-ing="${key}"][data-i="${i}"]`);
   if (el) { el.focus(); if (el.select) el.select(); }
 }
-function addIngredient(isHeading) {
+// B generalised this from append-only to insert-at: `at` omitted means the end, which is exactly what
+// the two adders under the list still want, so their call sites are unchanged and there is no second
+// row template to keep in sync. The row SHAPE and the post-insert behaviour (markDirty -> re-render ->
+// focus the new row) are shared by both entry points by construction.
+function addIngredient(isHeading, at) {
   const arr = view.draft.ingredients;
-  arr.push(isHeading ? { is_heading: 1, heading: "", qty: "", quantity: "", unit: "", label: "", note: "", ingredient_id: null, raw_text: "" }
-                     : { is_heading: 0, qty: "", quantity: "", unit: "", label: "", note: "", ingredient_id: null, raw_text: "" });
+  const at_ = at == null ? arr.length : at;
+  arr.splice(at_, 0, isHeading ? { is_heading: 1, heading: "", qty: "", quantity: "", unit: "", label: "", note: "", ingredient_id: null, raw_text: "" }
+                               : { is_heading: 0, qty: "", quantity: "", unit: "", label: "", note: "", ingredient_id: null, raw_text: "" });
   markDirty(); rerenderEditIngredients();
-  focusIngField(arr.length - 1, isHeading ? "heading" : "quantity");
+  focusIngField(at_, isHeading ? "heading" : "quantity");
 }
 function removeIngredient(i) { view.draft.ingredients.splice(i, 1); markDirty(); rerenderEditIngredients(); }
 
@@ -2021,18 +2044,24 @@ function removeStep(i) {
   const f = focusIndexAfterRemove(i, arr.length);
   if (f != null) focusStepEditor(f);
 }
-// The step mirror of addIngredient (push -> markDirty -> re-render -> focus the new row). Two things
+// The step mirror of addIngredient (insert -> markDirty -> re-render -> focus the new row). Two things
 // differ, both forced by the island invariant: the re-render MUST be the full destroy/re-mount cycle
 // (a bare innerHTML swap orphans every editor), and the caret is placed with focusStepEditor because a
-// ProseMirror instance can't be focused via DOM .focus(). The pushed row carries exactly the fields the
-// three readers use — renderStepEditHost, mountStepEditors, stepToPayload all read is_heading + text.
+// ProseMirror instance can't be focused via DOM .focus(). The inserted row carries exactly the fields
+// the three readers use — renderStepEditHost, mountStepEditors, stepToPayload all read is_heading + text.
 // A new step is empty by definition, so saving without typing drops it again (nonEmptySteps): the same
 // contract as clearing an existing step's text, and it leaves the saved content byte-identical.
-function addStep() {
+// B generalised this the same way as addIngredient: `at` omitted means the end, so the adder below the
+// list is unchanged. ⚠️ A MID-LIST insert is exactly the case the island invariant exists for — every
+// editor at or after `at` shifts index, and their onUpdate closures captured the OLD one at mount, so
+// without the full rerenderEditSteps cycle typing into a surviving step would silently write its text
+// into a DIFFERENT step. Never replace this with a bare splice + innerHTML.
+function addStep(at) {
   const arr = view.draft.steps;
-  arr.push({ is_heading: 0, text: "" });
+  const at_ = at == null ? arr.length : at;
+  arr.splice(at_, 0, { is_heading: 0, text: "" });
   markDirty(); rerenderEditSteps();
-  focusStepEditor(arr.length - 1);
+  focusStepEditor(at_);
 }
 function toggleIngredientHeading(i) {
   toggleRowType(view.draft.ingredients[i]);   // lossless in-place flip (Option A1; see ingredient-row.js)
