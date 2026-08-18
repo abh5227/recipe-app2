@@ -62,6 +62,7 @@ weights.py     volume→weight matcher + King Arthur density lookup (Phase 1c).
 stepscale.py   method-text quantity parser (markup > guard > heuristic, Phase 1d).
 paprika_native_reader.py   Phase 15 import — reads the Paprika NATIVE export (.paprikarecipes) into a normalized shape.
 import_cleanup.py          Phase 15 import — source-agnostic cleanup core: structures/flags each line.
+import_cleanup_preview.py  Phase 15 import — read-only sample preview for the cleanup core (prints; writes nothing).
 import_write.py            Phase 15 import — maps a cleaned recipe to DB rows (source='app', uid-dedup, review queue).
 study/         superseded Paprika HTML-export study tools (read-only; the native pipeline replaced them; kept as fallback).
 recipes.db     the generated database (binary; don't hand-edit; git-ignored).
