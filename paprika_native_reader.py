@@ -71,6 +71,28 @@ def ingredient_lines(raw):
     return lines, blanks
 
 
+def direction_lines(raw):
+    """`directions` is one newline-joined string -> list of non-empty, stripped step lines.
+
+    The SAME contract ingredient_lines already gives the other list field, and the point of the
+    symmetry: both list fields now arrive at the core ready to consume, so the core never re-splits
+    a transport format. The filtering lives HERE, not in the core, because splitting is a property of
+    THIS source's storage — Paprika packs steps into one string — and a source that already knows its
+    step boundaries (schema.org recipeInstructions / HowToSection) must not have to join them just so
+    the core can split them apart again and re-infer the structure it was handed.
+
+    Behaviour is byte-identical to the split this replaces (import_cleanup's old line 521): blanks
+    dropped, surrounding whitespace stripped. Measured over all 298 archive recipes — 2,365 step lines,
+    2,008 blank lines dropped, 592 lines whitespace-stripped, 0 with leading whitespace, 0 CR.
+    Blank-line grouping is NOT preserved, exactly as before: it was already discarded, and it is
+    uniform double-spacing (formatting, not structure) in 193 of the 263 recipes that have any.
+    No blank_break_count companion: unlike _blank_breaks for ingredients, nothing has ever counted
+    directions' blank lines."""
+    if not raw:
+        return []
+    return [p.strip() for p in raw.split("\n") if p.strip()]
+
+
 def detect_image_type(raw):
     if raw[:3] == b"\xff\xd8\xff":
         return "JPEG"
@@ -127,7 +149,7 @@ def normalize(rec):
         "name_raw": rec.get("name") or "",
         "ingredient_lines": lines,
         "_blank_breaks": blanks,
-        "directions": rec.get("directions") or "",
+        "directions": direction_lines(rec.get("directions")),
         "source": rec.get("source") or "",
         "source_url": rec.get("source_url") or "",
         "servings_raw": rec.get("servings") or "",
@@ -224,8 +246,8 @@ def print_record(norm, reason, idx):
     if not lines:
         print("      (none)")
 
-    dlines = [x for x in norm["directions"].split("\n") if x.strip()]
-    print("  directions (%d newline-separated step-line(s)):" % len(dlines))
+    dlines = norm["directions"]                      # already split + filtered by the reader
+    print("  directions (%d step-line(s)):" % len(dlines))
     for i, st in enumerate(dlines[:3], 1):
         print("      %d. %s" % (i, trunc(st, 82)))
     if len(dlines) > 3:

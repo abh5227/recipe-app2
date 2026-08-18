@@ -518,7 +518,9 @@ def classify_line(raw, section_hints=None):
 def clean_recipe(norm):
     """Map a normalized recipe -> structured/flagged result. Carries every field through;
     drops nothing; flags incompletes at the recipe level."""
-    directions = [s.strip() for s in (norm["directions"] or "").split("\n") if s.strip()]
+    # Already a list of non-empty, stripped step lines — the reader owns that split, exactly as it
+    # already owns ingredient_lines'. Copied so the cleaned result never aliases the reader's list.
+    directions = list(norm["directions"] or [])
     # step-section headings -> hint words, so a bare ingredient header that mirrors a step section
     # (e.g. "Habanero Syrup" ~ the "Habanero Syrup -" step) can be promoted (secondary signal, 3b).
     hints = {_step_heading_key(t) for t in directions if classify_step(t)[0]} - {""}

@@ -12,7 +12,7 @@ import import_cleanup as ic
 def _norm(**over):
     """A normalized recipe (the reader's shape) for clean_recipe tests; override any field."""
     base = dict(
-        name="X", uid="u", hash="h", ingredient_lines=[], directions="",
+        name="X", uid="u", hash="h", ingredient_lines=[], directions=[],
         servings_raw="", categories=[], source="", source_url="", notes="",
         description="", rating=0, prep_time="", cook_time="", total_time="",
         images=[], primary_photo=None,
@@ -470,18 +470,18 @@ def test_servings_never_grabs_pan_size():
 
 # ----------------------------------------------------------------- incomplete recipes (drop nothing)
 def test_no_ingredients_flagged():
-    r = ic.clean_recipe(_norm(ingredient_lines=[], directions="1. mix"))
+    r = ic.clean_recipe(_norm(ingredient_lines=[], directions=["1. mix"]))
     assert "no_ingredients" in r["recipe_flags"] and "no_directions" not in r["recipe_flags"]
 
 
 def test_no_directions_flagged_keeps_ingredients():
-    r = ic.clean_recipe(_norm(ingredient_lines=["2 tbsp oil", "1 egg"], directions=""))
+    r = ic.clean_recipe(_norm(ingredient_lines=["2 tbsp oil", "1 egg"], directions=[]))
     assert "no_directions" in r["recipe_flags"]
     assert len(r["ingredients"]) == 2                     # nothing dropped
 
 
 def test_photo_only_flagged():
-    r = ic.clean_recipe(_norm(ingredient_lines=[], directions="", images=[{"bytes": 1}]))
+    r = ic.clean_recipe(_norm(ingredient_lines=[], directions=[], images=[{"bytes": 1}]))
     assert r["recipe_flags"] == ["no_ingredients", "no_directions", "photo_only"]
 
 

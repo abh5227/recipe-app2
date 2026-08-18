@@ -13,7 +13,7 @@ import import_write as iw
 def _norm(**over):
     """A normalized recipe (reader's shape); override any field. Mirrors test_import_cleanup."""
     base = dict(
-        name="X", uid="u", hash="h", ingredient_lines=[], directions="",
+        name="X", uid="u", hash="h", ingredient_lines=[], directions=[],
         servings_raw="", categories=[], source="", source_url="", notes="",
         description="", rating=0, prep_time="", cook_time="", total_time="",
         images=[], primary_photo=None,
@@ -117,7 +117,7 @@ def test_plan_ingredient_footnote_raw_text_preserved():
 
 
 def test_plan_flagged_line_enters_review_queue():
-    p = _plan(_cleaned(ingredient_lines=["2 x 6oz halibut fillets"], directions="Cook it."))
+    p = _plan(_cleaned(ingredient_lines=["2 x 6oz halibut fillets"], directions=["Cook it."]))
     line_flags = [f for f in p["review_flags"] if f["position"] is not None]
     assert "multiplier" in [f["flag"] for f in line_flags]
     assert all(f["position"] == 0 for f in line_flags)   # line flag carries its line's position
@@ -130,13 +130,13 @@ def test_plan_ingredient_id_always_null():
 
 # ----------------------------------------------------------------- steps
 def test_plan_step_section_header_marked():
-    steps = _plan(_cleaned(directions="For the sauce:\nSimmer gently."))["steps"]
+    steps = _plan(_cleaned(directions=["For the sauce:", "Simmer gently."]))["steps"]
     assert steps[0]["is_heading"] == 1
     assert steps[1]["is_heading"] == 0
 
 
 def test_plan_steps_plain_no_markup():
-    steps = _plan(_cleaned(directions="Add the [[garlic]] and stir."))["steps"]
+    steps = _plan(_cleaned(directions=["Add the [[garlic]] and stir."]))["steps"]
     assert steps[0]["text"] == "Add the [[garlic]] and stir."   # carried as-is, not converted
 
 
@@ -148,14 +148,14 @@ def test_plan_rating_guard(rating, expected):
 
 # ----------------------------------------------------------------- incomplete recipes
 def test_plan_incomplete_carries_recipe_flags_to_queue():
-    p = _plan(_cleaned(ingredient_lines=[], directions=""))
+    p = _plan(_cleaned(ingredient_lines=[], directions=[]))
     assert {"no_ingredients", "no_directions"} <= set(p["recipe_flags"])
     recipe_level = [f for f in p["review_flags"] if f["position"] is None]
     assert {f["flag"] for f in recipe_level} == {"no_ingredients", "no_directions"}
 
 
 def test_plan_photo_only_still_writes():
-    p = _plan(_cleaned(ingredient_lines=[], directions="", images=[{"bytes": 1}]))
+    p = _plan(_cleaned(ingredient_lines=[], directions=[], images=[{"bytes": 1}]))
     assert p["decision"] == "write"                        # never dropped
     assert "photo_only" in p["recipe_flags"]
 
@@ -172,7 +172,7 @@ def test_plan_grams_declined_flagged_but_line_still_written():
 def test_commit_writes_all_tables(kitchen):
     c = _cleaned(name="Acqua Pazza", source="BA", categories=["Fish"],
                  ingredient_lines=["SAUCE:", "2 tbsp oil", "2 x 6oz fillets"],
-                 directions="Step one.\nStep two.", rating=4, servings_raw="4",
+                 directions=["Step one.", "Step two."], rating=4, servings_raw="4",
                  uid="ACQUA-UID", hash="HH")
     plan = _plan(c)
     with kitchen.conn() as conn:
@@ -198,7 +198,7 @@ def test_commit_writes_all_tables(kitchen):
 def test_commit_writes_original_snapshot(kitchen):
     # Every imported recipe gets a reason='original' baseline snapshot (cook-less), captured atomically
     # in the same import transaction — the pristine content the annotations (O-c) diff the current against.
-    c = _cleaned(name="Original Dish", ingredient_lines=["2 tbsp oil"], directions="Step one.", uid="ORIG-UID")
+    c = _cleaned(name="Original Dish", ingredient_lines=["2 tbsp oil"], directions=["Step one."], uid="ORIG-UID")
     with kitchen.conn() as conn:
         assert iw.commit_plan(conn, _plan(c)) is True
     with kitchen.conn() as conn:
@@ -219,7 +219,7 @@ def test_original_blob_matches_orm_serialization(kitchen):
     import app
     c = _cleaned(name="Byte Dish", source="BA", categories=["Fish"],
                  ingredient_lines=["SAUCE:", "2 tbsp oil", "1 cup water"],
-                 directions="Mix.\nBake.", servings_raw="4", uid="BYTE-UID")
+                 directions=["Mix.", "Bake."], servings_raw="4", uid="BYTE-UID")
     with kitchen.conn() as conn:
         assert iw.commit_plan(conn, _plan(c)) is True
     with kitchen.conn() as conn:
@@ -243,7 +243,7 @@ def test_commit_skip_writes_nothing(kitchen):
 
 
 def test_commit_rating_zero_writes_no_ratings_row(kitchen):
-    c = _cleaned(name="Unrated Dish", rating=0, ingredient_lines=["1 egg"], directions="Cook.")
+    c = _cleaned(name="Unrated Dish", rating=0, ingredient_lines=["1 egg"], directions=["Cook."])
     plan = _plan(c)
     with kitchen.conn() as conn:
         iw.commit_plan(conn, plan)
@@ -256,7 +256,7 @@ def test_commit_rating_zero_writes_no_ratings_row(kitchen):
 def test_commit_persists_harvested_grams_and_clean_label(kitchen):
     # end-to-end: FIX 1 (gram-paren stripped from the label) + FIX 2 (gram value persisted)
     c = _cleaned(name="Hummus Test", ingredient_lines=["14 cups (250g) dried chickpeas"],
-                 directions="Blend.")
+                 directions=["Blend."])
     plan = _plan(c)
     with kitchen.conn() as conn:
         iw.commit_plan(conn, plan)
@@ -271,7 +271,7 @@ def test_commit_persists_harvested_grams_and_clean_label(kitchen):
 
 def test_commit_persists_secondary_measure_both_orders(kitchen):
     # dual-measure capture lands grams + secondary_measure regardless of source order
-    c = _cleaned(name="Dual Test", directions="Mix.",
+    c = _cleaned(name="Dual Test", directions=["Mix."],
                  ingredient_lines=["100 g (1 cup) granulated sugar", "1 cup (250g) flour"])
     plan = _plan(c)
     with kitchen.conn() as conn:
@@ -285,7 +285,7 @@ def test_commit_persists_secondary_measure_both_orders(kitchen):
 
 
 def test_commit_section_suggested_heading_and_mult_one(kitchen):
-    c = _cleaned(name="Promote Test", directions="Mix.",
+    c = _cleaned(name="Promote Test", directions=["Mix."],
                  ingredient_lines=["crust", "1 x 397 grams can of condensed milk"])
     plan = _plan(c)
     with kitchen.conn() as conn:
