@@ -4,6 +4,8 @@ app-create path (the import path is in test_import_write.py). Pins: create captu
 guard makes it once; original is DISTINCT from cook (both coexist); and — the whole point — an EDIT does
 NOT re-capture the original (edits are what annotations diff AGAINST the birth state). Nothing reads
 these yet (O-c renders later)."""
+import json
+
 import app
 import harness
 
@@ -86,4 +88,15 @@ def test_copy_then_edit_keeps_copied_birth_original(kitchen):
     })
     assert r.status_code == 200
     orig = _snaps(kitchen, cid, "original")
-    assert len(orig) == 1 and orig[0]["content"] == birth   # original unchanged — still the copied birth state
+    assert len(orig) == 1                                   # still ONE — the edit did not re-capture
+    # This edit also DROPS the "For the base" heading, and since the heading-sync write path landed
+    # (app.sync_original_heading_layout) the baseline's heading LAYOUT follows the current rows — so the
+    # blob is no longer byte-identical. The assertion this test exists to make is about the birth
+    # CONTENT, which must survive an edit verbatim; that is what is checked now. Heading layout carries
+    # no information (heading changes emit no annotations), and the transform's content-safety
+    # postcondition is pinned in tests/test_heading_sync.py + tests/test_heading_sync_write.py.
+    bare = lambda blob, key: [{k: v for k, v in row.items() if k != "position"}
+                              for row in json.loads(blob)[key] if not row["is_heading"]]
+    assert bare(orig[0]["content"], "ingredients") == bare(birth, "ingredients")
+    assert bare(orig[0]["content"], "steps") == bare(birth, "steps")
+    assert json.loads(orig[0]["content"])["recipe"] == json.loads(birth)["recipe"]

@@ -39,6 +39,7 @@ from auth import auth_bp   # JSON auth endpoints (auth-2); auth.py imports model
 import images              # shared image brain: resize + the save_image storage seam (Stage 1/2)
 import snapshot_serialize  # single-source recipe-content snapshot FORMAT (shared ORM/serve + raw import)
 import snapshot_diff        # derived change-tracking DIFF (O-c): current-vs-original recipe-page annotations
+import snapshot_headsync    # pure baseline TRANSFORM: keep the original's heading layout in step with current
 
 # Anchor everything to this file's folder so the app runs from any directory.
 BASE_DIR = Path(__file__).resolve().parent
@@ -373,6 +374,58 @@ def snapshot_original(s, rid):
     snapshot_recipe(s, rid, None, "original")
 
 
+def sync_original_heading_layout(s, rid):
+    """Bring the reason='original' baseline's HEADING LAYOUT into step with the recipe's rows as they
+    stand NOW. Runs on the caller's session, BEFORE their commit. Returns True if the blob was
+    rewritten, False if there was nothing to do.
+
+    WHY. A removed row's `section` is the text of the heading that preceded it IN THE BASELINE
+    (snapshot_diff._section_lookup), so once a heading moves, a struck row renders under a section
+    that no longer describes where it sits on screen. Heading changes emit no annotations by existing
+    ruling, so the baseline's heading layout carries no information worth keeping — syncing it costs
+    nothing and makes placement match what the reader sees.
+
+    TWO GUARDS, in this order:
+      - NO original row -> do nothing and continue. Mirrors _recipe_annotations' fail-safe: a
+        pre-O-b recipe that never got a baseline is not an error. NEVER create one here — birth
+        capture is snapshot_original's job, and minting a baseline from the CURRENT content would
+        declare the recipe born in its edited state and erase every annotation it should have had.
+      - BYTE-IDENTICAL result -> skip the write. This is the common case (every save that doesn't
+        touch a heading), so the UPDATE is rare rather than per-save.
+
+    ⚠️ assert_content_safe RAISES and MUST be allowed to. The whole edit runs inside one
+    `with orm_session() as s:` block with a single commit, so an exception here aborts the entire
+    save and leaves NO partial state — the rows, the recipe fields and the baseline all roll back
+    together. That property is the reason this seam was chosen over a post-commit hook or a separate
+    session. Do not catch it and save anyway: a baseline that has silently absorbed the user's edits
+    is unrecoverable (recipe_snapshots has no versioning, and snapshot_original's WHERE NOT EXISTS
+    guard means it is never re-captured), whereas a failed save costs one retry."""
+    stored = s.execute(
+        select(RecipeSnapshot.content)
+        .where(RecipeSnapshot.recipe_id == rid, RecipeSnapshot.reason == "original")
+    ).scalar_one_or_none()
+    if stored is None:
+        return False
+    # Read the rows through Core (mappings, not ORM entities) so this sees exactly what
+    # write_recipe_rows just wrote on this transaction, with no identity-map staleness in play.
+    ri, rs = RecipeIngredient.__table__, RecipeStep.__table__
+    ingredients = [dict(m) for m in s.execute(
+        select(ri).where(ri.c.recipe_id == rid).order_by(ri.c.position, ri.c.id)).mappings()]
+    steps = [dict(m) for m in s.execute(
+        select(rs.c.position, rs.c.is_heading, rs.c.text)
+        .where(rs.c.recipe_id == rid).order_by(rs.c.position, rs.c.id)).mappings()]
+
+    synced = snapshot_headsync.sync_heading_layout(stored, ingredients, steps)
+    snapshot_headsync.assert_content_safe(stored, synced)   # raises -> the whole save aborts
+    if synced == stored:
+        return False
+    s.execute(update(RecipeSnapshot.__table__)
+              .where(RecipeSnapshot.__table__.c.recipe_id == rid,
+                     RecipeSnapshot.__table__.c.reason == "original")
+              .values(content=synced))
+    return True
+
+
 def _recipe_annotations(s, rid):
     """The recipe-page annotation set (O-c-1): diff the recipe's CURRENT content against its
     reason='original' baseline and return the RAW diff_snapshots entries (the client renders them —
@@ -625,6 +678,11 @@ def update_recipe(rid):
             if o["grams"] is not None or o["secondary_measure"] is not None:
                 preserve[_preserve_key(o["qty"], o["label"] or o["raw_text"])] = (o["grams"], o["secondary_measure"])
         write_recipe_rows(s, rid, clean, preserve)
+        # AFTER the rows are written (the sync reads the headings that were JUST saved, so it cannot
+        # run before this) and BEFORE the commit (so a content-safety failure aborts the whole edit
+        # with no partial state). Same session, same transaction — deliberately not a post-commit
+        # hook. See sync_original_heading_layout.
+        sync_original_heading_layout(s, rid)
         s.commit()
     return jsonify({"id": rid})
 
