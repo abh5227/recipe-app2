@@ -434,6 +434,77 @@ a:hover { color: var(--berry-lift); }
    is held up with it and the cluster doesn't lose its left edge. */
 .erow.menu-open .divider, .erow.menu-open .rtools,
 .steps li.step-edit.menu-open > .rtools { opacity: 1; }
+
+/* ---------- C1: the ingredient reorder drag ---------- */
+/* The album's two drag treatments (styles.css ~1085/1092), reused on the other axis. The origin dim is
+   VERBATIM — same .35: the row left behind is dimmed to show where the dragged row came from. (The
+   album's reason was that its drag image carries the photo; here the image is a pill, but the dim
+   plays the same part — it is the only thing marking the origin while the row is in flight.) */
+.ingredient-list.edit li.erow.ghost-origin { opacity: 0.35; }
+/* The drop-insertion bar, INVERTED from the album's vertical bar for a vertical list: its 4px becomes
+   a height, align-self/min-height are gone (it spans the list width instead of the strip height), and
+   the end-caps move from top/bottom to left/right. Colour, radius and the ochre glow ring are verbatim.
+   ZERO NET HEIGHT (4px tall, -2px margins) — and that is load-bearing, not tidiness. The bar is
+   inserted INTO the list during dragover, so any real height would push every row below it down,
+   moving the midpoints the NEXT dragover measures, and the target would oscillate around a boundary.
+   The album never had to solve this: its bar shifts photos sideways across a wrapping strip where a
+   4px nudge changes nothing about which photo the pointer is over. Also resets the base
+   .ingredient-list li rules (grid/padding/border-bottom), which a bare li would otherwise inherit.
+   FIX 2 — the -22px HORIZONTAL margins are what keep the bar findable under the drag image, and they
+   are guaranteed by geometry rather than by any browser's snapshot behaviour. The native drag image
+   is a snapshot of the ROW, so it is exactly as wide as the list (measured: both 820px) and covers
+   the bar end to end. Reaching 22px past each edge puts a stub of bar + its full end-cap OUTSIDE the
+   image's width, so some of the indicator is visible at every grab offset, in every browser. The
+   value is bounded by the card's own padding — clamp(22px, 4vw, 48px), which resolves to 48px at
+   this width — so 22px of bar plus the cap's 6px overhang plus the 3px glow ring reaches 31px into a
+   48px gutter, keeping ~17px of clearance from the card's border. VERTICAL margins stay -2px: the
+   zero NET height is what stops the oscillation, and only the horizontal reach changes here. */
+.ingredient-list.edit li.drop-bar {
+  display: block; height: 4px; margin: -2px -22px; padding: 0; border-bottom: none; position: relative;
+  background: var(--ochre); border-radius: 3px;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ochre) 22%, transparent);
+}
+.ingredient-list.edit li.drop-bar::before, .ingredient-list.edit li.drop-bar::after {
+  content: ""; position: absolute; top: 50%; transform: translateY(-50%);
+  width: 11px; height: 11px; border-radius: 50%; background: var(--ochre);
+}
+.ingredient-list.edit li.drop-bar::before { left: -6px; }
+.ingredient-list.edit li.drop-bar::after { right: -6px; }
+
+/* ---------- The drag image: a pill, set explicitly (see app.js setDragPill) ---------- */
+/* The off-viewport host. It must be LAID OUT to be usable as a drag image, so it is positioned away
+   rather than hidden — display:none / visibility:hidden / a detached node each yield the browser's
+   DEFAULT image instead, silently. pointer-events:none and the negative z-index keep it inert if it
+   is ever on-screen by accident. */
+#drag-img-host { position: fixed; top: -2000px; left: -2000px; z-index: -1; pointer-events: none; }
+/* The pill itself. NO new vocabulary: it is the shipped .chip (border-radius 999px, 1px var(--line),
+   var(--paper) ground, var(--ink) text, 6px 13px padding), plus only the two things a chip in a drag
+   layer needs that a chip in the page does not — an explicit font (out here it inherits from <body>,
+   not from the row) and a lift, which is the album's own drag-hover shadow verbatim (styles.css ~1081). */
+#drag-img-host .drag-pill { font-family: var(--font-sans); font-size: 14px; white-space: nowrap;
+  box-shadow: 0 6px 16px -7px rgba(45,32,12,.5); }
+
+/* ⚠️ THREE MEASURED FACTS ABOUT HOW CHROMIUM PAINTS DRAG IMAGES. No rule here depends on them any
+   more — setting the image explicitly made the whole question moot — but they were expensive to
+   establish, they are not guessable from any source, and two of them cost a design detour. They apply
+   to ANY future attempt to style what a drag carries, in this list or elsewhere:
+     1. Chromium DOES honour a class applied SYNCHRONOUSLY in dragstart. PROVEN, by painting a row red
+        and its overlays blue for one drag: both reached the drag image. Root-level AND descendant
+        declarations work. (The snapshot is taken after the handler returns, which is also why the
+        album defers .ghost-origin by a frame — app.js:1460.)
+     2. `opacity` on the DRAGGED ELEMENT is DROPPED from the image. It is a self-effect of the element
+        being snapshotted, and the painter paints that element's CONTENTS without it — the red and blue
+        backgrounds above painted at both levels, while a row-level opacity: 0.45 did not. Use
+        background-color for translucency, never opacity.
+     3. A .ie-disp overlay and the <textarea> beneath it are PIXEL-ALIGNED — measured 0.00/0.00 origin
+        offset, same box, same 15px/24px Spectral, same 1px 2px padding. Clearing the overlay's
+        background therefore does NOT produce doubled or ghosted text: the copies superimpose exactly,
+        and a pixel diff against a single-copy render differs on 5.8% of pixels by at most 17/255,
+        confined to glyph antialiasing. An earlier comment claimed a 1-2px offset and doubled text.
+        That was WRONG, and believing it is what sent this design to opacity. Do not reinstate it.
+   None of this is re-checkable under automation: a drag image renders in the OS drag layer, so it
+   cannot be screenshotted (CDP's drag interception suppresses it; page captures see the renderer
+   only). Re-testing means the red/blue experiment in a real browser. */
 .rbtn { height: 24px; min-width: 24px; border: 1px solid transparent; background: transparent; color: var(--ink-soft);
   border-radius: 6px; cursor: pointer; font-family: var(--font-sans); font-size: 13px; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 5px; }

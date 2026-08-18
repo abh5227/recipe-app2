@@ -14,6 +14,7 @@ import { makeBackdateSubmit, isStageableImage } from "./backdate-submit.js";
 import { mountStepEditors, destroyStepEditors, focusStepEditor } from "./step-editor.js";
 import { heroCaption } from "./hero-caption.js";
 import { reorderBefore } from "./reorder.js";
+import { applyRowDrop, dropBeforeIndex } from "./drop-index.js";
 import heroUrl from "./login-hero.jpg";   // auth-4 login hero — Vite hashes it into dist/assets (served via /assets)
 
 // This file runs in the browser. It has no recipe content of its own — it asks
@@ -1909,7 +1910,7 @@ function rowMoreHTML(i, kind) {
 // This is the FINAL shape of the ingredient cluster; C only makes the grip live.
 function editIngRowTools(i) {
   return `<span class="divider" aria-hidden="true"></span><span class="rtools">
-    <span class="rbtn grip" title="Reorder (coming soon)" aria-hidden="true">${ING_GRIP}</span>
+    <span class="rbtn grip" title="Drag to reorder" aria-hidden="true">${ING_GRIP}</span>
     <button type="button" class="rbtn rm" data-inline-edit-rm-ing data-i="${i}" title="Remove" aria-label="Remove">${ING_TRASH}</button>
     ${rowMoreHTML(i, "ing")}
   </span>`;
@@ -1945,7 +1946,7 @@ function amountZoneHTML(x, i) {
 }
 function editIngRowHTML(x, i) {
   if (x.is_heading) {
-    return `<li class="erow group-row">
+    return `<li class="erow group-row" draggable="true">
       ${ieCell("heading", i, headingText(x), "e-heading", "Section heading")}
       <span class="tail">${editIngRowTools(i)}</span>
     </li>`;
@@ -1961,7 +1962,12 @@ function editIngRowHTML(x, i) {
   // Empty note -> a compact sticky-note+ icon in the row; a present (or just-opened) note renders BELOW.
   const noteOpen = !!((x.note && x.note.trim()) || x._noteOpen);
   const noteIcon = noteOpen ? "" : `<button type="button" class="note-add" data-inline-edit-addnote data-i="${i}" title="Add a note" aria-label="Add a note">${ING_NOTEPLUS}</button>`;
-  const main = `<li class="erow${noteOpen ? " has-note" : ""}">
+  // C1: draggable on the WHOLE ROW, not the grip — measured with trusted CDP input, a draggable
+  // ancestor does not hijack text selection inside a textarea, and the drag image is then the row
+  // the user grabbed rather than a 24px handle. The below-note row is deliberately NOT draggable and
+  // NOT a target: it belongs to the row above it and travels with it (the draft holds one object per
+  // ingredient, note included), which is also why the drag indexes by li.erow and not by li.
+  const main = `<li class="erow${noteOpen ? " has-note" : ""}" draggable="true">
     ${amountZoneHTML(x, i)}
     ${ieCell("name", i, name, "e-name", "ingredient")}
     <span class="tail">${linkBit}${noteIcon}${editIngRowTools(i)}</span>
@@ -2016,6 +2022,122 @@ function addIngredient(isHeading, at) {
   focusIngField(at_, isHeading ? "heading" : "quantity");
 }
 function removeIngredient(i) { view.draft.ingredients.splice(i, 1); markDirty(); rerenderEditIngredients(); }
+
+// ---- C1: ingredient drag-reorder (native HTML5 DnD, the album's mechanism on the other axis) --------
+// No backend work is involved or needed: write_recipe_rows assigns position from enumerate over the
+// saved list, so the DRAFT ARRAY'S ORDER *IS* the stored order. A reorder is a pure client edit that
+// markDirty() carries into the ordinary save.
+//
+// HEADINGS MOVE FREELY, exactly like any other row — decided, not an oversight. Sections here are
+// positional (see row-insert.js), so dragging a heading moves one row and the rows beneath it change
+// section. That is visible as it happens, undone by dragging back, and emits no annotation (heading
+// changes are organizational); the baseline's heading layout follows current via the sync in 9861fe4.
+//
+// MOUSE-ONLY, inherited from the album: HTML5 DnD does not fire on touch and there is no keyboard
+// path. Not opened here.
+let ingDragFrom = null;                                 // draft index of the row being dragged
+
+// The rows in DOM order. Indexing by li.erow (not by li) is what makes this correct in the presence
+// of below-note rows, which are a SECOND <li> emitted after their owner — so the <ul>'s children are
+// not 1:1 with the draft array, but its .erow children are. Reading the index from DOM position also
+// means there is no data-i to go stale between a splice and its re-render.
+function editIngRowEls(list) { return [...list.querySelectorAll("li.erow")]; }
+
+// The DRAG IMAGE is a compact pill naming the row — set explicitly, so the browser never falls back to
+// its default, which is a snapshot of the dragged element itself. That default is what made the drop
+// bar unfindable: a row is 820px wide, exactly the width of the bar, and its snapshot band contains
+// the cursor at 4 of 5 grab offsets, so it covered the very thing the user aims with. A pill is a few
+// hundred pixels of chip that floats clear of the cursor and hides nothing.
+function dragPillLabel(x) {
+  if (!x) return "ingredient";
+  if (x.is_heading) return headingText(x) || "heading";           // headings carry no name field
+  const name = (x.label || x.raw_text || "").trim();
+  return name || String(x.qty || x.quantity || "").trim() || "ingredient";
+}
+// setDragImage requires its element to be IN THE DOCUMENT AND LAID OUT at snapshot time — display:none,
+// visibility:hidden and detached nodes each yield the DEFAULT image instead, and the API accepts all of
+// them without throwing, so a mistake here is silent and looks like "the fix didn't work". Hence a
+// fixed, off-viewport host (styles.css): genuinely rendered, never visible. Emptied on dragend rather
+// than a frame later, so nothing races the snapshot.
+function setDragPill(e, x) {
+  if (!e.dataTransfer || !e.dataTransfer.setDragImage) return;
+  let host = document.getElementById("drag-img-host");
+  if (!host) { host = document.createElement("div"); host.id = "drag-img-host"; document.body.appendChild(host); }
+  host.innerHTML = "";
+  const pill = document.createElement("span");
+  pill.className = "chip drag-pill";                              // the EXISTING chip, not a new look
+  pill.textContent = dragPillLabel(x);
+  host.appendChild(pill);
+  // The cursor sits 12px in from the pill's left edge and 8px BELOW its bottom edge — offsets outside
+  // the image are legal and simply shift it — so the pill floats up and to the right and can never
+  // straddle the drop bar, whichever side of the cursor the bar lands on.
+  e.dataTransfer.setDragImage(pill, 12, Math.round(pill.getBoundingClientRect().height) + 8);
+}
+
+function ingDragStart(e) {
+  const row = e.target.closest(".ingredient-list.edit li.erow");
+  if (!row || !view || !view.editMode || !view.draft) return;
+  const at = editIngRowEls(row.closest(".ingredient-list.edit")).indexOf(row);
+  if (at < 0) return;
+  ingDragFrom = at;
+  try { e.dataTransfer.setData("text/plain", String(at)); e.dataTransfer.effectAllowed = "move"; } catch (_) {}
+  setDragPill(e, (view.draft.ingredients || [])[at]);
+  // .ghost-origin dims the row LEFT BEHIND, and it stays deferred a frame even though the pill — not
+  // this row — is now what gets carried. setDragImage fails SILENTLY (see setDragPill): if it ever
+  // does, the browser snapshots this row after all, and a synchronous dim would be baked into the
+  // image. The rAF costs nothing and keeps that failure mode cosmetic. Same reason the album defers
+  // it (app.js:1460).
+  requestAnimationFrame(() => row.classList.add("ghost-origin"));
+}
+
+// Paint only — NEVER re-render here. Repainting the section during dragover destroys the element the
+// drag is over, which kills the drag mid-flight. The bar is inserted into the list but is laid out at
+// ZERO net height (see styles.css), so painting it cannot shift the rows the next dragover measures.
+function ingDragOver(e) {
+  if (ingDragFrom == null) return;
+  const list = e.target.closest(".ingredient-list.edit");
+  if (!list) return;
+  e.preventDefault();                                   // required, or no drop event fires
+  const rows = editIngRowEls(list);
+  const before = dropBeforeIndex(rows.map((r) => r.getBoundingClientRect()), e.clientY, ingDragFrom);
+  let bar = list.querySelector(".drop-bar");
+  if (!bar) { bar = document.createElement("li"); bar.className = "drop-bar"; bar.setAttribute("aria-hidden", "true"); }
+  if (before == null) list.appendChild(bar); else list.insertBefore(bar, rows[before]);
+}
+
+function ingDrop(e) {
+  if (ingDragFrom == null) return;
+  const list = e.target.closest(".ingredient-list.edit");
+  if (!list) return;
+  e.preventDefault();
+  // Read the target off the BAR rather than recomputing from clientY, so what lands is exactly what
+  // the user was looking at. Walking to the next li.erow skips any below-note row in between — the
+  // album walks the same way past its non-photo siblings.
+  const bar = list.querySelector(".drop-bar");
+  let before = null;
+  if (bar) {
+    let n = bar.nextElementSibling;
+    while (n && !n.classList.contains("erow")) n = n.nextElementSibling;
+    before = n ? editIngRowEls(list).indexOf(n) : null;
+  } else {                                              // dropped with no dragover having painted one
+    before = dropBeforeIndex(editIngRowEls(list).map((r) => r.getBoundingClientRect()), e.clientY, ingDragFrom);
+  }
+  const next = applyRowDrop(view.draft.ingredients, ingDragFrom, before);
+  ingDragFrom = null;
+  if (next) { view.draft.ingredients = next; markDirty(); }
+  rerenderEditIngredients();                            // the re-render belongs HERE, once, after the move
+}
+
+// Defensive by necessity: drop already re-rendered the section, so the ghost row and the bar are
+// usually gone by the time this fires (the album's if (g) / if (b) shape, same reason).
+function ingDragEnd() {
+  ingDragFrom = null;
+  const g = document.querySelector(".ingredient-list.edit li.erow.ghost-origin");
+  if (g) g.classList.remove("ghost-origin");
+  const b = document.querySelector(".ingredient-list.edit .drop-bar");
+  if (b) b.remove();
+  const h = document.getElementById("drag-img-host"); if (h) h.innerHTML = "";   // release the pill
+}
 
 // The ONE write-back callback the per-step TipTap editors are mounted with. Named (not an inline
 // arrow at the enterEditMode call site) so the ORIGINAL mount and every re-mount wire up identically.
@@ -3157,6 +3279,14 @@ document.addEventListener("dragstart", reorderDragStart);
 document.addEventListener("dragover", reorderDragOver);
 document.addEventListener("drop", reorderDrop);
 document.addEventListener("dragend", reorderDragEnd);
+// C1: the ingredient-list reorder drag, wired the same way and for the same reason — #ing-section is
+// re-rendered on every structural edit, so scoping by closest(".ingredient-list.edit") survives every
+// repaint without rebinding. The two sets are disjoint: each returns early unless the event started
+// inside its own container.
+document.addEventListener("dragstart", ingDragStart);
+document.addEventListener("dragover", ingDragOver);
+document.addEventListener("drop", ingDrop);
+document.addEventListener("dragend", ingDragEnd);
 
 document.addEventListener("input", (e) => {
   // 3c: live N/60 count for the album caption edit (maxlength already hard-stops at 60; this only recolors the count)
