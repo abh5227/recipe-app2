@@ -419,7 +419,7 @@ a:hover { color: var(--berry-lift); }
   color: var(--green); background: color-mix(in srgb, var(--green) 10%, var(--card)); border: 1px solid color-mix(in srgb, var(--green) 30%, var(--line)); border-radius: 999px; padding: 1px 4px 1px 8px; white-space: nowrap; }
 .linkchip .lx { border: none; background: none; color: var(--green); cursor: pointer; font-size: 13px; line-height: 1; padding: 0 1px; opacity: 0.6; }
 .linkchip .lx:hover { opacity: 1; color: var(--danger); }
-/* hover-revealed cluster: a divider then reorder-grip (Stage 4) · fenced red trash · ⋯ menu trigger.
+/* hover-revealed cluster: a divider then reorder-grip (live since C1) · fenced red trash · ⋯ menu trigger.
    The heading toggle used to sit between grip and trash carrying a visible word; A stage 2 moved it
    into the ⋯ menu, which is what took this cluster from 134.75px to 87px. */
 .divider { display: inline-block; width: 1px; height: 16px; background: var(--rule); margin: 0 1px; align-self: center; opacity: 0; transition: opacity 0.12s; }
@@ -518,7 +518,23 @@ a:hover { color: var(--berry-lift); }
   border-radius: 6px; cursor: pointer; font-family: var(--font-sans); font-size: 13px; line-height: 1;
   display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 0 5px; }
 .rbtn:hover { background: var(--paper); border-color: var(--line); color: var(--ink); }
-.rbtn.grip { cursor: grab; opacity: 0.45; padding: 0 3px; }
+/* 0.6, not 0.45: the grip is a direct-manipulation handle now, and at 0.45 it was the DIMMEST thing in
+   a cluster whose other controls sit at 1 — measured effective opacity, row hovered: grip 0.45, ⋯ 1,
+   trash 1. It read as disabled. The :hover lift matters as much as the rest value — .rbtn:hover sets
+   background/border/color but NOT opacity, so before this the grip gained a hover chrome and never
+   gained strength, staying at 0.45 even when pointed at directly. Quieter than ⋯ when merely passing
+   over the row; fully present when aimed at, which is when it has to look grabbable. */
+.rbtn.grip { cursor: grab; opacity: 0.6; padding: 0 3px; }
+.rbtn.grip:hover { opacity: 1; }
+/* `grabbing` is scoped to :active — the press, NOT the drag. MEASURED (headless Chrome, real CDP mouse
+   input): :active does match the grip while the button is held, and the cursor then computes `grabbing`
+   on the span AND on its child svg — `cursor` inherits, so no descendant selector is needed.
+   A body-level `body.row-dragging { cursor: grabbing }` was built and REJECTED: once the native drag is
+   in flight the BROWSER owns the cursor (it paints drag feedback derived from dropEffect), and that is
+   not checkable here — headless Chrome aborts the drag after a single dragover (measured dragstart:1,
+   dragover:1, drop:0, no reorder), so no mid-drag cursor state can be measured under automation at all.
+   Shipping an unverifiable rule plus a class-toggle on both lists is cost with no demonstrated effect. */
+.rbtn.grip:active { cursor: grabbing; }
 /* the remove control is fenced off (Option 5): a hairline divider before it, red on hover */
 .rbtn.rm { margin-left: 5px; padding-left: 8px; border-left: 1px solid var(--rule); border-radius: 0 6px 6px 0; }
 .rbtn.rm:hover { color: var(--danger); border-color: var(--danger); background: color-mix(in srgb, var(--danger) 6%, var(--card)); }
@@ -940,8 +956,8 @@ a:hover { color: var(--berry-lift); }
        trash + ⋯           53px  -> 62px gutter,  9px gap   [A stage 1, transitional]
        grip  + ⋯           52px  -> 62px gutter, 10px gap   [A stage 2 — ✅ REACHED, this is the row now]
        grip + ⋯ + trash    79px  -> would have needed 89px  [never built; see below]
-   ✅ The END STATE IS REACHED: the cluster is grip + ⋯ and this gutter is final. C makes the grip live
-   but adds no control, so 62px does not move again.
+   ✅ The END STATE IS REACHED: the cluster is grip + ⋯ and this gutter is final. C2 made the grip live
+   without adding a control, so 62px did not move again.
    62px is the smallest value that clears BOTH the stage-1 and the end-state cluster while keeping the
    ~10px breathing room the 36px gutter had. 52px is the bare minimum that clears at all (0px gap,
    cluster touching the text) and is NOT enough — do not shrink to it now that the cluster is 52px.

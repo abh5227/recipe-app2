@@ -923,11 +923,13 @@ function renderStepsList(steps) {
 // out of the text column, so every inline control there costs step text width; the ingredient row's
 // cluster sits in a flexible .tail and costs only the name column's slack. Steps pay more for the same
 // control, and step deletion is rarer than ingredient deletion.
-// The grip is INERT this stage (aria-hidden, no handler) exactly like the ingredient row's has been
-// since Stage 4 — it exists so the gutter is sized once. C makes both live.
+// The grip is LIVE as of C2: the whole row is draggable and the grip is its visual handle (the drag
+// listeners are delegated, so the grip itself still carries no handler). It stays aria-hidden because
+// the drag is mouse-only — there is no keyboard path for it to announce. See ROADMAP, "Known
+// limitations & tech debt".
 function editStepRowTools(i) {
   return `<span class="rtools">
-    <span class="rbtn grip" title="Reorder (coming soon)" aria-hidden="true">${ING_GRIP}</span>
+    <span class="rbtn grip" title="Drag to reorder" aria-hidden="true">${ING_GRIP}</span>
     ${rowMoreHTML(i, "step")}
   </span>`;
 }
@@ -1910,7 +1912,7 @@ function rowMoreHTML(i, kind) {
 // the difference back. The TRASH DELIBERATELY STAYS INLINE: deleting an ingredient is the common
 // editing action, and one-click delete is the decided end state for this list (steps are the
 // asymmetric case — their delete moved into the menu because their cluster had no room for both).
-// This is the FINAL shape of the ingredient cluster; C only makes the grip live.
+// This is the FINAL shape of the ingredient cluster; C1 made the grip live.
 function editIngRowTools(i) {
   return `<span class="divider" aria-hidden="true"></span><span class="rtools">
     <span class="rbtn grip" title="Drag to reorder" aria-hidden="true">${ING_GRIP}</span>
