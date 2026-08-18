@@ -406,6 +406,12 @@ pulled in. Design + the shipped commit arc in
   - **editor parity:** clearing a step's text deletes it on save; per-step delete through the
     destroy→re-render→re-mount cycle; **editable step headings** (a plain `.ie` input in its own
     `data-inline-edit-step` namespace, flushed on `input`); and the **add-step adder**.
+  - **drag-reorder for BOTH editor lists (C0–C2)** — the pure drop-index module
+    (`static/drop-index.js`, height-agnostic, returns a *before-reference* rather than a landing index),
+    the ingredient list, and the step list. Reorder emits **no annotations** by construction: a pure
+    reorder changes no row's content, and `write_recipe_rows` re-derives `position` from the array
+    order on save, so no backend change was needed. **Shipped, together with C3's grip finishing.**
+    Mouse-only — see Known limitations & tech debt.
 - **Still open in this area:**
   - **the "+ section heading" adder.** Now **unblocked** — its prerequisite, the step-heading field,
     shipped in `0099227`. Small: the adder button, `addStep(isHeading)`, one dispatch branch.
@@ -1301,6 +1307,20 @@ worth knowing before they bite. None of the *data* limitations occur in the curr
   is ever made to wrap (see the wrapping deferral in
   [docs/design-decisions.md](docs/design-decisions.md), inline-editor section): a wrapped textarea
   without auto-height *clips* rather than ellipsising, which is strictly worse than today.
+
+- **Row reorder is MOUSE-ONLY — no touch, and no keyboard path anywhere.** Drag-reorder (C0–C2)
+  is built on **HTML5 native drag-and-drop**, which fires only for a mouse: there is no touch
+  equivalent, and the spec defines no keyboard interaction. So on a phone or tablet, and for anyone
+  navigating by keyboard, **rows cannot be reordered at all** — in the ingredient editor, the step
+  editor, **or the photo album**, which has had the same gap since it shipped. This is a genuine
+  accessibility gap, recorded here rather than left silent.
+  The reorder grips are `aria-hidden` **because of** this, not as an oversight: a control announced to
+  a screen reader that cannot be operated by one is worse than an unannounced one. **Un-hiding the
+  grips is therefore GATED on building the alternate path — it is not an independent tidy-up.**
+  Fix shape: one keyboard reorder mechanism covering **all three** lists together (the natural seam is
+  `static/drop-index.js`, which is already pure and list-agnostic — `applyRowDrop` takes the same
+  before-reference a keyboard "move up/down" would produce). Doing the two editor lists now and the
+  album later would mean designing the same interaction twice and leaving the album inconsistent.
 
 - **Lowercase ingredient section-headers — narrow detection + flag, not silent auto-classify.**
   Bare lowercase headers (e.g. "crust", "filling") are promoted to section headings only via a

@@ -541,8 +541,9 @@ servings, times, description, recipe-note).
 the seed line-editor; mutually exclusive by `source`): edit qty / name / note, add & remove lines, add
 & edit **section headings**, and **library-link / unlink**. Reuses the existing `PUT` — **backend
 untouched except one fix** (plain-row notes now persist; see caveats). **Steps remain display-only**
-(Stage 3); **reorder** is deferred to Stage 4 (the grip is a reserved "coming soon" affordance;
-`position` already supports it).
+(Stage 3); **reorder** is deferred to Stage 4 (the grip is a reserved affordance, inert at this
+stage; `position` already supports it). *Reorder has since shipped — see C0–C2 in ROADMAP; the grip
+is live and the title now reads "Drag to reorder" on both lists.*
 
 - **Overlay value fields — why (not contenteditable).** Fields need to **truncate with "…" at rest**
   *and* **wrap taller on focus** (Option B). Tested: **no single form element does both** — a
