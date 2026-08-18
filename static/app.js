@@ -1328,28 +1328,34 @@ function closeRowMenu() {
   }
   m.remove();
 }
-// A stage 2: the real items. Stage 3 adds Add above / Add below above the separator.
-// Labels are SHORT on purpose and must stay that way: .photo-menu's min-width is 140px (tuned for the
-// album's "Make hero" / "Edit caption"), and the natural long forms overflow it — "Make an ingredient"
-// wraps to two lines (46px vs 30px) and pushes the menu to 157px, undoing the point of a compact menu.
-// "To heading" / "To ingredient" fit on one line in both directions. Text-only, no .mi glyph: the
-// album's items all carry one, but no real icon exists for stage 3's add-above/add-below and inventing
-// one is exactly what the fidelity rule forbids — a half-populated icon column is worse than none.
+// A stage 2: the real items. Text-only, no .mi glyph: the album's items all carry one, but no real
+// icon exists for the inserts and inventing one is exactly what the fidelity rule forbids — a
+// half-populated icon column is worse than none.
 // The heading state is read from the DRAFT rather than passed in, so the label can never disagree with
 // the row it belongs to (the menu is rendered at open time, after any re-render).
-// B puts the two inserts FIRST, separated from the row's own actions by the same .sep the album menu
-// uses before its destructive item: the top group acts on the LIST (add a neighbour), the bottom group
-// acts on THIS row (retype it, delete it). Both labels fit on one line at min-width: 140px.
+// The inserts come FIRST, separated from the row's own actions by the same .sep the album menu uses
+// before its destructive item: the top group acts on the LIST (add a neighbour), the bottom group acts
+// on THIS row (retype it, delete it).
+//
+// EVERY ITEM ACTS RELATIVE TO ITS OWN ROW AND INSERTS BELOW IT, so no label carries a direction: the
+// menu hangs off one row, which makes "below" the only sensible reading, and "Add step" reads as an
+// action where "Add below" reads as a coordinate. This replaced an Add above / Add below PAIR.
+// ⚠️ THE CONSEQUENCE IS REAL AND ACCEPTED: there is no menu path to insert above the FIRST row. For
+// any other row you use the menu of the row above it; for row 0 you add below and drag it up. That is
+// only acceptable BECAUSE drag-reorder shipped (C0-C3) — before it, dropping the "above" item would
+// have made the top of the list unreachable. Do not re-add an "above" item to work around this.
+// Labels no longer have to be short. The row menu widens to fit them (see .rtools .row-menu in
+// styles.css); the album's .photo-menu keeps its 140px.
 function rowMenuItemsHTML(kind, i) {
-  const inserts = `<button type="button" data-rm-act="add-above">Add above</button>
-    <button type="button" data-rm-act="add-below">Add below</button>
+  const inserts = `<button type="button" data-rm-act="add-row">${kind === "step" ? "Add step" : "Add ingredient"}</button>
+    <button type="button" data-rm-act="add-heading">Add heading</button>
     <div class="sep"></div>`;
   if (kind === "step") {
     return `${inserts}<button type="button" class="danger" data-rm-act="delete">Delete</button>`;
   }
   const row = view.draft.ingredients[i];
   const toHeading = !(row && row.is_heading);
-  return `${inserts}<button type="button" data-rm-act="toggle">${toHeading ? "To heading" : "To ingredient"}</button>`;
+  return `${inserts}<button type="button" data-rm-act="toggle">${toHeading ? "Convert to heading" : "Convert to ingredient"}</button>`;
 }
 function openRowMenu(trigger, i, kind) {
   closePhotoMenu();                                        // single-open ACROSS both families
@@ -1388,11 +1394,17 @@ function handleRowMenuAction(e) {
   // B: both lists share the index arithmetic (insertIndexFor) and differ only in which array is
   // measured and which adder runs. A null index means the row this menu claimed to belong to is not a
   // real row any more — do nothing rather than guess a position; see row-insert.js.
-  if (act === "add-above" || act === "add-below") {
+  // BOTH inserts land in the same place — directly below this row — and differ only in the SHAPE of the
+  // row that arrives, so they share one branch rather than owning two copies of the arithmetic.
+  // insertIndexFor still implements both cases and its tests still cover both; only this CALLER
+  // narrowed to "below" when the Add above item was removed. The "above" case stays because it is the
+  // honest general statement of the rule, and re-adding a caller must not mean re-deriving it.
+  if (act === "add-row" || act === "add-heading") {
     const arr = kind === "step" ? view.draft.steps : view.draft.ingredients;
-    const at = insertIndexFor(act === "add-below" ? "below" : "above", i, arr.length);
+    const at = insertIndexFor("below", i, arr.length);
     if (at == null) return true;
-    if (kind === "step") addStep(at); else addIngredient(false, at);   // always a NORMAL row
+    const isHeading = act === "add-heading";
+    if (kind === "step") addStep(at, isHeading); else addIngredient(isHeading, at);
     return true;
   }
   if (kind === "ing"  && act === "toggle") { toggleIngredientHeading(i); return true; }
@@ -2279,12 +2291,20 @@ function removeStep(i) {
 // editor at or after `at` shifts index, and their onUpdate closures captured the OLD one at mount, so
 // without the full rerenderEditSteps cycle typing into a surviving step would silently write its text
 // into a DIFFERENT step. Never replace this with a bare splice + innerHTML.
-function addStep(at) {
+function addStep(at, isHeading) {
   const arr = view.draft.steps;
   const at_ = at == null ? arr.length : at;
-  arr.splice(at_, 0, { is_heading: 0, text: "" });
+  arr.splice(at_, 0, { is_heading: isHeading ? 1 : 0, text: "" });
   markDirty(); rerenderEditSteps();
-  focusStepEditor(at_);
+  // A heading row is a plain <input>, not a TipTap island, so focusStepEditor can't reach it — it looks
+  // for a .step-editor-host that a heading never renders. `at` stays FIRST in the signature so both
+  // existing call sites (the end-of-list adder's addStep(), the menu's addStep(at)) are untouched.
+  if (isHeading) focusStepHeadingField(at_); else focusStepEditor(at_);
+}
+// The step mirror of focusIngField, for the one step row type that is an ordinary form field.
+function focusStepHeadingField(i) {
+  const el = document.querySelector(`[data-inline-edit-step="heading"][data-i="${i}"]`);
+  if (el) { el.focus(); if (el.select) el.select(); }
 }
 function toggleIngredientHeading(i) {
   toggleRowType(view.draft.ingredients[i]);   // lossless in-place flip (Option A1; see ingredient-row.js)

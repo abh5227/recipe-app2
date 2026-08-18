@@ -1127,8 +1127,16 @@ a:hover { color: var(--berry-lift); }
    negative right would hang the menu outside the row (the album can afford that overhang, a list row
    inside a padded card reads as misalignment). Specificity (0,2,0)/(0,3,0) beats the shared rules
    above, so the photo anchor is untouched. */
-.rtools .row-menu { top: 30px; right: 0; }
+.rtools .row-menu { top: 30px; right: 0; min-width: 170px; }
 .rtools .row-menu.up { top: auto; bottom: 30px; }
+/* 170px, and ONLY on the row menu — .photo-menu keeps its 140px so the album is untouched.
+   MEASURED at 13px var(--font-sans): the widest label is "Convert to ingredient" at 129.7px, and a
+   button's content box is the menu width minus 2px border, 10px menu padding and 20px button padding,
+   so 161.7px is the wrapping threshold. At the inherited 140px it wrapped to two lines (46px vs 30px)
+   — the same failure that once forced "Make an ingredient" to be shortened to "To ingredient".
+   The fix is WIDTH, not a shorter label: collapsing Add above / Add below into one item returned 30px
+   of height, so 140 -> 170 spends exactly that 30px on width and the menu is no bigger overall.
+   The ~8px over the threshold is deliberate headroom for font fallback, not slack. */
 
 /* inline caption edit — reuses the real Kalam caption face; live N/60 count + hard maxlength (UI matches the server) */
 .cap-edit { display: block; margin-top: 3px; }
