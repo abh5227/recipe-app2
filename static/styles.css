@@ -440,7 +440,8 @@ a:hover { color: var(--berry-lift); }
    VERBATIM — same .35: the row left behind is dimmed to show where the dragged row came from. (The
    album's reason was that its drag image carries the photo; here the image is a pill, but the dim
    plays the same part — it is the only thing marking the origin while the row is in flight.) */
-.ingredient-list.edit li.erow.ghost-origin { opacity: 0.35; }
+.ingredient-list.edit li.erow.ghost-origin,
+#steps-list li.step-edit.ghost-origin { opacity: 0.35; }
 /* The drop-insertion bar, INVERTED from the album's vertical bar for a vertical list: its 4px becomes
    a height, align-self/min-height are gone (it spans the list width instead of the strip height), and
    the end-caps move from top/bottom to left/right. Colour, radius and the ochre glow ring are verbatim.
@@ -458,18 +459,26 @@ a:hover { color: var(--berry-lift); }
    value is bounded by the card's own padding — clamp(22px, 4vw, 48px), which resolves to 48px at
    this width — so 22px of bar plus the cap's 6px overhang plus the 3px glow ring reaches 31px into a
    48px gutter, keeping ~17px of clearance from the card's border. VERTICAL margins stay -2px: the
-   zero NET height is what stops the oscillation, and only the horizontal reach changes here. */
-.ingredient-list.edit li.drop-bar {
+   zero NET height is what stops the oscillation, and only the horizontal reach changes here.
+   C2 SHARES THIS RULE with #steps-list rather than re-deriving it, because the two lists are the same
+   size in the same place: .recipe-cols is grid-template-columns: 1fr at every width — one column,
+   never two — so both lists measure 820px at x=230 inside the same 918px card. One caveat that does
+   NOT apply to the ingredient list: #steps-list is an <ol>, so an extra <li> could renumber the steps.
+   It does not, because the number comes from counter-increment on li.step specifically (not on li),
+   the same reason li.step-removed stays unnumbered — the bar is neither. */
+.ingredient-list.edit li.drop-bar,
+#steps-list li.drop-bar {
   display: block; height: 4px; margin: -2px -22px; padding: 0; border-bottom: none; position: relative;
   background: var(--ochre); border-radius: 3px;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ochre) 22%, transparent);
 }
-.ingredient-list.edit li.drop-bar::before, .ingredient-list.edit li.drop-bar::after {
+.ingredient-list.edit li.drop-bar::before, .ingredient-list.edit li.drop-bar::after,
+#steps-list li.drop-bar::before, #steps-list li.drop-bar::after {
   content: ""; position: absolute; top: 50%; transform: translateY(-50%);
   width: 11px; height: 11px; border-radius: 50%; background: var(--ochre);
 }
-.ingredient-list.edit li.drop-bar::before { left: -6px; }
-.ingredient-list.edit li.drop-bar::after { right: -6px; }
+.ingredient-list.edit li.drop-bar::before, #steps-list li.drop-bar::before { left: -6px; }
+.ingredient-list.edit li.drop-bar::after, #steps-list li.drop-bar::after { right: -6px; }
 
 /* ---------- The drag image: a pill, set explicitly (see app.js setDragPill) ---------- */
 /* The off-viewport host. It must be LAID OUT to be usable as a drag image, so it is positioned away
