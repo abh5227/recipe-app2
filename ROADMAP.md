@@ -1446,6 +1446,36 @@ worth knowing before they bite. None of the *data* limitations occur in the curr
   scanned by SonarQube in CI (only local SonarLint sees them). Add them to `sonar.sources` (or
   point it at a directory) to close the gap.
 
+- **The SonarQube quality gate is NOT enforced — deliberate.** CI runs the scan and never checks its
+  verdict, so a red gate cannot fail a build. The gate uses Sonar's *default* thresholds rather than
+  ones chosen for this project, and one of its conditions is structurally unreachable: `new_coverage`
+  demands 80% while `static/app.js` — a browser entry point the zero-dep node suite never loads — is
+  1,739 of the project's 3,534 coverable lines (49%) sitting at 0.0%, and accounts for 1,739 of its
+  1,829 uncovered lines (95%). Until that file has a DOM harness, perfect coverage everywhere else
+  still caps line coverage near 51%. The gate has read ERROR since 2026-07-06 on three conditions:
+  `new_security_rating` (4/D), `new_reliability_rating` (3/C), and `new_coverage` (51.8 vs 80).
+
+  The five open issues driving the two rating conditions are **understood, not unexamined**:
+  - `python:S4502` (CRITICAL, `app.py:49`) fires on the `Flask()` constructor for *any* app without a
+    CSRF extension — it is not a finding about our routes. No GET route writes, so there is no exposure.
+  - `python:S2068` (MAJOR, `app.py:79`) is the dev-only `SECRET_KEY` fallback, fenced by a
+    `RuntimeError` that fires the moment `DATABASE_URL` points at Postgres.
+  - The two accessibility findings are simply wrong about this code: `static/index.html:69` is told to
+    add a keyboard handler it already has (`static/app.js:2982` — Enter/Space on the `role="button"`
+    zone), and `:74` is the file input that zone drives, deliberately `aria-hidden` + `tabindex="-1"`.
+  - `javascript:S6544` (MAJOR, `static/app.js:1604`) flags `document.fonts && document.fonts.ready`;
+    `.ready` is always a truthy Promise, so the guard is redundant but correct.
+
+  The scan still earns its place **for what it measures rather than for its verdict** — it caught the
+  imported HTML-fixture noise (356 issues raised against other people's inline analytics scripts), and
+  its coverage figure is now honest at 51.8% instead of falsely 32.6%.
+
+  To *enforce* it later, all three of these have to happen: disposition all five issues in SonarCloud
+  (a rating takes the **worst** open issue, so clearing them partially lands at C rather than A —
+  clearing only S4502 still leaves S2068 holding security at C); move the new-code baseline off
+  2026-06-24, which is what the coverage condition actually turns on; and add a gate-check step to
+  `.github/workflows/build.yml`. Dispositions alone leave the gate red.
+
 - **R2 handwritten layer — extend the per-person model to app-tier (architectural).** The
   per-person change model (edit/remove lines, additions) currently exists ONLY for seed recipes
   (gated on `is_seed`); the imported recipes are app-tier and have the **form-edit** path but NOT
