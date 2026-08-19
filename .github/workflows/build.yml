@@ -65,7 +65,7 @@ jobs:
         with:
           node-version: "20"
       - name: Run JS tests
-        run: node --test tests/js          # client-side scaler/converter + factor-sync
+        run: node --test tests/js/*.test.js   # client-side scaler/converter + factor-sync
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v5   # check the Marketplace for the current version
         env:

@@ -57,7 +57,7 @@ python3.13 backup.py                 # timestamped copy → backups/
 # Tests
 python3.13 -m pip install -r requirements-dev.txt   # one-time: pytest
 python3.13 -m pytest                 # Python suite
-node --test tests/js                 # JS suite (zero-dep; scaler, factor-sync, step-adapter)  [also: npm test]
+node --test tests/js/*.test.js       # JS suite (zero-dep; scaler, factor-sync, step-adapter)  [also: npm test]
 ```
 
 After editing frontend source (`static/*.js`, `static/styles.css`), rerun `npm run build` (or use the
@@ -126,7 +126,7 @@ How this project is run:
   draft-and-commit in one shot.
 - **Present a full diff and wait for approval** before applying edits.
 - **Stage work in per-stage commits;** both test suites (`python3 -m pytest` and
-  `node --test tests/js`) green at each commit.
+  `node --test tests/js/*.test.js`) green at each commit.
 - **Stage UI/client work per-concern, exactly like backend — no omnibus build prompts.** A client
   page is built in checkpointed stages, each ONE concern with its own stop-for-review, not one prompt
   that resets the tree, adds fonts, writes the CSS, wires the JS, and seeds demo data all at once. "It

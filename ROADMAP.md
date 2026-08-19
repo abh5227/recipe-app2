@@ -167,8 +167,8 @@ Shared machinery: a parser that reads a quantity string into a number + unit.
   threshold — see Phase 8.
 - **JS test harness.** *(done)* The pure scaler/converter is extracted to `static/scaler.js`
   (UMD: browser global + Node `require`) and tested with Node's built-in `node:test` — run
-  `node --test tests/js` (covers `scaleQty`/`formatAmount`, the count + compound logic, and the
-  smart-Metric threshold). A `factor-sync` test reads both `scaler.js` and `weights.py` and
+  `node --test tests/js/*.test.js` (covers `scaleQty`/`formatAmount`, the count + compound logic,
+  and the smart-Metric threshold). A `factor-sync` test reads both `scaler.js` and `weights.py` and
   asserts the JS↔Python conversion factors agree. CI runs both the Python and JS suites on
   every push. *(Zero dependencies — no bundler/framework.)*
 - **Notes:** parse whole numbers, fractions, ranges; leave "to taste" alone. Convert only
