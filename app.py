@@ -1680,4 +1680,10 @@ def delete_comment(comment_id):
 
 
 if __name__ == "__main__":
-    app.run(port=8000, debug=True)
+    # Debug defaults OFF. Werkzeug's debugger offers arbitrary code execution in the browser on any
+    # unhandled exception, and this file is no longer only run by a developer at a keyboard: the
+    # cold-start CI job runs `python app.py` verbatim, so a stranger following README got a debug
+    # server. Opt in explicitly for local work: FLASK_DEBUG=1 python3.13 app.py
+    # (that is also what restores the auto-reloader).
+    _debug = os.environ.get("FLASK_DEBUG", "").strip().lower() in ("1", "true", "yes", "on")
+    app.run(port=8000, debug=_debug)
