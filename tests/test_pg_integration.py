@@ -27,8 +27,16 @@ pytestmark = pytest.mark.skipif(
 
 import app                       # noqa: E402
 import harness                   # noqa: E402  (auth-3b: reserved-user create + client login helpers)
+import import_write as iw        # noqa: E402  (W4: the import write path, exercised on PG below)
 import pg_harness                # noqa: E402
-from sqlalchemy import create_engine, text   # noqa: E402
+from fixtures import TEST_RECIPES            # noqa: E402
+from models import RecipeSnapshot            # noqa: E402  (W4: the snapshot guard's own SELECT)
+from sqlalchemy import create_engine, select, text   # noqa: E402
+from sqlalchemy.exc import IntegrityError, InternalError   # noqa: E402  (W4: the PG-specific pins)
+# The W1 plan builders, imported rather than re-written: these are the exact helpers the SQLite
+# characterisation tests use, so the plan committed to Postgres below is the SAME plan shape SQLite is
+# checked against. A local copy could drift and quietly weaken the comparison.
+from test_import_write import _cleaned, _plan        # noqa: E402
 
 # The PG-native (linguistic collation) order of the 5 seeded TEST_RECIPES by name — this is the
 # INTENDED list order (decision A: accept PG's collation). It differs from SQLite's BINARY order,
@@ -319,3 +327,238 @@ def test_recipe_snapshot_captured_on_cook_and_cascades_pg(pg):
                   "SELECT COUNT(*) FROM recipe_snapshots WHERE recipe_id=:r AND reason='cook'", r=rid) == 0
     assert _count(pg.engine,
                   "SELECT COUNT(*) FROM recipe_snapshots WHERE recipe_id=:r AND reason='original'", r=rid) == 1
+
+
+# ---- 12. THE IMPORT WRITE PATH on Postgres (W4) — commit_plan / resolve_owner / db_state ----------
+# W2 and W3 converted these three from raw SQL to SQLAlchemy Core executors for ONE reason: their `?`
+# and `:named` placeholders are invalid for psycopg's pyformat, so the writer could not run on
+# Postgres — which is production. Nothing verified the fix. Before this section, grepping this file
+# for commit_plan / import_write / import_runner / plan_recipe returned nothing, so "runs on Postgres"
+# was an argued claim spanning three commits. These tests make it a fact, or find out it isn't one.
+#
+# No Paprika archive is required: the plans are built from hand-made normalized dicts through
+# clean_recipe -> plan_recipe, exactly as the SQLite characterisation tests build theirs.
+#
+# BOTH executor kinds are covered, because commit_plan's docstring claims both: a **Session**
+# (app.orm_session() — the request path, which on PG is bound to DATABASE_URL) and a **Connection**
+# with an explicit transaction (import_runner's batch shape).
+
+def _fetch(engine, sql, **params):
+    """Rows as plain dicts, so the SQLite characterisation tests' `row["col"]` assertions port over
+    verbatim rather than being re-expressed against PG row objects."""
+    with engine.connect() as c:
+        return [dict(m) for m in c.execute(text(sql), params).mappings()]
+
+
+def test_import_commit_plan_writes_all_six_tables_pg(pg):
+    """commit_plan end-to-end on Postgres, asserted across all six tables it writes. Mirrors the SQLite
+    characterisation set (every recipe column, the ingredient qty split, step text/heading/order, the
+    snapshot's owner + timestamp, the rating row, the flag rows' position semantics) — the reference for
+    correct behaviour — so a dialect divergence in any of them shows up here as a difference from it."""
+    owner = harness.ensure_test_user()
+    c = _cleaned(name="PG Import Dish", source="Some Book", source_url="https://example.test/r",
+                 categories=["Fish", "Weeknight"], servings_raw="4", prep_time="10 min",
+                 cook_time="25 min", total_time="35 min", description="A description.",
+                 notes="Some notes.", rating=3, uid="PG-FULL-UID", hash="PG-FULL-HASH",
+                 ingredient_lines=["SAUCE:", "2 tbsp olive oil", "2 x 6oz fillets"],
+                 directions=["PREP:", "Chop the onion.", "Cook it."])
+    plan = _plan(c)
+    rid = plan["recipe"]["id"]
+    with app.orm_session() as s:                       # the REQUEST executor: a Session, on PG
+        assert iw.commit_plan(s, plan, owner) is True
+        s.commit()
+
+    # 1. recipes — every column, not just the two the end-to-end SQLite test asserts
+    r = _fetch(pg.engine, "SELECT * FROM recipes WHERE id=:r", r=rid)[0]
+    assert r["name"] == "PG Import Dish"
+    assert r["author"] == "Some Book"                          # cleanup's `source` -> the author column
+    assert r["source_url"] == "https://example.test/r"
+    assert r["category"] == "Fish · Weeknight"            # list joined with the ' · ' convention
+    assert r["servings"] == "4"
+    assert (r["prep_time"], r["cook_time"], r["total_time"]) == ("10 min", "25 min", "35 min")
+    assert r["descr"] == "A description." and r["notes"] == "Some notes."
+    assert r["image"] is None
+    assert (r["uid"], r["hash"]) == ("PG-FULL-UID", "PG-FULL-HASH")
+    assert r["source"] == "app"                                # imports are app-owned, never seed
+    assert r["created_at"] == plan["recipe"]["created_at"]
+
+    # 2. recipe_ingredients — the additive quantity/unit split, headings, dense positions
+    ings = _fetch(pg.engine, "SELECT * FROM recipe_ingredients WHERE recipe_id=:r ORDER BY position", r=rid)
+    assert [i["position"] for i in ings] == [0, 1, 2]
+    assert ings[0]["is_heading"] == 1 and ings[0]["qty"] is None and ings[0]["raw_text"] == "SAUCE:"
+    assert (ings[1]["qty"], ings[1]["quantity"], ings[1]["unit"]) == ("2 tbsp", "2", "tbsp")
+    assert ings[1]["label"] == "olive oil"
+    assert all(i["note"] is None and i["ingredient_id"] is None for i in ings)
+
+    # 3. recipe_steps — the `text`-column trap (see the dedicated test below for the isolated case)
+    steps = _fetch(pg.engine, "SELECT position, is_heading, text FROM recipe_steps "
+                              "WHERE recipe_id=:r ORDER BY position", r=rid)
+    assert [(s_["position"], s_["is_heading"], s_["text"]) for s_ in steps] == [
+        (0, 1, "PREP:"), (1, 0, "Chop the onion."), (2, 0, "Cook it.")]
+
+    # 4. recipe_snapshots — the O-a original baseline, owner + the RECIPE's birth stamp (not now())
+    snaps = _fetch(pg.engine, "SELECT * FROM recipe_snapshots WHERE recipe_id=:r", r=rid)
+    assert len(snaps) == 1
+    assert snaps[0]["reason"] == "original" and snaps[0]["cook_log_id"] is None
+    assert snaps[0]["user_id"] == owner
+    assert snaps[0]["created_at"] == plan["recipe"]["created_at"]
+    assert '"name":"PG Import Dish"' in snaps[0]["content"]
+
+    # 5. ratings — carried with the import owner (rescoping R3: ratings.user_id is NOT NULL)
+    rats = _fetch(pg.engine, "SELECT rating, user_id FROM ratings WHERE recipe_id=:r", r=rid)
+    assert [(x["rating"], x["user_id"]) for x in rats] == [(3, owner)]
+
+    # 6. import_flags — a LINE flag carries its line's position; recipe-level flags carry NULL
+    flags = _fetch(pg.engine, "SELECT position, flag, reason FROM import_flags WHERE recipe_id=:r", r=rid)
+    line = [f for f in flags if f["position"] is not None]
+    assert [f["flag"] for f in line] == ["multiplier"]
+    assert line[0]["position"] == 2 and line[0]["reason"]       # the flagged line's own position + hint
+    assert all(f["reason"] is None for f in flags if f["position"] is None)
+
+
+def test_import_step_rows_use_the_text_column_pg(pg):
+    """The CompileError trap, isolated so a failure names it. recipe_steps is the one table whose ORM
+    attribute (`body`) is NOT its column name (`text`) — models.py renames it to avoid shadowing
+    sqlalchemy.text — so a Core insert written from the attribute raises
+    `CompileError: Unconsumed column names: body`. Compilation is per dialect, so it is worth pinning on
+    PG and not only on SQLite."""
+    owner = harness.ensure_test_user()
+    plan = _plan(_cleaned(name="PG Steps Dish", uid="PG-STEPS", ingredient_lines=["1 egg"],
+                          directions=["PREP:", "Chop.", "Cook."]))
+    with app.orm_session() as s:
+        assert iw.commit_plan(s, plan, owner) is True
+        s.commit()
+    rows = _fetch(pg.engine, "SELECT position, is_heading, text FROM recipe_steps "
+                             "WHERE recipe_id=:r ORDER BY position", r=plan["recipe"]["id"])
+    assert [(x["position"], x["is_heading"], x["text"]) for x in rows] == [
+        (0, 1, "PREP:"), (1, 0, "Chop."), (2, 0, "Cook.")]
+    assert all(x["text"] for x in rows)          # not NULL/'' — a silently-defaulted column would show here
+
+
+def test_import_original_snapshot_guard_reads_uncommitted_pg(pg):
+    """The guarded snapshot insert: commit_plan SELECTs for an existing reason='original' row and only
+    inserts if there is none — a select-then-insert inside ONE transaction. On PG that read must see the
+    transaction's OWN uncommitted insert, as it does on SQLite; if it didn't, a future second call in the
+    same batch would write a duplicate baseline and the O-c annotations would diff against the wrong one.
+
+    The guard's false branch is unreachable *through commit_plan* (create-only: a second call collides on
+    the recipes PK first — asserted below, mirroring the SQLite characterisation), so what is measured
+    here is the guard's exact SELECT run on the same executor while the insert is still uncommitted."""
+    owner = harness.ensure_test_user()
+    plan = _plan(_cleaned(name="PG Guard Dish", uid="PG-GUARD", ingredient_lines=["1 egg"],
+                          directions=["Cook."]))
+    rid = plan["recipe"]["id"]
+    snap = RecipeSnapshot.__table__
+    with app.orm_session() as s:
+        assert iw.commit_plan(s, plan, owner) is True
+        # STILL UNCOMMITTED — the guard's own SELECT, on the same executor, must find the row
+        assert s.execute(select(snap.c.id).where(
+            snap.c.recipe_id == rid, snap.c.reason == "original")).first() is not None
+        # ...and nothing is visible OUTSIDE the transaction yet (PG read-committed isolation)
+        assert _count(pg.engine, "SELECT COUNT(*) FROM recipe_snapshots WHERE recipe_id=:r", r=rid) == 0
+        s.commit()
+    assert _count(pg.engine, "SELECT COUNT(*) FROM recipe_snapshots "
+                             "WHERE recipe_id=:r AND reason='original'", r=rid) == 1
+    with app.orm_session() as s2:                    # a re-commit dies on the recipes PK, before the guard
+        with pytest.raises(IntegrityError):
+            iw.commit_plan(s2, plan, owner)
+        s2.rollback()
+    assert _count(pg.engine, "SELECT COUNT(*) FROM recipe_snapshots "
+                             "WHERE recipe_id=:r AND reason='original'", r=rid) == 1   # still exactly one
+
+
+def test_import_resolve_owner_pg(pg):
+    """resolve_owner on Postgres, on BOTH executor kinds, across its whole surface: the sole-user
+    branch, an explicit email (stripped + lower-cased), an unknown email, and the ambiguous case. It
+    was converted to Core in W2 and never exercised on PG."""
+    a = harness.ensure_test_user()
+    with app.orm_session() as s:                                   # Session (the request path)
+        assert iw.resolve_owner(s) == a                            # sole user
+        assert iw.resolve_owner(s, harness.HARNESS_USER_EMAIL) == a
+        assert iw.resolve_owner(s, "  HARNESS@TEST.LOCAL  ") == a   # strip + lower before matching
+        with pytest.raises(ValueError, match="no user with email"):
+            iw.resolve_owner(s, "nobody@test.local")
+    with pg.engine.connect() as conn:                              # Connection (the batch path)
+        assert iw.resolve_owner(conn) == a
+    harness.ensure_test_user(email="owner2@test.local")            # now 2 users -> ambiguous
+    with app.orm_session() as s:
+        with pytest.raises(ValueError, match="ambiguous"):
+            iw.resolve_owner(s)
+
+
+def test_import_db_state_pg(pg):
+    """db_state on Postgres, on BOTH executor kinds — the uid index that drives dedup and the taken-slug
+    set that drives slug minting. W3 gave it an executor parameter; nothing has read it on PG."""
+    with app.orm_session() as s:                                   # Session
+        uid_index, taken = iw.db_state(s)
+    assert uid_index == {r["uid"]: (r["id"], r["name"]) for r in TEST_RECIPES}
+    assert taken == {r["id"] for r in TEST_RECIPES}
+
+    owner = harness.ensure_test_user()
+    plan = _plan(_cleaned(name="PG State Dish", uid="PG-STATE", ingredient_lines=["1 egg"],
+                          directions=["Cook."]), uid_index, taken)
+    with app.orm_session() as s:
+        assert iw.commit_plan(s, plan, owner) is True
+        s.commit()
+    with pg.engine.connect() as conn:                              # Connection
+        uid_index2, taken2 = iw.db_state(conn)
+    assert uid_index2["PG-STATE"] == ("pg-state-dish", "PG State Dish")
+    assert "pg-state-dish" in taken2
+    # the payoff: re-planning the same recipe against the refreshed state dedups instead of duplicating
+    again = _plan(_cleaned(name="PG State Dish", uid="PG-STATE", ingredient_lines=["1 egg"],
+                           directions=["Cook."]), uid_index2, taken2)
+    assert again["decision"] == "skip"
+    with app.orm_session() as s:
+        assert iw.commit_plan(s, again, owner) is False
+        s.commit()
+    assert _count(pg.engine, "SELECT COUNT(*) FROM recipes WHERE uid='PG-STATE'") == 1
+
+
+def test_import_batch_rolls_back_everything_pg(pg):
+    """The import batch is all-or-nothing on Postgres too: a failure after the first recipe is written
+    leaves NOTHING behind — no recipe, no child rows, no flags, no snapshot — and the pre-existing rows
+    are untouched. Mirrors test_import_runner.test_write_failure_mid_batch_rolls_back_everything, in the
+    Connection-with-explicit-transaction shape import_runner.run_import actually uses."""
+    owner = harness.ensure_test_user()
+    plan = _plan(_cleaned(name="PG Batch One", uid="PG-B1", directions=["Cook."],
+                          ingredient_lines=["2 x 6oz fillets"]))       # flags, so the flag check bites
+    rid = plan["recipe"]["id"]
+    seed_before = _count(pg.engine, "SELECT COUNT(*) FROM recipes WHERE source='seed'")
+    with pg.engine.connect() as conn:
+        tx = conn.begin()
+        try:
+            assert iw.commit_plan(conn, plan, owner) is True
+            assert conn.execute(text("SELECT COUNT(*) FROM import_flags WHERE recipe_id=:r"),
+                                {"r": rid}).scalar() >= 1              # written inside the batch...
+            raise RuntimeError("injected write failure")               # ...then the batch fails
+        except RuntimeError:
+            tx.rollback()
+    assert _count(pg.engine, "SELECT COUNT(*) FROM recipes WHERE source='app'") == 0
+    assert _count(pg.engine, "SELECT COUNT(*) FROM import_flags") == 0
+    assert _count(pg.engine, "SELECT COUNT(*) FROM recipe_snapshots WHERE recipe_id=:r", r=rid) == 0
+    assert _count(pg.engine, "SELECT COUNT(*) FROM recipe_ingredients WHERE recipe_id=:r", r=rid) == 0
+    assert _count(pg.engine, "SELECT COUNT(*) FROM recipes WHERE source='seed'") == seed_before
+
+
+def test_import_db_error_aborts_the_rest_of_the_batch_pg(pg):
+    """A REAL SQLite<->PG divergence, recorded rather than papered over. BOTH sides were measured: on
+    SQLite a duplicate-PK insert raises IntegrityError and the transaction stays USABLE — a following
+    valid insert succeeds and commits. On Postgres the same error puts the whole transaction into an
+    aborted state, so every subsequent statement fails with InFailedSqlTransaction until a rollback.
+
+    The import's OUTCOME is identical on both — all-or-nothing — but only because
+    import_runner.run_import rolls the batch back rather than skipping the bad recipe and continuing. A
+    future "skip the failed one, keep importing" change would work on SQLite and be silently broken on
+    PG; this test is where that would be discovered."""
+    owner = harness.ensure_test_user()
+    first = _plan(_cleaned(name="PG Dup Dish", uid="PG-DUP", ingredient_lines=["1 egg"], directions=["Cook."]))
+    later = _plan(_cleaned(name="PG After Dish", uid="PG-AFTER", ingredient_lines=["1 egg"], directions=["Cook."]))
+    with pg.engine.connect() as conn:
+        tx = conn.begin()
+        assert iw.commit_plan(conn, first, owner) is True
+        with pytest.raises(IntegrityError):             # same slug -> UniqueViolation; PG aborts the tx
+            iw.commit_plan(conn, first, owner)
+        with pytest.raises(InternalError):              # InFailedSqlTransaction — even a VALID write dies
+            iw.commit_plan(conn, later, owner)
+        tx.rollback()
+    assert _count(pg.engine, "SELECT COUNT(*) FROM recipes WHERE source='app'") == 0
