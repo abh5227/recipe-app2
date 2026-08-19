@@ -11,10 +11,12 @@ seed.py (source='seed') are read-only here (edit them in seed.py).
 Run it with:  python3 app.py   then open http://localhost:8000
 """
 import datetime
+import ipaddress
 import json
 import os
 import re
 from pathlib import Path
+from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from flask import Flask, jsonify, request, send_from_directory
 from flask_login import LoginManager, current_user
@@ -25,7 +27,7 @@ from sqlalchemy.orm import Session
 
 from weights import build_index, match_weight
 from stepscale import api_spans
-from import_cleanup import split_qty   # shared qty->quantity+unit split (backfill/seed/import use it too)
+from import_cleanup import clean_recipe, split_qty   # shared qty->quantity+unit split (backfill/seed/import use it too)
 # SQLAlchemy migration (Stage 1 complete): the entire serve path queries through orm_session() below —
 # reads, writes, and the 5 SQLite-dialect upserts. Build-time modules (build_db/import/migrate) keep
 # their own raw sqlite3 connections (out of Stage 1 scope). Stage 2 swaps the engine to Postgres
@@ -40,6 +42,9 @@ import images              # shared image brain: resize + the save_image storage
 import snapshot_serialize  # single-source recipe-content snapshot FORMAT (shared ORM/serve + raw import)
 import snapshot_diff        # derived change-tracking DIFF (O-c): current-vs-original recipe-page annotations
 import snapshot_headsync    # pure baseline TRANSFORM: keep the original's heading layout in step with current
+import import_write         # U4 preview: the PURE planner (plan_recipe) + db_state; the writer stays unused here
+import url_cascade          # U2: layered reader + provenance
+import url_fetch            # U0: the fetcher (network boundary; monkeypatched in tests)
 
 # Anchor everything to this file's folder so the app runs from any directory.
 BASE_DIR = Path(__file__).resolve().parent
@@ -1677,6 +1682,217 @@ def delete_comment(comment_id):
         s.delete(c)
         s.commit()
     return jsonify({"ok": True}), 200
+
+
+# ------------------------------------------------------------------------------------------------ #
+# URL import, stage 4 (U4): PREVIEW — paste a URL, see what WOULD be imported. Writes nothing.
+#
+# This is the first time the reader half (U0 fetch -> U2 cascade -> U1 json-ld) is reachable from the
+# app. It costs nothing but the fetch because plan_recipe is PURE: planning a recipe touches no rows,
+# so "show me first" needs no staging table and no transaction to roll back. The write path is U5.
+# ------------------------------------------------------------------------------------------------ #
+
+# A fetch refusal is the USER's problem or the SITE's problem, and the status has to say which.
+# 502/504 are deliberate: they place the fault upstream, so a client can offer "try again" for those
+# and "check the link" for a 400. TOO_LARGE is NOT 413 — that status describes the REQUEST body being
+# too large, and would tell a client to retry with less, which is not the situation.
+FETCH_STATUS = {
+    "BAD_URL": 400,        # not a URL we can import (scheme/host) — the pasted text is wrong
+    "NOT_HTML": 400,       # a PDF/video/image link — the pasted text points at the wrong thing
+    "HTTP_ERROR": 502,     # the site answered with an error (maangchi's Cloudflare 403 is the real case)
+    "NETWORK_ERROR": 502,  # DNS/TLS/connection — the site could not be reached at all
+    "TOO_LARGE": 502,      # the site's page exceeds url_fetch.MAX_BYTES
+    "TIMEOUT": 504,        # the site did not answer in time
+}
+
+# Query keys that identify a VISITOR or a CAMPAIGN rather than a document. Dropping them is what makes
+# the same recipe shared from a newsletter and from Facebook collapse to one dedup key. Any utm_* is
+# dropped by prefix. Deliberately aggressive: over-collapsing produces a false WARNING, and a warning
+# is non-blocking by design — under-collapsing produces a silent duplicate, which is the worse failure.
+TRACKING_PARAMS = frozenset({
+    "fbclid", "gclid", "gbraid", "wbraid", "msclkid", "yclid", "igshid", "mc_cid", "mc_eid",
+    "ref", "ref_src", "si", "_ga", "_gl", "amp",
+})
+
+
+def normalize_source_url(url):
+    """A URL -> a stable dedup key, or "" if it isn't an importable URL.
+
+    Collapses the variants that are the SAME page: scheme (http/https), a leading www. or amp. host
+    label, a default port, a trailing slash, a trailing /amp path segment, tracking params, and the
+    fragment. Remaining query params are kept and sorted, because plenty of sites carry the recipe's
+    identity in the query (?p=1234) and dropping it would merge unrelated recipes.
+
+    NOT collapsed, on purpose: a different HOST. Two publishers' versions of the same dish are two
+    typeset recipes with different words, amounts and photos — they are not duplicates of each other,
+    and treating them as such would refuse exactly the comparison this app exists to capture.
+    """
+    parts = urlsplit((url or "").strip())
+    if parts.scheme.lower() not in ("http", "https"):
+        return ""
+    try:
+        host = (parts.hostname or "").lower().rstrip(".")
+        port = parts.port
+    except ValueError:              # a malformed port ("host:notanumber") — not an importable URL
+        return ""
+    if not host:
+        return ""
+    for label in ("www.", "amp."):
+        if host.startswith(label):
+            host = host[len(label):]
+    if port and port not in (80, 443):
+        host = f"{host}:{port}"
+
+    # Path case is PRESERVED — paths are case-sensitive, and lowercasing them would merge two
+    # genuinely different URLs on any server that treats them as distinct.
+    segments = [seg for seg in parts.path.split("/") if seg]
+    while segments and segments[-1].lower() == "amp":
+        segments.pop()
+    path = "/" + "/".join(segments) if segments else ""
+
+    kept = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+            if k.lower() not in TRACKING_PARAMS and not k.lower().startswith("utm_")]
+    query = urlencode(sorted(kept))
+    return f"{host}{path}" + (f"?{query}" if query else "")
+
+
+def private_host_refusal(url):
+    """A message if `url` names an address the server must not fetch on a user's behalf, else None.
+
+    ⚠️ THIS IS A PARTIAL GUARD AND THE GAP IS DELIBERATE, NOT AN OVERSIGHT. It rejects an IP LITERAL
+    in a loopback/private/link-local/reserved range and the `localhost` name. It does NOT resolve DNS,
+    so `internal.example.com` pointing at 10.0.0.5 passes, and it does NOT see REDIRECTS, so a public
+    URL that 302s to 169.254.169.254 (the cloud metadata address) passes. Closing both requires
+    resolve-then-check plus a redirect handler INSIDE url_fetch — that is the fetcher's boundary to
+    own, not the route's, and U0 is out of scope for this stage. See ROADMAP for the follow-up.
+
+    Worth stating plainly: today this app is single-user on a laptop, so the realistic risk is a user
+    attacking their own machine. It is written down anyway because the two things that change that are
+    already on the roadmap — production Postgres and multi-user (P17) — and because even single-user,
+    the redirect case is a destination the USER never chose.
+    """
+    host = (urlsplit(url or "").hostname or "").lower().rstrip(".")
+    if not host:
+        return None                 # no host at all — url_fetch answers this as BAD_URL
+    if host == "localhost" or host.endswith(".localhost"):
+        return "that address is on this machine — imports only reach public websites"
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return None                 # a DNS name; see the docstring's gap note
+    if (ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved
+            or ip.is_unspecified or ip.is_multicast):
+        return "that address is on a private network — imports only reach public websites"
+    return None
+
+
+def duplicate_source_url(s, url):
+    """The already-imported recipe whose source_url normalizes to the same key, or None.
+
+    A WARNING, never a skip: the user decides. Compares NORMALIZED forms on both sides, which
+    subsumes the exact match (identical URLs normalize identically). Reads every non-null source_url
+    rather than filtering in SQL because the normalization is Python, not something SQLite and
+    Postgres would both compute the same way in a WHERE clause.
+    """
+    key = normalize_source_url(url)
+    if not key:
+        return None
+    rows = s.execute(select(Recipe.id, Recipe.name, Recipe.source_url)
+                     .where(Recipe.source_url.is_not(None)))
+    for rid, name, existing in rows:
+        if normalize_source_url(existing) == key:
+            return {"id": rid, "name": name, "source_url": existing}
+    return None
+
+
+def preview_body(plan, provenance, duplicate):
+    """A write plan -> the preview response. Carries what a PERSON needs in order to decide.
+
+    plan_recipe returns 7 keys; four of them are dropped here on purpose:
+      created_at  minted at plan time, and U5 mints its own — showing it would be a value that never
+                  reaches the database.
+      uid, hash   Paprika's dedup keys. A URL read has neither (url_jsonld sets both to ""), so they
+                  would be two permanently-empty fields.
+      source      always 'app'; image always None (images are a later pass). Nothing to decide.
+    The minted slug IS carried, as `slug`, because it is the recipe's URL name and the one field a
+    person may want to change before writing — but it is PROVISIONAL: mint_slug derives it from the
+    slugs taken right now, and U5 re-plans against the state at write time.
+
+    Per-ingredient, `ingredient_id` and `note` are dropped: both are unconditionally None out of the
+    importer (library linkage is a separate later pass), so they are structure with no content.
+    """
+    r = plan["recipe"]
+    return {
+        "slug": r["id"],
+        "recipe": {k: r[k] for k in ("name", "author", "source_url", "category", "servings",
+                                     "prep_time", "cook_time", "total_time", "descr", "notes")},
+        "ingredients": [{k: row[k] for k in ("position", "is_heading", "qty", "quantity", "unit",
+                                             "label", "raw_text", "grams", "secondary_measure")}
+                        for row in plan["ingredients"]],
+        "steps": plan["steps"],                      # position / is_heading / text — already the shape
+        "recipe_flags": plan["recipe_flags"],
+        "review_flags": plan["review_flags"],
+        "read_by": provenance["layer"],
+        # The row U5 will persist, surfaced so the preview shows HOW this was read using the same
+        # value that gets written. The route does NOT write it.
+        "provenance_flag": url_cascade.provenance_flag_row(provenance),
+        "duplicate": duplicate,                      # None, or {id, name, source_url} — a warning
+    }
+
+
+@app.route("/api/import/preview", methods=["POST"])
+def import_preview():
+    """Read a pasted URL and return the plan it WOULD write. Writes nothing.
+
+    POST, not GET, and that is a security decision rather than a REST one: this route makes the
+    SERVER perform a network fetch to a user-supplied address. A GET would be reachable by
+    navigation, an <img> tag or a prefetch, which is the same shape of mistake as a GET that writes.
+    Login-gated by the fail-closed default in _require_login (the endpoint is not in PUBLIC_ENDPOINTS).
+    """
+    payload = request.get_json(silent=True) or {}
+    url = (payload.get("url") or "").strip()
+    if not url:
+        return jsonify({"error": "paste a recipe URL to preview", "code": "BAD_URL"}), 400
+
+    blocked = private_host_refusal(url)
+    if blocked:
+        return jsonify({"error": blocked, "code": "BLOCKED_HOST"}), 400
+
+    got = url_fetch.fetch(url)
+    if isinstance(got, url_fetch.Refused):
+        # The wording is url_fetch's, unchanged: "the site refused the request (HTTP 403)" says the
+        # SITE said no. Rewriting it here as "could not read the recipe" would blame the reader for
+        # a page it was never given.
+        return jsonify({"error": got.detail, "code": got.code, "url": got.url,
+                        "status": got.status}), FETCH_STATUS.get(got.code, 502)
+
+    read = url_cascade.read(got.url, got.html)
+    if isinstance(read, url_cascade.Failed):
+        # 422, not 400: the request was fine and the page was fetched fine — it just carries no
+        # recipe this reader can use. Every layer's refusal is returned, not just a flat failure.
+        return jsonify({
+            "error": read.message,
+            "code": "NO_RECIPE_FOUND",
+            "url": got.url,
+            "refusals": [{"layer": r.layer, "code": r.code, "detail": r.detail} for r in read.refusals],
+        }), 422
+
+    cleaned = clean_recipe(read.normalized)
+    with orm_session() as s:                         # the REQUEST's session (W2/W3), never a new connection
+        uid_index, taken = import_write.db_state(s)
+        plan = import_write.plan_recipe(cleaned, uid_index, taken)
+        duplicate = duplicate_source_url(s, got.url)
+        # NO s.commit() — and nothing above issues a write. plan_recipe is pure; db_state and the
+        # duplicate lookup are SELECTs. The session closes without a transaction to roll back.
+
+    if plan["decision"] != "write":
+        # Unreachable via the readers shipping today (a URL read carries no uid, so plan_recipe
+        # cannot match a twin), kept so a future reader that DOES supply one gets an explicit answer
+        # instead of a KeyError on plan["recipe"].
+        return jsonify({"error": f"already imported as \u201c{plan['twin']['name']}\u201d",
+                        "code": "ALREADY_IMPORTED", "twin": plan["twin"]}), 409
+
+    return jsonify(preview_body(plan, read.provenance, duplicate)), 200
 
 
 if __name__ == "__main__":
