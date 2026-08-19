@@ -30,6 +30,23 @@ class Kitchen:
         c.execute("PRAGMA foreign_keys = ON")
         return c
 
+    def session(self):
+        """An ORM session on THIS test DB — the executor half of conn(), for code that takes a
+        SQLAlchemy session/connection rather than a raw sqlite3 one.
+
+        Deliberately delegates to app.orm_session() rather than building its own engine: that function
+        composes the URL from the LIVE module-global app.DB, which make_kitchen rebinds, so the redirect
+        is inherited rather than reimplemented. Building an engine here from self.db would work today but
+        would silently ignore DATABASE_URL, and a second engine factory is exactly the drift the
+        Stage-1b miss came from. Imported inside the method because app is imported lazily in
+        make_kitchen (after the DB rebind).
+
+        FKs come free: orm_session registers a SQLite `PRAGMA foreign_keys=ON` connect listener (a no-op
+        on Postgres, which always enforces them), so this matches conn()'s explicit PRAGMA.
+        """
+        import app
+        return app.orm_session()
+
     def count(self, table, where=""):
         sql = f"SELECT COUNT(*) FROM {table}" + (f" WHERE {where}" if where else "")
         with self.conn() as c:

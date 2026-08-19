@@ -8,6 +8,7 @@ import pytest
 
 import import_cleanup as cleanup
 import import_write as iw
+from fixtures import TEST_RECIPES
 
 
 def _norm(**over):
@@ -282,6 +283,157 @@ def test_commit_persists_secondary_measure_both_orders(kitchen):
             "WHERE recipe_id=? ORDER BY position", (plan["recipe"]["id"],)).fetchall()
     assert tuple(rows[0]) == ("granulated sugar", 100.0, "1 cup")   # weight-first
     assert tuple(rows[1]) == ("flour", 250.0, "1 cup")              # volume-first
+
+
+# ----------------------------------------------------------------- W1 characterisation
+# commit_plan's 7 raw-SQL statements are about to become SQLAlchemy Core inserts (forced: its `?` and
+# `:named` placeholders are invalid for psycopg's pyformat, so it cannot run on Postgres, which is
+# production). These tests pin WHAT IT WRITES, never HOW — no test below names sqlite3, a placeholder
+# style, or a connection type on the WRITE side — so they must pass UNCHANGED after the conversion and
+# are the reference it is checked against.
+#
+# The eight end-to-end tests above are already characterisation of this kind and are deliberately NOT
+# duplicated here; these cover only what they leave untested: every recipe column (they assert 2 of 16),
+# step text/heading/order (they only COUNT steps), the additive qty split, the snapshot's owner and
+# timestamp, and the flag rows' position semantics.
+def test_session_helper_lands_on_the_test_db(kitchen):
+    """Kitchen.session() must obey the same redirect Kitchen.conn() does — this is what makes the
+    conversion's call-site changes one-liners, so it is pinned before anything depends on it."""
+    from sqlalchemy import text as sa_text
+    with kitchen.session() as s:
+        assert str(kitchen.db) in str(s.get_bind().url)          # the temp DB, never the real recipes.db
+        assert s.execute(sa_text("SELECT COUNT(*) FROM recipes")).scalar() == len(TEST_RECIPES)
+
+
+def test_commit_writes_every_recipe_column(kitchen):
+    """All 16 recipe columns round-trip. The existing end-to-end test asserts source + uid only, so a
+    conversion that dropped or mis-mapped any of the other 14 would pass it."""
+    c = _cleaned(name="Full Dish", source="Some Book", source_url="https://example.test/r",
+                 categories=["Fish", "Weeknight"], servings_raw="4", prep_time="10 min",
+                 cook_time="25 min", total_time="35 min", description="A description.",
+                 notes="Some notes.", rating=3, uid="FULL-UID", hash="FULL-HASH",
+                 ingredient_lines=["2 tbsp oil"], directions=["Cook."])
+    plan = _plan(c)
+    with kitchen.conn() as conn:
+        assert iw.commit_plan(conn, plan) is True
+    with kitchen.conn() as conn:
+        r = conn.execute("SELECT * FROM recipes WHERE id='full-dish'").fetchone()
+    assert r["name"] == "Full Dish"
+    assert r["author"] == "Some Book"                    # cleanup's `source` -> the author column
+    assert r["source_url"] == "https://example.test/r"
+    assert r["category"] == "Fish \u00b7 Weeknight"         # list joined with the ' \u00b7 ' convention
+    assert r["servings"] == "4"                          # parsed to an int, stored as text
+    assert (r["prep_time"], r["cook_time"], r["total_time"]) == ("10 min", "25 min", "35 min")
+    assert r["descr"] == "A description."                # `description` -> the descr column
+    assert r["notes"] == "Some notes."
+    assert r["image"] is None                            # image storage is a separate pass
+    assert (r["uid"], r["hash"]) == ("FULL-UID", "FULL-HASH")
+    assert r["source"] == "app"                          # imports are app-owned, never seed
+    assert r["created_at"] == plan["recipe"]["created_at"]
+
+
+def test_commit_writes_step_rows_text_heading_and_order(kitchen):
+    """Step TEXT, is_heading and position ordering. The existing test only counts step rows.
+
+    This is the highest-value new case: recipe_steps is the one table whose ORM attribute (`body`) is
+    NOT its column name (`text`), so a Core insert written from the attribute name compiles to
+    `Unconsumed column names: body` — or, if silently defaulted, writes the wrong thing."""
+    c = _cleaned(name="Stepped Dish", ingredient_lines=["1 egg"],
+                 directions=["PREP:", "Chop the onion.", "Cook it."])
+    plan = _plan(c)
+    with kitchen.conn() as conn:
+        assert iw.commit_plan(conn, plan) is True
+    with kitchen.conn() as conn:
+        rows = conn.execute(
+            "SELECT position, is_heading, text FROM recipe_steps WHERE recipe_id='stepped-dish' "
+            "ORDER BY position").fetchall()
+    assert [tuple(r) for r in rows] == [
+        (0, 1, "PREP:"),                                 # ALL-CAPS colon line -> a step heading
+        (1, 0, "Chop the onion."),
+        (2, 0, "Cook it."),
+    ]
+
+
+def test_commit_writes_every_ingredient_column(kitchen):
+    """The ingredient columns the existing tests leave untested: the additive quantity/unit split,
+    note, ingredient_id and explicit position ordering."""
+    c = _cleaned(name="Cols Dish", directions=["Mix."],
+                 ingredient_lines=["SAUCE:", "2 tbsp olive oil", "1 egg"])
+    plan = _plan(c)
+    with kitchen.conn() as conn:
+        assert iw.commit_plan(conn, plan) is True
+    with kitchen.conn() as conn:
+        rows = conn.execute(
+            "SELECT position, is_heading, qty, quantity, unit, label, note, ingredient_id, raw_text "
+            "FROM recipe_ingredients WHERE recipe_id='cols-dish' ORDER BY position").fetchall()
+    assert rows[0]["is_heading"] == 1 and rows[0]["qty"] is None      # a heading carries no quantity
+    assert rows[0]["raw_text"] == "SAUCE:"                            # heading text lives in raw_text
+    assert rows[0]["label"] is None
+    assert (rows[1]["qty"], rows[1]["quantity"], rows[1]["unit"]) == ("2 tbsp", "2", "tbsp")
+    assert rows[1]["label"] == "olive oil"
+    assert (rows[2]["qty"], rows[2]["quantity"], rows[2]["unit"]) == ("1", "1", "")
+    assert [r["position"] for r in rows] == [0, 1, 2]                 # positions are dense + ordered
+    assert all(r["note"] is None for r in rows)                       # note is never split out at import
+    assert all(r["ingredient_id"] is None for r in rows)              # library linkage is a later pass
+
+
+def test_commit_snapshot_carries_owner_and_recipe_created_at(kitchen):
+    """The snapshot's user_id and created_at. The existing snapshot test asserts reason, cook_log_id
+    and content, but not these two — and created_at is deliberately the RECIPE's birth timestamp
+    rather than 'now', which a conversion could quietly change."""
+    c = _cleaned(name="Owned Dish", ingredient_lines=["1 egg"], directions=["Cook."], uid="OWN-UID")
+    plan = _plan(c)
+    with kitchen.conn() as conn:
+        owner = iw.resolve_owner(conn)
+        assert iw.commit_plan(conn, plan, owner) is True
+    with kitchen.conn() as conn:
+        row = conn.execute(
+            "SELECT user_id, created_at, reason FROM recipe_snapshots WHERE recipe_id='owned-dish'"
+        ).fetchone()
+    assert row["user_id"] == owner
+    assert row["created_at"] == plan["recipe"]["created_at"]     # the recipe's birth stamp, not now()
+    assert row["reason"] == "original"
+
+
+def test_commit_writes_exactly_one_original_snapshot(kitchen):
+    """The invariant the WHERE-NOT-EXISTS guard protects: at most one reason='original' row per recipe.
+
+    NB the guard's false branch is UNREACHABLE through commit_plan, which is create-only — a second
+    call for the same recipe fails on the recipes PK long before reaching it (asserted below), which is
+    exactly why the code calls it belt-and-suspenders. So what is pinned here is the invariant, plus the
+    fact that a re-commit attempt leaves the existing snapshot untouched rather than adding a second."""
+    c = _cleaned(name="Once Dish", ingredient_lines=["1 egg"], directions=["Cook."], uid="ONCE-UID")
+    plan = _plan(c)
+    with kitchen.conn() as conn:
+        assert iw.commit_plan(conn, plan) is True
+    with kitchen.conn() as conn:
+        with pytest.raises(Exception):                   # recipes PK/uid collision, before the guard
+            iw.commit_plan(conn, plan)
+        conn.rollback()
+    with kitchen.conn() as conn:
+        assert conn.execute(
+            "SELECT COUNT(*) FROM recipe_snapshots WHERE recipe_id='once-dish' AND reason='original'"
+        ).fetchone()[0] == 1
+
+
+def test_commit_flag_rows_carry_position_and_reason(kitchen):
+    """import_flags position semantics: a LINE flag carries its line's position, a RECIPE-level flag
+    carries NULL. The existing tests assert flag NAMES and a count, never the position column that
+    tells the two kinds apart — and backfill_headings joins on (recipe_id, position)."""
+    c = _cleaned(name="Flagged Dish", ingredient_lines=["2 x 6oz fillets"], directions=[])
+    plan = _plan(c)
+    with kitchen.conn() as conn:
+        assert iw.commit_plan(conn, plan) is True
+    with kitchen.conn() as conn:
+        rows = conn.execute(
+            "SELECT position, flag, reason FROM import_flags WHERE recipe_id='flagged-dish'").fetchall()
+    line = [r for r in rows if r["position"] is not None]
+    recipe = [r for r in rows if r["position"] is None]
+    assert [r["flag"] for r in line] == ["multiplier"]
+    assert line[0]["position"] == 0                      # the flagged line's own position
+    assert line[0]["reason"]                             # a human hint is carried, not NULL
+    assert "no_directions" in [r["flag"] for r in recipe]
+    assert all(r["reason"] is None for r in recipe)      # recipe-level flags carry no reason
 
 
 def test_commit_section_suggested_heading_and_mult_one(kitchen):
