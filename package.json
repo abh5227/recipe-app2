@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --test tests/js/*.test.js"
+    "test": "node --test tests/js/*.test.js",
+    "test:coverage": "mkdir -p coverage && node --test --experimental-test-coverage --test-reporter=spec --test-reporter-destination=stdout --test-reporter=lcov --test-reporter-destination=coverage/lcov.info tests/js/*.test.js"
   },
   "devDependencies": {
     "vite": "^8.1.5"

@@ -68,7 +68,10 @@ jobs:
           # the cold-start job is the one that tracks `latest` to stand in for a stranger's machine.
           node-version: "24"
       - name: Run JS tests
-        run: node --test tests/js/*.test.js   # client-side scaler/converter + factor-sync
+        # The coverage variant, not a bare `node --test`: it emits BOTH the readable spec output (so
+        # a failure is legible here) and coverage/lcov.info, which the SonarQube step below reads.
+        # This step still gates on exit code exactly as before.
+        run: npm run test:coverage     # client-side scaler/converter + factor-sync, with lcov
       - name: SonarQube Scan
         uses: SonarSource/sonarqube-scan-action@v5   # check the Marketplace for the current version
         env:
