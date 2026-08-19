@@ -63,7 +63,10 @@ jobs:
           PY
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Pinned ON PURPOSE, and pinned CURRENT: Node 20 went EOL 2026-04-30. This job answers
+          # "does the suite still pass on the version we support", so it wants a fixed version —
+          # the cold-start job is the one that tracks `latest` to stand in for a stranger's machine.
+          node-version: "24"
       - name: Run JS tests
         run: node --test tests/js/*.test.js   # client-side scaler/converter + factor-sync
       - name: SonarQube Scan
