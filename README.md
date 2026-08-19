@@ -96,12 +96,16 @@ For frontend work there's a two-process loop with hot reload — Vite serves the
 the API through to Flask:
 
 ```
-npm run dev          # Vite on http://localhost:5173 — this is the one you open
-python3.13 app.py    # Flask on :8000, serving /api, /images and /fonts
+npm run dev                        # Vite on http://localhost:5173 — this is the one you open
+FLASK_DEBUG=1 python3.13 app.py    # Flask on :8000, serving /api, /images and /fonts
 ```
 
 Mind the port: in this loop you open **:5173**, not the :8000 above. `npm run build` isn't
 needed here — Vite serves `static/` directly and reloads on save.
+
+`FLASK_DEBUG=1` is what restarts Flask when you edit a `.py` file (and turns on its error pages).
+It's off by default so that the plain `python3.13 app.py` above is a normal server, not a
+debugging one — leave it off for anything but your own machine.
 
 ## Tests
 

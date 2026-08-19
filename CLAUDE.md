@@ -51,7 +51,10 @@ python3.13 app.py                    # serve the built frontend + API at http://
 
 # Active development (two processes, hot-reload)
 npm run dev                          # Vite dev server on :5173 (HMR); proxies /api + /images + /fonts → Flask
-python3.13 app.py                    # Flask on :8000 (API + images/fonts). Open the app at :5173.
+FLASK_DEBUG=1 python3.13 app.py      # Flask on :8000 (API + images/fonts). Open the app at :5173.
+                                     #   FLASK_DEBUG=1 = reload-on-edit + error pages. OFF by default:
+                                     #   the setup block's bare `app.py` is a normal server, which is
+                                     #   what the cold-start CI job runs as a stranger would.
 
 # Backup before risky DB work
 python3.13 backup.py                 # timestamped copy → backups/
