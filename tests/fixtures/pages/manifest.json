@@ -1,0 +1,114 @@
+[
+  {
+    "file": "allrecipes.com.html",
+    "domain": "allrecipes.com",
+    "url": "https://www.allrecipes.com/chef-john-s-chicken-florentine-recipe-8729485",
+    "bytes": 499595,
+    "case": "json-ld",
+    "howto_sections": 0
+  },
+  {
+    "file": "bbcgoodfood.com.html",
+    "domain": "bbcgoodfood.com",
+    "url": "https://www.bbcgoodfood.com/recipes/classic-lasagne",
+    "bytes": 555611,
+    "case": "json-ld",
+    "howto_sections": 0
+  },
+  {
+    "file": "cooking.nytimes.com.html",
+    "domain": "cooking.nytimes.com",
+    "url": "https://cooking.nytimes.com/recipes/1026876-baked-tofu",
+    "bytes": 625854,
+    "case": "json-ld",
+    "howto_sections": 0
+  },
+  {
+    "file": "hot-thai-kitchen.com.html",
+    "domain": "hot-thai-kitchen.com",
+    "url": "https://hot-thai-kitchen.com/ultimate-bbq-chicken/",
+    "bytes": 543352,
+    "case": "json-ld",
+    "howto_sections": 2
+  },
+  {
+    "file": "kingarthurbaking.com.html",
+    "domain": "kingarthurbaking.com",
+    "url": "https://www.kingarthurbaking.com/recipes/king-arthurs-original-cake-pan-cake-recipe",
+    "bytes": 331736,
+    "case": "json-ld",
+    "howto_sections": 0
+  },
+  {
+    "file": "lahbco.com.html",
+    "domain": "lahbco.com",
+    "url": "https://www.lahbco.com/sides/hot-honey-cornbread",
+    "bytes": 136790,
+    "case": "none",
+    "howto_sections": 0
+  },
+  {
+    "file": "minimalistbaker.com.html",
+    "domain": "minimalistbaker.com",
+    "url": "https://minimalistbaker.com/coconut-curried-golden-lentils-20-minutes/",
+    "bytes": 811440,
+    "case": "json-ld",
+    "howto_sections": 0
+  },
+  {
+    "file": "nigella.com.html",
+    "domain": "nigella.com",
+    "url": "https://www.nigella.com/recipes/guests/bonnie-chungs-agedashi-tofu",
+    "bytes": 165084,
+    "case": "microdata",
+    "howto_sections": 0
+  },
+  {
+    "file": "notanothercooking.tv.html",
+    "domain": "notanothercooking.tv",
+    "url": "https://www.notanothercookingshow.tv/post/how-to-make-real-cacio-e-pepe-pasta",
+    "bytes": 1436061,
+    "case": "none",
+    "howto_sections": 0
+  },
+  {
+    "file": "probablyworthsharing.com.html",
+    "domain": "probablyworthsharing.com",
+    "url": "https://probablyworthsharing.com/recipes/whole-roasted-cauliflower",
+    "bytes": 128068,
+    "case": "none",
+    "howto_sections": 0
+  },
+  {
+    "file": "recipetineats.com.html",
+    "domain": "recipetineats.com",
+    "url": "https://www.recipetineats.com/easy-yeast-bread-recipe-no-knead/",
+    "bytes": 530172,
+    "case": "json-ld",
+    "howto_sections": 0
+  },
+  {
+    "file": "seriouseats.com.html",
+    "domain": "seriouseats.com",
+    "url": "https://www.seriouseats.com/classic-banana-bread-recipe",
+    "bytes": 457978,
+    "case": "json-ld",
+    "howto_sections": 0
+  },
+  {
+    "file": "thewoksoflife.com.html",
+    "domain": "thewoksoflife.com",
+    "url": "https://thewoksoflife.com/vegan-1-2-3-4-5-tofu/",
+    "bytes": 544571,
+    "case": "json-ld",
+    "howto_sections": 0
+  },
+  {
+    "file": "youtube.com.html",
+    "domain": "youtube.com",
+    "url": "https://www.youtube.com/watch?v=gAooMdVhuaI",
+    "bytes": 1394077,
+    "case": "none",
+    "howto_sections": 0
+  }
+]
