@@ -62,15 +62,42 @@ DB = BASE_DIR / "recipes.db"
 # DATABASE_URL unset) a clearly dev-only fallback is used; it is structurally unable to reach production
 # because the moment DATABASE_URL points at Postgres the fallback is rejected. (So running Postgres
 # locally also requires SECRET_KEY — correct: you can't drive the prod DB with a dev session key.)
+#
+# The ONE production switch, named once so the SECRET_KEY fence below and the cookie policy under it
+# cannot drift apart: production is signalled by a Postgres DATABASE_URL (CLAUDE.md), the same switch
+# that selects the prod database.
+_IS_PRODUCTION = (os.environ.get("DATABASE_URL") or "").startswith("postgresql")
+
 _secret_key = os.environ.get("SECRET_KEY")
 if not _secret_key:
-    if (os.environ.get("DATABASE_URL") or "").startswith("postgresql"):
+    if _IS_PRODUCTION:
         raise RuntimeError(
             "SECRET_KEY must be set when DATABASE_URL is Postgres (production): refusing to start with "
             "the dev-only fallback, which would sign session cookies with a publicly-known key."
         )
     _secret_key = "dev-only-not-a-secret-set-SECRET_KEY-in-prod"   # dev/test ONLY (SQLite); see above
 app.config["SECRET_KEY"] = _secret_key
+
+# --- session cookie policy -----------------------------------------------------------------------
+# HONEST POSITION: this makes an IMPLICIT protection EXPLICIT. It does not close an open hole.
+# Every current browser already treats a Set-Cookie with NO SameSite attribute as SameSite=Lax, and
+# Lax is what withholds the cookie on a cross-site POST. That default is doing real work here,
+# because nothing else would: every route reads its body as `request.get_json(silent=True) or {}`,
+# so a cross-site form POST is NOT rejected on content-type, and the payload-optional ones (e.g.
+# POST /api/recipes/<rid>/cooked, which needs no fields at all) would write if the cookie arrived.
+# So today's protection is a browser default this app never asked for. Asking for it costs nothing
+# and stops the guarantee resting on someone else's default — which is what SECURITY.md's
+# fail-closed stance calls for.
+#
+# Lax rather than Strict: the extra thing Strict withholds is the cookie on cross-site TOP-LEVEL GET
+# navigation, and no GET route here writes (all of them are read-only), so Strict buys nothing today
+# while making a link from an email or a chat arrive logged-out. Revisit if a GET ever writes.
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# Flask's default is already True; pinned so that turning it off has to be a deliberate edit.
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+# Secure keys off the SAME production switch as SECRET_KEY above: a Secure cookie is never sent over
+# plain HTTP, so setting it unconditionally would break local dev on http://localhost.
+app.config["SESSION_COOKIE_SECURE"] = _IS_PRODUCTION
 
 login_manager = LoginManager()
 login_manager.init_app(app)
