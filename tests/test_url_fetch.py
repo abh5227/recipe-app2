@@ -25,6 +25,19 @@ FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "pages"
 PAGE = "<!DOCTYPE html><html><head><title>Bún chả</title></head><body>ok</body></html>"
 
 
+def fetch(url, **kwargs):
+    """url_fetch.fetch with the U0b address guard turned OFF.
+
+    Every transport case below serves from 127.0.0.1, which the guard refuses BY DESIGN — that is the
+    point of the guard, not a flaw in these tests. They are about gzip, charsets, caps and timeouts,
+    so they opt out explicitly and the guard is exercised by its own tests in
+    tests/test_url_fetch_guard.py. The live-network test deliberately does NOT use this wrapper: it
+    must prove a real public fetch still works WITH the guard on.
+    """
+    kwargs.setdefault("allow_private", True)
+    return url_fetch.fetch(url, **kwargs)
+
+
 class Handler(BaseHTTPRequestHandler):
     """Serves one scripted behaviour per path. Records the request headers it saw."""
     seen = {}
@@ -86,7 +99,7 @@ def server():
 
 # ----------------------------------------------------------------- the happy paths
 def test_fetches_a_plain_page(server):
-    got = url_fetch.fetch(f"{server}/plain")
+    got = fetch(f"{server}/plain")
     assert isinstance(got, url_fetch.Fetched)
     assert "Bún chả" in got.html                            # decoded, not bytes
     assert got.content_type == "text/html"
@@ -95,14 +108,14 @@ def test_fetches_a_plain_page(server):
 def test_decompresses_gzip(server):
     """EVERY sampled page came back gzipped and urllib does not decompress — without this the
     reader would be handed binary. This is the single most load-bearing line in the fetcher."""
-    got = url_fetch.fetch(f"{server}/gzipped")
+    got = fetch(f"{server}/gzipped")
     assert isinstance(got, url_fetch.Fetched)
     assert got.html == PAGE
     assert "gzip" in Handler.seen["/gzipped"].get("Accept-Encoding", "")
 
 
 def test_sends_the_honest_user_agent(server):
-    url_fetch.fetch(f"{server}/plain")
+    fetch(f"{server}/plain")
     ua = Handler.seen["/plain"]["User-Agent"]
     assert ua == url_fetch.USER_AGENT
     assert "ChefsChoice" in ua and "+https://" in ua        # identifies itself AND points at itself
@@ -111,20 +124,20 @@ def test_sends_the_honest_user_agent(server):
 
 def test_captures_the_url_after_redirects(server):
     """source_url and the dedup key must be where we LANDED, not what was pasted."""
-    got = url_fetch.fetch(f"{server}/redirect")
+    got = fetch(f"{server}/redirect")
     assert isinstance(got, url_fetch.Fetched)
     assert got.url.endswith("/landed")
 
 
 def test_decodes_the_declared_charset(server):
-    got = url_fetch.fetch(f"{server}/latin1")
+    got = fetch(f"{server}/latin1")
     assert isinstance(got, url_fetch.Fetched)
     assert got.encoding == "iso-8859-1"
     assert "café" in got.html                               # mis-decoding gives 'cafÃ©' or a replacement
 
 
 def test_defaults_to_utf8_when_no_charset_is_declared(server):
-    got = url_fetch.fetch(f"{server}/nocharset")
+    got = fetch(f"{server}/nocharset")
     assert isinstance(got, url_fetch.Fetched)
     assert got.encoding == "utf-8" and "café" in got.html
 
@@ -132,44 +145,44 @@ def test_defaults_to_utf8_when_no_charset_is_declared(server):
 # ----------------------------------------------------------------- the refusals
 def test_http_error_is_a_refusal_not_an_exception(server):
     """maangchi.com's Cloudflare 403 is the real-world case this models."""
-    got = url_fetch.fetch(f"{server}/forbidden")
+    got = fetch(f"{server}/forbidden")
     assert isinstance(got, url_fetch.Refused)
     assert (got.code, got.status) == ("HTTP_ERROR", 403)
     assert "403" in got.detail
 
 
 def test_404_is_distinguishable_from_403(server):
-    got = url_fetch.fetch(f"{server}/notfound")
+    got = fetch(f"{server}/notfound")
     assert got.code == "HTTP_ERROR" and got.status == 404
 
 
 def test_non_html_is_refused_by_content_type(server):
-    got = url_fetch.fetch(f"{server}/pdf")
+    got = fetch(f"{server}/pdf")
     assert isinstance(got, url_fetch.Refused)
     assert got.code == "NOT_HTML" and "application/pdf" in got.detail
 
 
 def test_oversize_is_refused(server):
-    got = url_fetch.fetch(f"{server}/huge", max_bytes=1000)
+    got = fetch(f"{server}/huge", max_bytes=1000)
     assert isinstance(got, url_fetch.Refused)
     assert got.code == "TOO_LARGE"
 
 
 def test_oversize_after_decompression_is_refused(server):
     """The cap binds the DECOMPRESSED stream too — a small gzip body that expands hugely is caught."""
-    got = url_fetch.fetch(f"{server}/gzipbomb", max_bytes=5000)
+    got = fetch(f"{server}/gzipbomb", max_bytes=5000)
     assert isinstance(got, url_fetch.Refused)
     assert got.code == "TOO_LARGE" and "expands" in got.detail
 
 
 def test_timeout_is_a_refusal(server):
-    got = url_fetch.fetch(f"{server}/slow", timeout=0.5)
+    got = fetch(f"{server}/slow", timeout=0.5)
     assert isinstance(got, url_fetch.Refused)
     assert got.code == "TIMEOUT"
 
 
 def test_unreachable_host_is_a_refusal():
-    got = url_fetch.fetch("http://127.0.0.1:9/nothing-listens-here", timeout=2)
+    got = fetch("http://127.0.0.1:9/nothing-listens-here", timeout=2)
     assert isinstance(got, url_fetch.Refused)
     assert got.code == "NETWORK_ERROR"
 
@@ -178,7 +191,7 @@ def test_unreachable_host_is_a_refusal():
     "file:///etc/passwd", "ftp://example.test/x", "not a url", "", "javascript:alert(1)",
 ])
 def test_non_http_urls_are_refused(bad):
-    got = url_fetch.fetch(bad)
+    got = fetch(bad)
     assert isinstance(got, url_fetch.Refused)
     assert got.code == "BAD_URL"
 

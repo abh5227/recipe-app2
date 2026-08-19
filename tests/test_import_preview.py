@@ -325,11 +325,24 @@ def test_public_addresses_are_not_refused(url):
     assert app.private_host_refusal(url) is None
 
 
-def test_a_dns_name_is_not_resolved_here(kitchen):
-    """PINS THE KNOWN GAP so it can't be mistaken for coverage: the guard reads the URL only. A name
-    that RESOLVES to a private address passes, as does a public URL that redirects to one. Closing
-    either needs resolve-then-check plus a redirect handler inside url_fetch (U0), out of scope here."""
-    assert app.private_host_refusal("http://internal.example.com/x") is None
+def test_the_route_prefilter_is_text_only_and_the_fetcher_closes_the_rest(kitchen):
+    """WAS a pinned gap; U0b closed it. The route-level check is still text-only ON PURPOSE — it is a
+    cheap filter that answers an obvious paste without a network call, not the security boundary.
+    The boundary is url_fetch, which resolves before connecting and re-checks every redirect hop, so
+    U5's write path is guarded by the same seam rather than by a route it does not call.
+    See tests/test_url_fetch_guard.py for the resolve-and-redirect cases."""
+    assert app.private_host_refusal("http://internal.example.com/x") is None    # text alone can't tell
+    assert url_fetch.destination_refusal("http://127.0.0.1/x")[0] == "BLOCKED_ADDRESS"
+
+
+def test_the_new_guard_codes_have_a_status_mapping(kitchen, monkeypatch):
+    """U0b's refusals must not fall through to the default. BLOCKED_ADDRESS is the pasted link's
+    fault (400); a bad redirect or a loop is the site's (502)."""
+    for code, status in (("BLOCKED_ADDRESS", 400), ("BLOCKED_REDIRECT", 502),
+                         ("TOO_MANY_REDIRECTS", 502)):
+        stub_fetch(monkeypatch, url_fetch.Refused(code, "detail here", "https://example.com/x", 0))
+        r = preview(kitchen, "https://example.com/x")
+        assert (r.status_code, r.get_json()["code"]) == (status, code)
 
 
 # --------------------------------------------------------------------------- #

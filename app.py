@@ -11,7 +11,6 @@ seed.py (source='seed') are read-only here (edit them in seed.py).
 Run it with:  python3 app.py   then open http://localhost:8000
 """
 import datetime
-import ipaddress
 import json
 import os
 import re
@@ -1703,6 +1702,12 @@ FETCH_STATUS = {
     "NETWORK_ERROR": 502,  # DNS/TLS/connection — the site could not be reached at all
     "TOO_LARGE": 502,      # the site's page exceeds url_fetch.MAX_BYTES
     "TIMEOUT": 504,        # the site did not answer in time
+    # U0b's address guard. BLOCKED_ADDRESS is 400 because the PASTED url named a non-public address —
+    # the same fault as BLOCKED_HOST below. The other two are 502: the user's link was fine and the
+    # SITE misbehaved, by redirecting somewhere it shouldn't or by looping.
+    "BLOCKED_ADDRESS": 400,
+    "BLOCKED_REDIRECT": 502,
+    "TOO_MANY_REDIRECTS": 502,
 }
 
 # Query keys that identify a VISITOR or a CAMPAIGN rather than a document. Dropping them is what makes
@@ -1757,33 +1762,17 @@ def normalize_source_url(url):
 
 
 def private_host_refusal(url):
-    """A message if `url` names an address the server must not fetch on a user's behalf, else None.
+    """A message if `url` OBVIOUSLY names a non-public address, else None. A cheap pre-filter only.
 
-    ⚠️ THIS IS A PARTIAL GUARD AND THE GAP IS DELIBERATE, NOT AN OVERSIGHT. It rejects an IP LITERAL
-    in a loopback/private/link-local/reserved range and the `localhost` name. It does NOT resolve DNS,
-    so `internal.example.com` pointing at 10.0.0.5 passes, and it does NOT see REDIRECTS, so a public
-    URL that 302s to 169.254.169.254 (the cloud metadata address) passes. Closing both requires
-    resolve-then-check plus a redirect handler INSIDE url_fetch — that is the fetcher's boundary to
-    own, not the route's, and U0 is out of scope for this stage. See ROADMAP for the follow-up.
+    Judged from the URL's text, so it costs no DNS lookup and lets the route answer an obviously-bad
+    paste without touching the network. It is NOT the security boundary: a name that RESOLVES to a
+    private address, and any REDIRECT hop, are caught inside url_fetch (U0b), which resolves before
+    connecting and re-checks every hop. That is the right home for it, because U5's write path
+    fetches through the same seam and would otherwise be unguarded.
 
-    Worth stating plainly: today this app is single-user on a laptop, so the realistic risk is a user
-    attacking their own machine. It is written down anyway because the two things that change that are
-    already on the roadmap — production Postgres and multi-user (P17) — and because even single-user,
-    the redirect case is a destination the USER never chose.
+    The classification itself lives in url_fetch.blocked_literal — one copy, two callers.
     """
-    host = (urlsplit(url or "").hostname or "").lower().rstrip(".")
-    if not host:
-        return None                 # no host at all — url_fetch answers this as BAD_URL
-    if host == "localhost" or host.endswith(".localhost"):
-        return "that address is on this machine — imports only reach public websites"
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        return None                 # a DNS name; see the docstring's gap note
-    if (ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved
-            or ip.is_unspecified or ip.is_multicast):
-        return "that address is on a private network — imports only reach public websites"
-    return None
+    return url_fetch.blocked_literal(urlsplit(url or "").hostname)
 
 
 def duplicate_source_url(s, url):
