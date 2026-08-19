@@ -1,0 +1,72 @@
+name: Cold start
+
+# Proves a STRANGER can get this app running from a fresh clone by following README's "Run it".
+# Nothing else checks that: build.yml tests the CODE, this tests the documented SETUP PATH — which
+# had rotted unnoticed. README said `pip install flask` (one of seven runtime deps), installed with
+# one interpreter and ran with another, and never mentioned `npm run build`, so "/" died on
+# FileNotFoundError: dist/index.html. Three independent breaks, each fatal, none visible to CI.
+
+on:
+  push:
+    branches: [ main ]
+  schedule:
+    # Mondays ~06:20 UTC. Weekly because this decays from the OUTSIDE — a new Node or Python
+    # release can break the documented steps with no commit of ours to trigger a push run.
+    # NB GitHub disables scheduled workflows after 60 days of repo inactivity and emails the
+    # owner; the on-push trigger above keeps this one exercised regardless.
+    - cron: "20 6 * * 1"
+  workflow_dispatch:
+
+jobs:
+  cold-start:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4          # fresh clone: no recipes.db, no dist/, no node_modules
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"           # the version README's "Run it" tells a stranger to use
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "latest"
+          # DELIBERATELY NOT build.yml's pin, and the difference is the whole point. This job
+          # stands in for a stranger's machine, so it must track whatever Node ships today.
+          # Pinning here would reproduce the miss it exists to catch: Node 24 stopped accepting
+          # `node --test <dir>`, breaking every documented local invocation, while the pinned-20
+          # main job stayed green throughout. Note "latest" (not "*") always resolves to the
+          # newest dist release rather than the runner's cached one.
+
+      # ---- README's "Run it", in order. setup-python puts 3.13 on PATH as `python`. ----------
+      - run: python -m pip install -r requirements.txt
+      - run: npm install
+      - run: npm run build
+      - run: python build_db.py
+
+      - name: Start the app
+        run: |
+          python app.py > /tmp/app.log 2>&1 &
+          echo $! > /tmp/app.pid
+
+      - name: Wait for it to answer, or fail fast
+        run: |
+          # Poll readiness AND liveness. app.py exits 1 immediately when its port is taken (it
+          # hardcodes 8000), so watching the pid turns that into a ~1s failure instead of a
+          # 60s timeout with a misleading "no answer" at the end.
+          for i in $(seq 1 30); do
+            if ! kill -0 "$(cat /tmp/app.pid)" 2>/dev/null; then
+              echo "app.py exited before serving:"; cat /tmp/app.log; exit 1
+            fi
+            curl -fsS -o /dev/null http://127.0.0.1:8000/ && exit 0
+            sleep 2
+          done
+          echo "no answer after 60s:"; cat /tmp/app.log; exit 1
+
+      # The four-part assertion. It distinguishes "the app served" from "something returned 200",
+      # and was proven to FAIL against dist-removed, a dev index, a deleted bundle, and a server
+      # that 200s every path — see the module docstring for the measured results.
+      - name: Assert the app actually served
+        run: python scripts/cold_start_check.py http://127.0.0.1:8000
+
+      - name: Server log on failure
+        if: failure()
+        run: cat /tmp/app.log || true
