@@ -44,7 +44,23 @@ jobs:
           SECRET_KEY: ci-only-not-a-real-secret
         run: |
           alembic upgrade head                  # create the schema on the CI Postgres service
-          pytest tests/test_pg_integration.py   # DATABASE_URL is postgresql -> the 6 PG tests RUN
+          pytest tests/test_pg_integration.py --junitxml=/tmp/pg-results.xml
+          # SELF-PROVING GUARD. The whole module skips on ONE module-level pytestmark (DATABASE_URL not
+          # postgresql), so it is 20-or-0 and never partial — and an all-skipped run EXITS 0, making a
+          # silent skip indistinguishable from a pass in the step's green check. This asserts that at
+          # least one test actually RAN. Deliberately not an exact count: pinning a number would need
+          # editing every time a PG test is added, and the failure mode being guarded is "nothing ran",
+          # not "the wrong number ran". Zero-collected also lands here (tests=0 -> ran=0).
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          ts = ET.parse("/tmp/pg-results.xml").getroot().find("testsuite")
+          total, skipped = int(ts.get("tests")), int(ts.get("skipped"))
+          ran = total - skipped
+          print(f"Postgres suite: {total} collected, {skipped} skipped, {ran} actually ran")
+          if ran == 0:
+              raise SystemExit("FAIL: the Postgres suite ran NO tests — it skipped silently, which "
+                               "exits 0 and is indistinguishable from a pass. Check DATABASE_URL.")
+          PY
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
