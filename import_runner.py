@@ -21,10 +21,11 @@ Recovery: imports are source='app'; with foreign_keys ON (set here) a later
 Run (this WRITES — the real import):  python3 import_runner.py --yes
 """
 import argparse
-import sqlite3
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
+
+from sqlalchemy import create_engine, event
 
 import backup
 import import_cleanup as cleanup
@@ -34,6 +35,25 @@ import paprika_native_reader as reader
 BASE_DIR = Path(__file__).resolve().parent
 DB = BASE_DIR / "recipes.db"
 ARCHIVE = BASE_DIR / "My Recipes.paprikarecipes"
+
+
+def _engine(db_path):
+    """Engine for the batch. SQLite by construction — this CLI takes a --db PATH, not a URL, and its
+    backup step is a file copy, so it is a local tool and stays one; the Core writer it drives is what
+    became portable, not the runner.
+
+    The foreign_keys listener replaces the explicit `PRAGMA foreign_keys = ON` this function used to
+    run: SQLite defaults them OFF, and the recovery path documented above (DELETE FROM recipes WHERE
+    source='app' cascading children away) needs them ON. Deliberately NOT app.orm_session(): that reads
+    app.DB, not this runner's --db argument, and importing the Flask app into a CLI to obtain a
+    connection would be a far worse coupling than nine lines of engine setup."""
+    eng = create_engine(f"sqlite:///{db_path}", future=True)
+
+    @event.listens_for(eng, "connect")
+    def _fk_on(dbapi_conn, _rec):
+        dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
+    return eng
 
 
 @dataclass
@@ -69,34 +89,30 @@ def run_import(db_path=DB, archive_path=ARCHIVE, *, backup_dir=None, owner_email
     uid_index, taken = iw.db_state(db_path)                 # dedup + slug state from existing rows
     summary = Summary(backup_path=dest)
 
-    conn = sqlite3.connect(str(db_path))
-    conn.isolation_level = None                             # we drive BEGIN / COMMIT / ROLLBACK
-    try:
-        conn.execute("PRAGMA foreign_keys = ON")            # (3) enforce cascades (before BEGIN)
-        owner_id = iw.resolve_owner(conn, owner_email)      # whose box imports land in (ratings.user_id, R3)
-        conn.execute("BEGIN")                               # (4) one transaction for the batch
-        with zipfile.ZipFile(str(archive_path)) as zf:
-            for name, rec, err in reader.iter_entries(zf):  # (2) namelist order, per-entry safe
-                if err is not None or rec is None:
-                    summary.reader_errors.append((name, repr(err)))   # (5) collect, keep going
-                    continue
-                cleaned = cleanup.clean_recipe(reader.normalize(rec))
-                plan = iw.plan_recipe(cleaned, uid_index, taken)
-                if iw.commit_plan(conn, plan, owner_id):    # module ref -> monkeypatchable
-                    summary.written += 1
-                    summary.flags += len(plan["review_flags"])
-                    uid = plan["recipe"]["uid"]
-                    if uid:                                 # thread dedup across the batch
-                        uid_index[uid] = (plan["recipe"]["id"], plan["recipe"]["name"])
-                else:
-                    summary.skipped += 1                    # uid already present
-        conn.execute("COMMIT")                              # (4) commit once, at the very end
-    except Exception:
-        if conn.in_transaction:                             # any error -> undo the ENTIRE batch
-            conn.execute("ROLLBACK")
-        raise
-    finally:
-        conn.close()
+    eng = _engine(db_path)
+    with eng.connect() as conn:                             # SQLAlchemy Connection — commit_plan is Core
+        tx = conn.begin()                                   # (4) ONE transaction for the whole batch
+        try:
+            owner_id = iw.resolve_owner(conn, owner_email)  # whose box imports land in (ratings.user_id, R3)
+            with zipfile.ZipFile(str(archive_path)) as zf:
+                for name, rec, err in reader.iter_entries(zf):  # (2) namelist order, per-entry safe
+                    if err is not None or rec is None:
+                        summary.reader_errors.append((name, repr(err)))   # (5) collect, keep going
+                        continue
+                    cleaned = cleanup.clean_recipe(reader.normalize(rec))
+                    plan = iw.plan_recipe(cleaned, uid_index, taken)
+                    if iw.commit_plan(conn, plan, owner_id):    # module ref -> monkeypatchable
+                        summary.written += 1
+                        summary.flags += len(plan["review_flags"])
+                        uid = plan["recipe"]["uid"]
+                        if uid:                             # thread dedup across the batch
+                            uid_index[uid] = (plan["recipe"]["id"], plan["recipe"]["name"])
+                    else:
+                        summary.skipped += 1                # uid already present
+            tx.commit()                                     # (4) commit once, at the very end
+        except Exception:
+            tx.rollback()                                   # any error -> undo the ENTIRE batch
+            raise
     return summary
 
 

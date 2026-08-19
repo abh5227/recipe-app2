@@ -176,8 +176,9 @@ def test_commit_writes_all_tables(kitchen):
                  directions=["Step one.", "Step two."], rating=4, servings_raw="4",
                  uid="ACQUA-UID", hash="HH")
     plan = _plan(c)
-    with kitchen.conn() as conn:
-        assert iw.commit_plan(conn, plan) is True
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, plan) is True
+        s.commit()
     with kitchen.conn() as conn:
         rec = conn.execute(
             "SELECT source, uid FROM recipes WHERE id='acqua-pazza'").fetchone()
@@ -200,8 +201,9 @@ def test_commit_writes_original_snapshot(kitchen):
     # Every imported recipe gets a reason='original' baseline snapshot (cook-less), captured atomically
     # in the same import transaction — the pristine content the annotations (O-c) diff the current against.
     c = _cleaned(name="Original Dish", ingredient_lines=["2 tbsp oil"], directions=["Step one."], uid="ORIG-UID")
-    with kitchen.conn() as conn:
-        assert iw.commit_plan(conn, _plan(c)) is True
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, _plan(c)) is True
+        s.commit()
     with kitchen.conn() as conn:
         rows = conn.execute(
             "SELECT cook_log_id, reason, content FROM recipe_snapshots WHERE recipe_id='original-dish'"
@@ -221,8 +223,9 @@ def test_original_blob_matches_orm_serialization(kitchen):
     c = _cleaned(name="Byte Dish", source="BA", categories=["Fish"],
                  ingredient_lines=["SAUCE:", "2 tbsp oil", "1 cup water"],
                  directions=["Mix.", "Bake."], servings_raw="4", uid="BYTE-UID")
-    with kitchen.conn() as conn:
-        assert iw.commit_plan(conn, _plan(c)) is True
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, _plan(c)) is True
+        s.commit()
     with kitchen.conn() as conn:
         import_blob = conn.execute(
             "SELECT content FROM recipe_snapshots WHERE recipe_id='byte-dish' AND reason='original'"
@@ -238,16 +241,19 @@ def test_commit_skip_writes_nothing(kitchen):
     uid_index, taken = iw.db_state(kitchen.db)
     plan = iw.plan_recipe(c, uid_index, taken)
     assert plan["decision"] == "skip"
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, plan) is False
+        s.commit()
     with kitchen.conn() as conn:
-        assert iw.commit_plan(conn, plan) is False
         assert conn.execute("SELECT COUNT(*) FROM recipes WHERE name='Dup'").fetchone()[0] == 0
 
 
 def test_commit_rating_zero_writes_no_ratings_row(kitchen):
     c = _cleaned(name="Unrated Dish", rating=0, ingredient_lines=["1 egg"], directions=["Cook."])
     plan = _plan(c)
-    with kitchen.conn() as conn:
-        iw.commit_plan(conn, plan)
+    with kitchen.session() as s:
+        iw.commit_plan(s, plan)
+        s.commit()
     with kitchen.conn() as conn:
         assert conn.execute(
             "SELECT COUNT(*) FROM ratings WHERE recipe_id=?", (plan["recipe"]["id"],)
@@ -259,8 +265,9 @@ def test_commit_persists_harvested_grams_and_clean_label(kitchen):
     c = _cleaned(name="Hummus Test", ingredient_lines=["14 cups (250g) dried chickpeas"],
                  directions=["Blend."])
     plan = _plan(c)
-    with kitchen.conn() as conn:
-        iw.commit_plan(conn, plan)
+    with kitchen.session() as s:
+        iw.commit_plan(s, plan)
+        s.commit()
     with kitchen.conn() as conn:
         row = conn.execute(
             "SELECT label, grams, raw_text FROM recipe_ingredients WHERE recipe_id=? AND position=0",
@@ -275,8 +282,9 @@ def test_commit_persists_secondary_measure_both_orders(kitchen):
     c = _cleaned(name="Dual Test", directions=["Mix."],
                  ingredient_lines=["100 g (1 cup) granulated sugar", "1 cup (250g) flour"])
     plan = _plan(c)
-    with kitchen.conn() as conn:
-        iw.commit_plan(conn, plan)
+    with kitchen.session() as s:
+        iw.commit_plan(s, plan)
+        s.commit()
     with kitchen.conn() as conn:
         rows = conn.execute(
             "SELECT label, grams, secondary_measure FROM recipe_ingredients "
@@ -314,8 +322,9 @@ def test_commit_writes_every_recipe_column(kitchen):
                  notes="Some notes.", rating=3, uid="FULL-UID", hash="FULL-HASH",
                  ingredient_lines=["2 tbsp oil"], directions=["Cook."])
     plan = _plan(c)
-    with kitchen.conn() as conn:
-        assert iw.commit_plan(conn, plan) is True
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, plan) is True
+        s.commit()
     with kitchen.conn() as conn:
         r = conn.execute("SELECT * FROM recipes WHERE id='full-dish'").fetchone()
     assert r["name"] == "Full Dish"
@@ -341,8 +350,9 @@ def test_commit_writes_step_rows_text_heading_and_order(kitchen):
     c = _cleaned(name="Stepped Dish", ingredient_lines=["1 egg"],
                  directions=["PREP:", "Chop the onion.", "Cook it."])
     plan = _plan(c)
-    with kitchen.conn() as conn:
-        assert iw.commit_plan(conn, plan) is True
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, plan) is True
+        s.commit()
     with kitchen.conn() as conn:
         rows = conn.execute(
             "SELECT position, is_heading, text FROM recipe_steps WHERE recipe_id='stepped-dish' "
@@ -360,8 +370,9 @@ def test_commit_writes_every_ingredient_column(kitchen):
     c = _cleaned(name="Cols Dish", directions=["Mix."],
                  ingredient_lines=["SAUCE:", "2 tbsp olive oil", "1 egg"])
     plan = _plan(c)
-    with kitchen.conn() as conn:
-        assert iw.commit_plan(conn, plan) is True
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, plan) is True
+        s.commit()
     with kitchen.conn() as conn:
         rows = conn.execute(
             "SELECT position, is_heading, qty, quantity, unit, label, note, ingredient_id, raw_text "
@@ -383,9 +394,10 @@ def test_commit_snapshot_carries_owner_and_recipe_created_at(kitchen):
     rather than 'now', which a conversion could quietly change."""
     c = _cleaned(name="Owned Dish", ingredient_lines=["1 egg"], directions=["Cook."], uid="OWN-UID")
     plan = _plan(c)
-    with kitchen.conn() as conn:
-        owner = iw.resolve_owner(conn)
-        assert iw.commit_plan(conn, plan, owner) is True
+    with kitchen.session() as s:
+        owner = iw.resolve_owner(s)
+        assert iw.commit_plan(s, plan, owner) is True
+        s.commit()
     with kitchen.conn() as conn:
         row = conn.execute(
             "SELECT user_id, created_at, reason FROM recipe_snapshots WHERE recipe_id='owned-dish'"
@@ -404,12 +416,13 @@ def test_commit_writes_exactly_one_original_snapshot(kitchen):
     fact that a re-commit attempt leaves the existing snapshot untouched rather than adding a second."""
     c = _cleaned(name="Once Dish", ingredient_lines=["1 egg"], directions=["Cook."], uid="ONCE-UID")
     plan = _plan(c)
-    with kitchen.conn() as conn:
-        assert iw.commit_plan(conn, plan) is True
-    with kitchen.conn() as conn:
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, plan) is True
+        s.commit()
+    with kitchen.session() as s:
         with pytest.raises(Exception):                   # recipes PK/uid collision, before the guard
-            iw.commit_plan(conn, plan)
-        conn.rollback()
+            iw.commit_plan(s, plan)
+        s.rollback()
     with kitchen.conn() as conn:
         assert conn.execute(
             "SELECT COUNT(*) FROM recipe_snapshots WHERE recipe_id='once-dish' AND reason='original'"
@@ -422,8 +435,9 @@ def test_commit_flag_rows_carry_position_and_reason(kitchen):
     tells the two kinds apart — and backfill_headings joins on (recipe_id, position)."""
     c = _cleaned(name="Flagged Dish", ingredient_lines=["2 x 6oz fillets"], directions=[])
     plan = _plan(c)
-    with kitchen.conn() as conn:
-        assert iw.commit_plan(conn, plan) is True
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, plan) is True
+        s.commit()
     with kitchen.conn() as conn:
         rows = conn.execute(
             "SELECT position, flag, reason FROM import_flags WHERE recipe_id='flagged-dish'").fetchall()
@@ -440,8 +454,9 @@ def test_commit_section_suggested_heading_and_mult_one(kitchen):
     c = _cleaned(name="Promote Test", directions=["Mix."],
                  ingredient_lines=["crust", "1 x 397 grams can of condensed milk"])
     plan = _plan(c)
-    with kitchen.conn() as conn:
-        iw.commit_plan(conn, plan)
+    with kitchen.session() as s:
+        iw.commit_plan(s, plan)
+        s.commit()
     with kitchen.conn() as conn:
         rows = conn.execute(
             "SELECT is_heading, qty, label, grams FROM recipe_ingredients "

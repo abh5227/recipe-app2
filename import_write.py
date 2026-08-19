@@ -41,10 +41,13 @@ import zipfile
 from collections import Counter
 from pathlib import Path
 
+from sqlalchemy import insert, select
+
 import snapshot_serialize  # single-source snapshot FORMAT — the original-baseline blob matches app.py's byte-for-byte
 
 import import_cleanup as cleanup
 import paprika_native_reader as reader
+from models import Rating, Recipe, RecipeIngredient, RecipeSnapshot, RecipeStep, ImportFlag, User
 
 BASE_DIR = Path(__file__).resolve().parent
 DB = BASE_DIR / "recipes.db"
@@ -217,81 +220,90 @@ def plan_recipe(cleaned, uid_index, taken_slugs, now=None):
 # --------------------------------------------------------------------------- #
 # The ONLY writer (used by the real import run, NOT by the dry-run)
 # --------------------------------------------------------------------------- #
-def resolve_owner(conn, email=None):
+def resolve_owner(executor, email=None):
     """Resolve the owner user id for an import (rescoping R3: ratings.user_id is NOT NULL, so imported
     ratings need an owner). Explicit email wins (error if unknown); else the SOLE user (error if 0 or >1
-    — pass --owner-email). Mirrors scripts/backfill_rescoping.py's resolution. `conn` is a raw sqlite3
-    connection (the import path)."""
+    — pass --owner-email). Mirrors scripts/backfill_rescoping.py's resolution.
+
+    `executor` is anything with .execute() — a SQLAlchemy Session OR Connection (see commit_plan)."""
+    u = User.__table__
     if email:
-        row = conn.execute("SELECT id FROM users WHERE email = ?", (email.strip().lower(),)).fetchone()
+        row = executor.execute(select(u.c.id).where(u.c.email == email.strip().lower())).first()
         if row is None:
             raise ValueError(f"no user with email {email!r}")
         return row[0]
-    ids = [row[0] for row in conn.execute("SELECT id FROM users ORDER BY id")]
+    ids = [row[0] for row in executor.execute(select(u.c.id).order_by(u.c.id))]
     if len(ids) == 1:
         return ids[0]
     raise ValueError(f"import owner ambiguous: {len(ids)} users exist — pass --owner-email")
 
 
-def commit_plan(conn, plan, owner_id=None):
+def commit_plan(executor, plan, owner_id=None):
     """Persist one write plan; returns True if it wrote, False for a SKIP. The caller owns
     the transaction (commit/rollback). Requires migration 010 (import_flags).
 
-    owner_id: the user whose box this import lands in — imported ratings are attributed to it (ratings
-    .user_id is NOT NULL since R3). Defaults to the sole user (resolve_owner) for direct callers/tests;
-    import_runner passes the --owner-email-resolved id. recipes.owner is left to the backfill (not set
-    here — R4 owns recipe-ownership rules)."""
+    ⚠️ SQLAlchemy CORE, not raw SQL, and that is FORCED rather than stylistic: the raw form used `?`
+    and `:named` placeholders, both invalid for psycopg's pyformat, so every parameterised statement
+    failed to PARSE on Postgres — which is production. Core compiles per dialect, so one writer serves
+    both. Nothing told us this before: the Postgres CI leg never reaches the importer.
+
+    `executor` is anything with .execute() — a SQLAlchemy **Session** (the route path, which already has
+    one) or a **Connection** (import_runner's batch). Both were measured to run these exact statements
+    with these exact row dicts. That works only because this function does NOT own its transaction,
+    which was already its contract, so the interface is unchanged.
+
+    Row dicts go in unmapped: every plan key is a real column on all six tables. The ONE exception is
+    recipe_steps, whose ORM attribute is `body` while the COLUMN is `text` (models.py renames it to
+    avoid shadowing sqlalchemy.text) — Core wants the column name, and passing `body` raises
+    `CompileError: Unconsumed column names: body`."""
     if plan["decision"] != "write":
         return False
     if owner_id is None:
-        owner_id = resolve_owner(conn)
+        owner_id = resolve_owner(executor)
     r = plan["recipe"]
-    conn.execute(
-        """INSERT INTO recipes
-           (id, name, author, source_url, category, servings, prep_time, cook_time,
-            total_time, descr, notes, image, uid, hash, created_at, source)
-           VALUES (:id,:name,:author,:source_url,:category,:servings,:prep_time,:cook_time,
-                   :total_time,:descr,:notes,:image,:uid,:hash,:created_at,:source)""", r)
+    executor.execute(insert(Recipe.__table__).values(**r))
     for row in plan["ingredients"]:
-        conn.execute(
-            """INSERT INTO recipe_ingredients
-               (recipe_id, position, is_heading, qty, quantity, unit, ingredient_id, label, note,
-                raw_text, grams, secondary_measure)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
-            (r["id"], row["position"], row["is_heading"], row["qty"], row["quantity"], row["unit"],
-             row["ingredient_id"], row["label"], row["note"], row["raw_text"], row["grams"],
-             row["secondary_measure"]))
+        executor.execute(insert(RecipeIngredient.__table__).values(recipe_id=r["id"], **row))
     for row in plan["steps"]:
-        conn.execute(
-            "INSERT INTO recipe_steps (recipe_id, position, is_heading, text) VALUES (?,?,?,?)",
-            (r["id"], row["position"], row["is_heading"], row["text"]))
+        # dict form, not kwargs: "text" is the COLUMN name (attribute `body`) — see the note above.
+        executor.execute(insert(RecipeStep.__table__).values(
+            {"recipe_id": r["id"], "position": row["position"],
+             "is_heading": row["is_heading"], "text": row["text"]}))
     # O-a: capture the recipe's PRISTINE ORIGINAL baseline (reason='original') for the recipe-page
     # annotations diff (O-c) — in THIS import batch transaction (atomic). The blob uses the SHARED
     # serializer (snapshot_serialize.content_blob), byte-identical to the ORM path (app.serialize_recipe_
-    # content), so an import-origin original diffs cleanly against an app-origin current. Guarded WHERE NOT
-    # EXISTS so a recipe's original is captured once (belt-and-suspenders; commit_plan is create-only —
-    # uid-dedup skips existing recipes). cook_log_id NULL; user_id = the import owner; created_at = the
-    # recipe's birth timestamp (r["created_at"]).
-    if not conn.execute(
-        "SELECT 1 FROM recipe_snapshots WHERE recipe_id = ? AND reason = 'original'", (r["id"],)
-    ).fetchone():
-        conn.execute(
-            "INSERT INTO recipe_snapshots (recipe_id, cook_log_id, user_id, reason, content, created_at) "
-            "VALUES (?, NULL, ?, 'original', ?, ?)",
-            (r["id"], owner_id, snapshot_serialize.content_blob(r, plan["ingredients"], plan["steps"]),
-             r["created_at"]))
+    # content), so an import-origin original diffs cleanly against an app-origin current. content_blob
+    # needs no change here: it already reads mappings OR ORM rows, and the input is still the plan dict.
+    # Guarded so a recipe's original is captured once (belt-and-suspenders; commit_plan is create-only —
+    # uid-dedup skips existing recipes, so the false branch is unreachable through this function).
+    # cook_log_id NULL; user_id = the import owner; created_at = the recipe's birth timestamp.
+    snap = RecipeSnapshot.__table__
+    exists = executor.execute(
+        select(snap.c.id).where(snap.c.recipe_id == r["id"], snap.c.reason == "original")).first()
+    if not exists:
+        executor.execute(insert(snap).values(
+            recipe_id=r["id"], cook_log_id=None, user_id=owner_id, reason="original",
+            content=snapshot_serialize.content_blob(r, plan["ingredients"], plan["steps"]),
+            created_at=r["created_at"]))
     if plan["rating"] is not None:
-        conn.execute("INSERT INTO ratings (recipe_id, user_id, rating) VALUES (?,?,?)",
-                     (r["id"], owner_id, plan["rating"]))
+        executor.execute(insert(Rating.__table__).values(
+            recipe_id=r["id"], user_id=owner_id, rating=plan["rating"]))
     for fl in plan["review_flags"]:
-        conn.execute(
-            "INSERT INTO import_flags (recipe_id, position, flag, reason) VALUES (?,?,?,?)",
-            (r["id"], fl["position"], fl["flag"], fl["reason"]))
+        executor.execute(insert(ImportFlag.__table__).values(recipe_id=r["id"], **fl))
     return True
 
 
 # --------------------------------------------------------------------------- #
 # DB state (read-only) used to plan
+# --------------------------------------------------------------------------- #
+# ⚠️ THIS FILE DELIBERATELY CONTAINS TWO ACCESS STYLES. Everything ABOVE — the write path
+# (commit_plan / resolve_owner) — is SQLAlchemy Core, because it must run on Postgres from a request.
+# Everything BELOW — db_state and the whole dry-run/CLI half (dry_run, dry_run_all, plan_all) — is
+# still raw sqlite3, ON PURPOSE. That is SCOPE, not an abandoned migration: the dry-run is a local
+# batch tool that has never needed Postgres, and converting it would widen the blast radius of the
+# change that made the WRITE portable for no gain. db_state is the one below-the-line item with a
+# reason to move (its `db=DB` default is captured at definition time, so it reads the real recipes.db
+# even under the test harness) and it is a separate, already-scoped step. Do not "finish" the rest.
 # --------------------------------------------------------------------------- #
 def db_state(db=DB):
     """Read the existing uids (-> twin slug/name for skip reporting) and taken slugs.
