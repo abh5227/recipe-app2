@@ -11,15 +11,21 @@ local-only: one cook, one machine, nothing published.
 
 ## Run it
 
-You need Python 3. From inside this folder:
+You need **Python 3.13** and **Node 20 or newer**. From inside this folder:
 
 ```
-pip install flask         # one-time: installs the backend library
-python3 build_db.py       # builds recipes.db from your seed data
-python3 app.py            # starts the server
+python3.13 -m pip install -r requirements.txt   # one-time: Flask, SQLAlchemy + 5 more
+npm install                                     # one-time: Vite (build) + TipTap (step editor)
+npm run build                                   # builds the frontend into dist/
+                                                #   REQUIRED: "/" serves dist/index.html — skip this and / 500s
+python3.13 build_db.py                          # builds recipes.db from your seed data
+python3.13 app.py                               # starts the server
 ```
 
 Then open **http://localhost:8000**. Stop the server with `Ctrl + C`.
+
+Rerun `npm run build` after editing anything in `static/`, and `build_db.py` after editing
+`seed.py`.
 
 ## Edit a recipe
 
@@ -27,8 +33,8 @@ Your content lives in **`seed.py`**: the recipe list, the ingredient library, an
 people who can have a version. After editing it, rebuild and restart:
 
 ```
-python3 build_db.py       # applies your changes
-python3 app.py
+python3.13 build_db.py    # applies your changes
+python3.13 app.py
 ```
 
 `build_db.py` checks your work — if a recipe links to an ingredient that isn't in the
@@ -80,18 +86,31 @@ touches them) and de-duplicated by their source `uid`.
 
 ## Two safety nets
 
-- **`python3 backup.py`** guards your *data* — ratings, cook history, and per-person
+- **`python3.13 backup.py`** guards your *data* — ratings, cook history, and per-person
   changes live only in `recipes.db`, which isn't in git. Run it before anything risky.
 - **git** guards your *code* — `seed.py`, the Python files, and the migrations.
+
+## Developing
+
+For frontend work there's a two-process loop with hot reload — Vite serves the app and proxies
+the API through to Flask:
+
+```
+npm run dev          # Vite on http://localhost:5173 — this is the one you open
+python3.13 app.py    # Flask on :8000, serving /api, /images and /fonts
+```
+
+Mind the port: in this loop you open **:5173**, not the :8000 above. `npm run build` isn't
+needed here — Vite serves `static/` directly and reloads on save.
 
 ## Tests
 
 The backend has a pytest suite under `tests/`. From the project folder:
 
 ```
-pip install -r requirements-dev.txt   # one-time; installs pytest
-python3 -m pytest                      # run the Python suite
-node --test tests/js/*.test.js         # run the JS suite (scaler/converter; needs Node 20+)
+python3.13 -m pip install -r requirements-dev.txt   # one-time; installs pytest
+python3.13 -m pytest                               # run the Python suite
+node --test tests/js/*.test.js                     # run the JS suite (needs Node 20+)
 ```
 
 Each test builds its own throwaway database from the migrations and `seed.py`, so the

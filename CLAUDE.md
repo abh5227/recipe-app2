@@ -40,7 +40,9 @@ import pipeline from Paprika native exports.
 
 ```bash
 # Setup (fresh clone → working app at http://localhost:8000)
-python3.13 -m pip install -r requirements.txt   # Python runtime: flask, SQLAlchemy
+python3.13 -m pip install -r requirements.txt   # Python runtime: 7 packages — flask,
+                                                #   flask-login, SQLAlchemy, alembic, psycopg,
+                                                #   pillow, pillow-heif
 npm install                          # frontend deps: Vite (build) + TipTap (step editor)
 npm run build                        # build the Vite bundle → dist/ (git-ignored)
                                      #   REQUIRED: Flask's "/" serves dist/index.html — skip this and / 500s
