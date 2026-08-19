@@ -41,7 +41,7 @@ import zipfile
 from collections import Counter
 from pathlib import Path
 
-from sqlalchemy import insert, select
+from sqlalchemy import create_engine, event, insert, select
 
 import snapshot_serialize  # single-source snapshot FORMAT — the original-baseline blob matches app.py's byte-for-byte
 
@@ -296,24 +296,65 @@ def commit_plan(executor, plan, owner_id=None):
 # --------------------------------------------------------------------------- #
 # DB state (read-only) used to plan
 # --------------------------------------------------------------------------- #
-# ⚠️ THIS FILE DELIBERATELY CONTAINS TWO ACCESS STYLES. Everything ABOVE — the write path
-# (commit_plan / resolve_owner) — is SQLAlchemy Core, because it must run on Postgres from a request.
-# Everything BELOW — db_state and the whole dry-run/CLI half (dry_run, dry_run_all, plan_all) — is
-# still raw sqlite3, ON PURPOSE. That is SCOPE, not an abandoned migration: the dry-run is a local
-# batch tool that has never needed Postgres, and converting it would widen the blast radius of the
-# change that made the WRITE portable for no gain. db_state is the one below-the-line item with a
-# reason to move (its `db=DB` default is captured at definition time, so it reads the real recipes.db
-# even under the test harness) and it is a separate, already-scoped step. Do not "finish" the rest.
+# ⚠️ THIS FILE DELIBERATELY CONTAINS TWO ACCESS STYLES, and the line has MOVED DOWN by one function.
+# Above it — the write path (commit_plan / resolve_owner) AND db_state — is SQLAlchemy Core, because
+# all three must run on Postgres from a request. Below it — the dry-run/CLI half (dry_run,
+# dry_run_all, plan_all) — is still raw sqlite3, ON PURPOSE. That is SCOPE, not an abandoned
+# migration: the dry-run is a local batch tool that has never needed Postgres, and converting it would
+# widen the blast radius of the change that made the WRITE portable for no gain. Its one link to the
+# portable half is db_state_for_path below, which exists precisely so those callers keep passing a
+# PATH and never handle a SQLAlchemy object. Do not "finish" the rest.
 # --------------------------------------------------------------------------- #
-def db_state(db=DB):
-    """Read the existing uids (-> twin slug/name for skip reporting) and taken slugs.
-    Read-only: opens, SELECTs, closes. Writes nothing."""
-    conn = sqlite3.connect(str(db))
-    uid_index = {u: (i, n) for i, n, u in conn.execute(
-        "SELECT id, name, uid FROM recipes WHERE uid IS NOT NULL")}
-    taken = {row[0] for row in conn.execute("SELECT id FROM recipes")}
-    conn.close()
+def engine_for(db_path):
+    """Engine for the import path's own DB access — the SINGLE factory, shared with import_runner.
+
+    SQLite by construction: every caller here takes a --db PATH rather than a URL, and the runner's
+    backup step is a file copy, so this side stays local. The Core writer it feeds is what became
+    portable, not the CLI around it.
+
+    The foreign_keys listener replaces the runner's former explicit `PRAGMA foreign_keys = ON`: SQLite
+    defaults them OFF, and the documented recovery path (DELETE FROM recipes WHERE source='app'
+    cascading children away) needs them ON. Deliberately NOT app.orm_session(): that composes its URL
+    from app.DB rather than the caller's path, and importing the Flask app into a CLI to obtain a
+    connection would be a far worse coupling than these few lines."""
+    eng = create_engine(f"sqlite:///{db_path}", future=True)
+
+    @event.listens_for(eng, "connect")
+    def _fk_on(dbapi_conn, _rec):
+        dbapi_conn.execute("PRAGMA foreign_keys=ON")
+
+    return eng
+
+
+def db_state(executor):
+    """Read the existing uids (-> twin slug/name for skip reporting) and taken slugs. Read-only.
+
+    `executor` is a Session or a Connection, matching commit_plan — so the import route reads this on
+    the REQUEST's session instead of opening a second connection to the same database.
+
+    ⚠️ THERE IS DELIBERATELY NO DEFAULT, and removing it is a BUG FIX rather than tidying. The old
+    signature was `db_state(db=DB)`, and a default argument is evaluated once at FUNCTION-DEFINITION
+    time — so `DB` was frozen to the repo's real recipes.db even though the parameter itself was
+    redirectable. Measured under the real harness: `db_state()` with no argument returned 298 uids and
+    301 slugs — the LIVE database, read during a test that believed it was isolated. With recipes.db
+    absent (the CI condition) sqlite3.connect CREATED a 0-byte file and then failed with `no such table:
+    recipes`. That is the Stage-1b signature reached by a different mechanism — a default-arg snapshot
+    rather than a frozen engine — and the only safe default is none at all."""
+    rec = Recipe.__table__
+    uid_index = {u: (i, n) for i, n, u in executor.execute(
+        select(rec.c.id, rec.c.name, rec.c.uid).where(rec.c.uid.is_not(None)))}
+    taken = {row[0] for row in executor.execute(select(rec.c.id))}
     return uid_index, taken
+
+
+def db_state_for_path(db):
+    """db_state for a caller that has a PATH and no executor — the dry-run/CLI half below.
+
+    This is the whole reason those callers need no other change: they keep passing a path, the
+    short-lived connection is opened and closed here, and nothing in the raw-sqlite3 half ever handles
+    a SQLAlchemy object. It is NOT a default in disguise — the path is always explicit."""
+    with engine_for(db).connect() as conn:
+        return db_state(conn)
 
 
 # --------------------------------------------------------------------------- #
@@ -445,7 +486,7 @@ def dry_run(seed=None, count=15, db=DB, archive=ARCHIVE):
     if not Path(archive).is_file():
         raise SystemExit("Archive not found: %s" % archive)
     rng = random.Random(seed)
-    uid_index, taken = db_state(db)
+    uid_index, taken = db_state_for_path(db)
 
     with zipfile.ZipFile(archive) as zf:
         light = load_light(zf)
@@ -698,7 +739,7 @@ def dry_run_all(db=DB, archive=ARCHIVE, verbose=False):
     up, or calls commit_plan; the author sampler is never used."""
     if not Path(archive).is_file():
         raise SystemExit("Archive not found: %s" % archive)
-    uid_index, taken = db_state(db)                         # read-only
+    uid_index, taken = db_state_for_path(db)                # read-only
     conn = sqlite3.connect(str(db))                         # read-only: seed ids for reconciliation
     seed_ids = {r[0] for r in conn.execute("SELECT id FROM recipes WHERE source='seed'")}
     conn.close()

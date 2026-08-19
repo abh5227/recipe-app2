@@ -238,7 +238,8 @@ def test_original_blob_matches_orm_serialization(kitchen):
 def test_commit_skip_writes_nothing(kitchen):
     # a real tagged seed twin uid -> dedup must skip and write nothing
     c = _cleaned(name="Dup", uid="21FB182C-8CED-4E3A-B20C-893310AA4631")
-    uid_index, taken = iw.db_state(kitchen.db)
+    with kitchen.session() as s_:
+        uid_index, taken = iw.db_state(s_)
     plan = iw.plan_recipe(c, uid_index, taken)
     assert plan["decision"] == "skip"
     with kitchen.session() as s:

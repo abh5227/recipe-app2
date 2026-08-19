@@ -25,8 +25,6 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from sqlalchemy import create_engine, event
-
 import backup
 import import_cleanup as cleanup
 import import_write as iw
@@ -35,25 +33,6 @@ import paprika_native_reader as reader
 BASE_DIR = Path(__file__).resolve().parent
 DB = BASE_DIR / "recipes.db"
 ARCHIVE = BASE_DIR / "My Recipes.paprikarecipes"
-
-
-def _engine(db_path):
-    """Engine for the batch. SQLite by construction — this CLI takes a --db PATH, not a URL, and its
-    backup step is a file copy, so it is a local tool and stays one; the Core writer it drives is what
-    became portable, not the runner.
-
-    The foreign_keys listener replaces the explicit `PRAGMA foreign_keys = ON` this function used to
-    run: SQLite defaults them OFF, and the recovery path documented above (DELETE FROM recipes WHERE
-    source='app' cascading children away) needs them ON. Deliberately NOT app.orm_session(): that reads
-    app.DB, not this runner's --db argument, and importing the Flask app into a CLI to obtain a
-    connection would be a far worse coupling than nine lines of engine setup."""
-    eng = create_engine(f"sqlite:///{db_path}", future=True)
-
-    @event.listens_for(eng, "connect")
-    def _fk_on(dbapi_conn, _rec):
-        dbapi_conn.execute("PRAGMA foreign_keys=ON")
-
-    return eng
 
 
 @dataclass
@@ -86,13 +65,16 @@ def run_import(db_path=DB, archive_path=ARCHIVE, *, backup_dir=None, owner_email
     kwargs = {} if backup_dir is None else {"backup_dir": backup_dir}
     dest = backup.create_backup(db_path, **kwargs)          # (1) backup or abort — pre-connection
 
-    uid_index, taken = iw.db_state(db_path)                 # dedup + slug state from existing rows
     summary = Summary(backup_path=dest)
 
-    eng = _engine(db_path)
-    with eng.connect() as conn:                             # SQLAlchemy Connection — commit_plan is Core
+    with iw.engine_for(db_path).connect() as conn:          # SQLAlchemy Connection — commit_plan is Core
         tx = conn.begin()                                   # (4) ONE transaction for the whole batch
         try:
+            # dedup + slug state, read on the batch's OWN connection rather than a second one to the
+            # same file, and INSIDE the transaction — a read on this connection autobegins one, so
+            # doing it first would make the explicit begin() above raise. Reading here also means the
+            # dedup baseline and the writes see one consistent snapshot.
+            uid_index, taken = iw.db_state(conn)
             owner_id = iw.resolve_owner(conn, owner_email)  # whose box imports land in (ratings.user_id, R3)
             with zipfile.ZipFile(str(archive_path)) as zf:
                 for name, rec, err in reader.iter_entries(zf):  # (2) namelist order, per-entry safe

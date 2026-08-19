@@ -37,7 +37,8 @@ def archive(tmp_path):
 def test_plan_all_covers_every_entry_and_writes_nothing(kitchen, archive):
     before = kitchen.count("recipes", "source='app'")
     with zipfile.ZipFile(archive) as zf:
-        uid_index, taken = iw.db_state(kitchen.db)
+        with kitchen.session() as s_:
+            uid_index, taken = iw.db_state(s_)
         plans, errs = iw.plan_all(zf, uid_index, taken)
 
     # every good entry planned, malformed REPORTED — nothing sampled away, nothing lost
@@ -83,7 +84,8 @@ def test_duplicate_titles_collide_and_are_detected(kitchen, tmp_path):
     recs = [_rec("c-1", "Zzz Collision Dish"), _rec("c-2", "Zzz Collision Dish")]
     arc = write_paprika_archive(tmp_path / "dup.paprikarecipes", recs)
     with zipfile.ZipFile(arc) as zf:
-        uid_index, taken = iw.db_state(kitchen.db)
+        with kitchen.session() as s_:
+            uid_index, taken = iw.db_state(s_)
         plans, errs = iw.plan_all(zf, uid_index, taken)
     stats = iw.summarize_all(plans, errs)
 
@@ -99,7 +101,8 @@ def test_already_imported_uids_are_skipped_not_rewritten(kitchen, archive, tmp_p
     import_runner.run_import(kitchen.db, archive, backup_dir=tmp_path / "bk")
 
     with zipfile.ZipFile(archive) as zf:
-        uid_index, taken = iw.db_state(kitchen.db)
+        with kitchen.session() as s_:
+            uid_index, taken = iw.db_state(s_)
         plans, errs = iw.plan_all(zf, uid_index, taken)
     stats = iw.summarize_all(plans, errs)
 
