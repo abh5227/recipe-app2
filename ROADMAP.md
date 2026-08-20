@@ -1476,6 +1476,35 @@ worth knowing before they bite. None of the *data* limitations occur in the curr
   2026-06-24, which is what the coverage condition actually turns on; and add a gate-check step to
   `.github/workflows/build.yml`. Dispositions alone leave the gate red.
 
+- **The import parser's equivalence baseline — `bacd5f45…`, and it is the FIRST one stored.** The
+  298-recipe Paprika archive run through `reader.normalize` → `clean_recipe` → `plan_recipe`, with
+  `plan_recipe(now=…)` pinned for determinism, hashes to
+  `bacd5f45e909564f35aa167683b380b56f5179f68198edb81a7f97cdd041f860`. **Any change to the parser must
+  be diffed against this**: the corpus is 298 recipes the user curated over years, the Paprika path is
+  no longer exercised by anything else, and a regression there is silent — nothing fails, the text just
+  quietly gets worse. Re-run it before and after; an identical hash is the proof that a URL-import fix
+  did not reach the archive. Recorded because there was no stored value before `d2ae519` and several
+  briefs referenced a baseline (`e2e4a6c2…`) that exists nowhere in this repository.
+
+- **`" ," → ","` is deliberately NOT a cleanup rule.** It looks like a sibling of the two rules that
+  did ship in `d2ae519`, and by itself the shape is unambiguous. It stays out because it matches **73
+  stored Paprika rows** (`5 garlic cloves , peeled`, `1 small onion , roughly sliced`), so applying it
+  would change recipes already imported and move the hash above. That makes it a decision about the
+  user's existing data rather than a parser fix — which is the same bar the module's own comment sets:
+  a rule must be corpus-neutral, or it is a migration wearing a regex costume.
+
+- **10 orphaned parenthetical continuations in the stored corpus (open finding, Paprika path).** Ten
+  ingredient rows across nine recipes are a bare parenthetical with no ingredient — `(thinly sliced)`
+  sitting as its own row directly beneath `chicken breast`, `(450g, medium thickness)` beneath
+  `fresh or dried white noodles`. `raw_text` equals the label, so the SOURCE LINE was already just the
+  parenthetical: this is line-splitting in the Paprika import, not the amount parser, and it predates
+  the URL importer entirely. Not fixed, and deliberately not guessed at — recovering them means
+  deciding whether a continuation row merges upward into the line above, which is an edit to existing
+  user data. ⚠️ **Do not confuse this with the 366 rows whose `label` is NULL**: those carry a perfectly
+  good `raw_text` (`extra virgin olive oil`) and render correctly, since the editor reads
+  `label || raw_text`. An earlier report of this session conflated the two and called it "376 rows";
+  `d2ae519`'s commit body names that error and its cause. The real count is **10**.
+
 - **R2 handwritten layer — extend the per-person model to app-tier (architectural).** The
   per-person change model (edit/remove lines, additions) currently exists ONLY for seed recipes
   (gated on `is_seed`); the imported recipes are app-tier and have the **form-edit** path but NOT
