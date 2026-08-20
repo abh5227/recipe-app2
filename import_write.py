@@ -141,8 +141,11 @@ def _line_flag_rows(pos, line):
     return [{
         "position": pos,
         "flag": f,
+        # A cleanup flag carries the rule's OWN reason (cleanup.CLEANUP_REASONS), so "what was
+        # changed" travels with the row instead of being re-derived from the flag name later.
         "reason": ("a gram value was present but not confidently harvested"
-                   if f == "grams_declined" else (line["flag_reason"] or None)),
+                   if f == "grams_declined"
+                   else cleanup.CLEANUP_REASONS.get(f) or (line["flag_reason"] or None)),
     } for f in line["flags"]]
 
 

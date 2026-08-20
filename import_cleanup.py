@@ -134,6 +134,71 @@ _OZ_TO_G = {"ounce": 28.35, "ounces": 28.35, "oz": 28.35, "gram": 1.0, "grams": 
 # --------------------------------------------------------------------------- #
 # Subsystems
 # --------------------------------------------------------------------------- #
+# --------------------------------------------------------------------------- #
+# Source-text cleanup: repair publisher artifacts BEFORE parsing
+# --------------------------------------------------------------------------- #
+# A TABLE, not a chain of if-statements, because the point is ACCUMULATION. The sites this app will
+# actually be fed — Allrecipes, ATK, Bon Appétit, Serious Eats — are large custom platforms that will
+# emit their OWN artifacts, not the ones we happen to have sampled. Adding a rule is one tuple here
+# plus one test; nothing else in the pipeline changes.
+#
+# THE BAR FOR ADMITTING A RULE — deliberately high, because a wrong rule silently rewrites the user's
+# ingredients:
+#   1. UNAMBIGUOUS. No human writes the shape deliberately, so there is no intent to misread.
+#   2. CORPUS-NEUTRAL. It must match ZERO stored Paprika rows, or it changes recipes already imported.
+#      Check before adding:  SELECT raw_text FROM recipe_ingredients WHERE raw_text LIKE '%<shape>%'
+#   3. FLAGGED. Every application records an import_flags row, so the tidying is visible, never silent.
+# Shapes that need INTERPRETATION stay out — "1/2 cup - 1 cup" (range or compound measure?) and
+# "Fresh green chilis - Serranos" (note or hyphenated name?) are for the import editor, not a regex.
+#
+# ⚠️ ONLY the parsed NAME is cleaned. `raw` is untouched and becomes recipe_ingredients.raw_text, so the
+# publisher's original text is always recoverable — the cleanup is a display/parse improvement, not an
+# edit to the source record.
+CLEANUP_RULES = (
+    # (flag, pattern, replacement, reason recorded on the flag row)
+    #
+    # Both rules repair the SAME template defect from opposite ends: recipetineats joins an empty
+    # ingredient-name field to a note. When the note opens with a comma you get "(, vegetable";
+    # when the note already carries its own brackets you get "((Note 4))".
+    ("cleaned_paren_comma", re.compile(r"\(\s*,\s*"), "(",
+     "removed a stray comma after '(' — publisher artifact"),
+
+    # MATCHES THE PAIR, NEVER THE PREFIX. The pattern requires the doubled OPEN, content with no
+    # parens of its own, AND the doubled CLOSE — so it fires only on a complete redundant wrapper and
+    # rewrites both ends together. Collapsing on "((" alone would turn "((Note 4))" into "(Note 4))"
+    # and strand a bracket.
+    #
+    # Three things it therefore declines, by construction rather than by special case:
+    #   "((Note 4)"        unbalanced — one ')' — left exactly as found, not half-fixed
+    #   "(Note 4))"        unbalanced the other way — likewise untouched
+    #   "(or rice wine (mijiu) if you can find it (Note 5))"
+    #                      LEGITIMATE nesting: the inner paren doesn't span the whole content, so
+    #                      [^()]* fails and the line is left alone. This one is real recipetineats
+    #                      text — collapsing it would merge two different brackets into one.
+    # "( (" is the same shape with a stray space and is handled by the same pattern (\s* after the
+    # first paren), so it needs no rule of its own.
+    ("cleaned_double_paren", re.compile(r"\(\s*\(([^()]*)\)\s*\)"), r"(\1)",
+     "collapsed a doubled parenthesis — publisher artifact"),
+)
+
+# flag -> reason, for the writer's flag-row builder (import_write._line_flag_rows).
+CLEANUP_REASONS = {flag: reason for flag, _rx, _repl, reason in CLEANUP_RULES}
+
+
+def clean_source_text(text):
+    """Apply every cleanup rule. Returns (cleaned_text, [flags applied]).
+
+    Order-independent by construction: each rule is applied once to the running result, and a rule
+    that changes nothing contributes no flag. A line matching two rules carries two flags."""
+    applied = []
+    for flag, rx, repl, _reason in CLEANUP_RULES:
+        new = rx.sub(repl, text)
+        if new != text:
+            applied.append(flag)
+            text = new
+    return text, applied
+
+
 def is_section(text):
     """Reliable section header: colon-terminated OR all-caps (with letters). Callers only
     ask this for NO-amount lines, so a quantity line is never mistaken for a section."""
@@ -430,7 +495,10 @@ def _parse_canned(line):
 
 def classify_line(raw, section_hints=None):
     """Turn one raw ingredient line into a structured-or-flagged record."""
-    line = raw.strip()
+    # Publisher artifacts are repaired BEFORE anything reads the line, so every downstream rule
+    # (amount parse, gram harvest, section detection) sees well-formed text rather than each having
+    # to tolerate the malformation. `raw` keeps the original for raw_text — see CLEANUP_RULES.
+    line, cleanup_flags = clean_source_text(raw.strip())
     grams, grams_declined, gram_paren = harvest_grams(line)
     res = {
         "raw": raw, "kind": "ingredient", "amount": "", "value": None, "unit": "",
@@ -438,7 +506,7 @@ def classify_line(raw, section_hints=None):
         "has_alternative": False, "has_prep_note": False, "secondary_measure": None,
         # grams_declined: a gram value was present but the guard didn't trust it — flag what we
         # decline, never silently drop it. Soft signal: doesn't by itself flag the line.
-        "flags": ["grams_declined"] if grams_declined else [],
+        "flags": (["grams_declined"] if grams_declined else []) + cleanup_flags,
         "flag_reason": "", "suggestion": None,
     }
 

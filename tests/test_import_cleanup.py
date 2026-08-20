@@ -526,3 +526,142 @@ def test_split_qty_recombine_is_lossless(qty):
     quantity, unit = ic.split_qty(qty)
     norm = (lambda s: _re.sub(r"\s+", " ", s or "").strip())
     assert norm(f"{quantity} {unit}") == norm(qty)
+
+
+# --------------------------------------------------------------------------- #
+# Source-text cleanup layer (CLEANUP_RULES)
+# --------------------------------------------------------------------------- #
+# The layer exists to ACCUMULATE rules for artifacts other publishers will produce, so these tests
+# pin the CONTRACT (shape of the table, flag/reason pairing, raw preservation) as much as today's one
+# rule — a second rule should need a tuple and a case, not a rethink.
+
+def test_cleanup_rule_table_has_the_shape_the_writer_expects():
+    """Each rule is (flag, compiled pattern, replacement, reason). import_write._line_flag_rows looks
+    the reason up by flag, so a rule missing one would write a flag row with reason NULL."""
+    for flag, rx, repl, reason in ic.CLEANUP_RULES:
+        assert flag.startswith("cleaned_"), flag        # namespaced, so a queue can filter them
+        assert hasattr(rx, "sub") and isinstance(repl, str)
+        assert reason and isinstance(reason, str)
+    assert ic.CLEANUP_REASONS == {f: r for f, _p, _rp, r in ic.CLEANUP_RULES}
+
+
+def test_clean_source_text_reports_what_it_changed():
+    out, flags = ic.clean_source_text("flour (, bread or plain)")
+    assert out == "flour (bread or plain)"
+    assert flags == ["cleaned_paren_comma"]
+
+
+def test_clean_source_text_is_a_no_op_on_well_formed_text():
+    for s in ["flour (bread or plain)", "2 tbsp oil, canola", "1 (14-ounce) can beans",
+              "chicken thighs (boneless, skinless)"]:
+        assert ic.clean_source_text(s) == (s, [])
+
+
+@pytest.mark.parametrize("src,expected", [
+    ("3 cups (450g) flour (, bread or plain/all purpose (Note 1))",
+     "flour (bread or plain/all purpose (Note 1))"),
+    ("1 1/2 tbsp plain oil - canola (, vegetable, peanut)",
+     "plain oil - canola (vegetable, peanut)"),
+    ("1 1/2 tbsp flour (, for dusting)", "flour (for dusting)"),
+])
+def test_classify_line_cleans_the_name(src, expected):
+    assert ic.classify_line(src)["name"] == expected
+
+
+def test_the_publishers_original_text_survives_untouched():
+    """`raw` becomes recipe_ingredients.raw_text. The cleanup improves the parsed NAME; it must never
+    edit the source record, or the original wording is unrecoverable."""
+    src = "1 1/2 tbsp plain oil - canola (, vegetable, peanut)"
+    line = ic.classify_line(src)
+    assert line["raw"] == src
+    assert line["name"] != src
+
+
+def test_a_note_reference_survives_the_cleanup_verbatim():
+    """A later feature resolves "(Note N)" against the page's notes. The cleanup repairs the bracket
+    AROUND the reference and must not touch, renumber or strip the reference itself."""
+    line = ic.classify_line("2 tsp cooking salt (, HALVE if using table salt (Note 3))")
+    assert "(Note 3)" in line["name"]
+    assert line["name"] == "cooking salt (HALVE if using table salt (Note 3))"
+
+
+def test_a_cleaned_line_carries_a_flag_so_the_tidying_is_visible():
+    line = ic.classify_line("2 tbsp flour (, for dusting)")
+    assert "cleaned_paren_comma" in line["flags"]
+
+
+def test_a_cleanup_flag_becomes_a_review_row_with_its_reason():
+    import import_write
+    line = ic.classify_line("2 tbsp flour (, for dusting)")
+    rows = import_write._line_flag_rows(3, line)
+    assert rows == [{"position": 3, "flag": "cleaned_paren_comma",
+                     "reason": "removed a stray comma after '(' — publisher artifact"}]
+
+
+def test_cleanup_composes_with_the_existing_grams_declined_flag():
+    """Flags accumulate rather than replace — a line can be both cleaned and gram-declined."""
+    line = ic.classify_line("2 tbsp flour (, for dusting)")
+    assert isinstance(line["flags"], list)
+    assert line["flags"].count("cleaned_paren_comma") == 1
+
+
+# ---- rule 2: doubled parentheses ------------------------------------------------------------- #
+@pytest.mark.parametrize("src,expected", [
+    ("2 tsp dark soy ((Note 4))", "dark soy (Note 4)"),
+    ("2 dried red chillies ((barely spicy, but can omit))", "dried red chillies (barely spicy, but can omit)"),
+    ("1 Tbsp coconut oil ((or water))", "coconut oil (or water)"),
+    ("21 ounces firm tofu ((1 1/2 containers, 600g; cut into cubes))",
+     "firm tofu (1 1/2 containers, 600g; cut into cubes)"),
+])
+def test_doubled_parens_collapse_at_both_ends(src, expected):
+    assert ic.classify_line(src)["name"] == expected
+
+
+def test_the_open_space_open_variant_is_the_same_shape():
+    """minimalistbaker emits '( (' rather than '((' — a stray space, same template defect, and the
+    \\s* in the pattern covers it without a rule of its own."""
+    out, flags = ic.clean_source_text("lentils ( (rinsed and drained // or sub red))")
+    assert out == "lentils (rinsed and drained // or sub red)"
+    assert flags == ["cleaned_double_paren"]
+
+
+@pytest.mark.parametrize("src", [
+    "dark soy ((Note 4)",          # doubled open, single close
+    "dark soy (Note 4))",          # single open, doubled close
+    "((Note 4",                    # no close at all
+])
+def test_an_unbalanced_row_is_left_alone_rather_than_half_fixed(src):
+    """Collapsing on the prefix alone would strand a bracket. The pattern requires BOTH ends, so an
+    unbalanced row is returned exactly as found and raises no flag — nothing was cleaned."""
+    assert ic.clean_source_text(src) == (src, [])
+
+
+@pytest.mark.parametrize("src", [
+    # real recipetineats text: the inner paren does NOT span the whole content
+    "2 tbsp Chinese cooking wine (or Taiwanese rice wine (mijiu) if you can find it, or stock (Note 5))",
+    "3 cups flour (bread or plain/all purpose (Note 1))",
+    "1 (14- to 16-ounce) package firm tofu, drained",
+    "4 cloves garlic (minced)",
+])
+def test_legitimate_nesting_is_never_collapsed(src):
+    """Two brackets that mean different things must stay two brackets — merging them would lose the
+    distinction between a qualifier and the note reference inside it."""
+    assert ic.clean_source_text(src) == (src, [])
+
+
+def test_both_rules_can_fire_on_one_line_and_each_is_flagged():
+    out, flags = ic.clean_source_text("soy (, or all-purpose) and chilli ((omit if mild))")
+    assert out == "soy (or all-purpose) and chilli (omit if mild)"
+    assert flags == ["cleaned_paren_comma", "cleaned_double_paren"]
+
+
+def test_a_note_reference_survives_the_doubled_paren_collapse():
+    assert ic.classify_line("2 tsp dark soy ((Note 4))")["name"] == "dark soy (Note 4)"
+
+
+def test_paren_balance_is_preserved_by_every_rule():
+    """A cleanup must never leave a row less balanced than it found it."""
+    for src in ["dark soy ((Note 4))", "flour (, for dusting)", "x ((a))", "x (, y (Note 1))",
+                "wine (or rice (mijiu) if you can (Note 5))"]:
+        out, _ = ic.clean_source_text(src)
+        assert out.count("(") == out.count(")"), out
