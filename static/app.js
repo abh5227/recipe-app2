@@ -1188,7 +1188,10 @@ function albumAddTileHTML() {
 }
 function albumSectionHTML(data) {
   const photos = (data && data.photos) || [];
-  const canAdd = !!(data && data.is_editable);   // owner-only add-zone — same gate as the hero uploader (dishPhoto)
+  // OWNERSHIP, not tier. The comment always said "owner-only"; the value used to be is_editable
+  // (source-derived), so a non-owner was shown an add-zone that add_cook_photo then 403'd on its
+  // rec.owner check. is_mine is the flag that matches the server's gate.
+  const canAdd = !!(data && data.is_mine);   // owner-only add-zone — same gate as the hero uploader (dishPhoto)
   const addTile = canAdd ? albumAddTileHTML() : "";
   if (!photos.length) {
     // 3b-i change to 3a's empty state: an OWNER gets the section with just the add-zone (entry point for the
@@ -1524,11 +1527,20 @@ function reorderDragEnd() {
 
 // The owner Edit/Delete row, and the inline two-step delete confirmation it swaps to. The
 // confirmation names the recipe and needs a deliberate second click (replaces a single confirm()).
-function ownerActionsHTML(r) {
-  return `<button class="btn ghost sm" data-inline-edit-enter>✎ Edit</button>
+// ⚠️ COPY IS DELIBERATELY NOT OWNER-GATED. Edit and Delete are owner-only (mirroring the PUT/DELETE
+// routes, which now check owner as well as tier), but copy_recipe is owner-agnostic BY DESIGN — it is
+// the cross-owner "take her recipe" mechanism (docs/product-vision.md's box model: copying someone
+// else's recipe duplicates it into YOUR box). Gating this whole block on is_mine would have removed
+// the only UI path to that, which is why the split is per-button rather than around the block.
+function ownerActionsHTML(r, isMine) {
+  const mine = isMine
+    ? `<button class="btn ghost sm" data-inline-edit-enter>✎ Edit</button>` : "";
+  const del = isMine
+    ? `<button class="btn danger-soft sm" data-delete>Delete recipe</button>` : "";
+  return `${mine}
           <button class="btn ghost sm" data-copy>Copy</button>
           <button class="btn ghost sm copy-test" data-copy-test>Copy as test</button>
-          <button class="btn danger-soft sm" data-delete>Delete recipe</button>`;
+          ${del}`;
 }
 function deleteConfirmHTML(r) {
   return `<span class="delete-confirm">
@@ -1567,11 +1579,15 @@ function paintRecipe() {
   // Stage 4: mark the PAGE element when editing so .page.recipe-view.editing widens to ~1000px (reading
   // stays 760px). Re-applied on every paint, so the toggle enter/exit updates the width.
   app.className = "page recipe-view" + (editing ? " editing" : "");
-  const data = view.data;                        // fetched payload (source flags: is_editable/is_seed/…)
+  const data = view.data;                        // fetched payload (tier: is_editable/is_seed/… — ownership: is_mine)
   const src = editing ? view.draft : view.data;  // where displayed field VALUES come from
   const r = src.recipe;
-  const photoSlot = dishPhoto(r, data.is_editable, data.photos);   // data.photos carries the is_hero caption (SHARED)
-  const owner = (data.is_editable && !editing) ? `<div class="owner-actions">${ownerActionsHTML(data.recipe)}</div>` : "";
+  // The hero uploader is OWNER-gated server-side (upload_recipe_image checks rec.owner), so it keys on
+  // is_mine, not the tier flag. The actions block still renders on the TIER (a seed recipe offers
+  // nothing, as before); which BUTTONS it contains is the ownership question — see ownerActionsHTML.
+  const photoSlot = dishPhoto(r, data.is_mine, data.photos);   // data.photos carries the is_hero caption (SHARED)
+  const owner = (data.is_editable && !editing)
+    ? `<div class="owner-actions">${ownerActionsHTML(data.recipe, data.is_mine)}</div>` : "";
 
   const mastheadInner = editing
     ? mastheadEditHTML(r)
@@ -1635,7 +1651,7 @@ function paintRecipe() {
 // Stage 3 photo upload: wire the editable Polaroid as an upload surface — part 1 (EMPTY: add) and part 2
 // (FILLED: replace) share ONE implementation. Called after each reading-mode paint on the freshly rendered
 // zone — paintRecipe rebuilds the DOM, so the previous zone (and its listeners) are discarded, no
-// accumulation. No-ops when there's no editable Polaroid (dishPhoto only tags it when data.is_editable).
+// accumulation. No-ops when there's no editable Polaroid (dishPhoto only tags it when data.is_mine).
 // The send() core, the !file guard, and the drag/drop + picker wiring are IDENTICAL for both modes; only
 // how each STATE is painted differs — EMPTY rewrites the zone cell (nothing to lose); FILLED overlays the
 // live <img> WITHOUT touching it, so a failed replace can never blank/destroy the existing photo.
@@ -2365,7 +2381,9 @@ function inlineSaveBarHTML() {
 }
 
 function enterEditMode() {
-  if (!view || !view.data.is_editable || view.editMode) return;
+  // BOTH gates, mirroring update_recipe: the tier must permit editing AND you must own it. The Edit
+  // button is already is_mine-gated, so this is the belt-and-braces path (keyboard/programmatic entry).
+  if (!view || !view.data.is_editable || !view.data.is_mine || view.editMode) return;
   view.draft = structuredClone(view.data);   // buffered copy — all edits mutate this, never view.data
   view.editMode = true;
   view.dirty = false;
@@ -2610,6 +2628,17 @@ async function renderForm(mode, slug) {
         <div class="notice">
           <h2>This recipe is read-only</h2>
           <p>“${esc(data.recipe.name)}” comes from <code>seed.py</code>, so it's edited there rather than in the app. You can still note your own per-line changes on the recipe page.</p>
+        </div>`;
+      return;
+    }
+    // The OTHER refusal, kept separate from the tier one above so the reason is honest: this recipe is
+    // editable in principle, it just isn't yours. Copy is the way to get your own version of it.
+    if (!data.is_mine) {
+      app.innerHTML = `
+        <a class="back" href="#/recipe/${encodeURIComponent(slug)}">← Back to recipe</a>
+        <div class="notice">
+          <h2>This recipe isn't yours</h2>
+          <p>“${esc(data.recipe.name)}” belongs to someone else, so it can't be edited here. <strong>Copy</strong> it from the recipe page to get your own version to change.</p>
         </div>`;
       return;
     }
@@ -3337,7 +3366,7 @@ document.addEventListener("click", (e) => {
     }
     if (e.target.closest("[data-delete-cancel]")) {
       const oa = e.target.closest(".owner-actions");
-      if (oa) oa.innerHTML = ownerActionsHTML(view.data.recipe);
+      if (oa) oa.innerHTML = ownerActionsHTML(view.data.recipe, view.data.is_mine);
       return;
     }
     if (e.target.closest("[data-delete-confirm]")) { doDelete(); return; }

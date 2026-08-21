@@ -671,7 +671,14 @@ def get_recipe(rid):
             "steps": serialize_steps(steps),
             "stats": stats,
             "photos": photos,                           # stage 4 (3a): the album — newest cook first, undated last
-            "is_editable": r["source"] in EDITABLE_SOURCES,   # app + test recipes get edit/delete
+            # TIER vs OWNERSHIP — two questions, two flags. is_editable answers "does this recipe's
+            # SOURCE TIER permit editing at all" (seed is read-only whoever owns it); is_mine answers
+            # "is the current user the owner". Editing and deleting need BOTH (see update_recipe), and
+            # the client must not conflate them: it previously used is_editable alone as an owner gate,
+            # which offered a hero uploader / album add-zone the owner-gated routes then refused with a
+            # 403. Named is_mine to match the list payload's existing field (list_recipes).
+            "is_editable": r["source"] in EDITABLE_SOURCES,   # TIER only — not ownership
+            "is_mine": r["owner"] == current_user.id,         # OWNERSHIP only — not tier
             "is_seed": r["source"] == "seed",           # seed tier stays read-only (edit in seed.py)
             "is_test": r["source"] == "test",           # scratch tier — gets the visible test marker
             "is_queued": is_queued,                     # stage 3a: my want-to-make queue membership
@@ -685,11 +692,20 @@ def update_recipe(rid):
     """Edit an app-owned recipe. The slug (id) stays fixed so references don't break."""
     payload = request.get_json(silent=True) or {}
     with orm_session() as s:
-        row = s.execute(select(Recipe.source).where(Recipe.id == rid)).first()
+        row = s.execute(select(Recipe.source, Recipe.owner).where(Recipe.id == rid)).first()
         if row is None:
             return jsonify({"error": "recipe not found"}), 404
+        # TIER first, then OWNERSHIP — the two gates refuse DISJOINT sets and neither subsumes the
+        # other (tier refuses seed rows whoever owns them; ownership refuses app rows owned by someone
+        # else). Order matters for the MESSAGE, not the outcome: a seed row is owner-NULL, so checking
+        # ownership first would answer "not your recipe" about a recipe nobody owns. Tier is a property
+        # of the recipe, ownership a property of the relationship — refusing on the intrinsic one first
+        # yields the truer message. It also keeps test_seed_recipe_is_read_only / test_gate_parity_*
+        # testing the SEED gate rather than passing on an ownership 403 that happens to share a status.
         if row.source not in EDITABLE_SOURCES:
             return jsonify({"error": "this recipe is from seed.py and is read-only here — edit it in seed.py"}), 403
+        if row.owner != current_user.id:                     # default-deny: only the owner may edit
+            return jsonify({"error": "not your recipe"}), 403
         clean, err = validate_recipe_payload(s, payload)
         if err:
             return jsonify({"error": err}), 400
@@ -775,11 +791,13 @@ def delete_recipe(rid):
     hero-orphan (delete_recipe used to leave the hero file on disk). unlink_unreferenced skips any file a
     surviving recipe still references (the copy-shares-image guard)."""
     with orm_session() as s:
-        row = s.execute(select(Recipe.source, Recipe.image).where(Recipe.id == rid)).first()
+        row = s.execute(select(Recipe.source, Recipe.image, Recipe.owner).where(Recipe.id == rid)).first()
         if row is None:
             return jsonify({"error": "recipe not found"}), 404
-        if row.source not in EDITABLE_SOURCES:
+        if row.source not in EDITABLE_SOURCES:                # TIER first, then OWNERSHIP — see update_recipe
             return jsonify({"error": "seed recipes can't be deleted here — remove them from seed.py"}), 403
+        if row.owner != current_user.id:                      # default-deny: only the owner may delete
+            return jsonify({"error": "not your recipe"}), 403
         files = list(s.scalars(select(CookPhoto.path).where(CookPhoto.recipe_id == rid)))   # all album files
         if row.image:
             files.append(row.image)                          # + the hero's own file (the orphan fix)

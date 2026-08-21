@@ -684,3 +684,82 @@ def test_if_branch_recombined_qty_flows_into_raw_text(kitchen):
     i = kitchen.client.get(f"/api/recipes/{rid}").get_json()["ingredients"][0]
     assert i["qty"] == "2 cups"
     assert i["raw_text"] == "2 cups carrots"
+
+
+# --- recipe write gates: TIER and OWNERSHIP are independent -------------------------------------
+# update_recipe/delete_recipe check BOTH, tier first. These tests isolate each gate so neither can
+# silently start passing on the other's refusal: the pre-existing seed tests (test_seed_recipe_is_
+# read_only, test_gate_parity_*) assert 403 on a seed recipe, and a seed row is owner-NULL — so an
+# ownership-first order would have satisfied them with an ownership 403 and stopped exercising the
+# tier gate at all. Asserting the MESSAGE is what pins which gate actually fired.
+
+def _second_user_client():
+    """A logged-in client for a DIFFERENT user than the harness default (the test_comments idiom)."""
+    import app as A
+    import harness
+    uid = harness.ensure_test_user(email="other@test.local")
+    c = A.app.test_client()
+    harness.login_test_client(c, uid)
+    return uid, c
+
+
+def test_tier_gate_fires_on_seed_regardless_of_ownership(kitchen):
+    """A seed recipe is refused BY TIER — proven by the message, not just the status."""
+    for resp in (kitchen.client.put("/api/recipes/gai-yang",
+                                    json={"name": "x", "ingredients": [], "steps": []}),
+                 kitchen.client.delete("/api/recipes/gai-yang")):
+        assert resp.status_code == 403
+        assert "seed.py" in resp.get_json()["error"]        # the TIER refusal, not "not your recipe"
+
+
+def test_ownership_gate_refuses_another_users_app_recipe(kitchen):
+    """An app recipe the actor does NOT own is refused BY OWNERSHIP, for edit and delete alike."""
+    rid = kitchen.client.post("/api/recipes",
+                              json={"name": "Mine Alone", "ingredients": [], "steps": []}).get_json()["id"]
+    _, other = _second_user_client()
+    for resp in (other.put(f"/api/recipes/{rid}",
+                           json={"name": "hijacked", "ingredients": [], "steps": []}),
+                 other.delete(f"/api/recipes/{rid}")):
+        assert resp.status_code == 403
+        assert resp.get_json()["error"] == "not your recipe"   # the OWNERSHIP refusal, not the tier one
+    # and the recipe is untouched
+    assert kitchen.client.get(f"/api/recipes/{rid}").get_json()["recipe"]["name"] == "Mine Alone"
+
+
+def test_owner_may_still_edit_and_delete_own_app_recipe(kitchen):
+    rid = kitchen.client.post("/api/recipes",
+                              json={"name": "Still Works", "ingredients": [], "steps": []}).get_json()["id"]
+    assert kitchen.client.put(f"/api/recipes/{rid}",
+                              json={"name": "Still Works", "ingredients": [], "steps": ["go"]}).status_code == 200
+    assert kitchen.client.delete(f"/api/recipes/{rid}").status_code == 200
+
+
+def test_copy_stays_cross_owner(kitchen):
+    """⚠️ REGRESSION GUARD: copy_recipe is owner-agnostic BY DESIGN — it is the cross-owner
+    'take her recipe' mechanism. Adding the edit/delete ownership gate must not touch it."""
+    rid = kitchen.client.post("/api/recipes",
+                              json={"name": "Hers", "ingredients": [], "steps": []}).get_json()["id"]
+    other_uid, other = _second_user_client()
+    made = other.post(f"/api/recipes/{rid}/copy", json={})
+    assert made.status_code == 201
+    copy_id = made.get_json()["id"]
+    # the copy lands in the COPIER's box, and they may edit it
+    assert other.get(f"/api/recipes/{copy_id}").get_json()["is_mine"] is True
+    assert other.put(f"/api/recipes/{copy_id}",
+                     json={"name": "Hers (copy)", "ingredients": [], "steps": ["mine now"]}).status_code == 200
+
+
+def test_is_mine_is_ownership_not_tier(kitchen):
+    """The payload split: is_editable answers TIER, is_mine answers OWNERSHIP."""
+    rid = kitchen.client.post("/api/recipes",
+                              json={"name": "Flag Check", "ingredients": [], "steps": []}).get_json()["id"]
+    mine = kitchen.client.get(f"/api/recipes/{rid}").get_json()
+    assert mine["is_editable"] is True and mine["is_mine"] is True
+
+    _, other = _second_user_client()
+    theirs = other.get(f"/api/recipes/{rid}").get_json()
+    assert theirs["is_editable"] is True      # TIER still says app-tier
+    assert theirs["is_mine"] is False         # OWNERSHIP says not yours — the two disagree
+
+    seed = kitchen.client.get("/api/recipes/gai-yang").get_json()
+    assert seed["is_editable"] is False and seed["is_mine"] is False
