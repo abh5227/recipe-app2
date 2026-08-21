@@ -1476,15 +1476,28 @@ worth knowing before they bite. None of the *data* limitations occur in the curr
   2026-06-24, which is what the coverage condition actually turns on; and add a gate-check step to
   `.github/workflows/build.yml`. Dispositions alone leave the gate red.
 
-- **The import parser's equivalence baseline — `bacd5f45…`, and it is the FIRST one stored.** The
-  298-recipe Paprika archive run through `reader.normalize` → `clean_recipe` → `plan_recipe`, with
+- **The import parser's equivalence baseline — `67eeda9e…` (was `bacd5f45…`).** The 298-recipe
+  Paprika archive run through `reader.normalize` → `clean_recipe` → `plan_recipe`, with
   `plan_recipe(now=…)` pinned for determinism, hashes to
-  `bacd5f45e909564f35aa167683b380b56f5179f68198edb81a7f97cdd041f860`. **Any change to the parser must
+  `67eeda9e22ed7f2a43a761907ac8569dd861ac7b34486a2debe0ea8c9e3e34d4`. **Any change to the parser must
   be diffed against this**: the corpus is 298 recipes the user curated over years, the Paprika path is
   no longer exercised by anything else, and a regression there is silent — nothing fails, the text just
   quietly gets worse. Re-run it before and after; an identical hash is the proof that a URL-import fix
   did not reach the archive. Recorded because there was no stored value before `d2ae519` and several
   briefs referenced a baseline (`e2e4a6c2…`) that exists nowhere in this repository.
+  - **Superseded value, kept so the number's history is legible:**
+    `bacd5f45e909564f35aa167683b380b56f5179f68198edb81a7f97cdd041f860` — the FIRST one stored, valid
+    from `d2ae519` until `7b7cd34`.
+  - **Why it moved.** `7b7cd34` (harvest the gram from a restatement parenthetical, "16 Tbsp; 226g")
+    populates `grams` on lines that previously declined, and `grams` is one of the fields inside the
+    hashed plan — so the digest MUST move. An unchanged hash there would have meant the fix did
+    nothing. A moved hash is not by itself evidence of a regression.
+  - **The hash alone was not the gate, and cannot be.** It says only "something moved" — not what, not
+    where, not whether the change was the intended one. The gate that actually ran for `7b7cd34` was a
+    **plan-level diff, HEAD parser vs tree parser**, over every archive ingredient row: 24 of 3,533
+    rows changed, across 18 recipes, all `grams: None → value`, with no recipe-field and no step
+    changes. Pair the hash with that diff whenever the number is expected to move; treat the hash as a
+    tripwire, not a verdict.
 
 - **`" ," → ","` is deliberately NOT a cleanup rule.** It looks like a sibling of the two rules that
   did ship in `d2ae519`, and by itself the shape is unambiguous. It stays out because it matches **73
