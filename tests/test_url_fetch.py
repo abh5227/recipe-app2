@@ -66,6 +66,18 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, body, ctype="text/html; charset=iso-8859-1")
         if self.path == "/nocharset":
             return self._send(200, "<html><body>café</body></html>".encode(), ctype="text/html")
+        # The header forms REAL sites send. Measured across 4 of the 14 fixture domains:
+        # recipetineats + minimalistbaker send "text/html; charset=UTF-8" (uppercase charset VALUE),
+        # allrecipes + seriouseats send "text/html;charset=utf-8" (no space). Every other path in this
+        # file sends one lowercase spelling, so none of them exercised a parameter or a capital.
+        if self.path == "/upper-charset":
+            return self._send(200, PAGE.encode(), ctype="text/html; charset=UTF-8")
+        if self.path == "/nospace-charset":
+            return self._send(200, PAGE.encode(), ctype="text/html;charset=utf-8")
+        if self.path == "/upper-type":
+            return self._send(200, PAGE.encode(), ctype="TEXT/HTML; CHARSET=UTF-8")
+        if self.path == "/xhtml":
+            return self._send(200, PAGE.encode(), ctype="application/xhtml+xml; charset=UTF-8")
         if self.path == "/redirect":
             self.send_response(302)
             self.send_header("Location", "/landed")
@@ -140,6 +152,27 @@ def test_defaults_to_utf8_when_no_charset_is_declared(server):
     got = fetch(f"{server}/nocharset")
     assert isinstance(got, url_fetch.Fetched)
     assert got.encoding == "utf-8" and "café" in got.html
+
+
+@pytest.mark.parametrize("path,label", [
+    ("/upper-charset", "text/html; charset=UTF-8 — uppercase charset value"),
+    ("/nospace-charset", "text/html;charset=utf-8 — no space before the parameter"),
+    ("/upper-type", "TEXT/HTML; CHARSET=UTF-8 — uppercase MEDIA TYPE"),
+    ("/xhtml", "application/xhtml+xml with a charset parameter"),
+])
+def test_content_type_parameters_and_case_do_not_refuse_a_page(server, path, label):
+    """The media type is compared case-insensitively and its PARAMETERS are ignored, per RFC 9110:
+    a media type is case-insensitive and charset is a parameter, not part of the type.
+
+    This is a REGRESSION GUARD, not a bug fix — response.headers.get_content_type() already lowercases
+    the type and strips parameters, so all four forms pass today and always have. It is pinned because
+    every other test in this file sends ONE lowercase spelling, so nothing here would notice if that
+    call were ever replaced with a raw-header comparison — and a raw `== "text/html"` would refuse the
+    real header two of the four sampled fixture sites actually send.
+    """
+    got = fetch(f"{server}{path}")
+    assert isinstance(got, url_fetch.Refused) is False, f"{label} was refused"
+    assert got.html == PAGE
 
 
 # ----------------------------------------------------------------- the refusals
