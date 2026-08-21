@@ -98,8 +98,12 @@ the user's layer**, with **brown** carrying the body text and the primary contro
   while the serif holds title + content — clearer hierarchy, still calm. A scoped revision of the
   earlier Option C "one voice": one **content** face, one **metadata** face — not a return to mono.
 - **Offline:** Inter is bundled at `static/fonts/inter.woff2` (variable weight; `@font-face` in
-  styles.css). **Spectral is still Google-Fonts-loaded** (index.html), so offline the *title* falls
-  back to Georgia/serif while metadata stays local (see caveats).
+  styles.css). **Spectral is still Google-Fonts-loaded** (index.html), so offline **the whole content
+  voice** falls back to Georgia/serif while metadata stays local (see caveats). *(Corrected: this
+  previously said only the "title" falls back. Spectral is the single text serif — index.html's own
+  comment: "title, body, names, and the ledger's tabular figures + labels" — and `--font-serif` has 25
+  uses in styles.css to `--font-title`'s 3, `--font-title` being an alias of it. See
+  [native-shell-findings.md](native-shell-findings.md).)*
 - **A pen-like hand** (Caveat / Kalam) — the Round-2 user layer; **reserved**, not loaded in R1.
   ⚠️ **Superseded:** Kalam is now bundled self-hosted and in active use (the feed, then the annotation
   layer) — see "Type — Kalam is the app's 'personal hand'" below.
@@ -720,8 +724,10 @@ the locked spec — recorded so future work reads them as **decisions, not bugs*
 
 - **`color-mix()`** powers the subtle-red Delete (`.btn.danger-soft`) — a modern-browser dependency;
   fine for this local single-user app; swap to literal tokens if broader support is ever needed.
-- **Spectral is CDN-loaded** while Inter is self-hosted, so offline only the *title* serif falls back
-  to Georgia. Bundling Spectral locally is the follow-up for full-offline fidelity.
+- **Spectral is CDN-loaded** while Inter is self-hosted, so offline **the whole content voice** falls
+  back to Georgia — title, body, names and the ledger alike, not the title alone (corrected; see
+  [native-shell-findings.md](native-shell-findings.md) §5). Bundling Spectral locally is the follow-up
+  for full-offline fidelity, and it is a precondition for a native shell's offline mode.
 - **`field-sizing: content`** auto-grows the inline edit fields (title/author/prose/meta) to their
   content — a modern-browser dependency (same class as `color-mix()`), with a **`size`-attribute
   fallback** on the short meta fields so they don't balloon where unsupported.
