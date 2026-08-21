@@ -25,7 +25,7 @@ import re
 # Reuse the EXISTING amount/fraction parser — do not write a third copy. These are
 # underscore-private in stepscale today; importing them is an accepted temporary
 # compromise (ROADMAP: extract a shared public amounts.py).
-from stepscale import _NUM, _SCALE_UNIT, _to_value, _normalize_unicode, _canon_amount
+from stepscale import _NUM, _SCALE_UNIT, _UNI, _to_value, _normalize_unicode, _canon_amount
 
 # --------------------------------------------------------------------------- #
 # Regexes (built from the reused stepscale fragments)
@@ -78,6 +78,28 @@ _GRAMS_IN = re.compile(r"(\d+(?:\.\d+)?)\s*g(?:rams?)?\b", re.IGNORECASE)
 # Volume-unit words that, inside a gram parenthetical, mean the grams describe a SUB-measure
 # ("1/2 cup (15g) once soaked"), not the line's primary amount — the guard declines those.
 _VOL_WORDS = re.compile(r"\b(cups?|tbsp|tablespoons?|tsp|teaspoons?|oz|ounces?|ml|fl)\b", re.I)
+# ONE EXCEPTION to that guard: a parenthetical whose WHOLE content is a delimited list of MEASURES
+# ("16 Tbsp; 226g", "8 tablespoons/113 grams", "about 1½ cups/227 grams") is a single quantity written
+# several ways, so the gram inside it IS the line's weight and the volume word beside it is not a
+# sub-measure. The test is the ABSENCE OF PROSE, not the presence of a gram: any leftover word fails
+# this anchored match and declines exactly as before —
+#   "(from 1⅔ cups/300g uncooked)"                 an UNCOOKED weight on a cooked-rice line
+#   "(you may need up to 1/2 cup / 60g for kneading)"  extra flour, not the line's 440 g
+#   "(or 250g/8oz dried)"                          an ALTERNATIVE form of the ingredient
+#   "(24 x 6cm/2.5\" long, 1/2 cup (15g) …"         nested paren + prose
+# "each" is deliberately NOT an accepted tail: "(~250g/8oz each)" is a PER-UNIT weight on a 4-piece
+# line, and this column holds LINE weights — accepting it stored 250 g for 1 kg of chicken.
+_MEAS_NUM = (r"(?:\d+(?:\.\d+)?(?:\s*/\s*\d+)?|\d+\s+\d+/\d+|\d+\s*[" + _UNI + r"]|["
+             + _UNI + r"])")
+_MEAS_UNIT = (r"(?:grams?|g|kilograms?|kg|ounces?|oz|pounds?|lbs?|lb|cups?|tablespoons?|tbsp"
+              r"|teaspoons?|tsp|millilit(?:re|er)s?|ml|lit(?:re|er)s?|l|sticks?)")
+_MEAS = _MEAS_NUM + r"\s*" + _MEAS_UNIT
+_HEDGE = r"(?:about|around|approx\.?|approximately|~)"
+_MEAS_DELIM = r"(?:\s*[;/,]\s*|\s+or\s+)"
+_MEASURE_LIST = re.compile(
+    r"^\s*" + _HEDGE + r"?\s*" + _MEAS
+    + r"(?:" + _MEAS_DELIM + _HEDGE + r"?\s*" + _MEAS + r")+"
+    + r"(?:\s+total)?\s*$", re.IGNORECASE)
 
 # Prep-note detector — INFORMATIONAL only; the name is kept whole (weights.normalize
 # already drops the trailing ", <prep>" clause for the linkage key, non-destructively).
@@ -359,7 +381,11 @@ def harvest_grams(text):
 
     Paren-safe: a dangling/unclosed "(" forms no group and is ignored (no crash, no harvest).
     CONFIDENCE GUARD: harvest only when the gram paren is weight-only — no volume-unit words
-    and no other numbers — so "1/2 cup (15g) once soaked" declines instead of mis-harvesting."""
+    and no other numbers — so "1/2 cup (15g) once soaked" declines instead of mis-harvesting.
+    ONE EXCEPTION, checked first: a _MEASURE_LIST paren ("16 Tbsp; 226g") restates one quantity,
+    so its gram IS the line's weight — see the note above _MEASURE_LIST for what still declines.
+    That path returns gram_paren=None, leaving the NAME untouched (moving the volume out of the
+    name is a later stage; stripping only the gram would leave a malformed "(16 Tbsp;)")."""
     saw_gram = False
     for grp in _PAREN_GROUP.finditer(text or ""):
         content = grp.group(1)
@@ -367,6 +393,17 @@ def harvest_grams(text):
         if not m:
             continue
         saw_gram = True
+        if _MEASURE_LIST.match(content):
+            # A restatement list: the gram IS the line's weight. Sibling oz/lb tokens are ignored —
+            # this column stores GRAMS, so the metric token needs no conversion and no rounding
+            # ("6 ounces/170 grams" -> 170.0). Two DIFFERENT gram values would be genuinely
+            # ambiguous, so decline rather than guess (0 such rows in the corpus today).
+            if len(set(_GRAMS_IN.findall(content))) == 1:
+                try:
+                    return float(m.group(1)), False, None
+                except ValueError:
+                    pass
+            continue
         if _VOL_WORDS.search(content):
             continue
         if [n for n in re.findall(r"\d+(?:\.\d+)?", content) if n != m.group(1)]:

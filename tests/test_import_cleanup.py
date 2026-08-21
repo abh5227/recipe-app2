@@ -724,3 +724,104 @@ def test_and_between_non_numbers_is_not_a_compound_quantity(line, amount, name):
     assert d["amount"] == amount
     assert d["name"] == name
     assert "and" not in d["amount"]
+
+
+# ----------------------------------------------------------------- measure-list parenthetical
+# A parenthetical whose WHOLE content is a delimited list of measures restates ONE quantity, so its
+# gram is the line's weight. The discriminator is the ABSENCE of prose — see _MEASURE_LIST.
+@pytest.mark.parametrize("line, grams", [
+    # the 7 seriousseats fixture lines (the only site in the 9 committed fixtures with this shape)
+    ("4 ounces plain Greek yogurt (1/2 cup; 115g), preferably nonfat", 115.0),
+    ("1/2 ounce vanilla extract (1 tablespoon; 15g)", 15.0),
+    ("10 ounces all-purpose flour (2 cups; 280g)", 280.0),
+    ("5 1/4 ounces sugar (3/4 cup; 150g), preferably toasted", 150.0),
+    ("3 ounces oat flour (3/4 cup; 85g), such as Bob's Red Mill (see note)", 85.0),
+    ("5 1/4 ounces coconut oil, virgin or refined (3/4 cup; 150g), creamy but firm, about 70°F (21°C)", 150.0),
+    # the stored-corpus shapes: semicolon, slash, hedged, unicode fraction, "stick" as a unit word
+    ("1 cup (16 Tbsp; 226g) unsalted butter, cut into 16 pieces", 226.0),
+    ("2 sticks (16 tablespoons/226 grams) unsalted butter", 226.0),
+    ("8 ounces (about 1½ cups/227 grams) chopped semisweet chocolate", 227.0),
+    ("½ cup unsalted butter (1 stick/113g)", 113.0),
+    ("2 ½ teaspoons baking powder (0.35 oz / 10g)", 10.0),
+])
+def test_measure_list_paren_harvests_its_gram(line, grams):
+    d = ic.classify_line(line)
+    assert d["grams_harvested"] == grams
+    assert "grams_declined" not in d["flags"]     # it is harvested, so nothing is declined
+
+
+@pytest.mark.parametrize("line, grams", [
+    # TWO WEIGHTS, one gram: the gram wins and the oz/lb sibling is ignored — this column stores
+    # GRAMS, so the metric token needs no conversion and no rounding.
+    ("1 cup (6 ounces/170 grams) bittersweet or semisweet chocolate chips", 170.0),
+    ("1 cup (8 ounces or 230 grams) unsalted butter, at room temperature", 230.0),
+    ("½ cup (about 3.5 ounces/100 g) short-grain rice", 100.0),
+    ("2 large eggs (3.5 oz / 100g)", 100.0),
+    # THREE measures, still one gram
+    ("2 packages (about 3 cups/74 grams/ 2.6 ounces total) freeze-dried raspberries", 74.0),
+])
+def test_measure_list_takes_the_gram_not_the_ounce(line, grams):
+    assert ic.classify_line(line)["grams_harvested"] == grams
+
+
+def test_measure_list_with_two_different_grams_declines():
+    # genuinely ambiguous — decline over guess. (0 such rows in the corpus; pinned so a future
+    # "just take the first" loosening is a deliberate choice rather than an accident.)
+    d = ic.classify_line("1 cup (100 g; 200 g) mystery")
+    assert d["grams_harvested"] is None
+    assert "grams_declined" in d["flags"]
+
+
+@pytest.mark.parametrize("line", [
+    # PROSE in the paren -> not a restatement -> declines exactly as before. Each of these would be
+    # a WRONG harvest: a per-unit weight, extra flour, an uncooked weight, an alternative form.
+    "4 chicken thigh fillets, skin-on and bone-in (~250g/8oz each)",
+    "2 medium sea bass (around 10 oz./300g each)",
+    "3 ½ cups bread flour (you may need up to 1/2 cup / 60g for kneading)",
+    "5 cups cooked jasmine rice (from 1⅔ cups/300g uncooked)",
+    "2 banana shallots (about 2 oz/70g total prepared weight), finely chopped",
+])
+def test_prose_in_the_paren_still_declines(line):
+    d = ic.classify_line(line)
+    assert d["grams_harvested"] is None
+    assert "grams_declined" in d["flags"]
+
+
+@pytest.mark.parametrize("line, name", [
+    # NO weight in the paren -> the new path is never reached; name and fields untouched.
+    ("1 cup coffee (light roast)", "coffee (light roast)"),
+    ("2 tbsp soy sauce (low sodium)", "soy sauce (low sodium)"),
+    ("1 large bundle kale (loosely chopped or torn)", "large bundle kale (loosely chopped or torn)"),
+])
+def test_paren_with_no_weight_is_untouched(line, name):
+    d = ic.classify_line(line)
+    assert d["grams_harvested"] is None
+    assert d["name"] == name
+    assert "grams_declined" not in d["flags"]
+
+
+def test_measure_list_leaves_the_name_alone():
+    """The volume STAYS in the name for now (moving it is a later stage), so the harvest returns
+    no gram_paren and _strip_gram_paren has nothing to remove."""
+    line = "1 cup (16 Tbsp; 226g) unsalted butter, cut into 16 pieces"
+    d = ic.classify_line(line)
+    assert d["grams_harvested"] == 226.0
+    assert d["name"] == "(16 Tbsp; 226g) unsalted butter, cut into 16 pieces"
+    assert d["raw"] == line
+    assert ic.harvest_grams(line)[2] is None            # no paren handed to the name-stripper
+
+
+@pytest.mark.parametrize("line, grams, name, secondary", [
+    # The ALREADY-WORKING single-measure forms, pinned: the new path must not change any of them.
+    ("(250g) dried chickpeas", 250.0, "(250g) dried chickpeas", None),
+    ("14 cups (250g) dried chickpeas", 250.0, "dried chickpeas", "14 cups"),
+    ("1 cup (250 g) flour", 250.0, "flour", "1 cup"),
+    ("100 g (1 cup) granulated sugar", 100.0, "granulated sugar", "1 cup"),
+    ("1 cup plus 2 tablespoons (270g) tahini (light roast)", 270.0,
+     "plus 2 tablespoons tahini (light roast)", "1 cup"),
+])
+def test_single_measure_gram_paren_forms_unchanged(line, grams, name, secondary):
+    d = ic.classify_line(line)
+    assert d["grams_harvested"] == grams
+    assert d["name"] == name
+    assert d["secondary_measure"] == secondary
