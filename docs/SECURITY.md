@@ -50,6 +50,11 @@ door is open to the world.
 
 ## Access-control model: current single-user state & multi-user rescoping map
 
+> Access control is one of four areas whose decisions assume a single trusted user. The other three —
+> fetching etiquette, product posture, and data defaults — are recorded in
+> [single-user-assumptions.md](single-user-assumptions.md), which points back here rather than
+> duplicating this map.
+
 A read-only diagnostic (branch `main`) mapped how the app decides who may read/modify what. This
 records the current model as an **accepted design for the single-user pilot** — known properties, not
 defects — and the map for the eventual multi-user rescoping, so that work starts from a blueprint.
