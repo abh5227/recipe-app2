@@ -923,13 +923,29 @@ function renderStepsList(steps) {
 // out of the text column, so every inline control there costs step text width; the ingredient row's
 // cluster sits in a flexible .tail and costs only the name column's slack. Steps pay more for the same
 // control, and step deletion is rarer than ingredient deletion.
-// The grip is LIVE as of C2: the whole row is draggable and the grip is its visual handle (the drag
-// listeners are delegated, so the grip itself still carries no handler). It stays aria-hidden because
-// the drag is mouse-only — there is no keyboard path for it to announce. See ROADMAP, "Known
-// limitations & tech debt".
+// The grip is LIVE as of C2 and is now the DRAG SOURCE itself (the drag listeners are still delegated,
+// so the grip carries no handler). It stays aria-hidden because the drag is mouse-only — there is no
+// keyboard path for it to announce. See ROADMAP, "Known limitations & tech debt".
+// GRIP-ONLY DRAG (supersedes C1/C2's draggable-on-the-whole-row). `draggable` lives on the .rbtn.grip
+// spans, NOT on the row. Two reasons, and the second was measured:
+//   1. Wanted on its own: a drag should start from the visible handle, not from anywhere in the row.
+//   2. A draggable ancestor COMPETES WITH TEXT SELECTION, but only past the end of the text. Over a
+//      glyph, Chromium gives the press to the field; past the last character there is no glyph to
+//      select from, so it falls back to the draggable ancestor and the drag wins — selection never
+//      starts. Measured on both lists: with draggable on the row, pressing past the text and dragging
+//      left selected ""; with it removed, the same gesture selected "mirin" (ingredient) and
+//      "months." (step). A bare textarea with no draggable ancestor selects there natively.
+// C1/C2 rejected grip-only because the browser's default drag image would be the 24px grip. That
+// objection is dead: setDragPill builds its own element and calls setDragImage on it, never touching
+// the source element, so the source's size no longer affects what is carried. The ONE residual is
+// setDragPill's silent-failure path (see its comment) — if setDragImage ever fails, the fallback
+// snapshot is now the grip rather than the row. Cosmetic, and the rAF-deferred .ghost-origin already
+// exists for exactly that fallback.
+// Both dragstart handlers already resolve upward (`e.target.closest(... li ...)`), so moving the
+// attribute changed no handler: e.target becomes the grip (or its SVG) and .closest still finds the row.
 function editStepRowTools(i) {
   return `<span class="rtools">
-    <span class="rbtn grip" title="Drag to reorder" aria-hidden="true">${ING_GRIP}</span>
+    <span class="rbtn grip" draggable="true" title="Drag to reorder" aria-hidden="true">${ING_GRIP}</span>
     ${rowMoreHTML(i, "step")}
   </span>`;
 }
@@ -942,11 +958,9 @@ function editStepRowTools(i) {
 // annotation reading path stays untouched.
 function renderStepEditHost(row, i) {
   const tools = editStepRowTools(i);
-  // C2: draggable on the whole row, as on the ingredient side. Measured with trusted CDP input: a
-  // draggable ancestor does not hijack text selection inside a ProseMirror host, and dragstart fires
-  // from the grip but not from the prose — so the editor keeps its own selection and drag behaviour.
-  if (row.is_heading) return `<li class="group step-edit" draggable="true">${editStepHeadingField(i, row.text)}${tools}</li>`;
-  return `<li class="step step-edit" draggable="true"><div class="step-editor-host" data-i="${i}"></div>${tools}</li>`;
+  // Grip-only: the row is NOT a drag source (see the note above editStepRowTools).
+  if (row.is_heading) return `<li class="group step-edit">${editStepHeadingField(i, row.text)}${tools}</li>`;
+  return `<li class="step step-edit"><div class="step-editor-host" data-i="${i}"></div>${tools}</li>`;
 }
 
 // A step heading's editable field. A PLAIN <input> — not TipTap: a section label has no [[key|label]]
@@ -1924,10 +1938,11 @@ function rowMoreHTML(i, kind) {
 // the difference back. The TRASH DELIBERATELY STAYS INLINE: deleting an ingredient is the common
 // editing action, and one-click delete is the decided end state for this list (steps are the
 // asymmetric case — their delete moved into the menu because their cluster had no room for both).
-// This is the FINAL shape of the ingredient cluster; C1 made the grip live.
+// This is the FINAL shape of the ingredient cluster; C1 made the grip live, and it is now the drag
+// source itself — see the GRIP-ONLY DRAG note above editStepRowTools.
 function editIngRowTools(i) {
   return `<span class="divider" aria-hidden="true"></span><span class="rtools">
-    <span class="rbtn grip" title="Drag to reorder" aria-hidden="true">${ING_GRIP}</span>
+    <span class="rbtn grip" draggable="true" title="Drag to reorder" aria-hidden="true">${ING_GRIP}</span>
     <button type="button" class="rbtn rm" data-inline-edit-rm-ing data-i="${i}" title="Remove" aria-label="Remove">${ING_TRASH}</button>
     ${rowMoreHTML(i, "ing")}
   </span>`;
@@ -1963,7 +1978,7 @@ function amountZoneHTML(x, i) {
 }
 function editIngRowHTML(x, i) {
   if (x.is_heading) {
-    return `<li class="erow group-row" draggable="true">
+    return `<li class="erow group-row">
       ${ieCell("heading", i, headingText(x), "e-heading", "Section heading")}
       <span class="tail">${editIngRowTools(i)}</span>
     </li>`;
@@ -1979,12 +1994,11 @@ function editIngRowHTML(x, i) {
   // Empty note -> a compact sticky-note+ icon in the row; a present (or just-opened) note renders BELOW.
   const noteOpen = !!((x.note && x.note.trim()) || x._noteOpen);
   const noteIcon = noteOpen ? "" : `<button type="button" class="note-add" data-inline-edit-addnote data-i="${i}" title="Add a note" aria-label="Add a note">${ING_NOTEPLUS}</button>`;
-  // C1: draggable on the WHOLE ROW, not the grip — measured with trusted CDP input, a draggable
-  // ancestor does not hijack text selection inside a textarea, and the drag image is then the row
-  // the user grabbed rather than a 24px handle. The below-note row is deliberately NOT draggable and
-  // NOT a target: it belongs to the row above it and travels with it (the draft holds one object per
-  // ingredient, note included), which is also why the drag indexes by li.erow and not by li.
-  const main = `<li class="erow${noteOpen ? " has-note" : ""}" draggable="true">
+  // Grip-only: the row is NOT a drag source (see the GRIP-ONLY DRAG note above editStepRowTools).
+  // The below-note row is likewise not a target: it belongs to the row above it and travels with it
+  // (the draft holds one object per ingredient, note included), which is also why the drag indexes
+  // by li.erow and not by li.
+  const main = `<li class="erow${noteOpen ? " has-note" : ""}">
     ${amountZoneHTML(x, i)}
     ${ieCell("name", i, name, "e-name", "ingredient")}
     <span class="tail">${linkBit}${noteIcon}${editIngRowTools(i)}</span>
@@ -2180,7 +2194,7 @@ function onStepInput(i, text) { view.draft.steps[i].text = text; markDirty(); }
 
 // ---- C2: step drag-reorder --------------------------------------------------------------------
 // Everything structural is inherited from C1: C0's height-agnostic arithmetic, the shared drop bar and
-// its read-back, the pill drag image, the rAF-deferred .ghost-origin, draggable on the whole row,
+// its read-back, the pill drag image, the rAF-deferred .ghost-origin, grip-only draggability,
 // headings moving freely, mouse-only. What is NOT shared is the drop: it MUST go through
 // rerenderEditSteps.
 //
@@ -3475,33 +3489,16 @@ document.addEventListener("focusin", (e) => {
   const ta = e.target.closest("[data-inline-edit-ing], [data-inline-edit-step]");
   if (ta && view && view.editMode) iePreEdit = ta.value;
 });
-// Overlay caret fix: the resting display div is one line while the textarea wraps on focus, so letting a
-// click fall through hit-tests against the wrong (reflowed) layout and drops the caret in the wrong spot.
-// Instead we OWN the click: read the caret offset from the display div's own (one-line) text via
-// caretPositionFromPoint, then focus the textarea and place the caret there. (Once focused, the overlay
-// is hidden and further clicks hit the textarea natively.)
-function caretOffsetFromPoint(x, y) {
-  if (document.caretPositionFromPoint) {
-    const p = document.caretPositionFromPoint(x, y);
-    return p ? p.offset : null;
-  }
-  if (document.caretRangeFromPoint) {
-    const r = document.caretRangeFromPoint(x, y);
-    return r ? r.startOffset : null;
-  }
-  return null;
-}
-document.addEventListener("mousedown", (e) => {
-  if (!(view && view.editMode)) return;
-  const disp = e.target.closest(".ie-disp");
-  if (!disp) return;
-  const ta = disp.parentElement.querySelector("textarea[data-inline-edit-ing]");
-  if (!ta) return;
-  e.preventDefault();                                   // take over focus + caret placement from the browser
-  const off = caretOffsetFromPoint(e.clientX, e.clientY);
-  ta.focus();
-  if (off != null) { const n = Math.min(off, ta.value.length); ta.setSelectionRange(n, n); }
-});
+// Click-to-focus is the BROWSER'S, not ours. There used to be a mousedown handler here that
+// preventDefault()ed on .ie-disp, read a caret offset via caretPositionFromPoint and focused the
+// textarea by hand, because "a naive fall-through hit-tests the wrong, reflowed layout" (the field
+// wraps and grows on focus: measured 27px/nowrap at rest -> 57px/normal focused). That handler is
+// gone: the overlay is now pointer-events:none (see styles.css .ie-disp), so a press lands on the
+// textarea directly and .closest(".ie-disp") could never match again. It also cost drag-selection —
+// preventDefault on mousedown kills the gesture, and the press never reached the field at all.
+// The stated reflow concern did NOT reproduce: native fall-through places the caret as accurately as
+// the handler did, including on a truncated value (measured at x+20/80/160/240 -> 2/12/23/32 vs the
+// handler's 2/12/22/33, expected ~2/11/22/32).
 
 // In the add-ingredient form, picking a library ingredient pre-fills the text box with
 // its name — but only when the box is empty, so a custom label is never clobbered.

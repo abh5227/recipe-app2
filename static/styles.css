@@ -362,9 +362,22 @@ a:hover { color: var(--berry-lift); }
 .ie-ov textarea.ie { display: block; width: 100%; margin: 0; resize: none; line-height: 24px;
   white-space: nowrap; overflow: hidden; field-sizing: content; }
 /* the display overlay: what you SEE at rest — the ellipsis-truncated value + the dashed affordance.
-   pointer-events:none lets a click fall through to the textarea beneath so the caret lands correctly. */
+
+   pointer-events: none — WHY, and why it is safe.
+   This span exists for ONE reason: to paint an ellipsis. A <textarea> ignores text-overflow and hard-
+   clips instead (measured: same value, same 15px/24px Spectral, same 1px 2px padding, boxes identical
+   to 0.00px — the ONLY differing property is text-overflow, clip vs ellipsis). Since painting is its
+   whole job, it must not be HIT-TESTABLE: pointer-events affects hit-testing, NOT painting, so the
+   ellipsis still renders exactly as before while every press falls through to the textarea beneath.
+   Measured with the overlay opaque and hit-testable, a drag across the name selected "" — the press
+   landed on this span, which is not a form control, so the draggable <li class="erow"> claimed the
+   gesture. With pointer-events: none the same drag selects normally. (A textarea inside a draggable
+   li selects fine — form controls are exempt from that capture; plain spans are not.)
+   Do NOT give this element a background-less or hit-testable variant without re-testing drag-select
+   in a name, a qty and a heading. */
 .ie-disp { position: absolute; inset: 0; line-height: 24px; white-space: nowrap; overflow: hidden;
   text-overflow: ellipsis; cursor: text; padding: 1px 2px; background: var(--card);
+  pointer-events: none;
   border-bottom: 1px dashed color-mix(in srgb, var(--ink-soft) 45%, transparent); }
 .ie-disp:empty { display: none; }                       /* empty -> reveal the textarea's own placeholder */
 .detail-card.editing .ie-ov:hover .ie-disp { background: color-mix(in srgb, var(--berry) 5%, var(--card)); border-radius: 5px 5px 0 0; }
@@ -439,9 +452,31 @@ a:hover { color: var(--berry-lift); }
 /* The album's two drag treatments (styles.css ~1085/1092), reused on the other axis. The origin dim is
    VERBATIM — same .35: the row left behind is dimmed to show where the dragged row came from. (The
    album's reason was that its drag image carries the photo; here the image is a pill, but the dim
-   plays the same part — it is the only thing marking the origin while the row is in flight.) */
+   plays the same part.)
+
+   TWO SIGNALS, NOT ONE. The dim alone said "a row has lifted" but not WHICH — measured in use, the
+   source row was hard to pick out of a ledger of near-identical rows. The dashed ochre outline names
+   it. Ochre is not a new colour: it is var(--ochre), the drop bar's own, so the whole drag reads in
+   one palette (the drop bar itself is untouched).
+
+   WHY THE DIM MOVED TO THE CHILDREN. `opacity` applies to the subtree INCLUDING the element's own
+   outline, so an outline on a 0.35 row paints at 0.35 too and goes muddy against the cream. Dimming
+   the row's children instead leaves the outline at full strength while the contents dim exactly as
+   before — the rows have no overlapping children, so the result is visually identical to the old
+   row-level dim. Compared side by side before choosing; the 0.35 outline was legible but weak.
+
+   OUTLINE, NOT BORDER — measured, not assumed. These rows are grid items with height driven by
+   content, so a 2px border grew the list 578px -> 581px and shifted every row below it. An outline
+   is drawn outside the layout box: same test, 578px -> 578px, no row moved. outline-offset: -2px
+   pulls it just inside the row's edges so adjacent rows (margin: 0, flush) can't appear to share it.
+
+   SCOPED TO THE TWO EDITOR LISTS. The album's strip uses the SAME CLASS NAME but its own separate
+   rule (.reorder-strip .album-photo.ghost-origin, ~line 1205) and is deliberately NOT changed here.
+   If the photo strip should ever match, that rule is the one to edit — this selector will not do it. */
 .ingredient-list.edit li.erow.ghost-origin,
-#steps-list li.step-edit.ghost-origin { opacity: 0.35; }
+#steps-list li.step-edit.ghost-origin { outline: 2px dashed var(--ochre); outline-offset: -2px; }
+.ingredient-list.edit li.erow.ghost-origin > *,
+#steps-list li.step-edit.ghost-origin > * { opacity: 0.35; }
 /* The drop-insertion bar, INVERTED from the album's vertical bar for a vertical list: its 4px becomes
    a height, align-self/min-height are gone (it spans the list width instead of the strip height), and
    the end-caps move from top/bottom to left/right. Colour, radius and the ochre glow ring are verbatim.
@@ -491,7 +526,22 @@ a:hover { color: var(--berry-lift); }
    layer needs that a chip in the page does not — an explicit font (out here it inherits from <body>,
    not from the row) and a lift, which is the album's own drag-hover shadow verbatim (styles.css ~1081). */
 #drag-img-host .drag-pill { font-family: var(--font-sans); font-size: 14px; white-space: nowrap;
-  box-shadow: 0 6px 16px -7px rgba(45,32,12,.5); }
+  box-shadow: 0 6px 16px -7px rgba(45,32,12,.5);
+  /* CAP + ELLIPSIS. Uncapped, the pill is as wide as the name: measured against the real corpus, the
+     longest ingredient (174 chars) rendered a 1178px pill — WIDER THAN THE INGREDIENT LIST (820px)
+     and all but 22px of a 1200px viewport. 280px is the same budget stepPillLabel already spends
+     (its comment: "42 chars is about 280px of the 14px sans face"), so both lists carry the same
+     size of label; at this width a real name shows ~38 characters before the ellipsis.
+     ⚠️ display: inline-block IS LOAD-BEARING, not tidying. .chip is a <span>, and max-width /
+     overflow / text-overflow DO NOT APPLY to a non-replaced inline box — measured: with the rule but
+     without inline-block the pill stayed 1178px and scrollWidth/clientWidth both read 0. With it,
+     1178px -> 280px and scrollWidth 1176 vs clientWidth 278 (clipped). It changes nothing visually:
+     the pill is the only thing in its host, so there is no line box for it to interact with.
+     The ellipsis DOES survive into the drag image — verified by rendering the host on-screen and
+     screenshotting the pill. That is not a given in this layer (see the three measured facts below:
+     `opacity` on a snapshotted element IS dropped), which is why it was checked rather than assumed;
+     text-overflow is an ordinary paint of the element's own box, not a self-effect like opacity. */
+  display: inline-block; max-width: 280px; overflow: hidden; text-overflow: ellipsis; }
 
 /* ⚠️ THREE MEASURED FACTS ABOUT HOW CHROMIUM PAINTS DRAG IMAGES. No rule here depends on them any
    more — setting the image explicitly made the whole question moot — but they were expensive to
