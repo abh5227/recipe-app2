@@ -665,3 +665,62 @@ def test_paren_balance_is_preserved_by_every_rule():
                 "wine (or rice (mijiu) if you can (Note 5))"]:
         out, _ = ic.clean_source_text(src)
         assert out.count("(") == out.count(")"), out
+
+
+# ---------------------------------------- compound quantities written with a connective ("1 and 1/2")
+# The signal is INTEGER + connective + FRACTION, never the word alone. These tests hold BOTH sides of
+# that boundary: the forms that must parse, and the "and" lines that must NOT become quantities.
+
+@pytest.mark.parametrize("line, amount, value, unit, name", [
+    # the 4 real forms, verbatim from sallysbakingaddiction.com (4 of its 17 ingredient lines)
+    ("1 and 1/4 cups (285g) canned pumpkin puree*", "1 1/4", 1.25, "cups", "canned pumpkin puree*"),
+    ("1 and 2/3 cups (208g) all-purpose flour (spooned & leveled)", "1 2/3", 5 / 3, "cups",
+     "all-purpose flour (spooned & leveled)"),
+    ("1 and 1/2 teaspoons ground cinnamon", "1 1/2", 1.5, "teaspoons", "ground cinnamon"),
+    ("1 and 1/2 cups (180g) confectioners' sugar", "1 1/2", 1.5, "cups", "confectioners' sugar"),
+    # the anticipated (unwitnessed) connectives
+    ("1 & 1/2 cups flour", "1 1/2", 1.5, "cups", "flour"),
+    ("1 + 1/2 cups flour", "1 1/2", 1.5, "cups", "flour"),
+    ("1 and 1/2 cups flour", "1 1/2", 1.5, "cups", "flour"),
+])
+def test_connective_compound_parses_as_one_quantity(line, amount, value, unit, name):
+    """The connective is a spelling of the space in a mixed number, so it yields ONE amount with a
+    real numeric value — the value matters as much as the text: a regex-only change would match here
+    and still hand back value=None, because _to_value splits a mixed number on whitespace."""
+    d = ic.classify_line(line)
+    assert d["amount"] == amount
+    assert d["value"] == pytest.approx(value)
+    assert d["unit"] == unit
+    assert d["name"] == name
+
+
+@pytest.mark.parametrize("line, amount, value, unit", [
+    ("1 1/4 cups flour", "1 1/4", 1.25, "cups"),      # plain-space mixed number
+    ("1½ cups flour", "1½", 1.5, "cups"),   # digit + unicode fraction, adjacent
+    ("1 ½ cups flour", "1 ½", 1.5, "cups"),  # digit + unicode fraction, spaced
+    ("½ cup water", "½", 0.5, "cup"),        # bare unicode fraction
+    ("2 cups flour", "2", 2.0, "cups"),                # plain integer
+    ("1/2 teaspoon salt", "1/2", 0.5, "teaspoon"),     # bare ascii fraction
+])
+def test_already_working_compound_forms_are_unchanged(line, amount, value, unit):
+    """PINNED so the connective pattern can't be loosened later without this failing."""
+    d = ic.classify_line(line)
+    assert (d["amount"], d["unit"]) == (amount, unit)
+    assert d["value"] == pytest.approx(value)
+
+
+@pytest.mark.parametrize("line, amount, name", [
+    # "and" joining two NON-NUMERIC things is not a quantity — a fraction must follow the connective
+    ("Salt and pepper (optional)", "", "Salt and pepper (optional)"),
+    ("1 red bell pepper, cored and diced", "1", "red bell pepper, cored and diced"),
+    ("1/2 tsp each salt and pepper", "1/2", "each salt and pepper"),
+    ("2 tablespoons chopped fresh cilantro (stems and leaves)", "2",
+     "chopped fresh cilantro (stems and leaves)"),
+])
+def test_and_between_non_numbers_is_not_a_compound_quantity(line, amount, name):
+    """The false-positive boundary. Measured over 7,052 corpus+archive+fixture lines: 379 contain
+    "and", 4 match INTEGER+connective+FRACTION, and those 4 are the intended targets."""
+    d = ic.classify_line(line)
+    assert d["amount"] == amount
+    assert d["name"] == name
+    assert "and" not in d["amount"]

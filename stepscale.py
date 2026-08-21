@@ -41,10 +41,23 @@ _UNICODE_FRACTIONS = {
 }
 _UNI = "".join(_UNICODE_FRACTIONS)
 
-# A numeric amount: mixed ("1 1/2"), fraction ("1/2"), digit+unicode ("1½"), bare
-# unicode ("½"), or int/decimal ("2", "2.5"). Mirrors AMOUNT_TOKEN in static/app.js
-# (extended to also accept the unicode-fraction glyphs the recipes are written with).
-_NUM = r"(?:\d+\s+\d+/\d+|\d+/\d+|\d+\s*[" + _UNI + r"]|[" + _UNI + r"]|\d+(?:\.\d+)?)"
+# A CONNECTIVE spelling of the space in a mixed number: "1 and 1/2" is the same quantity as "1 1/2".
+# The signal is INTEGER + connective + FRACTION — never the word alone, which is why "salt and pepper"
+# and "cored and diced" cannot match: a fraction must follow. Measured over 7,052 lines (corpus +
+# archive + the 9 fixtures): 379 lines contain the word "and", 4 match this shape, and those 4 are
+# exactly the intended targets.
+#   "and" is EVIDENCED — sallysbakingaddiction.com writes every compound this way (4 of its 17 lines).
+#   "&" and "+" are ANTICIPATED, not witnessed: zero instances in any corpus we hold. They occupy the
+#   same grammatical slot and cost nothing, but do not cite them as proven. "plus" is deliberately
+#   EXCLUDED — a word with a wider false-positive surface and no instance anywhere.
+_JOIN = r"(?:\s+and\s+|\s*[&+]\s*)"
+
+# A numeric amount: mixed ("1 1/2" / "1 and 1/2"), fraction ("1/2"), digit+unicode ("1½" / "1 and ½"),
+# bare unicode ("½"), or int/decimal ("2", "2.5"). Mirrors AMOUNT_TOKEN in static/app.js (extended to
+# also accept the unicode-fraction glyphs the recipes are written with, and the connective above —
+# the CLIENT never sees a connective, because parse_amount canonicalizes it away; see _canon_amount).
+_NUM = (r"(?:\d+(?:\s+|" + _JOIN + r")\d+/\d+|\d+/\d+|\d+(?:\s*|" + _JOIN + r")["
+        + _UNI + r"]|[" + _UNI + r"]|\d+(?:\.\d+)?)")
 
 # --- Layer 2: never-scale guard units (temperature, time, dimension) ---
 _TEMP = r"(?:°\s*[CF]?|degrees?\b)"
@@ -89,6 +102,27 @@ def _normalize_unicode(s):
     for glyph, ascii_frac in _UNICODE_FRACTIONS.items():
         s = s.replace(glyph, " " + ascii_frac + " ")
     return re.sub(r"\s+", " ", s).strip()
+
+
+_JOIN_RE = re.compile(_JOIN)
+
+
+def _canon_amount(s):
+    """A matched amount -> its canonical mixed-number spelling: "1 and 1/2" -> "1 1/2".
+
+    WHY CANONICALIZE RATHER THAN STORE THE SOURCE SPELLING. Two downstream consumers cannot read a
+    connective, and both fail SILENTLY rather than loudly:
+      - _to_value splits a mixed number on whitespace, so "1 and 1/2" raises ValueError and
+        parse_amount's except-clause turns that into value=None — the regex would match and the
+        quantity would still be lost.
+      - static/scaler.js AMOUNT_TOKEN has no connective alternative, so it would tokenize "1" and
+        "1/2" SEPARATELY and scale each: 2x "1 and 1/2" would render "2 and 1".
+    Canonicalizing here means neither has to change and the client needs no mirrored edit. The
+    original spelling is never lost — raw_text keeps the publisher's line verbatim.
+
+    Applied ONLY to text already matched as an amount by _NUM (integer + connective + fraction), so
+    it cannot touch an "and" anywhere else in the line."""
+    return re.sub(r"\s+", " ", _JOIN_RE.sub(" ", s or "")).strip()
 
 
 def _to_value(tok):

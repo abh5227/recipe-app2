@@ -25,7 +25,7 @@ import re
 # Reuse the EXISTING amount/fraction parser — do not write a third copy. These are
 # underscore-private in stepscale today; importing them is an accepted temporary
 # compromise (ROADMAP: extract a shared public amounts.py).
-from stepscale import _NUM, _SCALE_UNIT, _to_value, _normalize_unicode
+from stepscale import _NUM, _SCALE_UNIT, _to_value, _normalize_unicode, _canon_amount
 
 # --------------------------------------------------------------------------- #
 # Regexes (built from the reused stepscale fragments)
@@ -274,7 +274,11 @@ def parse_amount(line):
     m = _LEAD_RE.match(line)
     if not m:
         return "", None, "", line.strip(), None
-    amount = m.group("amount").strip()
+    # _canon_amount collapses a connective spelling ("1 and 1/2") to the canonical mixed number
+    # ("1 1/2"). It must run HERE, before both the range branch and _to_value, because everything
+    # downstream — the value, the stored quantity, the client scaler — reads this string. See its
+    # docstring for why the source spelling is not kept.
+    amount = _canon_amount(m.group("amount"))
     unit = (m.group("unit") or "").strip()
     name = (m.group("name") or "").strip()
     if _RANGE_FIND.search(amount):
