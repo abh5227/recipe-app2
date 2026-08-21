@@ -241,9 +241,16 @@ def resolve_owner(executor, email=None):
     raise ValueError(f"import owner ambiguous: {len(ids)} users exist — pass --owner-email")
 
 
-def commit_plan(executor, plan, owner_id=None):
+def commit_plan(executor, plan, owner_id=None, snapshot=True):
     """Persist one write plan; returns True if it wrote, False for a SKIP. The caller owns
     the transaction (commit/rollback). Requires migration 010 (import_flags).
+
+    snapshot=False SUPPRESSES the reason='original' baseline below, for ONE caller: the URL import
+    route, where the recipe lands in the editor for correction before the user has accepted it. A
+    baseline captured here would be the PUBLISHER's text, so every parse error the user then fixes
+    would render as one of "your changes" forever. That route captures the baseline on the first
+    save instead — see app.update_recipe. The batch importer keeps the default: a Paprika archive is
+    accepted wholesale, so its birth state IS what the user took on.
 
     ⚠️ SQLAlchemy CORE, not raw SQL, and that is FORCED rather than stylistic: the raw form used `?`
     and `:named` placeholders, both invalid for psycopg's pyformat, so every parameterised statement
@@ -281,9 +288,9 @@ def commit_plan(executor, plan, owner_id=None):
     # uid-dedup skips existing recipes, so the false branch is unreachable through this function).
     # cook_log_id NULL; user_id = the import owner; created_at = the recipe's birth timestamp.
     snap = RecipeSnapshot.__table__
-    exists = executor.execute(
+    exists = snapshot and executor.execute(
         select(snap.c.id).where(snap.c.recipe_id == r["id"], snap.c.reason == "original")).first()
-    if not exists:
+    if snapshot and not exists:
         executor.execute(insert(snap).values(
             recipe_id=r["id"], cook_log_id=None, user_id=owner_id, reason="original",
             content=snapshot_serialize.content_blob(r, plan["ingredients"], plan["steps"]),

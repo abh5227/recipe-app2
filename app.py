@@ -34,6 +34,7 @@ from import_cleanup import clean_recipe, split_qty   # shared qty->quantity+unit
 from models import (
     Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
     Rating, CookLog, CookPhoto, RecipeSnapshot, User, Friendship, SharedPost, Comment, RecipeQueue,
+    ImportFlag,          # U5: the imported_via provenance row, and the gate on baseline-at-first-save
     ingredient_weights,
 )
 from auth import auth_bp   # JSON auth endpoints (auth-2); auth.py imports models only, so no import cycle
@@ -709,6 +710,20 @@ def update_recipe(rid):
             if o["grams"] is not None or o["secondary_measure"] is not None:
                 preserve[_preserve_key(o["qty"], o["label"] or o["raw_text"])] = (o["grams"], o["secondary_measure"])
         write_recipe_rows(s, rid, clean, preserve)
+        # U5: an imported recipe is written with NO reason='original' baseline, because it arrives as
+        # the publisher wrote it and the user is about to fix the parse errors. THIS save is the first
+        # moment the content is something they have approved, so the baseline is captured here, from
+        # the rows JUST written — import corrections leave no annotations, later edits all do.
+        #
+        # NARROWLY GATED, and the gate is the point: it fires only for a recipe carrying an
+        # `imported_via` flag, and snapshot_original's WHERE NOT EXISTS makes it a no-op ever after.
+        # It must NOT become unconditional — sync_original_heading_layout's docstring spells out why
+        # minting a baseline from current content is destructive for a recipe that simply never got
+        # one: it would declare that recipe born in its edited state and erase every annotation it
+        # should have had. An import has no annotations to erase; a legacy recipe does.
+        if s.execute(select(ImportFlag.id).where(
+                ImportFlag.recipe_id == rid, ImportFlag.flag == "imported_via")).first():
+            snapshot_original(s, rid)
         # AFTER the rows are written (the sync reads the headings that were JUST saved, so it cannot
         # run before this) and BEFORE the commit (so a content-safety failure aborts the whole edit
         # with no partial state). Same session, same transaction — deliberately not a post-commit
@@ -1882,6 +1897,77 @@ def import_preview():
                         "code": "ALREADY_IMPORTED", "twin": plan["twin"]}), 409
 
     return jsonify(preview_body(plan, read.provenance, duplicate)), 200
+
+
+def read_url_or_refusal(url):
+    """Shared front half of preview and commit: guard -> fetch -> cascade.
+
+    Returns (read, None) on success or (None, (body, status)) on any refusal, so both routes answer a
+    bad URL, a refusing site and an unreadable page with byte-identical wording and status. U5 exists
+    to WRITE what U4 showed; two copies of this would be two chances to drift.
+    """
+    blocked = private_host_refusal(url)
+    if blocked:
+        return None, ({"error": blocked, "code": "BLOCKED_HOST"}, 400)
+    # NO allow_private — U0b's SSRF guard (resolve-then-check + every redirect hop) stays ON. That
+    # flag exists for url_fetch's own loopback transport tests and must never be passed from a route.
+    got = url_fetch.fetch(url)
+    if isinstance(got, url_fetch.Refused):
+        return None, ({"error": got.detail, "code": got.code, "url": got.url, "status": got.status},
+                      FETCH_STATUS.get(got.code, 502))
+    read = url_cascade.read(got.url, got.html)
+    if isinstance(read, url_cascade.Failed):
+        return None, ({"error": read.message, "code": "NO_RECIPE_FOUND", "url": got.url,
+                       "refusals": [{"layer": r.layer, "code": r.code, "detail": r.detail}
+                                    for r in read.refusals]}, 422)
+    return (read, got), None
+
+
+@app.route("/api/import/commit", methods=["POST"])
+def import_commit():
+    """Import a URL into a REAL recipe and hand back its id, so the client can open it in the editor.
+
+    WRITE-THEN-EDIT, following copy_recipe's precedent: the row is created, then the client navigates
+    to it. The user corrects the import with the ordinary editor — rows, row menus, drag, step
+    editors — instead of a second, parallel editing surface. Cancel is the existing DELETE.
+
+    The recipe is written WITHOUT its reason='original' baseline (commit_plan(snapshot=False)); the
+    first save captures it. Everything a fetch or a reader can refuse in preview, this refuses
+    identically and BEFORE any row exists — the write is the last thing that happens.
+    """
+    payload = request.get_json(silent=True) or {}
+    url = (payload.get("url") or "").strip()
+    if not url:
+        return jsonify({"error": "paste a recipe URL to import", "code": "BAD_URL"}), 400
+
+    got, refusal = read_url_or_refusal(url)
+    if refusal:
+        body, status = refusal
+        return jsonify(body), status
+    read, fetched = got
+
+    cleaned = clean_recipe(read.normalized)
+    with orm_session() as s:                         # ONE session: plan, write and flag share a transaction
+        uid_index, taken = import_write.db_state(s)
+        plan = import_write.plan_recipe(cleaned, uid_index, taken)
+        if plan["decision"] != "write":              # unreachable today (a URL read carries no uid)
+            return jsonify({"error": f"already imported as \u201c{plan['twin']['name']}\u201d",
+                            "code": "ALREADY_IMPORTED", "twin": plan["twin"]}), 409
+        # A duplicate source_url is a WARNING and never blocks: re-importing a recipe you already have
+        # is the user's call. Read BEFORE the insert, or the row we are about to write matches itself.
+        duplicate = duplicate_source_url(s, fetched.url)
+        # plan_recipe carries no owner (the batch importer has no request user), but every other
+        # create path sets one — and the photo/album routes gate on rec.owner, so an ownerless import
+        # would 403 the importer off their own recipe's photos. NB the Paprika path has the same gap;
+        # this fixes it HERE, where there is a request user to attribute it to.
+        plan["recipe"]["owner"] = current_user.id
+        # Provenance rides in with the review flags — one insert loop, no second write path (U2).
+        plan["review_flags"] = plan["review_flags"] + [url_cascade.provenance_flag_row(read.provenance)]
+        import_write.commit_plan(s, plan, owner_id=current_user.id, snapshot=False)
+        rid = plan["recipe"]["id"]
+        s.commit()                                   # nothing above committed — a raise leaves NO row
+    return jsonify({"id": rid, "slug": rid, "duplicate": duplicate,
+                    "read_by": read.provenance["layer"]}), 201
 
 
 if __name__ == "__main__":

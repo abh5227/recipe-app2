@@ -596,7 +596,7 @@ async function renderHome() {
         <h1 class="site-title">Chef's Choice</h1>
         <p class="site-sub">Field notes from the kitchen — recipes, and what goes in them.</p>
       </div>
-      <div class="site-head-actions">${bulkTest}<a class="btn ghost" href="#/feed">Cooking</a><a class="btn new-recipe" href="#/new">+ New recipe</a>${
+      <div class="site-head-actions">${bulkTest}<a class="btn ghost" href="#/feed">Cooking</a><button type="button" class="btn ghost" data-import-url>Import from URL</button><a class="btn new-recipe" href="#/new">+ New recipe</a>${
         CURRENT_USER ? `<span class="site-user">${esc(CURRENT_USER.display_name || CURRENT_USER.email)}<button type="button" data-logout>Sign out</button></span>` : ""
       }</div>
     </div>
@@ -1548,6 +1548,14 @@ async function renderRecipe(rid) {
   setCookCount(app, data.stats.cook_count);   // reserved R2 wear signal on the recipe root
 
   paintRecipe();
+  // U5: a just-imported recipe opens straight in the editor. Set AFTER paintRecipe (enterEditMode
+  // repaints and mounts the step editors itself), and cleared first so a later visit to the same
+  // recipe — back button, a link — opens in reading mode like anything else.
+  if (importOpening && importOpening === rid) {
+    importOpening = null;
+    view.importUnconfirmed = true;    // drives the save-bar note below; client-only, see promptImport
+    enterEditMode();
+  }
 }
 
 // Paint the recipe page in the current mode (reading vs inline-edit) from `view` — no re-fetch, so
@@ -2345,7 +2353,10 @@ function addNote(i) {
 
 function inlineSaveBarHTML() {
   return `<div class="inline-save-bar" role="group" aria-label="Editing recipe">
-    <span class="inline-editing-label">Editing</span>
+    <span class="inline-editing-label">${view.importUnconfirmed ? "Imported" : "Editing"}</span>
+    ${view.importUnconfirmed
+      ? `<span class="inline-note">Fix anything the import got wrong — corrections now aren't tracked as changes. Edits after you save are.</span>`
+      : ""}
     <span class="inline-dirty"${view.dirty ? "" : " hidden"}>• Unsaved changes</span>
     <span class="inline-error" hidden></span>
     <button class="btn sm" data-inline-edit-save>Save changes</button>
@@ -2380,6 +2391,7 @@ function enterEditMode() {
 function exitEditMode() {
   try { destroyStepEditors(); } catch (e) { console.error("destroyStepEditors failed", e); }
   view.editMode = false; view.draft = null; view.dirty = false; view.scale = 1;
+  view.importUnconfirmed = false;   // leaving the editor ends the pre-confirm window
   paintRecipe();
 }
 
@@ -2476,6 +2488,47 @@ async function doCopy(isTest) {
   const res = await sendJSON("POST", `/api/recipes/${encodeURIComponent(view.slug)}/copy`, { is_test: !!isTest });
   if (res.ok && res.data && res.data.id) location.hash = "#/recipe/" + encodeURIComponent(res.data.id);
   else alert((res.data && res.data.error) || "Couldn't copy the recipe.");
+}
+
+// U5 — import a URL. Mirrors doCopy exactly: POST, then navigate to the id the server hands back.
+// The ONE addition is importOpening, which asks renderRecipe to land in EDIT mode rather than reading:
+// an import arrives with parse errors to fix, so the editor IS the destination, not a place to go next.
+let importOpening = null;    // slug to open straight into edit mode (consumed by renderRecipe)
+
+async function doImport(url) {
+  const res = await sendJSON("POST", "/api/import/commit", { url });
+  if (!res.ok || !res.data || !res.data.id) {
+    // The server's own wording is shown, never replaced: every refusal carries a reason written for a
+    // person — "the site refused the request (HTTP 403)", "the URL returned application/pdf, not a web
+    // page", and U2's composed reader text "json-ld: found Article and ImageObject, not Recipe". That
+    // composition exists so the user learns WHICH layer declined and what it saw; paraphrasing it here
+    // would throw away the only part that tells them whether to retry, try another link, or type it in.
+    //
+    // The generic string is a LAST RESORT and now carries the status, because it can only be reached
+    // when the response was not our JSON at all — sendJSON sets data=null on any body it can't parse.
+    // In practice that means an HTML error page from the stack rather than a refusal from this route:
+    // a 404 (the app server is running older code than the browser — restart it), a 500 (an unhandled
+    // exception), or a proxy/network failure. Naming the status is what separates those from "the site
+    // said no", which is exactly the distinction that was missing when a stale server read as a bad URL.
+    // Mirrors onSaveForm's "Couldn't save (HTTP nnn)." rather than inventing a second convention.
+    alert((res.data && res.data.error) || `Couldn't import that URL (HTTP ${res.status}).`);
+    return;
+  }
+  if (res.data.duplicate) {
+    // A WARNING, never a block: the import already happened. Naming the twin is what makes it useful.
+    alert(`Heads up — you already have “${res.data.duplicate.name}” from this address. `
+          + `This is a second copy; delete it with Cancel if you didn't mean to.`);
+  }
+  importOpening = res.data.id;
+  location.hash = "#/recipe/" + encodeURIComponent(res.data.id);
+}
+
+// The entry point: ask for a URL, then import it. prompt() rather than a bespoke modal — the app
+// already uses the native confirm() for the dirty-nav guard and alert() for copy/import failures, so
+// this matches what is here instead of introducing a dialog system for one field.
+function promptImport() {
+  const url = (prompt("Paste a recipe URL to import:") || "").trim();
+  if (url) doImport(url);
 }
 
 /* ---------- create / edit form ---------- */
@@ -3166,6 +3219,7 @@ document.addEventListener("click", (e) => {
       <button class="btn ghost sm" data-delete-test-cancel>Cancel</button></span>`;
     return;
   }
+  if (e.target.closest("[data-import-url]")) { promptImport(); return; }
   if (e.target.closest("[data-delete-test-cancel]")) { renderHome(); return; }
   if (e.target.closest("[data-delete-test-confirm]")) {
     (async () => {
