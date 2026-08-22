@@ -7,6 +7,7 @@ import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingre
 import { nonEmptySteps, focusIndexAfterRemove, writeStepField } from "./step-row.js";
 import { insertIndexFor } from "./row-insert.js";
 import { removedInsertIndex } from "./annotation-place.js";
+import { wordDiffParts } from "./word-diff.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
 import { uploadErrorHTML } from "./upload-status.js";
@@ -755,46 +756,28 @@ function removedStepRow(e) {
 // grouped annotation slot ({amount?, name?, added?}) or undefined — undefined falls through to today's
 // EXACT markup, so an unannotated row is byte-identical (clean recipes render unchanged).
 // O-c-1 refinement: a WORD-LEVEL diff for name/step edits — strike only removed words, ink only added
-// words, leave shared words as plain print. Token LCS on whitespace-split words. Order follows the walk:
-// a divergence emits the struck old word(s) then the inked new word(s), shared runs stay plain. Falls back
-// to a whole-field strike+ink when the two share NO words (LCS empty) — cleaner than striking every token.
-// Every token is esc()'d before it reaches the DOM (no raw HTML from names). Kept inline (not a module).
-function _wordLcsWalk(a, b) {
-  const n = a.length, m = b.length;
-  const dp = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
-  for (let i = n - 1; i >= 0; i--)
-    for (let j = m - 1; j >= 0; j--)
-      dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-  const out = [];
-  let i = 0, j = 0;
-  while (i < n && j < m) {
-    if (a[i] === b[j]) { out.push({ t: "eq", w: a[i] }); i++; j++; }
-    else if (dp[i + 1][j] >= dp[i][j + 1]) { out.push({ t: "del", w: a[i] }); i++; }
-    else { out.push({ t: "ins", w: b[j] }); j++; }
-  }
-  while (i < n) out.push({ t: "del", w: a[i++] });
-  while (j < m) out.push({ t: "ins", w: b[j++] });
-  return out;
-}
+// words, leave shared words as plain print. The tokenising + LCS live in word-diff.js (pure, tested);
+// this is only the markup, so every token is esc()'d in one place before it reaches the DOM (no raw HTML
+// from names). Parts carry their own leading `gap`, so they concatenate with no separator here —
+// punctuation stays welded to the word it follows.
+//
+// `is-tight` carries gap=="" THROUGH TO CSS, because the markup alone cannot express it: .iname .fix has
+// a deliberate 5px margin-left (the ink sits off the print), which still renders a visible space in front
+// of an ink run that OPENS WITH PUNCTUATION — "garlic , finely grated" on screen from
+// `garlic<span class="fix">, finely grated</span>`, with no whitespace anywhere in the markup. The class
+// zeroes that one margin without touching the nudge everywhere else. Only .fix needs it: .was carries no
+// margin (a struck tail already binds tight) and neither does .step-body .fix.
+//   `i > 0` is required, not defensive: the FIRST part's gap is "" because nothing precedes it, not
+//   because it binds to anything, so keying on gap alone would strip the nudge off a name-initial ink
+//   run ("olive oil" -> "extra-virgin olive oil") that should keep it.
 function wordDiffHTML(fromStr, toStr) {
-  const a = String(fromStr || "").split(/\s+/).filter(Boolean);
-  const b = String(toStr || "").split(/\s+/).filter(Boolean);
-  const walk = _wordLcsWalk(a, b);
-  if (!walk.some((x) => x.t === "eq")) {                 // no shared word -> whole-field strike+ink
-    return `<span class="was">${esc(fromStr || "")}</span> <span class="fix">${esc(toStr || "")}</span>`;
-  }
-  const parts = [];                                      // coalesce consecutive same-type tokens
-  for (const x of walk) {
-    const last = parts[parts.length - 1];
-    if (last && last.t === x.t) last.w.push(x.w);
-    else parts.push({ t: x.t, w: [x.w] });
-  }
-  return parts.map((p) => {
-    const text = esc(p.w.join(" "));
-    if (p.t === "del") return `<span class="was">${text}</span>`;
-    if (p.t === "ins") return `<span class="fix">${text}</span>`;
-    return text;
-  }).join(" ");
+  return wordDiffParts(fromStr, toStr).map((p, i) => {
+    const text = esc(p.text);
+    const tight = i > 0 && !p.gap;
+    if (p.t === "del") return `${p.gap}<span class="was">${text}</span>`;
+    if (p.t === "ins") return `${p.gap}<span class="fix${tight ? " is-tight" : ""}">${text}</span>`;
+    return p.gap + text;
+  }).join("");
 }
 
 function plainRow(row, ann) {

@@ -904,6 +904,11 @@ a:hover { color: var(--berry-lift); }
 .ingredient-list .was, .step-body .was { text-decoration: line-through; text-decoration-color: var(--ink-pen); text-decoration-thickness: 1px; color: var(--ink-soft); opacity: .85; }
 /* name edit — Kalam ink correction in the 1fr name column (word-level tokens, or the stacked both-row). Ink stepped up 16px -> 18px. */
 .ingredient-list .iname .fix { font-family: var(--font-hand); color: var(--ink-pen); font-size: 18px; margin-left: 5px; display: inline-block; transform: rotate(-1.5deg); }
+/* …EXCEPT when the ink run opens with punctuation that belongs to the word before it (wordDiffHTML sets
+   .is-tight whenever the diff computed a zero gap). The markup is already tight — `garlic<span
+   class="fix">, finely grated</span>`, no whitespace — so the 5px above was the whole of the visible
+   "garlic , finely grated". Zeroed only here; the nudge stays for every ordinary ink correction. */
+.ingredient-list .iname .fix.is-tight { margin-left: 0; }
 /* amount edit — a deliberate two-line proofreader's stack INSIDE the fixed 5rem amount cell (no column widening) */
 .ingredient-list li.edited .qty { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.02; }
 .ingredient-list li.edited .qty .was { transform: rotate(-.6deg); }
