@@ -247,6 +247,11 @@ def _diff_ingredients(old_lines, new_lines, o_pos, n_pos, section_of=lambda p: N
                           "new_pos": n_pos(r), "old_pos": None},
         on_remove=lambda r: {"kind": "ingredient", "type": "removed", "text": _ing_line(r), "label": _ing_name(r),
                              "new_pos": None, "old_pos": o_pos(r), "section": section_of(r.get("position"))},
+        # The ONE opt-in: `note` is not in the match key, so a note-only edit lands in an 'equal' block
+        # and its pair never reaches _ingredient_pair_changes (whose note branch has always worked, and
+        # is reachable today only via phase-1's ingredient_id match — i.e. on 1.5% of real rows). Safe
+        # here and nowhere else because this on_pair emits per-aspect: an unchanged pair yields [].
+        pair_equal=True,
     )
     return changes
 
@@ -307,16 +312,37 @@ def _suppress_moves(changes):
     return [e for e in changes if id(e) not in drop]
 
 
-def _diff_seq(old, new, text_of, on_pair, on_add, on_remove):
+def _diff_seq(old, new, text_of, on_pair, on_add, on_remove, pair_equal=False):
     """Content-matched diff of two ordered row lists by their text (difflib = LCS-based). 'equal' blocks
     are unchanged; 'delete' -> on_remove; 'insert' -> on_add; a 'replace' block pairs old/new greedily by
     similarity (>= THRESHOLD -> on_pair, a list of changes; else the leftovers -> on_remove/on_add). This
-    is what makes an insert read as ONE 'added' (not a position-cascade) and a reword as 'modified'."""
+    is what makes an insert read as ONE 'added' (not a position-cascade) and a reword as 'modified'.
+
+    pair_equal (OPT-IN, default OFF) also runs on_pair over 'equal' blocks, index-for-index. It exists
+    because the match KEY is not the whole row: a row can be 'equal' by key and still differ on a field
+    the key does not carry (an ingredient's `note`), so its pair never reaches on_pair and the change is
+    invisible. Widening the key instead was measured and rejected — note text would enter the phase-2
+    similarity ratio, where a long note drowns the name and splits a rename into remove+add, the exact
+    regression _ing_line_canon exists to prevent.
+
+    ⚠️ WHY OPT-IN RATHER THAN ALWAYS-ON. This function has FOUR callers and only ONE of them passes a
+    CONDITIONAL on_pair. The ingredient caller passes _ingredient_pair_changes, which emits only the
+    aspects that actually differ (so an unchanged pair yields []). The other three — ingredient
+    headings, steps, step headings — pass `lambda o, n: [_mod(...)]`, which emits a 'modified' entry
+    UNCONDITIONALLY, because today they only ever see a 'replace' block where the text genuinely
+    differs. Turning this on for them would emit a spurious modification for every unchanged step and
+    heading; measured, that is 8 failing tests. The default therefore stays OFF and only the ingredient
+    call site opts in."""
     o = [text_of(r) for r in old]
     n = [text_of(r) for r in new]
     changes = []
     for tag, i1, i2, j1, j2 in SequenceMatcher(None, o, n, autojunk=False).get_opcodes():
         if tag == "equal":
+            if pair_equal:
+                # Same length by construction (an 'equal' opcode spans matching runs), so index-for-index
+                # pairing is exact — no matching decision is made or changed here.
+                for k in range(i2 - i1):
+                    changes += on_pair(old[i1 + k], new[j1 + k])
             continue
         if tag == "delete":
             changes += [on_remove(old[k]) for k in range(i1, i2)]

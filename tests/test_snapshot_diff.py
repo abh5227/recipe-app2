@@ -410,3 +410,64 @@ def test_lone_removed_and_lone_added_both_survive():
     # different KINDS never pair, even with identical text
     out = sd._suppress_moves([sd._removed("ingredient", "salt", 0, None), sd._added("step", "salt", 0)])
     assert len(out) == 2
+
+
+# ---- UNLINKED note changes (the production shape) ------------------------------------------------
+# WHY THESE EXIST. _ingredient_pair_changes has always had a working `note` branch, but it only runs on
+# a MATCHED pair, and matching had two doors: phase 1 (ingredient_id present on both sides) and phase 2
+# (_diff_seq). The phase-2 match KEY is _ing_line_canon = "{canonical qty} {name}" — note is NOT in it —
+# so a note-only edit landed in an 'equal' block, which _diff_seq skipped. The note branch was therefore
+# reachable ONLY through phase 1, i.e. only for LINKED rows: 1.5% of real recipe_ingredients rows.
+# Every pre-existing note test sets ingredient_id, so all of them took the door production almost never
+# takes. These four cover the unlinked door, which _diff_seq(pair_equal=True) opened.
+
+def test_note_only_change_on_an_unlinked_row_is_emitted():
+    """THE PRODUCTION SHAPE: amount and name identical, note added, no library link. Before
+    pair_equal this returned [] — the row matched as 'equal' and its pair never reached on_pair."""
+    old = _blob(ingredients=[_ing(qty="4 cups", label="flour", raw_text="4 cups flour")])
+    new = _blob(ingredients=[_ing(qty="4 cups", label="flour", note="sifted", raw_text="4 cups flour")])
+    assert diff_snapshots(old, new) == [
+        {"kind": "ingredient", "type": "modified", "field": "note", "label": "flour",
+         "from": "", "to": "sifted", "new_pos": 0, "old_pos": 0}]
+
+
+def test_note_change_on_one_of_two_identical_unlinked_rows():
+    """Two rows identical in amount AND name — the pair_equal walk is index-for-index, so the note lands
+    on the row that actually carries it (new_pos 1) and the untouched twin emits nothing."""
+    a = _ing(qty="1 tbsp", label="oil", raw_text="1 tbsp oil", position=0)
+    b = _ing(qty="1 tbsp", label="oil", raw_text="1 tbsp oil", position=1)
+    old = _blob(ingredients=[a, dict(b)])
+    new = _blob(ingredients=[dict(a), dict(b, note="for frying")])
+    assert diff_snapshots(old, new) == [
+        {"kind": "ingredient", "type": "modified", "field": "note", "label": "oil",
+         "from": "", "to": "for frying", "new_pos": 1, "old_pos": 1}]
+
+
+def test_rename_with_a_long_note_stays_one_modify_not_remove_plus_add():
+    """⚠️ REGRESSION GUARD against the REJECTED approach (widening _ing_line_canon to include note).
+    With note in the match key this pair falls below SIMILARITY_THRESHOLD — the note text dominates the
+    ratio — and ONE rename splits into removed+added, the exact failure _ing_line_canon exists to
+    prevent. Measured before this landed: ['removed', 'added'] with a widened key vs ['name', 'note']
+    without. If someone widens the key later, this test is what fails."""
+    old = _blob(ingredients=[_ing(qty="1 tsp", label="kosher salt", raw_text="1 tsp kosher salt"),
+                             _ing(qty="1 tsp", label="black pepper", raw_text="1 tsp black pepper", position=1)])
+    new = _blob(ingredients=[_ing(qty="1 tsp", label="sea salt", raw_text="1 tsp sea salt",
+                                  note="use the flaky kind, crushed between your fingers as you go"),
+                             _ing(qty="1 tsp", label="black pepper", raw_text="1 tsp black pepper", position=1)])
+    changes = diff_snapshots(old, new)
+    assert [c["type"] for c in changes] == ["modified", "modified"]
+    assert [c["field"] for c in changes] == ["name", "note"]
+
+
+def test_note_change_riding_along_with_a_move_stays_suppressed():
+    """DECIDED, not accidental: a note edit on a row that ALSO moved emits nothing. The moved row lands
+    in insert+delete (never an 'equal' block, so pair_equal cannot see it), and _suppress_moves then
+    drops the pair because _move_key compares _ing_line, which excludes the note. This is the live
+    pepperoni-rolls shape — its note='test' row swapped with the row above it — and it is why that
+    recipe still renders nothing after this change. Pinned so the behaviour is a ruling, not a
+    surprise: a move is not a change to the recipe (see _suppress_moves)."""
+    water = _ing(qty="1 cup", label="water", raw_text="1 cup water", position=0)
+    flour = _ing(qty="4 cups", label="flour", raw_text="4 cups flour", position=1)
+    old = _blob(ingredients=[water, flour])
+    new = _blob(ingredients=[dict(flour, position=0, note="sifted"), dict(water, position=1)])
+    assert diff_snapshots(old, new) == []
