@@ -194,33 +194,49 @@ post nothing). We grow together; we don't perform a highlight reel.
   as data accumulates. Works **solo, day one**.
 - **B — the bounded friends' cooking feed.** The connection engine; anti-scroll per the principle;
   strong at network density.
-- **C — cooking achievements** (Xbox-style, **not** Duolingo streaks). Earned/unlockable badges for
-  accomplishments + exploration ("cooked 5 different cuisines," "tried a new technique"):
-  **reward-for-doing** (celebratory, permanent, invites you forward), never loss-aversion (no "don't
-  break the streak"). ⚠️ **Design rule:** achievements reward **variety / exploration / accomplishment**,
-  never **volume / frequency** — "cooked 5 cuisines" is good; "cooked 100×" or "30-day streak" is bad
-  (that's engagement-farming/compulsion sneaking back in). Achievements for **new cuisines** presage and
-  seed the recommendation engine's palate-expansion mission — a day-one, solo-working version of it.
+- **C. Cooking achievements.** Hidden until earned. You never see a list and work toward it. You cook a
+  Thai curry, then a Vietnamese soup, then something Cambodian, and the app tells you afterwards that
+  you have cooked across Southeast Asia. You did not aim at it. You find out that you did it. That is
+  what separates this from a points system. ⚠️ **Design rule:** achievements reward **range**, never
+  **repetition**. "Cooked 5 cuisines" is good. "Cooked 100 times" and "30-day streak" are bad, because
+  that is engagement farming coming back in. Nothing counts down and nothing can be lost, so there is
+  no "don't break the streak." The cuisine achievements seed the recommendation engine's
+  palate-expansion mission and give it a version that works on day one, for one person, alone.
 
 The portfolio spans network density: **A + C work solo / day-one; B is the social engine.**
 
-### Achievements — a broad system; growth is one category, never volume
+### Achievements: hidden until earned, private, awarded for range
 
-Hook C is **broad by design** — it rewards, across several categories:
+**Hidden until earned.** There is no checklist and nothing to aim at. The app reads what you have
+already cooked, finds a pattern in it, and tells you about the pattern afterwards. This is the part
+that defines the feature. A visible list turns cooking into task completion. A hidden one turns it
+into something you find out about yourself.
 
-- **EXPLORATION / variety** — new cuisines, techniques, ingredients (palate-expansion; **tied to the
-  recommendation engine** — the cuisine achievements presage and seed hook A's palate-expansion mission).
-- **GROWTH / perseverance** — trying, iterating, cooking *through* difficulty. This is the
-  **failure-acceptance category** made concrete: it celebrates the attempt and the iteration, not a
+**The purpose is educational, and it works sideways.** Cooking one dish teaches you an ingredient.
+That ingredient turns up in a cuisine you have not tried. The achievement is the app noticing a
+pattern in what you already cooked and pointing at what sits next to it. Someone learns what galangal
+is by cooking with it, and that changes what they order in a restaurant a year later. The knowledge is
+the reward. The achievement is how you notice you have it.
+
+**Private.** Nobody else sees them. Nothing is ranked, nothing is compared, and there is no score.
+Private means private from other people. It does not mean hidden from the person who earned it. Once
+you earn one it sits on your own profile page and you can go and look at it whenever you want.
+
+Hook C is broad by design. It rewards across several categories:
+
+- **EXPLORATION and variety.** New cuisines, techniques, ingredients. These tie to the recommendation
+  engine and seed hook A's palate-expansion mission.
+- **GROWTH and perseverance.** Trying, iterating, cooking through difficulty. This is the
+  **failure-acceptance category** made concrete. It marks the attempt and the iteration, not a
   flawless result.
-- **ACCOMPLISHMENT** — genuine milestones worth marking.
+- **ACCOMPLISHMENT.** Genuine milestones worth marking.
 
-All three sit under one rule: reward **VARIETY / EXPLORATION / GROWTH / ACCOMPLISHMENT**, **NEVER**
-volume / frequency / streaks / perfection ("cooked 5 cuisines" ✓; "cooked 100×" / "30-day streak" ✗ —
-that's compulsion-farming sneaking back). **Growth is ONE type among several** (the exploration ones
-exist alongside it) and the whole system is **light-touch**. Achievements live on the chef **PROFILE**
-(a place you *visit*), **NOT** as a surround widget or an always-on dashboard metric — surfacing a score
-everywhere would rebuild the scoreboard the no-counts principle rejects.
+All three sit under one rule. Reward **range**, never **repetition**. "Cooked 5 cuisines" is good.
+"Cooked 100 times" and "30-day streak" are bad, because that is compulsion farming sneaking back.
+Growth is one type among several, the exploration ones sit alongside it, and the whole system stays
+light-touch. Achievements live on the chef **PROFILE**, a place you *visit*, and **NOT** as a surround
+widget or an always-on dashboard metric. Surfacing a score everywhere would rebuild the scoreboard the
+no-counts principle rejects.
 
 ### The moat — where the differentiation lives
 

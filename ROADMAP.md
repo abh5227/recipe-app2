@@ -962,16 +962,18 @@ performance/competition dynamic).
 
 ⚠️ **THE LINE** (same as comments/feed — identity/connection YES, competition/metrics NO):
 
-- ✅ **Identity / expression:** your achievements, your dishes, who you are as a cook — your friends see
-  **you**.
+- ✅ **Identity / expression:** your dishes, who you are as a cook. Your friends see **you**.
+  Achievements are the private part. They sit on your own profile page and a friend never sees them.
 - ❌ **Performance / competition:** NO follower counts, NO "Top 8 friends" ranking, NO visitor counts, NO
   "most cooked" leaderboards — nothing that makes the profile a scoreboard or popularity contest (that's
   the exact MySpace/Facebook drift the connection-not-consumption principle rejects). The nostalgia is for
   the **identity/expression**, not the competition.
-- The **achievements** system (Xbox-style, variety-not-volume — see the engagement hooks in
-  [docs/product-vision.md](docs/product-vision.md)) IS the profile's core content — the profile is
-  where achievements live and get shown. So **"chef profile + achievements" likely build together as one
-  future sub-stage.**
+- The **achievements** system is hidden until earned, awarded for range rather than repetition, and
+  private. It IS the profile's core content and the profile is where achievements live and get shown,
+  on your own page. Nothing is ranked and nothing is compared, which is what keeps it on the right side
+  of THE LINE above. See the engagement hooks in
+  [docs/product-vision.md](docs/product-vision.md). So **"chef profile + achievements" likely build
+  together as one future sub-stage.**
 
 **Market signal** (a viral 2026 Reddit thread on missing early-Facebook/MySpace): people are nostalgic
 for the friends-only feed + the "this is me" profile, and explicitly hate what killed them (ads,
@@ -1535,6 +1537,15 @@ worth knowing before they bite. None of the *data* limitations occur in the curr
   `import_cleanup.classify_line` on save to harvest it. This is a NEW capability — *not* the
   grams-wipe fix, which already landed (`0c3f6ae`: it preserves EXISTING harvested grams across an
   edit but can't recover a paren the import already stripped from the editable text).
+
+- **Punctuation conversion across the docs (deferred, do it once).** The CLAUDE.md voice rules ban em
+  dashes, semicolons and rhetorical mid-sentence colons in every string a person reads, and new prose
+  is already written that way. `ROADMAP.md`, `docs/product-vision.md`, `CODE_WALKTHROUGH.md`,
+  `OVERVIEW.md` and `docs/design-decisions.md` still use all three heavily, so the documents currently
+  read in two registers. Convert them in one deliberate pass **after the CLAUDE.md voice section is
+  settled**, not opportunistically, because a half-converted document is worse than an unconverted one.
+  Lines edited for other reasons get converted as they are touched, which is how the achievements
+  rewrite handled it.
 
 ## Adjacent product ideas (separate apps — NOT Chef's Choice features)
 
