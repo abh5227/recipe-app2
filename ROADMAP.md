@@ -245,7 +245,9 @@ adding a source never touches the hard logic.
   the library ships useful, not as empty stubs. **Bounded:** AI does NOT generate food-safety,
   allergen, or storage-safety claims (sourced-or-blank only — a wrong claim there has real
   stakes a disclaimer doesn't cover). Every AI field carries provenance ("AI-generated,
-  baseline") + a needs-sourcing flag (tracker), via the per-field provenance model. Marking is
+  baseline") + a needs-sourcing flag (tracker), via the per-field provenance model — the three tiers
+  (GENERATED / CURATED / CITED) and the worked example of why CITED means *traced* rather than
+  *linked* are in **[docs/sourcing-tiers.md](docs/sourcing-tiers.md)**. Marking is
   present/findable but visually QUIET — must not clutter the design. The user replaces AI
   content with sourced data over time; the tracker shows what's still baseline.
 - **Batch-then-link rhythm.** Per batch: import recipes → generate field-guide baseline for NEW
@@ -1231,6 +1233,23 @@ clean corpus, not learned models. Depends on Phase 6 (linkage) + 8 (metadata) + 
   mark is a dedicated later task (AI-generated SVG came out stiff/generic — likely needs an illustrator
   working from style reference only). Do it as its own preview-first stage alongside the app-wide texture
   above — both are "make the whole app cohere" identity work.
+- **Clickable anatomical terms, showing a diagram instead of a definition (idea only, not scoped).**
+  Clicking "jowl" in "Cured pork jowl, the pig's cheek" shows a butcher's diagram of a pig with the
+  jowl marked. A diagram teaches where the cut is, which words cannot, and that knowledge transfers to
+  every other cut on the same animal. It generalizes well beyond pork. Cuts of beef and lamb, fish
+  anatomy for fillet against steak, a chile heat scale, whole against ground spices. **It is a diagram
+  capability, not a pork feature.** Open questions, recorded rather than answered:
+  - **Licensing.** Butchery diagrams are mostly commercial illustrations. Public-domain or
+    CC-licensed sources need finding before anything is designed.
+  - **Where the diagrams live.** Reference data shipped with the build, like the per-entry ingredient
+    files, rather than user data in `recipes.db`. Same content-versus-your-data rule.
+  - **What a term links to.** Not an ingredient, so this is a THIRD kind of link alongside
+    `[[garlic]]` in step text and `ingredient_id` on an ingredient row. That is the part most likely
+    to force a schema decision.
+  - **Per-term or per-ingredient.** One pig diagram serves jowl, belly, shoulder and loin, so the
+    **diagram is the entity and the term is a marked point on it**, not the other way round.
+  Raised while drafting the twenty regional ingredient entries, where "jowl" was cut as jargon and
+  then restored as the word on the label at a deli counter.
 
 ## Cosmetic / nice-to-have polish
 

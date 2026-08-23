@@ -147,8 +147,10 @@ keep if anything has to be trimmed.
 Short over compound. One idea per sentence. Split a long sentence into two rather than joining it with
 punctuation. Vary the length enough that it does not read like a list.
 
-`[A]` For a library entry, treat **39 to 73 words** as adequate variation and stop optimising toward a
-mean. Forcing variation is the same disease as forcing uniformity.
+`[A]` For a library entry, **39 to 73 words describes the spread that exists, not a range to hit.** It
+is neither a floor nor a target. Do not pad an entry to reach the bottom of it, and do not trim one to
+stay inside the top. A naming entry with one fact in it is finished when the fact is stated. Forcing
+variation is the same disease as forcing uniformity.
 
 ### Concreteness `[A+B]`
 
@@ -157,7 +159,7 @@ something physical rather than a category noun**: "the used cookbook", "handwrit
 "the journal is the history".
 
 **Physical is necessary, not sufficient.** "Aged in earthenware" is physical and does no work, so it
-goes. "Salted so grocers can stock it without a liquor license" is physical and explains why the salt
+goes. "Salted to make it undrinkable, which takes it out of the liquor rules" is physical and explains why the salt
 is there, so it stays. The mechanism rule below is what separates them.
 
 `[A]` **Going vaguer is not simplifying.** A specific word swapped for a general one is a loss dressed
@@ -176,6 +178,11 @@ needs a gloss, add the gloss and keep the term.
 - **Gloss an unusual term at first use, in ordinary words.** Terms of art are fine and stay, but on
   surface A they stay only if they can be glossed in the same breath. Otherwise cut them.
 - Plain-language point first, then the detail. Concrete examples beat abstract definitions.
+- **Do not explain the fun fact.** A good fact does not need its lesson attached. Trust the reader to
+  take the point. "Salted to make it undrinkable, which takes it out of the liquor rules" is the interesting half.
+  Adding "which is why you taste before you season" explains the joke and takes it away. This rule and
+  the mechanism rule above divide cleanly. **An instruction that would otherwise be arbitrary earns
+  its reason. A fact that already implies the instruction does not need it spelled out.**
 
 ### Structural tics `[A+B]`, and stricter on `[A]`
 
@@ -287,6 +294,12 @@ How this project is run:
   tree-reset + font (trivial) → static render you can look at → wire comments → compose modal → demo
   seed — each stopping for review. The diagnostic-first and preview-first rules already govern the
   thinking; this governs the build's granularity.
+- **Say whose hours an estimate counts.** Every estimate here has at least two answers that differ by
+  tens. One is a person doing the work by hand. Another is the model drafting with Andy reviewing. Both
+  are real and they answer different questions, so state the basis in the estimate itself. The saving is
+  large for generation and search, and **near zero for anything needing senses or standing**, such as
+  verifying a photo, reading a physical label, or making a judgement about the world. Baseline, method
+  and the running tally live in **[docs/estimating.md](docs/estimating.md)**.
 - **Conventional Commits:** `feat` = new user-facing capability, `fix` = bug fix,
   `chore` = routine/inert groundwork; the summary line reflects what actually changed.
 - **Never push without explicit approval;** after an approved push, watch the GitHub
