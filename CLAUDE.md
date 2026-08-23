@@ -94,6 +94,152 @@ file rather than editing existing ones; `migrate.py` applies them safely.
 **Design** follows a Round 1 / Round 2 split; for the current stage and the reserved R2
 hooks, see `docs/design-decisions.md`.
 
+## Voice: the words in the app, and the words about it
+
+From the owner's two style guides. These rules are **stated, not derived.**
+
+An earlier version of this section derived its rules by measuring the 36 library descriptions in
+`seed.py` and the 35 error strings in `app.py`. Those were written by an earlier Claude Code session.
+They are an example of the voice being avoided, not evidence of it, so the measurement was circular
+and every number it produced is void. **Do not support, soften, or amend any rule below by measuring
+an existing string, and do not treat a shipped string as a precedent.** The 36 entries are
+model-written copy awaiting rewrite.
+
+### The surface split, which governs everything below
+
+The register changes with the surface. Every rule in this section is marked for the surface it
+governs.
+
+- **`[A]` UI microcopy and recipe headnotes.** Library and ingredient entries, refusal and error
+  messages, empty states, button labels, placeholders, guidance text, and anything generated into the
+  app. **Takes contractions and second person.**
+- **`[B]` Writing about the app.** README, `ROADMAP.md`, `docs/`, analysis, review files, commit
+  bodies, any capstone writeup. **Drops most of that and leans on the concrete numbers instead.**
+- **`[A+B]`** governs both.
+
+Guide one describes formal and technical writing. Guide two describes the deliverable voice for this
+project. **Where they differ, guide two wins on surface A.**
+
+### Punctuation and mechanics `[A+B]`
+
+Listed first because guide one says these are the rules that actually get checked, and the ones to
+keep if anything has to be trimmed.
+
+- **No em dashes.** Use commas, parentheses, or a new sentence.
+- **No semicolons.** Two sentences instead.
+- **No rhetorical mid-sentence colons** ("The reason is simple: ..."). Guide two states this flat.
+  Guide one's exceptions stand, because they are not rhetorical. A colon is fine after a run-in
+  heading, before a list, or introducing a URL or an equation.
+- **Do not open a sentence with Because, Although, While, or Since.** Restructure so the main clause
+  leads.
+- **US spelling**, everywhere. Color, flavor, savory, chili, labeled, centimeters, caramelized.
+- **Ranges written out in full**, everywhere. "235 to 256", not "235-256". Bracketed intervals like
+  [0.03, 0.97] keep their format.
+- **No Latin.** No a fortiori, no i.e., no vs. in prose.
+
+### Contractions and person
+
+- `[A]` Contractions are fine. Second person is fine. This is copy read mid-cook.
+- `[B]` Lighter on contractions. Lean on the concrete numbers instead.
+
+### Sentences `[A+B]`
+
+Short over compound. One idea per sentence. Split a long sentence into two rather than joining it with
+punctuation. Vary the length enough that it does not read like a list.
+
+`[A]` For a library entry, treat **39 to 73 words** as adequate variation and stop optimising toward a
+mean. Forcing variation is the same disease as forcing uniformity.
+
+### Concreteness `[A+B]`
+
+Specifics over abstractions, always. A number, a name, an object. When naming an idea, **anchor it in
+something physical rather than a category noun**: "the used cookbook", "handwriting in the margins",
+"the journal is the history".
+
+**Physical is necessary, not sufficient.** "Aged in earthenware" is physical and does no work, so it
+goes. "Salted so grocers can stock it without a liquor license" is physical and explains why the salt
+is there, so it stays. The mechanism rule below is what separates them.
+
+`[A]` **Going vaguer is not simplifying.** A specific word swapped for a general one is a loss dressed
+as a simplification. Two ingredients became two things, black pepper became pepper, ten to eighteen
+centimeters became the size of a small banana. Precise and plain are not in tension. Where a term
+needs a gloss, add the gloss and keep the term.
+
+### Explanations `[A+B]`, and stricter on `[A]` because the reader cannot look anything up
+
+- **Give the mechanism, not the restatement.** The test is whether removing it leaves the reader
+  asking *but why?*
+- **A technical term used as an explanation is not an explanation.** "The kelp brings glutamate and
+  the fish brings inosinate" reads as though it explains why the two together taste so savory, and it
+  only does for a reader who already knew. Say what the thing does. Two different savory compounds
+  multiply instead of adding up.
+- **Gloss an unusual term at first use, in ordinary words.** Terms of art are fine and stay, but on
+  surface A they stay only if they can be glossed in the same breath. Otherwise cut them.
+- Plain-language point first, then the detail. Concrete examples beat abstract definitions.
+
+### Structural tics `[A+B]`, and stricter on `[A]`
+
+A report is read once, top to bottom, so a repeated shape is a mild irritation. **A library is read as
+a list**, twenty entries stacked on one screen, so a repeated opening shape is visible in a way it
+never is in prose.
+
+- Do not repeat the same rhetorical shape across consecutive paragraphs, **especially "X, not Y" as an
+  opener.**
+- Do not stack claim-colon-elaboration sentences back to back.
+- Do not run several paragraphs of near-identical length and construction.
+
+### Avoid `[A+B]`
+
+- **Marketing register.** Elevate, seamless, journey, delight.
+- **Throat-clearing and hedges.** Start at the point. No *generally*, *typically*, *often considered*.
+  Where something genuinely varies, name what varies instead of softening the sentence.
+- **Gamification language.** Counts, streaks, leaderboards, perfection. **This is a product
+  constraint, not only a prose one.** See the achievements framing in
+  [docs/product-vision.md](docs/product-vision.md) and `ROADMAP.md`.
+- **Any line that flatters the reader for using the app.**
+- **Showy words.** Delve, crucial, notably, moreover, furthermore, leverage, utilize, underscore,
+  pivotal, landscape, realm, comprehensive, "it is worth noting." The test is whether a careful human
+  writer would use that word there.
+- **The other tells.** "not just X but Y", "that said", "the key is", triads and balanced clauses
+  built for cadence rather than content, explaining the obvious back to the reader, and sentences that
+  summarise what you just said instead of telling the reader something new.
+
+### Emotional register `[A+B]`
+
+Understated. **The feeling comes from the detail, not the adjective.** Warmth is allowed but has to be
+earned. **Record the care, never farm it.** The app does not congratulate, reassure, or narrate.
+
+### Numbers and evidence
+
+- `[B]` Say what was measured, at what sample size, with what uncertainty. State limitations plainly
+  and early rather than defending against them. Pull figures into the text rather than writing "see
+  Figure 3."
+- `[A+B]` Concrete figures over adjectives. **Distinguish a single-instance result from a general
+  one**, which on surface A means never stating one source's claim as settled fact.
+
+### Tone `[A+B]`
+
+Confident without overclaiming. Own weaknesses directly, because a stated limitation reads as rigor
+and a hedge reads as evasion. No filler. No summary that repeats what was just said.
+
+### Working process for prose
+
+Andy rewrites prose after a draft exists. **Hand him a complete draft to cut, never an outline and
+never three options.** Flag fragments and grammar problems, then let him make the final wording call.
+
+### Existing conventions in the code
+
+Match these so new strings sit beside old ones without looking foreign. They are a consistency
+constraint, **not evidence of the voice.** The strings they describe were model-written too.
+
+- Errors are lowercase with no terminal full stop.
+- Empty states name the absence and the next action, and nothing else. Never apologise for emptiness.
+  Never fill it with encouragement.
+- Pairings and lists are bare lists, with no framing sentence.
+
+The docs still use em dashes and semicolons heavily and are converted in one deliberate pass later.
+See the deferred entry under Known limitations and tech debt in `ROADMAP.md`.
+
 ## Working conventions
 
 How this project is run:
