@@ -16,6 +16,13 @@ static/images/*.webp
 # above doesn't recurse into this subdir, so ignore it explicitly (keeps runtime uploads out of commits).
 static/images/cooks/
 
+# The raw vocabulary store, built by build_sources_db.py. Six public food vocabularies
+# ingested whole and unmodified. Regenerable, large, and NOT owned by migrate.py or Alembic.
+sources.db
+sources.db-journal
+sources.db-wal
+sources.db-shm
+
 # Local backups (made by backup.py)
 backups/
 
