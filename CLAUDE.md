@@ -294,6 +294,13 @@ How this project is run:
   tree-reset + font (trivial) → static render you can look at → wire comments → compose modal → demo
   seed — each stopping for review. The diagnostic-first and preview-first rules already govern the
   thinking; this governs the build's granularity.
+- **Measure the shape of the data before writing the parser.** Six defects in one ingestion were the
+  same error: an assumption about the SHAPE of the data made instead of a measurement. An ASCII slug
+  that erased Cyrillic, a key that assumed no duplicates, a filter that assumed food is tagged as food
+  and silently missed 9 of the 10 terms it existed for. Before committing to a key or a filter, count
+  what it is unique over, count what fraction of records carry the field it needs, check it keeps the
+  terms the source was added for, and state the expected yield BEFORE running. The six cases and the
+  rule live in **[docs/measuring-the-premise.md](docs/measuring-the-premise.md)**.
 - **Say whose hours an estimate counts.** Every estimate here has at least two answers that differ by
   tens. One is a person doing the work by hand. Another is the model drafting with Andy reviewing. Both
   are real and they answer different questions, so state the basis in the estimate itself. The saving is
