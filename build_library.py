@@ -295,8 +295,13 @@ def apply_cuts(row, superclasses, off_parents):
             and set(superclasses.get(row["id"], [])) & set(CUTS.CULTIVAR_CLASSES)
             and len(row["sources"]) == 1 and row["n_variations"] == 0):
         marks.append("cultivar_register")
-    if row["anchor"] == "off_taxonomy" and len(row["sources"]) == 1:
-        marks.append("off_only")
+    # ⚠️ off_only USED TO FIRE HERE, on anchor == off_taxonomy and one source, and it
+    #    took 3,549 rows. REVERSED, and the measurement that killed it is recorded in
+    #    ingredient_cuts.DECLINED. It read "Open Food Facts is the only source" as
+    #    "therefore this is label vocabulary", which is a claim about source coverage
+    #    rather than about what a thing is. 56.7% of a read 60 were ordinary ingredients.
+    #    ⚠️ NOTHING REPLACES IT YET, and that is deliberate. Read the label rows and put
+    #    the verdicts in hand_removals.csv. A rule read back from evidence can come later.
     if (row["anchor"] == "off_taxonomy"
             and set(off_parents.get(row["id"], [])) & CUTS.OFF_FLAVOURING_PARENTS):
         marks.append("off_flavouring")
@@ -439,6 +444,8 @@ def annotate(rows, superclasses, off_parents):
                              f"'{t}' belongs to {', '.join(o)}"
                              for t, o in row["borrowed"][:3]))
         if len(row["sources"]) == 1:
+            # ⚠️ THIS IS A COVERAGE FACT, NOT A QUALITY ONE, and off_only was reversed for
+            #    reading it as the latter. Open Food Facts alone carries cumin seeds.
             flags.append("only one source says this exists "
                          f"({SOURCE_NAME[row['sources'][0]]})")
         if row["binomial"]:
@@ -480,7 +487,6 @@ CUT_RULE_TEXT = {
     "hand": "hand: removed by Andy, reason in 'What I was unsure about'",
     "cultivar_register": "cultivar register name: subclasses a Wikidata cultivar class, "
                          "one source, no variations",
-    "off_only": "OFF-only: reaches no Wikidata item and Open Food Facts is the only source",
     "off_flavouring": "OFF flavouring: parent is en:natural-flavouring or en:flavouring",
 }
 NOTES = {

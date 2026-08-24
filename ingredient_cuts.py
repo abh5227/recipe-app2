@@ -27,12 +27,13 @@ Measured, over the 11,153-row list:
 Shaoxing wine is single-source with zero variations. It is the exact shape those cuts
 were built to catch.
 
-The three cuts that shipped miss the overrides ONLY BY LUCK, not by design:
+The cuts miss the overrides ONLY BY LUCK, not by design:
 
     CULTIVAR_REGISTER  needs a Wikidata cultivar parent, and Shaoxing wine is
                        Wiktionary-anchored
-    OFF_ONLY           needs an OFF anchor, and Shaoxing wine has none
     OFF_FLAVOURING     needs an OFF flavouring parent
+    OFF_ONLY           needed an OFF anchor, and Shaoxing wine has none.
+                       ⚠️ REVERSED. See DECLINED at the foot of this file.
 
 Every one of those is an ANCHOR CLAUSE. It is what saved them.
 
@@ -91,10 +92,28 @@ NOT_NEEDED = {
 # Each carries the anchor clause that makes it safe, and the false positives it is known
 # to take, because a cut is judged on what it removes that should have stayed.
 # ─────────────────────────────────────────────────────────────────────────────────────
+# ⚠️ THE GLOSS IS THE VOCABULARY'S OWN LABEL, not a description written from memory.
+#    Four of these disagreed with vocab/wikidata-class-labels.json and one of the four,
+#    Q958314, fires on real rows while carrying the wrong name. Behavior never changed,
+#    the cut reads the key set. The comment was wrong about what the key was.
+#    The count is how many of the 32,146 vocabulary items name the class as a superclass.
 CULTIVAR_CLASSES = {
-    "Q15731356": "apple cultivar", "Q3395987": "cooking apple", "Q3395974": "table apple",
-    "Q12179886": "olive cultivar", "Q4886": "cultivar", "Q23501": "variety",
-    "Q4150646": "cultivar group", "Q958314": "landrace", "Q13094937": "grape variety",
+    "Q15731356": "apple cultivar",       # 2,068 subclasses
+    "Q3395987": "cooking apple",         #   450
+    "Q3395974": "table apple",           # 1,339
+    "Q12179886": "olive cultivar",       #   175
+    "Q4886": "cultivar",                 #   237
+    "Q4150646": "Group",                 #    28   was 'cultivar group'. The taxonomic
+                                         #         rank is named Group in Wikidata.
+    "Q958314": "grape variety",          #    24   ⚠️ was 'landrace', and this one FIRES,
+                                         #         on 2 of the 602. Kärnfria vindruvor
+                                         #         (Q19978855) is one of them, which is
+                                         #         Swedish for seedless grapes.
+    "Q23501": "⚠️ unverified",           #     0   absent from the class-label file, so
+    "Q13094937": "⚠️ unverified",        #     0   the gloss cannot be checked against
+                                         #         anything committed. Both fire on zero
+                                         #         rows. Left in place rather than
+                                         #         deleted, and NOT re-glossed by guess.
 }
 OFF_FLAVOURING_PARENTS = {"en:natural-flavouring", "en:flavouring"}
 
@@ -122,22 +141,6 @@ CUTS = {
              "language. They go because nothing but Wikidata knows them, not because "
              "they are unnamed.",
     ),
-    "off_only": dict(
-        anchor="off_taxonomy",
-        rule="the entry reaches no Wikidata item, AND Open Food Facts is the only source",
-        takes=3549,
-        why="Product-label and manufacturing vocabulary. Read 74 at random across two "
-            "passes: roughly half are additives, industrial forms and label phrases. "
-            "plant sterol ester, pregelatinized wheat starch, magnesium salts of citric "
-            "acid, natural colours, precooked pasta, 'pasteurised' (a process, not a "
-            "thing), 'no7'.",
-        threshold_note="The bluntest of the three and knowingly so.",
-        spares="everything any second source corroborates.",
-        known_false_positives="⚠️ ACCEPTED BY ANDY WITH THE COST NAMED. It takes casaba, "
-             "saucisses de Toulouse, brown flax seeds (17 variations), oeufs de lompe "
-             "rouges, dried whole egg, seedless raisin, cacao glaze, English sauce, "
-             "boyau naturel de porc. About half of what it removes should have stayed.",
-    ),
     "off_flavouring": dict(
         anchor="off_taxonomy",
         rule="the entry's Open Food Facts parent is en:natural-flavouring or en:flavouring",
@@ -145,23 +148,86 @@ CUTS = {
         why="The clearest non-ingredient class in Open Food Facts. natural vanilla "
             "flavouring, barbecue flavouring, chicken flavouring, natural onion "
             "flavouring. A cook never reaches for one.",
-        threshold_note="⚠️ 201 of the 203 are already inside off_only. It is kept as its "
-             "own named rule so that reversing off_only does not silently bring the "
-             "flavourings back with everything else. It adds exactly two rows on its own, "
-             "'flavouring preparation' and 'lemon flavouring', both two-source.",
+        threshold_note="⚠️ THIS IS THE RULE THAT PAID FOR ITSELF. 201 of the 203 were "
+             "also inside off_only, which made it look 99% redundant. It was kept as its "
+             "own named rule so that reversing off_only would not silently bring the "
+             "flavourings back with everything else, and off_only was then reversed. All "
+             "203 still go, on this rule alone. Keep a redundant cut whose anchor differs.",
         spares="anything Wikidata also carries.",
-        known_false_positives="none found on reading.",
+        known_false_positives="⚠️ ONE, FOUND ON READING ALL 203 rather than a sample. "
+             "'bitter almond extract' is a baking ingredient and Open Food Facts files it "
+             "under en:natural-flavouring, so this rule takes it. Two more are arguable "
+             "and cost nothing: 'pizza seasoning' is a blend, not a flavouring, and "
+             "'natural smoke flavouring' is liquid smoke, which is separately KEPT with "
+             "five sources. ⚠️ The extract is the one that matters, because 'almond "
+             "extract' is not in the library under any spelling while 'vanilla extract' "
+             "is kept. Reversing off_only does NOT fix it. Only a hand override or an "
+             "exception on this rule would.",
     ),
 }
 
-# ⚠️ DROPPED AFTER MEASUREMENT, recorded so it is not re-proposed.
-#    no_english_anywhere: single source and no English name anywhere, 1,448 rows.
-#    840 of them, 58%, were already inside off_only, and the 608 it added beyond that
-#    were ordinary ingredients named in French, German, Dutch, Basque and Finnish.
-#    barde de porc is pork fatback. Federkohl is kale. Sal de gusano is a Mexican worm
-#    salt. The cut finds non-English rather than junk.
+# ─────────────────────────────────────────────────────────────────────────────────────
+# ⚠️ DROPPED AFTER MEASUREMENT, recorded so none of them is re-proposed. Same shape as
+#    CUTS, plus the measurement that killed the rule, because whoever writes the
+#    replacement needs to know exactly what the old one claimed and how it failed.
+# ─────────────────────────────────────────────────────────────────────────────────────
 DECLINED = {
-    "no_english_anywhere": "finds non-English rather than junk. 58% redundant with "
-                           "off_only and the remainder are ordinary ingredients named "
-                           "locally.",
+    "off_only": dict(
+        anchor="off_taxonomy",
+        rule="the entry reaches no Wikidata item, AND Open Food Facts is the only source",
+        took=3549,
+        why="⚠️ THE PREMISE WAS WRONG, NOT THE THRESHOLD, so no threshold could have "
+            "saved it. The rule read 'Open Food Facts is the only source' as 'therefore "
+            "this is label vocabulary'. That is a claim about source coverage, not about "
+            "what a thing is. Open Food Facts is a food database. Being the only source "
+            "that carries a term is not evidence the term is industrial.",
+        measurement="A fresh random 60, read one at a time and CLASSIFIED. The earlier "
+            "50-row read asked only whether a cook would recognize the thing, and 'cumin "
+            "seeds' passes that test and was cut anyway, so the earlier reading could not "
+            "surface this.\n"
+            "    ordinary ingredient   34 of 60   56.7%   95% CI [44.1%, 68.4%]\n"
+            "    label or additive     23 of 60   38.3%   95% CI [27.1%, 51.0%]\n"
+            "    obscure regional       2 of 60    3.3%\n"
+            "    something else         1 of 60    1.7%\n"
+            "  ⚠️ The ordinary half splits about one to one, and the second half is the "
+            "part nobody had a box for:\n"
+            "    W1  17  the SAME shopping item as a kept entry, wearing a state or label "
+            "word. fresh dill, raw balsam-pear pods, plain yogurt, large eggs. Cutting it "
+            "loses a phrasing.\n"
+            "    W2  17  a DIFFERENT shopping item whose general term is kept. rye malt "
+            "flour, tarragon vinegar, dehydrated beef stock, pumpkin seed flour, lamb "
+            "kidneys, vanilla powder. Cutting it loses the ingredient.\n"
+            "  Projected onto the 3,549: 2,011 ordinary ingredients, 95% CI [1,565, 2,429].",
+        cost="⚠️ MEASURED AGAINST THE APP, NOT AGAINST A SAMPLE. recipes.db holds 1,638 "
+            "distinct normalized ingredient terms over 2,997 lines. 273 reach any row at "
+            "all, and 19 of those, over 53 lines, reached ONLY a row this rule had cut. "
+            "All 19 are ordinary ingredients, and all 19 came from this rule. The other "
+            "two cuts took none: cumin seeds (20 lines), ground ginger, ground nutmeg, "
+            "light brown sugar, sea salt flakes, fresh thyme, long grain white rice, firm "
+            "tofu, dried marjoram, brown basmati rice, plain yogurt, brown lentils, "
+            "semisweet chocolate chips, dried lentils, dark brown sugar, medium grain "
+            "white rice, white basmati rice, mint leaves, white sesame seeds.",
+        asymmetry="⚠️ THE TWO ERRORS DO NOT COST THE SAME, which is why the calibration "
+            "question never had to be settled. A label row kept costs nothing, because "
+            "nobody writes 'pregelatinized wheat starch' in a recipe. A real ingredient "
+            "cut costs a match.",
+        no_replacement="⚠️ NO REPLACEMENT RULE WAS WRITTEN, ON PURPOSE. Two candidates "
+            "were measured against the labeled 60 first. A near-neighbor name rule "
+            "(strip seeds, powder, ground, whole, fresh, dried, leaves, oil and match a "
+            "kept name) scored 100% precision at 15% recall strict and 29% loose, so it "
+            "would have left 1,500 to 1,900 ordinary ingredients cut. Reading the entry's "
+            "own Open Food Facts parent instead scored 97% recall at 66% precision, and "
+            "dragged a third of the label vocabulary back with it. Neither is the rule. "
+            "The label class is about 1,359 rows, which is readable, and "
+            "hand_removals.csv is where that reading persists.",
+    ),
+    "no_english_anywhere": dict(
+        anchor="none, and that was the defect",
+        rule="one source and no English name anywhere",
+        took=1448,
+        why="Finds non-English rather than junk. 840 of the 1,448, 58%, were already "
+            "inside off_only, and the 608 it added beyond that were ordinary ingredients "
+            "named in French, German, Dutch, Basque and Finnish. barde de porc is pork "
+            "fatback. Federkohl is kale. Sal de gusano is a Mexican worm salt.",
+    ),
 }

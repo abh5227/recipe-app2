@@ -19,6 +19,8 @@ WHAT THE SIX SAMPLES WERE FOR, and which threshold each one set:
                                    abbreviations and homographs that obscure terms do not.
   2  60 Wiktionary candidates      killed the Wiktionary anchor. 57 to 75% wrong.
   3  50 OFF-only entries           set the off_only cut. Roughly half label vocabulary.
+                                   ⚠️ THE CUT IT SET WAS LATER REVERSED. The reading
+                                   below stands as read. See ingredient_cuts.DECLINED.
   4  50 from the low group         found the cultivar category, which no cut designed
                                    against the stated impression would have reached.
   5  35 distinct-Wikidata merges   set the apostrophe policy in build_join.py.norm_name.
@@ -131,6 +133,13 @@ WIKTIONARY_SAMPLE = {
 # SAMPLE 3. Fifty OFF-only entries, random, seed 20260824. Roughly half are label,
 # industrial or additive vocabulary. This is what set the off_only cut AND what priced it:
 # the other half are things a cook would recognise, and they go too.
+#
+# ⚠️ POINTER, NOT A CORRECTION. THE CUT THIS SAMPLE SET WAS REVERSED. Nothing below is
+#    edited, because what was read and what was concluded from it are two different
+#    records and only the second one was wrong. The reversal, the premise error and the
+#    60-row measurement that replaced this reading live in ingredient_cuts.DECLINED
+#    under 'off_only'. The question this sample asked, "would a cook recognise this",
+#    is also what limited it: 'cumin seeds' passes that test and was cut anyway.
 # ─────────────────────────────────────────────────────────────────────────────────────
 OFF_ONLY_SAMPLE = {
  "label, industrial or additive": ["chromium picolinate", "magnesium bisglycinate",
