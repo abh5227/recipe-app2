@@ -65,3 +65,17 @@ venv/
 # Editor / OS noise
 .vscode/
 .DS_Store
+
+# The name buckets over sources.db, built by build_join.py. Derived, rebuildable in
+# 40 seconds from sources.db, and ~900 MB. Never committed.
+#
+# join-narrow-1.db is the superseded rule_version, kept so the 200-bucket error rate and
+# the English-gloss measurement stay reproducible against the artifact they were taken on.
+join.db
+join.db-journal
+join.db-wal
+join.db-shm
+join-*.db
+join-*.db-journal
+join-*.db-wal
+join-*.db-shm
