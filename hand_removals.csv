@@ -1,0 +1,22 @@
+# hand_removals.csv — Andy's removals, read by build_library.py on every build.
+#
+# ⚠️ THIS FILE IS THE DECISION. The spreadsheet is regenerated and cannot hold it.
+#    Mark "My call" and "My note" in the sheet, then run:  python3.13 harvest_marks.py
+#    That writes these rows. Editing by hand works too, the columns are below.
+#
+# anchor    wikidata | off_taxonomy | wiktextract. The left half of the key.
+# id        the source's OWN identifier, verbatim. Q23400, en:cassava. NOT the name.
+#           ⚠️ (anchor, id) is unique over all 11,153 entries. The canonical name is
+#              NOT: 69 names are used by more than one entry.
+# action    drop             the whole entry goes
+#           drop_variation   one named variation goes, named in the variation column
+#           trim_alias_only  every alias-only variation on that entry goes, one row
+#                            instead of listing forty-four
+# variation only for drop_variation. The name to remove, verbatim.
+# reason    ⚠️ REQUIRED. A row with no reason is rejected by the build, the same way
+#           ingredient_cuts.OVERRIDES refuses an override without one.
+# marked    the date, so a stale decision is visible as stale.
+#
+# A removal that matches no generated entry is DANGLING. The build lists those every
+# run and does not fail, because the commonest cause is a rule already doing the job.
+anchor,id,action,variation,reason,marked

@@ -22,7 +22,10 @@ WHAT IT READS
                        filter reads OFF's stored names and matched nothing.
     vocab/*.json       the classification model. ⚠️ CANNOT BE REGENERATED, see vocab/README.md
     ingredient_cuts.py the cut rules and the override list
-    reviewed.py        the 250 hand-read verdicts
+    reviewed.py        the 265 hand-read verdicts
+    hand_removals.csv  ⚠️ Andy's removals. THE DECISION LIVES THERE, NOT IN THE SHEET,
+                       because the sheet is regenerated. Marked in the spreadsheet and
+                       pulled back by harvest_marks.py.
 
 WHAT IS REPRODUCIBLE AND WHAT IS NOT. Given the same join.db and the same vocab/ this
 script is deterministic and rebuilds the sheet exactly. What it CANNOT rebuild is the
@@ -60,12 +63,15 @@ anchor it shares the most buckets with.
 """
 import collections, json, os, pickle, re, sqlite3, sys, unicodedata
 
+import csv
+
 import ingredient_cuts as CUTS
 try:
     import reviewed
 except ImportError:                                   # the verdicts are optional to run
     reviewed = None
 
+HAND_REMOVALS = os.environ.get("HAND_REMOVALS", "hand_removals.csv")
 JOIN_DB = os.environ.get("JOIN_DB", "join.db")
 SOURCES_DB = os.environ.get("SOURCES_DB", "sources.db")
 VOCAB = os.environ.get("VOCAB_DIR", "vocab")
@@ -223,12 +229,68 @@ def english_names(variations):
                    for source, _, lang in tags)}
 
 
+def load_removals(path=HAND_REMOVALS):
+    """Andy's hand removals, keyed on (anchor, id).
+
+    ⚠️ (anchor, id) IS THE KEY BECAUSE THE CANONICAL NAME IS NOT UNIQUE. Measured over
+    11,153 entries: zero (anchor, id) collisions, and 69 canonical names used by more
+    than one entry. The id is the SOURCE'S OWN identifier, a Q-number or an OFF slug,
+    not something this file invents.
+
+    ⚠️ A ROW WITH NO REASON IS REJECTED, the same rule as ingredient_cuts.OVERRIDES."""
+    if not os.path.exists(path):
+        return {}, []
+    with open(path, encoding="utf-8") as fh:
+        rows = list(csv.DictReader(l for l in fh if not l.startswith("#")))
+    removals, rejected = collections.defaultdict(list), []
+    for row in rows:
+        if not (row.get("reason") or "").strip():
+            rejected.append(row)
+            continue
+        removals[(row["anchor"], str(row["id"]))].append(row)
+    return dict(removals), rejected
+
+
+def apply_removals(rows, removals):
+    """Mark entries 'hand' and trim variations. Nothing is deleted: a dropped entry moves
+    to the cut sheet with the reason, and a trimmed name is recorded on the row it left."""
+    seen = set()
+    for row in rows:
+        key = (row["anchor"], str(row["id"]))
+        row["hand_reasons"], row["trimmed"] = [], []
+        for rule in removals.get(key, ()):
+            seen.add(key)
+            action, reason = rule["action"], rule["reason"].strip()
+            if action == "drop":
+                row["hand_reasons"].append(reason)
+            elif action == "drop_variation":
+                name = (rule.get("variation") or "").strip()
+                if name in row["variations"] and name != row["canonical"]:
+                    del row["variations"][name]
+                    row["trimmed"].append(f"{name} ({reason})")
+            elif action == "trim_alias_only":
+                gone = [t for t, tags in row["variations"].items()
+                        if t != row["canonical"]
+                        and all(k in ALIAS_KINDS for _, k, _ in tags)]
+                for name in gone:
+                    del row["variations"][name]
+                if gone:
+                    row["trimmed"].append(
+                        f"{len(gone)} alias-only variation(s) ({reason}): "
+                        + ", ".join(gone[:8]) + (" ..." if len(gone) > 8 else ""))
+        row["n_variations"] = len(row["variations"]) - 1
+    dangling = [r for key, rules in removals.items() if key not in seen for r in rules]
+    return rows, dangling
+
+
 def apply_cuts(row, superclasses, off_parents):
     """⚠️ EVERY CUT NAMES AN ANCHOR. Read the anchor clause in ingredient_cuts.py before
     adding one: a cut phrased only as "single source and no variations" removes every
     override at once, because an override exists precisely because nothing corroborates
     the term."""
     marks = []
+    if row.get("hand_reasons"):
+        marks.append("hand")                          # ⚠️ Andy's call outranks every rule
     if (row["anchor"] == "wikidata"
             and set(superclasses.get(row["id"], [])) & set(CUTS.CULTIVAR_CLASSES)
             and len(row["sources"]) == 1 and row["n_variations"] == 0):
@@ -365,6 +427,10 @@ def annotate(rows, superclasses, off_parents):
         row["cut_by"] = apply_cuts(row, superclasses, off_parents)
 
         flags = []
+        for reason in row.get("hand_reasons", ()):
+            flags.append(f"REMOVED BY HAND: {reason}")
+        for note in row.get("trimmed", ()):
+            flags.append(f"VARIATIONS TRIMMED BY HAND: {note}")
         if row["override"]:
             flags.append("ADMITTED BY HAND. See 'Why it is in the list' for the reason.")
         if row["borrowed"]:
@@ -411,6 +477,7 @@ def annotate(rows, superclasses, off_parents):
 # owner's call, and every header carrying its own caveat as a cell comment.
 # ─────────────────────────────────────────────────────────────────────────────────────
 CUT_RULE_TEXT = {
+    "hand": "hand: removed by Andy, reason in 'What I was unsure about'",
     "cultivar_register": "cultivar register name: subclasses a Wikidata cultivar class, "
                          "one source, no variations",
     "off_only": "OFF-only: reaches no Wikidata item and Open Food Facts is the only source",
@@ -578,6 +645,57 @@ def write_sheet(rows, path):
     return len(kept), len(cut), len(rule2)
 
 
+def guard_unharvested(path, removals):
+    """⚠️ REFUSE TO OVERWRITE A SHEET CARRYING MARKS THE CSV HAS NOT SEEN.
+
+    This is the whole reason marking in the spreadsheet is safe to recommend. Mark forty
+    rows, forget to harvest, rebuild, and the reading would be gone. That is the exact
+    failure that moved the overrides out of a scratchpad, so the build stops instead."""
+    if not os.path.exists(path):
+        return
+    try:
+        import openpyxl
+        import harvest_marks
+    except ImportError:
+        return
+    book = openpyxl.load_workbook(path, read_only=True)
+    unseen, heads = [], None
+    for ws in book:
+        for i, values in enumerate(ws.iter_rows(values_only=True), 1):
+            if i == 2:
+                heads = {str(v): j for j, v in enumerate(values) if v}
+                continue
+            if i < 3 or heads is None:
+                continue
+            def cell(name):
+                j = heads.get(name)
+                return values[j] if j is not None and j < len(values) else None
+            call = cell("My call")
+            if not (call and str(call).strip()):
+                continue
+            action, extra = harvest_marks.parse_call(str(call))
+            if action in (None, "keep"):
+                continue
+            parts = str(cell("Anchored on") or "").split()
+            anchor = harvest_marks.SOURCE_KEY.get(parts[0]) if parts else None
+            if anchor is None:
+                continue
+            key = (anchor, " ".join(parts[1:]))
+            if not any(r["action"] == action and (r.get("variation") or "") == extra
+                       for r in removals.get(key, ())):
+                unseen.append((cell("Ingredient"), call))
+    if unseen:
+        listed = "\n".join(f"      {n!r} marked {c!r}" for n, c in unseen[:12])
+        more = f"\n      ... and {len(unseen) - 12} more" if len(unseen) > 12 else ""
+        raise SystemExit(
+            f"⚠️  REFUSING TO OVERWRITE {path}.\n"
+            f"  It carries {len(unseen)} mark(s) that hand_removals.csv has not recorded, "
+            "and rebuilding would discard them:\n"
+            f"{listed}{more}\n\n"
+            "  Run this first, then rebuild:\n"
+            "      python3.13 harvest_marks.py")
+
+
 def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
     def say(*a):
         if verbose:
@@ -615,15 +733,35 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
         for parent in parents:
             subclass_count[parent] += 1
     rows = add_overrides(rows, by_entry, by_bucket, kinds, subclass_count)
+
+    removals, rejected = load_removals()
+    rows, dangling = apply_removals(rows, removals)
     rows = annotate(rows, superclasses, off_parents)
 
     say(f"\nentries: {len(rows):,}")
     for reason, n in dropped.most_common():
         say(f"  removed by kind: {n:5,d}  {reason}")
     marks = collections.Counter(m for r in rows for m in r["cut_by"])
-    for name, n in marks.items():
-        say(f"  marked {name:20s} {n:5,d}   (ingredient_cuts.py records "
-            f"{CUTS.CUTS[name]['takes']:,})")
+    for name, n in sorted(marks.items()):
+        # ⚠️ 'hand' is Andy's call, not a rule in ingredient_cuts.py, so there is no
+        #    recorded count to reconcile against and asking for one is a KeyError.
+        recorded = CUTS.CUTS.get(name, {}).get("takes")
+        note = f"   (ingredient_cuts.py records {recorded:,})" if recorded else \
+               "   (hand removals, reasons in hand_removals.csv)"
+        say(f"  marked {name:20s} {n:5,d}{note}")
+    n_removals = sum(len(v) for v in removals.values())
+    say(f"  hand removals read: {n_removals:,} over {len(removals):,} entries")
+    for row in rejected:
+        say(f"  ⚠️  REJECTED, no reason given: {row.get('anchor')} {row.get('id')} "
+            f"{row.get('action')}. A removal without a reason is not applied.")
+    if dangling:
+        # ⚠️ REPORTED, NEVER FATAL. The commonest cause is a rule already dropping the
+        #    entry, which is good news. Silence is what rots, so it prints every build.
+        say(f"  ⚠️  {len(dangling)} DANGLING removal(s): the entry is no longer generated, "
+            "so the removal did nothing. A rule may have done the job first, or a key "
+            "may have shifted.")
+        for row in dangling[:15]:
+            say(f"        {row['anchor']} {row['id']} {row['action']}  ({row['reason'][:60]})")
     say(f"  override list size: {len(CUTS.OVERRIDES)}   "
         "⚠️ if this passes a few dozen the anchor rule is drawn in the wrong place")
 
@@ -640,6 +778,7 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
                          "in ingredient_cuts.py.")
     say("  anchor-clause check: every override survives every cut")
 
+    guard_unharvested(out, removals)
     kept, cut, rule2 = write_sheet(rows, out)
     say(f"\nwrote {out}")
     say(f"  ingredients (kept)       {kept:6,d}")
