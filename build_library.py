@@ -1146,6 +1146,13 @@ def mark_strength(rows):
     copies the answer onto each member. That is the THIRD time the missing parent-child
     link has surfaced: the dish separation needed it, the category rows needed it, and now
     this. It is a schema gap rather than a data defect.
+
+    ⚠️ IT HAS NOW SURFACED FIVE TIMES AND THE FIFTH IS THE CLEAREST. The tomato family
+    varies on cultivar, cut and preservation at once, independently, and the sources have
+    enumerated six of the roughly 800 combinations those three axes allow. 62 tomato rows
+    exist and one carries a recipe line. 9 families vary on five axes and cheese is the
+    largest at 163 rows against 33,600 combinations. All five surfacings, the arithmetic
+    and what a model would have to hold are in docs/parent-child-gap.md.
     """
     families = collections.defaultdict(list)
     for i, row in enumerate(rows):

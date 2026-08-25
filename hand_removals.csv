@@ -20,3 +20,6 @@
 # A removal that matches no generated entry is DANGLING. The build lists those every
 # run and does not fail, because the commonest cause is a rule already doing the job.
 anchor,id,action,variation,reason,marked
+wikidata,Q36465,drop_variation,Plain flour,"⚠️ THE AMERICAN READING. plain flour is UK for all-purpose flour and that row carries it too, so 3 recipe lines landed on whichever of the two won. The general flour row is not the specific product.",2026-08-25
+wikidata,Q27938,drop_variation,green onion,"⚠️ THE AMERICAN READING. green onion is US for scallion and that row carries it too. A Welsh onion is a different Allium and should not answer for it.",2026-08-25
+wikidata,Q229385,drop_variation,Japanese soy sauce,"⚠️ THE AMERICAN READING is not what settles this one, the specificity is: Japanese soy sauce IS shōyu and that row carries the name. The general soy sauce row should not answer for one country's product.",2026-08-25
