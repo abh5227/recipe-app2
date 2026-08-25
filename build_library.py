@@ -66,6 +66,12 @@ import collections, json, os, pickle, re, sqlite3, sys, unicodedata
 import csv
 
 import ingredient_cuts as CUTS
+# ⚠️ THE SAME KEY THE JOIN USES, AND THE SAME KEY A RECIPE LABEL WILL BE MATCHED ON.
+#    Two rows answering to one name is only a defect under the key the lookup will use,
+#    so the name rules below key on norm_name rather than on casefold(). Measured:
+#    casefold finds 1,260 pairs where norm_name finds 1,301, a difference of 41 that is
+#    entirely hyphens, brackets and apostrophes.
+from build_join import norm_name
 try:
     import reviewed
 except ImportError:                                   # the verdicts are optional to run
@@ -86,6 +92,8 @@ PRIMARY_KINDS = {"word", "label", "prefLabel", "canonical_name", "name", "articl
 ALIAS_KINDS = {"synonym", "alt_of", "form", "altLabel"}
 FIELD_NAME = {"synonym": "synonym", "alt_of": "alternative form", "form": "word form",
               "altLabel": "alias", "alias": "alias", "redirect": "redirect",
+              # ⚠️ NO SOURCE WROTE THIS ONE. See build_library.strip_as_food.
+              "derived": "DERIVED HERE, no source wrote it",
               **{k: "primary name" for k in PRIMARY_KINDS}}
 
 INGREDIENT = "Ingredient or foodstuff"
@@ -371,6 +379,160 @@ def apply_removals(rows, removals):
     return rows, dangling
 
 
+# ─────────────────────────────────────────────────────────────────────────────────────
+# Name resolution: which row answers to a name that two rows carry.
+#
+# Measured over the 11,153 rows before any of this ran: 1,301 (holder, name) pairs where
+# a name on one row is ANOTHER row's canonical, and 490 of 2,997 recipe ingredient lines,
+# 16.3%, hit a name that more than one row carries. That is the only group where the app
+# gives a WRONG answer rather than no answer, so it is worth a rule where the rest is not.
+#
+# ⚠️ NOTHING IS DELETED HERE. A name that leaves a row is recorded ON the row it left with
+#    the rule that moved it, the same way a cut row keeps its mark, so it reads back and
+#    reverses by name.
+#
+# ⚠️ AND NO NAME STOPS RESOLVING, BY CONSTRUCTION. A pair only exists when another row
+#    already claims that name as its CANONICAL, so every name taken off a holder still
+#    answers, to the row that owns it. Measured across the whole pipeline: 1,262 of 2,997
+#    recipe lines match a library name before and after, and 963 of them land on a
+#    canonical before and after. Both figures are unchanged to the line.
+# ─────────────────────────────────────────────────────────────────────────────────────
+AS_FOOD = " as food"
+DERIVED = "derived"          # ⚠️ NOT A SOURCE FIELD. See strip_as_food.
+
+
+def strip_as_food(rows):
+    """Wikidata's "X as food" items name the food rather than the animal, and the suffix
+    is Wikidata's disambiguator rather than a word a cook writes.
+
+    ⚠️ THE SUFFIX COMES OFF ONLY WHERE THE STEM IS FREE. 106 rows carry it. On 19 the bare
+    stem is ALREADY another row's canonical, and those 19 are exactly the rows where the
+    distinction is doing work: 'lobster as food' against 'lobster', 'oyster as food'
+    against 'oyster', 'goose as food' against 'goose', 'clam as food' against 'clam'.
+    Wikidata holds the animal and the food as separate items and the library holds both,
+    so a strip there would collide two real rows rather than rename one. Those 19 are a
+    MERGE decision and they are left alone. 'egg as food' is one of them, and it carries
+    46 of the 48 recipe lines the whole group reaches.
+
+    The other 87 collide with nothing: blue marlin, crabgrass, geoduck, razor shell,
+    blood vessel, lily bulb, shipworm, hagfish.
+
+    ⚠️ THE STRIPPED NAME IS MARKED 'derived' RATHER THAN GIVEN A SOURCE FIELD, because no
+    source wrote it. It is this file removing four characters, which is CURATED under
+    docs/sourcing-tiers.md, and the variations cell has to say so or the row would read as
+    though Wikidata had labelled it that."""
+    owned = {norm_name(row["canonical"]) for row in rows}
+    stems = collections.Counter(norm_name(row["canonical"][:-len(AS_FOOD)])
+                                for row in rows
+                                if row["canonical"].casefold().endswith(AS_FOOD))
+    renamed = []
+    for row in rows:
+        if not row["canonical"].casefold().endswith(AS_FOOD):
+            continue
+        stem = row["canonical"][:-len(AS_FOOD)]
+        if norm_name(stem) in owned or stems[norm_name(stem)] > 1:
+            continue                                  # the 19. A merge, not a rename.
+        row["variations"].setdefault(stem, set()).add((row["anchor"], DERIVED, "en"))
+        row["renamed_from"] = row["canonical"]
+        row["canonical"] = stem
+        row["n_variations"] = len(row["variations"]) - 1
+        renamed.append(row)
+    return renamed
+
+
+def resolve_borrowed(rows, superclasses, off_parents):
+    """Take a name off a row when another row owns it as that row's canonical.
+
+    RULE 1, A REDIRECT LOSES TO A CANONICAL AND WINS AGAINST NOTHING. A name supplied only
+    by wikipedia_redirect leaves a row that another row claims as canonical. A redirect is
+    a pointer to an article, not a claim that the target IS the thing, and en.wikipedia
+    redirects 'Salmon' at 'Atlantic salmon' without saying they are the same fish.
+
+    ⚠️ THE SECOND HALF OF THE RULE IS WHAT KEEPS THE SOURCE WORTH HAVING. Nothing is taken
+    from a redirect that is the only source for a name. wikipedia_redirect supplies 15,309
+    unique names over 947 recipe lines, and 14,773 of them over 608 lines are uncontested,
+    so the rule keeps 96.5% of what the source uniquely gives and takes 3.5%. Every
+    collapse term survives: Heeng, Windmill cookie, gochugaru, doubanjiang, guanciale,
+    pekmez, za'atar, speculaas are all redirect-only and all uncontested.
+
+    RULE 2, THE GENERAL TERM LEAVES THE SPECIFIC HOLDER. A name whose words are a strict
+    subset of the holder's own canonical leaves it: 'salt' off 'sea salt', 'olive oil' off
+    'extra virgin olive oil', 'milk' off "cow's milk". The specific row is not the general
+    thing and it should not answer for it.
+
+    Measured over the kept rows. Rule 1 alone takes 509 names, rule 2 alone takes 112,
+    and 37 pairs are in BOTH, so the two together take 584 rather than 621. In the build,
+    which resolves the cut rows as well and runs the rename first, rule 1 takes 500 and
+    rule 2 takes the remaining 76.
+
+    ⚠️ THE OVERLAP IS WHY RULE 2's HEADLINE NUMBER SHRINKS. Measured alone, rule 2 returns
+    436 recipe lines and its largest single gain is 'olive oil' +117 off 'extra virgin
+    olive oil'. Every one of those 117 is already returned by rule 1, which sees the same
+    pair first because en.wikipedia is the only source that put 'olive oil' on that row.
+    Behind rule 1, rule 2's gains are salt +156, sugar +44, egg +39, milk +22, oil +11,
+    pepper +10, paprika +8, rice +4. ⚠️ SIX OF THE EIGHT ARE AUTHORED ROWS THAT DID NOT
+    EXIST BEFORE STAGE 1. Rule 2 is worth almost nothing without authored_rows.csv,
+    because there was no general row for the general term to go to.
+
+    ⚠️ WHAT THIS DOES NOT REACH, AND IT IS 732 PAIRS. Neither rule touches a pair whose two
+    names share no word and where no source is a redirect. 'peppercorn' holding 'pepper'
+    has AGROVOC, Open Food Facts, Wikidata and Wiktionary behind it and they are not
+    wrong. 'cabbage' holding 'water' has Open Food Facts behind it and is. Source count
+    does not separate the two, so they are read by hand rather than ruled on."""
+    moved = collections.Counter()
+    # ⚠️ A CUT ROW NEVER WINS A NAME, AND WITHOUT THIS GUARD TWO DID. 'Red Rome' moved off
+    #    'Rome' and 'Bohnapfel' off 'Rheinischer Bohnapfel', both to rows the cultivar
+    #    register then cut, which would have taken the two names out of the library
+    #    altogether. Neither reaches a recipe line, so the cost was zero and the claim
+    #    above was still false. The marks are computed here on the PRE-resolution row,
+    #    which is safe in one direction: resolving only removes names, so it can push a
+    #    row INTO a cut and never out of one.
+    cut = [bool(apply_cuts(row, superclasses, off_parents)) for row in rows]
+    canonical = collections.defaultdict(list)
+    for i, row in enumerate(rows):
+        if not cut[i]:
+            canonical[norm_name(row["canonical"])].append(i)
+
+    for i, row in enumerate(rows):
+        row.setdefault("resolved", [])
+        head = set(norm_name(row["canonical"]).split())
+        for text in list(row["variations"]):
+            key = norm_name(text)
+            if key == norm_name(row["canonical"]):
+                continue
+            owners = [j for j in canonical.get(key, ()) if j != i]
+            if not owners:
+                continue                              # a redirect wins against nothing
+            tags = row["variations"][text]
+            if all(source == "wikipedia_redirect" for source, _, _ in tags):
+                rule = "redirect loses to a canonical"
+            elif set(key.split()) < head:
+                rule = "the general term leaves the specific holder"
+            else:
+                continue
+            del row["variations"][text]
+            row["resolved"].append((text, rows[owners[0]]["canonical"], rule))
+            moved[rule] += 1
+
+    for row in rows:
+        # ⚠️ RECOMPUTED, NOT LEFT STALE. A name that belongs to another row was never
+        #    evidence for this one, so the source that supplied only that name stops
+        #    counting here. Measured: 14 rows change source count and 4 fall to a single
+        #    source (camembert de Normandie, wild carrot, pesto variants, Dutch Mimolette),
+        #    which correctly moves all four into the one-source flag.
+        row["n_variations"] = len(row["variations"]) - 1
+        if row["authored"]:
+            # ⚠️ AN AUTHORED ROW KEEPS ITS EMPTY sources, WHICH IS THE POINT OF add_authored.
+            #    Recomputing from the tags would put the placeholder word 'authored' into
+            #    the source list, where it would read as a source name and would fire the
+            #    "only one source says this exists" flag on a row that has none.
+            continue
+        row["sources"] = sorted({s for tags in row["variations"].values() for s, _, _ in tags})
+        row["languages"] = sorted({l for tags in row["variations"].values()
+                                   for _, _, l in tags if l})
+    return moved
+
+
 def apply_cuts(row, superclasses, off_parents):
     """⚠️ EVERY CUT NAMES AN ANCHOR. Read the anchor clause in ingredient_cuts.py before
     adding one: a cut phrased only as "single source and no variations" removes every
@@ -533,6 +695,13 @@ def annotate(rows, superclasses, off_parents):
         if row["authored"]:
             flags.append("AUTHORED BY HAND AND UNSOURCED. No source in the store has this "
                          "term. GENERATED under docs/sourcing-tiers.md until traced.")
+        if row.get("renamed_from"):
+            flags.append(f"RENAMED from '{row['renamed_from']}'. Wikidata's 'as food' "
+                         "suffix is its own disambiguator, and no row claims the stem.")
+        if row.get("resolved"):
+            flags.append(f"{len(row['resolved'])} name(s) moved to the row that owns "
+                         "them: " + "; ".join(f"'{t}' -> {o} ({why})"
+                                              for t, o, why in row["resolved"][:3]))
         if row["borrowed"]:
             flags.append(f"holds {len(row['borrowed'])} name(s) another entry claims as "
                          "its own: " + "; ".join(
@@ -647,6 +816,12 @@ NOTES = {
    "CANNOT DECIDE THEM. cheese has 86 children in OFF's tree, fruit 78, honey 44, rice 34.",
  "why": "Which admission rule let it in, or the recorded reason for a hand-added override.",
  "how": "How the canonical name was chosen.",
+ "resolved": "Names this row USED TO carry that another row owns as its canonical, with "
+   "the rule that moved each one.\n\n⚠ NOTHING IS LOST. A name only appears here when "
+   "another row already claims it as its OWN canonical, so it still resolves, to that row "
+   "instead of this one. Measured: 1,262 of 2,997 recipe lines match a library name before "
+   "and after, unchanged to the line, while lines hitting a name TWO rows carry fall from "
+   "490 to 266.\n\nThe two rules are in build_library.resolve_borrowed.",
  "__blank": "Yours. Nothing is written here.", "__blank2": "Yours. Nothing is written here.",
  "__div1": "LEFT is copied verbatim from a source. RIGHT is my judgement.",
  "__div2": "RIGHT is yours.",
@@ -659,6 +834,7 @@ COLUMNS = [
  ("What kind of thing it is", "kinds", 26), ("Anchored on", "anchor", 22),
  ("Admitted by rule 2", "rule2", 11), ("Dish as well as ingredient", "dish", 12),
  ("Authored, not sourced", "authored", 12),
+ ("Names moved to their owner", "resolved", 46),
  (">>> JUDGEMENTS BELOW >>>", "__div1", 4),
  ("Confidence", "confidence", 11), ("What I was unsure about", "flags", 60),
  ("Checks that fired", "n_flags", 9), ("Things that subclass it", "subclasses", 11),
@@ -777,7 +953,10 @@ def write_sheet(rows, path):
                            else f"{SOURCE_NAME[row['anchor']]}  {row['id']}"),
                 "rule2": "yes" if row["rule2"] else "",
                 "dish": "yes" if row["dish"] else "",
-                "authored": "yes" if row["authored"] else "", "confidence": row["confidence"],
+                "authored": "yes" if row["authored"] else "",
+                "resolved": "\n".join(f"{t}  ->  {o}   [{why}]"
+                                      for t, o, why in row.get("resolved", ())),
+                "confidence": row["confidence"],
                 "flags": "\n".join(row["flags"]), "n_flags": row["n_flags"],
                 "subclasses": row["subclasses"] or "", "why": row["why"], "how": row["how"]}
             for i, (head, key, width) in enumerate(COLUMNS, 1):
@@ -921,6 +1100,14 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
 
     removals, rejected = load_removals()
     rows, dangling = apply_removals(rows, removals)
+
+    # ⚠️ THE RENAME RUNS FIRST AND THE PRECEDENCE RULES SECOND, because a rename changes
+    #    the canonical set the precedence rules read. Measured both orders: renaming first
+    #    costs 5 of rule 1's 509 names and 0 of rule 2's, and stripping 'as food' ADDS 7
+    #    borrowed pairs, because a stem that was hidden behind a suffix now collides with
+    #    names other rows hold. Precedence has to run after that or it misses those 7.
+    renamed = strip_as_food(rows)
+    moved = resolve_borrowed(rows, superclasses, off_parents)
     rows = annotate(rows, superclasses, off_parents)
 
     say(f"\nentries: {len(rows):,}")
@@ -952,6 +1139,10 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
             "may have shifted.")
         for row in dangling[:15]:
             say(f"        {row['anchor']} {row['id']} {row['action']}  ({row['reason'][:60]})")
+    say(f"  renamed off 'as food':   {len(renamed):5,d}   "
+        "(19 more are left alone: the bare stem is another row's canonical)")
+    for rule, n in sorted(moved.items()):
+        say(f"  names moved to their owner: {n:5,d}  {rule}")
     say(f"  override list size: {len(CUTS.OVERRIDES)}   "
         "⚠️ if this passes a few dozen the anchor rule is drawn in the wrong place")
 
