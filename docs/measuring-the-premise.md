@@ -1,13 +1,15 @@
-# Measuring the premise: six times the shape of the data was assumed
+# Measuring the premise: seven times the shape of the data was assumed
 
 `docs/estimating.md` records a lesson about arithmetic that was right and a label that was
 wrong. This is the same lesson one level down. Six defects in a single ingestion, all one
 error class: **an assumption about the SHAPE of the data, made instead of a measurement.**
+A seventh arrived later, from the same class and with the same shape, which is why it is
+filed here rather than written up on its own.
 
 Every one produced working code. Every one was caught by real data. Every one would have
 been caught earlier by looking first.
 
-## The six
+## The six from the ingestion
 
 **1. An ASCII slug erased every non-Latin name.** The Open Food Facts text parser derived
 an identifier with `re.sub(r'[^a-z0-9]+', '-', name.lower())`. Ten Bulgarian and two
@@ -44,12 +46,45 @@ Chinese dataset. `source_catalogue.url` is the record of what a dataset IS, and 
 past it to a module constant makes that record a decoration. **The assumption was that the
 default was right.**
 
+## The seventh, which arrived later and cost nothing only by luck
+
+**7. One source, loaded twice, with a different field name in each copy.** Open Food Facts
+is loaded as a json taxonomy and a text taxonomy, and the header comment in
+`build_library.py` has said so since the file was written. What nobody checked is that the
+two copies do not agree on what the primary-name field is called. **The txt taxonomy writes
+`canonical_name`. The json taxonomy writes `name`.**
+
+```
+                                  entries   en canonical_name   en name
+ingredients_taxonomy_txt            5,590               4,699         0
+ingredients_taxonomy_json           6,442                   0     5,515
+```
+
+The split is total in both directions, which is what makes it invisible. Query either
+field and you get a full-looking answer over half the corpus.
+
+Reading `canonical_name` sees one copy of every concept and misses the other. The
+assumption was that **one source means one field name**, and the entries themselves say
+otherwise for free.
+
+It surfaced through a symptom that looks nothing like its cause. The drinks rule
+(`build_library.drinks_rule`) matches a Wikidata English label against an OFF English
+name. Matching on `canonical_name` alone admitted the right 22 drinks and then left a
+duplicate `black tea` row behind, because the anchor absorbed the txt copy of black tea and
+the json copy was still sitting there unclaimed. Twelve names ended up carried by two rows.
+The admission was right and the absorption was half-blind, and only the second one showed.
+
+**It cost nothing here, and that is the point.** Both fields admit the same 22, which was
+checked rather than assumed. `PRIMARY_CLAIM` in the same file reads `canonical_name` only,
+so the second-primary-name rule has only ever seen the txt half of Open Food Facts. That
+has not produced a wrong answer yet. Nothing about the premise says it will not.
+
 ## What they have in common
 
 None was a logic error. Each was a **premise** about how the data is shaped, held
 confidently enough that it never got checked: names are Latin, sources do not duplicate, a
 natural key exists, food is labeled food, answers live where you put them, defaults are
-right.
+right, one source uses one field name.
 
 The cost was uneven and not proportional to the mistake. Defect 4 cost the least to write
 and the most to find, since it produced a clean run and a wrong answer. Defect 1 announced
