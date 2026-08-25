@@ -2,7 +2,7 @@
 """reviewed.py: the hand-read verdicts behind every threshold in ingredient_cuts.py.
 
 ⚠️ THIS IS THE ONE FILE THAT CANNOT BE REGENERATED AT ANY PRICE. Everything else in the
-pipeline is code plus a cached fetch. This is 343 entries opened one at a time, every
+pipeline is code plus a cached fetch. This is 363 entries opened one at a time, every
 member row and every gloss read, across seven samples and the extraction readings. The
 ⚠️ EXTRACTION READINGS ARE MODEL-READ AND THE SEVEN SAMPLES ARE HAND-READ, which is a
 real difference and is marked on every entry. The count is reviewed.counts(),
@@ -461,6 +461,104 @@ EXTRACTION_READ = {
     "  fresh garlic is a FORM of the holder, not a member, and is left.\n"
     "  ⚠️ THIS ROW'S OWN CANONICAL IS A BINOMIAL and 'garlic' is a separate row. That is a "
     "merge question and is not touched here."),
+
+ # ── holders 11 to 30 of the extraction list, model-read 2026-08-25 ──────────────────
+ "Coriandrum sativum": ("nothing to extract, model-read 2026-08-25",
+    "2 names, 1 concept, and BOTH ITS PRODUCTS ALREADY HAVE ROWS. Coriander and coriander "
+    "sit here while 'coriander seed' and 'cilantro' are rows of their own. ⚠️ THE BARE "
+    "WORD NEEDS THE AMERICAN READING, which makes it the seed and the leaf 'cilantro'. "
+    "That is a rename plus a merge and it is Andy's. The canonical is a binomial too."),
+ "icing sugar": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept, and it is the holder. powdered sugar (4 lines), confectioner's "
+    "sugar in seven spellings, powder sugar, pulverized white sugar and snow powder are "
+    "all one thing. ⚠️ RENAME CANDIDATE under the American reading: the US name is "
+    "powdered sugar and it carries the lines."),
+ "milk": ("nothing to extract, model-read 2026-08-25",
+    "6 names, 4 concepts, NONE of them milk. latte, latte macchiato and about twenty "
+    "spellings of caffè latte are ONE concept and it is a coffee drink, reached through "
+    "Italian latte. ⚠️ 'nickel' is the ni homograph, and this is the third time that "
+    "cross-language shape has cost something. 'calcium ammonium nitrate' arrives through "
+    "the initialism CAN and 'lakes' through LAC, both AGROVOC."),
+ "food paste": ("nothing to extract, model-read 2026-08-25",
+    "2 names, 2 concepts. 'Paste' is already carried by pastry dough. pasty, pastie, "
+    "pastey, pasteija and British pasty are ONE concept and it is a Cornish dish."),
+ "brown sugar": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. blonde sugar, cassonade, soft brown sugar and brown caster sugar "
+    "are the holder under other names. ⚠️ Light against dark brown sugar is the "
+    "distinction a cook needs and NO name on this row carries it."),
+ "garlic": ("nothing to extract, model-read 2026-08-25",
+    "4 names, 4 concepts, zero food. ⚠️ THE HEAD OF THE LIST IS AGROVOC SYMBOLS AND "
+    "INITIALISMS. aluminium, aluminum and 'Al (symbol)' are ONE concept and it is a "
+    "metal. artificial intelligence and AI are another. 'Allium' is the genus and 'azu' "
+    "is a fish already carried by Allium sativum. Same class as the Wiktionary initialism "
+    "expansions, arriving from a different source."),
+ "tehina": ("1 row extracted, model-read 2026-08-25",
+    "3 names, 2 concepts. tahini (9 lines), Tahina, Tahin, T'hina, Techina, Tchina, "
+    "Nerigoma, sesame butter and sesame paste are ONE concept and it is the holder. ⚠️ "
+    "EXTRACTED halva, a dense sesame confection set with sugar syrup, which had about "
+    "fifteen names here: halvah, halava, halawa, haleweh, halvaa, helva, helava, khalva, "
+    "aluva. A line saying halva reached the ingredient it is made from.\n"
+    "  ⚠️ RENAME CANDIDATE AND IT IS A CLEAR ONE. The canonical is 'tehina' and all 9 "
+    "recipe lines say tahini."),
+ "coriander seed": ("nothing to extract, model-read 2026-08-25",
+    "2 names, 1 concept. coriander seeds (9 lines) is the plural of the canonical and "
+    "Coriandrum is the genus."),
+ "butter": ("nothing to extract, model-read 2026-08-25",
+    "5 names, 5 concepts, zero food that is butter. beryllium with 'Be (symbol)' is a "
+    "metal, burdock is already carried by burdock root, compotes is AGROVOC, kibbeh is a "
+    "Levantine dish and powidl is a plum spread. ⚠️ Cultured, whey, spreadable and "
+    "lightly salted butter are all on the row and none is flagged, because Open Food "
+    "Facts states them as synonyms rather than as primary names."),
+ "cayenne pepper": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. Capsicum frutescens is the species."),
+ "za'atar": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. zaatar and about twelve transliterations are the holder. ⚠️ sumac, "
+    "soumak and sumagh are on this row and sumac HAS ITS OWN ROW at 4 recipe lines. A "
+    "blend holding one of its ingredients is Andy's to read and is already flagged."),
+ "onion": ("nothing to extract, model-read 2026-08-25",
+    "6 names, 5 concepts, none of them an onion variety. ⚠️ cep, Boletus edulis and "
+    "porcini mushroom are ONE concept and it is a MUSHROOM, through French cèpe. Piyaz is "
+    "a Turkish dish, Tipula is the crane fly, fattening is AGROVOC, Allium cepa is the "
+    "species and already on scallion, and onions is the plural."),
+ "honey": ("nothing to extract, model-read 2026-08-25",
+    "4 names, 4 concepts. bee honey is the holder. ⚠️ 'common sole' is a FISH and "
+    "'cherry' is already carried by cherry tomato, both from Open Food Facts. copper with "
+    "'Cu (symbol)' is the metal, the same AGROVOC symbol shape as garlic and butter.\n"
+    "  ⚠️ 43 items subclass this row and heather honey is the only varietal name on it."),
+ "cow's milk": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. cow milk, bovine milk, dairy milk, homogenized milk and liquid "
+    "milk are the holder. Whole, skim and semi-skimmed are not on the row at all."),
+ "cinnamon": ("3 rows extracted, model-read 2026-08-25",
+    "7 names, 4 concepts, and THREE OF THEM ARE DIFFERENT SPECIES SOLD UNDER ONE WORD.\n"
+    "  EXTRACTED Ceylon cinnamon, from ceylon cinnamon, Cinnamomum verum, Cinnamomum "
+    "zeylanicum and Cannelle de Ceylan. Thin brittle bark, milder and sweeter.\n"
+    "  EXTRACTED cassia, from cassia, Cinnamomum cassia, Cinnamomum aromaticum and "
+    "chinese cinnamon. Thick hard bark, hotter and one-note, and ⚠️ THE THING A US RECIPE "
+    "ALMOST CERTAINLY MEANS BY CINNAMON.\n"
+    "  EXTRACTED Indonesian cinnamon, from Cinnamomum burmannii and Cinnamomum burmanni. "
+    "The commonest bark in US ground cinnamon.\n"
+    "  Cinnamomum is the genus and kanelstenger is Norwegian for cinnamon sticks.\n"
+    "  ⚠️ TWO ENTRIES IN THE cassia BUCKET ARE NOT CASSIA and were left out of the seed. "
+    "Wikidata Q7370926 is Rougui tea, a Chinese oolong. AGROVOC c_1363 is the legume "
+    "genus Cassia, which its Chinese label gives away as the golden shower tree."),
+ "chicken broth": ("nothing to extract, model-read 2026-08-25",
+    "4 names, 3 concepts. chicken stock (4 lines) is the same concept as the holder and "
+    "⚠️ IT IS ALSO ON 'broth', so 4 lines land on two rows. Chicken soup, chicken soup "
+    "and chicken noodle soup are ONE concept and it is a dish. Caldo de pollo is Spanish "
+    "for the holder."),
+ "cilantro": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. coriander leaf, coriander leaves and Chinese parsley are the "
+    "holder, and coriander leaf is already carried by Coriandrum sativum."),
+ "garlic powder": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. dried garlic is the holder. Nothing else in English is on the row."),
+ "tomato paste": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. tomato concentrate and Kunserva are the holder. ⚠️ 'tomato purée' "
+    "is on this row and HAS ITS OWN ROW, which is the US and UK split already named: the "
+    "US sense is a thinner sauce and the UK sense is this. Sun-dried tomato paste is "
+    "arguably a fourth thing and no source states it as a primary name."),
+ "egg yolk": ("nothing to extract, model-read 2026-08-25",
+    "2 names, 2 concepts, neither an egg. ⚠️ 'Amanita caesarea' is a MUSHROOM, named for "
+    "being the color of a yolk, and 'Yema' is a Spanish and Filipino confection."),
 }
 
 
