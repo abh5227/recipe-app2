@@ -293,6 +293,20 @@ def assign_ownership(entries, by_entry, by_bucket):
     Entries are placed strongest-claim-first, so the ordering is deterministic rather than
     dictionary order, in which an entry sharing one bucket could take the slot from one
     sharing forty."""
+    # ⚠️ THE ARTICLE A REDIRECT ENTRY IS. A wikipedia_redirect entry is ONE en.wikipedia
+    #    article plus every name that redirects to it, and build_join already stores the
+    #    article under its own kind on the same entry_id. 12,055 entries, all 12,055 carrying
+    #    an article_title, against 42,762 redirect names. Nothing here is fetched or joined
+    #    again: the signal has been sitting in join.db unread.
+    article = {}
+    for key, rows in by_entry.items():
+        if key[0] != "wikipedia_redirect":
+            continue
+        for _, kind, _, text in rows:
+            if kind == "article_title":
+                article[key] = text
+                break
+
     owner, seeds, held = {}, {}, collections.defaultdict(dict)
     for i, entry in enumerate(entries):
         for key in entry["seed"]:
@@ -322,13 +336,16 @@ def assign_ownership(entries, by_entry, by_bucket):
             held[best].setdefault(slot, text)
 
     names = collections.defaultdict(lambda: collections.defaultdict(set))
+    articles = collections.defaultdict(set)
     for key, rows in by_entry.items():
         i = owner.get(key)
         if i is None:
             continue
+        if key in article:
+            articles[i].add(article[key])
         for _, kind, lang, text in rows:
             names[i][text].add((key[0], kind, (lang or "").lower()))
-    return names, intruders
+    return names, intruders, articles
 
 
 def choose_canonical(entry, by_entry, stored_names):
@@ -417,6 +434,7 @@ def add_authored(rows, authored, subclass_count):
             "binomial": False, "rule2": False, "override": False, "dish": False,
             "authored": True, "added": (row.get("added") or "").strip(),
             "intruders": set(),      # nothing was absorbed, so nothing can intrude
+            "articles": [],
         })
     return rows
 
@@ -681,7 +699,7 @@ def build_rows(join, src, kinds, superclasses, off_parents):
                         "why": "an Open Food Facts ingredients-taxonomy entry that "
                                "reaches no Wikidata item"})
 
-    owned, intruders = assign_ownership(entries, by_entry, by_bucket)
+    owned, intruders, articles = assign_ownership(entries, by_entry, by_bucket)
     subclass_count = collections.Counter()
     for parents in superclasses.values():
         for parent in parents:
@@ -717,6 +735,10 @@ def build_rows(join, src, kinds, superclasses, off_parents):
             # ⚠️ Names this row holds that are a SECOND primary name from one source in one
             #    language. See assign_ownership. resolve_borrowed decides what happens.
             "intruders": {t for t in intruders.get(i, ()) if t in variations},
+            # ⚠️ THE en.wikipedia ARTICLES THIS ROW'S REDIRECT NAMES CAME FROM. Two or more
+            #    means the row answers for two things en.wikipedia keeps apart. See
+            #    the MEMBERS note in NOTES.
+            "articles": sorted(articles.get(i, ())),
         })
     return rows, dropped, by_entry, by_bucket
 
@@ -754,6 +776,7 @@ def add_overrides(rows, by_entry, by_bucket, kinds, subclass_count):
             "subclasses": subclass_count.get(ident, 0),
             "binomial": is_binomial(canonical, variations), "rule2": False, "override": True,
             "intruders": set(),      # hand-seeded from one bucket, so nothing can intrude
+            "articles": [],
             "dish": bool(DISH_KINDS & set(kinds.get(ident, {}).get("kinds", {})))
                     and INGREDIENT in kinds.get(ident, {}).get("kinds", {}),
             "authored": False,
@@ -796,6 +819,12 @@ def annotate(rows, superclasses, off_parents):
         if row.get("renamed_from"):
             flags.append(f"RENAMED from '{row['renamed_from']}'. Wikidata's 'as food' "
                          "suffix is its own disambiguator, and no row claims the stem.")
+        if len(row["articles"]) > 1:
+            flags.append(
+                f"answers for {len(row['articles'])} things en.wikipedia keeps apart, and "
+                "each is a separate article whose redirects this row absorbed whole: "
+                + ", ".join(row["articles"][:5])
+                + (" ..." if len(row["articles"]) > 5 else ""))
         staying = sorted(row["intruders"] - {t for t, _, _ in row.get("resolved", ())}
                          - {row["canonical"]})
         if staying:
@@ -928,6 +957,20 @@ NOTES = {
    "instead of this one. Measured: 1,262 of 2,997 recipe lines match a library name before "
    "and after, unchanged to the line, while lines hitting a name TWO rows carry fall from "
    "490 to 266.\n\nThe two rules are in build_library.resolve_borrowed.",
+ "articles": "The en.wikipedia ARTICLES whose redirects this row absorbed, shown only where "
+   "there is more than one.\n\n⚠ A wikipedia_redirect entry is one article plus every name "
+   "redirecting to it, so two articles on one row means the row answers for two things "
+   "en.wikipedia keeps apart. fortified wine holds Fortified wine, Port wine and Sherry. "
+   "dumpling holds ten, Gnocchi and Knedle and Knodel among them.\n\n⚠ THIS COSTS NOTHING "
+   "AND WAS ALREADY IN join.db. 12,055 redirect entries, every one carrying its article "
+   "title, and build_library read the field and ignored what it meant.\n\n217 rows are "
+   "flagged over 281 recipe lines, 57% of them subclassed by something against a sheet "
+   "baseline of 11.3%. 59 of the 217 carry NO second primary name, so the two signals are "
+   "not the same check: peppercorn merging Pebre at 32 recipe lines is one of them.\n\n"
+   "⚠ BOTH COUNTS ARE COMPUTED FROM OWNERSHIP. A first pass mapped variation TEXT back "
+   "to redirect entries instead and reported 340 rows over 168 lines. It double-counted "
+   "a name several articles redirect, and missed rows whose article title is not itself "
+   "a variation. Ownership is the truth: 217 and 281.",
  "__blank": "Yours. Nothing is written here.", "__blank2": "Yours. Nothing is written here.",
  "__div1": "LEFT is copied verbatim from a source. RIGHT is my judgement.",
  "__div2": "RIGHT is yours.",
@@ -941,6 +984,7 @@ COLUMNS = [
  ("Admitted by rule 2", "rule2", 11), ("Dish as well as ingredient", "dish", 12),
  ("Authored, not sourced", "authored", 12),
  ("Names moved to their owner", "resolved", 46),
+ ("Wikipedia articles it answers for", "articles", 34),
  (">>> JUDGEMENTS BELOW >>>", "__div1", 4),
  ("Confidence", "confidence", 11), ("What I was unsure about", "flags", 60),
  ("Checks that fired", "n_flags", 9), ("Things that subclass it", "subclasses", 11),
@@ -1062,6 +1106,7 @@ def write_sheet(rows, path):
                 "authored": "yes" if row["authored"] else "",
                 "resolved": "\n".join(f"{t}  ->  {o}   [{why}]"
                                       for t, o, why in row.get("resolved", ())),
+                "articles": "\n".join(row["articles"]) if len(row["articles"]) > 1 else "",
                 "confidence": row["confidence"],
                 "flags": "\n".join(row["flags"]), "n_flags": row["n_flags"],
                 "subclasses": row["subclasses"] or "", "why": row["why"], "how": row["how"]}
@@ -1246,6 +1291,9 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
             "may have shifted.")
         for row in dangling[:15]:
             say(f"        {row['anchor']} {row['id']} {row['action']}  ({row['reason'][:60]})")
+    multi = [r for r in rows if len(r["articles"]) > 1]
+    say(f"  rows answering for 2+ en.wikipedia articles: {len(multi):5,d}   "
+        f"{sum(len(r['articles']) for r in multi):,} articles between them")
     marked = sum(len(r["intruders"]) for r in rows)
     say(f"  second primary names marked: {marked:5,d} over "
         f"{sum(1 for r in rows if r['intruders']):,} entries")
