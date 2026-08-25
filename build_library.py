@@ -677,7 +677,7 @@ def add_authored(rows, authored, subclass_count, by_entry, by_bucket):
             "authored": True, "added": (row.get("added") or "").strip(),
             "intruders": set(),      # nothing was absorbed, so nothing can intrude
             "articles": [],
-            "dropped": [],
+            "dropped": [], "dead_dropped": [],
             "strength_a": {}, "strength_b": [],
         })
     return rows
@@ -844,6 +844,104 @@ def drop_initialism_expansions(rows, by_entry):
             del row["variations"][text]
             row["dropped"].append(text)
             gone[row["canonical"]] += 1
+    return gone
+
+
+# ⚠️ A BINOMIAL IS NOT A NAME A COOK WRITES, SO LATIN IS NOT A MEMBER. Latin stays on
+#    the row, because is_binomial rests entirely on the tag and all 56 flagged rows carry
+#    it on the canonical. It is excluded HERE instead, where 778 Latin-only names over
+#    555 rows would otherwise be counted as things to extract. The tag has two uses and
+#    only one of them is a member.
+MEMBER_EXCLUDED_LANGS = {"la"}
+
+
+def member_names(row, owned):
+    """The English names on a row that some source states as ITS OWN primary name and
+    that no other row owns as a canonical. The extraction reading list.
+
+    ⚠️ PRIMARY_CLAIM, NOT ANY FIELD THAT SOUNDS PRIMARY. An earlier sweep counted any
+    name carried by a field called label, prefLabel, canonical_name, name, article_title
+    or word, and reported 2,294 holders over 5,374 members. PRIMARY_CLAIM is
+    source-qualified and excludes article_title and Wiktionary's word, which gives 1,698
+    holders over 3,112 members. The difference is 42% and it was sizing the reading job.
+
+    ⚠️ A NAME IS NOT A MEMBER, IT IS PART OF ONE. Measured twice: 'fortified wine' holds
+    15 candidate names covering 5 concepts, and 'cream' holds 28 English names covering
+    11. Port, port, Porto, Port wine, Port Wine (DOC) and Vinho do Porto are one thing
+    spelled six ways. Grouping the names into concepts is the reading, and this function
+    returns the names to be read rather than the rows to be written."""
+    out = []
+    for text, tags in row["variations"].items():
+        if norm_name(text) == norm_name(row["canonical"]) or norm_name(text) in owned:
+            continue
+        if any(lang in MEMBER_EXCLUDED_LANGS for _, _, lang in tags):
+            continue
+        if any((source, kind) in PRIMARY_CLAIM and is_english(lang)
+               for source, kind, lang in tags):
+            out.append(text)
+    return sorted(out)
+
+
+def load_dead_languages(path=None):
+    """vocab/dead-languages.tsv -> {code: (name, class)}. See the file's own header for
+    how the list was built, and for why Latin is not in it."""
+    path = path or os.path.join(VOCAB, "dead-languages.tsv")
+    out = {}
+    with open(path, encoding="utf-8") as fh:
+        for line in fh:
+            if line.startswith("#") or not line.strip():
+                continue
+            code, name, kind, _ = line.rstrip("\n").split("\t")
+            out[code] = (name, kind)
+    return out
+
+
+def drop_dead_language_names(rows, dead):
+    """A NAME NOBODY ALIVE WRITES IS NOT A NAME. Middle English, Old Norse, Sanskrit,
+    Classical Nahuatl and 102 reconstructed proto-languages.
+
+    ⚠️ A FILTER, NOT A JUDGEMENT, AND IT FIXES A MEASUREMENT THAT WAS WRONG. 'flour' was
+    measured at 16 members and ten of them were Middle English spellings of flour:
+    fflour, fflowr, fleur, floure, flowr, flowre, flowyr, flor, flur, floor. Every holder
+    in the library was showing more members than it has, so the reading job for
+    extraction was sized against names no cook will ever type.
+
+    THE ANCHOR CLAUSE, and it is one condition read strictly:
+      EVERY tag on the name states a language, and every one of those languages is in
+      vocab/dead-languages.tsv.
+
+    ⚠️ 'EVERY' IS DOING THE WORK. A name any living source also states stays, whatever
+    else is on it, so a Latin-and-English name or an Old-French-and-French name is
+    untouched. The tag is removed from consideration, not the string, and the string
+    only leaves when nothing living is left holding it.
+
+    ⚠️ A NAME WITH NO LANGUAGE TAG AT ALL IS NOT TOUCHED. wikipedia_redirect states no
+    language, and 42,762 name rows in the join carry a blank one. Reading blank as dead
+    would empty the redirect source, which supplies 15,309 unique names.
+
+    MEASURED over the kept rows. 1,166 names on 665 rows have only dead tags, of which
+    the 150 non-Latin codes account for the cut. ⚠️ ZERO recipe lines reach ANY of them
+    and ZERO rows lose every name, so nothing stops resolving and no row disappears.
+
+    ⚠️ LATIN IS KEPT AND IT IS 3,420 OF THE 7,777 DEAD NAME ROWS. The binomial flag rests
+    entirely on the Latin tag: 56 rows carry it and all 56 have a Latin tag on the
+    canonical, so cutting 'la' would stop the flag rather than weaken it. What Latin
+    should be excluded from is MEMBER COUNTING, where 778 Latin-only names over 555 rows
+    inflate every holder, since a binomial is not a name a cook writes. Those two uses
+    are separate and the flag keeps its evidence. See is_binomial."""
+    gone = collections.Counter()
+    for row in rows:
+        row.setdefault("dead_dropped", [])
+        for text in list(row["variations"]):
+            if text == row["canonical"]:
+                continue
+            langs = {lang for _, _, lang in row["variations"][text] if lang}
+            if not langs or not langs <= dead.keys():
+                continue
+            del row["variations"][text]
+            row["dead_dropped"].append(text)
+            gone[row["canonical"]] += 1
+        row["n_variations"] = len(row["variations"]) - 1
     return gone
 
 
@@ -1171,7 +1269,7 @@ def add_overrides(rows, by_entry, by_bucket, kinds, subclass_count):
             "drink": False, "override": True,
             "intruders": set(),      # hand-seeded from one bucket, so nothing can intrude
             "articles": [],
-            "dropped": [],
+            "dropped": [], "dead_dropped": [],
             "strength_a": {}, "strength_b": [], "seeded": False,
             "dish": bool(DISH_KINDS & set(kinds.get(ident, {}).get("kinds", {})))
                     and INGREDIENT in kinds.get(ident, {}).get("kinds", {}),
@@ -1251,6 +1349,12 @@ def annotate(rows, superclasses, off_parents):
                 "Wiktionary initialism and carried by nothing else: "
                 + ", ".join(repr(t) for t in sorted(row["dropped"])[:4])
                 + (" ..." if len(row["dropped"]) > 4 else ""))
+        if row.get("dead_dropped"):
+            flags.append(
+                f"{len(row['dead_dropped'])} name(s) DROPPED as dead-language only, "
+                "stated by no living language: "
+                + ", ".join(repr(t) for t in sorted(row["dead_dropped"])[:4])
+                + (" ..." if len(row["dead_dropped"]) > 4 else ""))
         if row.get("resolved"):
             flags.append(f"{len(row['resolved'])} name(s) moved to the row that owns "
                          "them: " + "; ".join(f"'{t}' -> {o} ({why})"
@@ -1296,6 +1400,13 @@ def annotate(rows, superclasses, off_parents):
             row["confidence"] = "medium" if row["n_variations"] >= 5 else "high"
         else:
             row["confidence"] = "high"
+
+    # ⚠️ MEMBERS ARE COMPUTED LAST, AGAINST THE KEPT SET. A name that another row owns is
+    #    not a member, and a CUT row does not own anything, so this has to run after the
+    #    cut marks above rather than beside the variations. See member_names.
+    owned = {norm_name(row["canonical"]) for row in rows if not row["cut_by"]}
+    for row in rows:
+        row["members"] = member_names(row, owned) if not row["cut_by"] else []
     return rows
 
 
@@ -1310,6 +1421,18 @@ CUT_RULE_TEXT = {
     "off_flavouring": "OFF flavouring: parent is en:natural-flavouring or en:flavouring",
 }
 NOTES = {
+ "members": "English names on this row that a source states as ITS OWN primary name and "
+   "that no other row owns. The extraction reading list.\n\n"
+   "⚠ A NAME IS NOT A MEMBER, IT IS PART OF ONE. 'fortified wine' holds 15 names covering 5 "
+   "concepts, 'cream' holds 28 English names covering 11. Port, port, Porto, Port wine, Port "
+   "Wine (DOC) and Vinho do Porto are one thing spelled six ways, so GROUP the names into "
+   "concepts first and decide which concepts are ingredients second.\n\n"
+   "⚠ LATIN IS EXCLUDED HERE AND KEPT ON THE ROW. A binomial is not a name a cook writes, and "
+   "778 Latin-only names over 555 rows would otherwise read as things to extract. The binomial "
+   "flag still needs the tag, so the tag stays.\n\n"
+   "⚠ AND THE HEAD OF THIS LIST IS MOSTLY CONTAMINATION RATHER THAN MEMBERS. 'garlic' holds "
+   "artificial intelligence and aluminium, 'butter' holds burdock and beryllium, 'sesame oil' "
+   "holds Myanmar. Read them, record what they were, do not write rows for them.",
  "canonical": "The name a cook would say, VERBATIM from the anchor's own English label.\n\n"
    "⚠ NO PROMOTION AND NO TIEBREAK BY LENGTH. An earlier build picked 'ail' for garlic and "
    "'wild garlic' for Allium sativum. A binomial canonical is FLAGGED instead.",
@@ -1426,6 +1549,7 @@ COLUMNS = [
  ("Names moved to their owner", "resolved", 46),
  ("Wikipedia articles it answers for", "articles", 34),
  ("Same thing at another strength", "strength_b", 40),
+ ("Member names to read for extraction", "members", 46),
  (">>> JUDGEMENTS BELOW >>>", "__div1", 4),
  ("Confidence", "confidence", 11), ("What I was unsure about", "flags", 60),
  ("Checks that fired", "n_flags", 9), ("Things that subclass it", "subclasses", 11),
@@ -1550,6 +1674,7 @@ def write_sheet(rows, path):
                                       for t, o, why in row.get("resolved", ())),
                 "articles": "\n".join(row["articles"]) if len(row["articles"]) > 1 else "",
                 "strength_b": "\n".join(row.get("strength_b", ())),
+                "members": "\n".join(row.get("members", ())),
                 "confidence": row["confidence"],
                 "flags": "\n".join(row["flags"]), "n_flags": row["n_flags"],
                 "subclasses": row["subclasses"] or "", "why": row["why"], "how": row["how"]}
@@ -1705,6 +1830,10 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
     # ⚠️ BEFORE RESOLUTION, so a name that should not be here cannot be moved somewhere
     #    else instead of leaving. See drop_initialism_expansions.
     initialisms = drop_initialism_expansions(rows, by_entry)
+    # ⚠️ ALSO BEFORE RESOLUTION, and for the same reason: a name nobody alive writes
+    #    should leave rather than be moved to another row. See drop_dead_language_names.
+    dead = load_dead_languages()
+    dead_gone = drop_dead_language_names(rows, dead)
     moved = resolve_borrowed(rows, superclasses, off_parents)
     # ⚠️ AFTER RESOLUTION, because a strength word that leaves a row should not be counted
     #    against it. See mark_strength.
@@ -1759,6 +1888,9 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
     say(f"  initialism expansions dropped: {sum(initialisms.values()):5,d} "
         f"from {len(initialisms):,} rows   "
         "(97 names, 54 recipe lines, 0 names left unreachable)")
+    say(f"  dead-language names dropped: {sum(dead_gone.values()):5,d} "
+        f"from {len(dead_gone):,} rows   "
+        f"({len(dead)} codes, Latin deliberately NOT among them, 0 recipe lines)")
     for rule, n in sorted(moved.items()):
         say(f"  names moved to their owner: {n:5,d}  {rule}")
     say(f"  override list size: {len(CUTS.OVERRIDES)}   "

@@ -1,0 +1,188 @@
+# vocab/dead-languages.tsv
+#
+# Language codes with no living speech community. A name whose EVERY source tag is one
+# of these leaves the row it is on. See build_library.drop_dead_language_names.
+#
+# ⚠️ WHY THIS EXISTS. 'flour' was measured at 16 members and 10 of them were Middle
+#    English spellings: fflour, fflowr, fleur, floure, flowr, flowre, flowyr, flor, flur,
+#    floor. Nobody writes a recipe in Middle English, so every holder in the library was
+#    showing more members than it has. This is a FILTER, not a judgement about a name.
+#
+# ⚠️ LATIN IS DELIBERATELY ABSENT, AND IT IS THE LARGEST DEAD LANGUAGE IN THE STORE at
+#    3,420 name rows. The binomial flag rests entirely on the Latin tag: 56 rows carry
+#    the flag and all 56 have a Latin tag on the canonical, so cutting 'la' would not
+#    weaken that flag, it would stop it. Shape alone was wrong about 9 names in 10 and
+#    fired on 705 rows, and the Latin tag is what cut it to 56. Latin is excluded from
+#    MEMBER COUNTING instead, where a binomial is not a name a cook writes.
+#    See build_library.is_binomial and drop_dead_language_names.
+#
+# ⚠️ LIVING LANGUAGES ARE NOT IN THIS FILE AND ARE A DIFFERENT ACT. English Wiktionary
+#    spans 1,588 languages, most of them living and obscure, and voanjo in Malagasy and
+#    asukar in Cebuano are real ingredient names. The library exists to recognize what
+#    anyone imports, so a Tagalog or Amharic name has a claim that fflowr does not.
+#
+# ⚠️ TWO CODES WERE MISCLASSIFIED BY HAND AND CAUGHT BEFORE COUNTING. 'zom' is Zou and
+#    'sxu' is Upper Saxon. Both are living and neither is here.
+#
+# HOW THE LIST WAS BUILT. Every distinct lang in join.db, named from the top-level
+# 'lang' field of a wiktextract entry carrying that lang_code, then classified three
+# ways: a name beginning Old, Middle, Ancient, Classical, Early Modern, Primitive, Koine
+# or Vulgar; a code containing '-pro', which is Wiktionary's reconstructed proto-language
+# marker; or a hand-named ancient language with no modern descendant in use.
+#
+# ⚠️ READ THE FIRST 'lang' KEY WITH A REGEX AND IT COMES OUT WRONG. The raw entry JSON
+#    nests a 'lang' inside every translation block, so a regex returned Sranan Tongo for
+#    enm and Italian for la. The names below come from a real JSON parse of the
+#    top-level key, checked against lang_code.
+#
+# code	name	class	name rows in join.db
+enm	Middle English	stage	912
+ang	Old English	stage	335
+sa	Sanskrit	ancient	294
+lzh	Literary Chinese	ancient	254
+nci	Classical Nahuatl	ancient	200
+pi	Pali	ancient	150
+egy	Egyptian	ancient	144
+fro	Old French	stage	131
+sla-pro	Proto-Slavic	proto	127
+gmw-pro	Proto-West Germanic	proto	100
+tpw	Old Tupi	stage	82
+zlw-opl	Old Polish	stage	81
+kaw	Old Javanese	stage	79
+zlw-ocs	Old Czech	stage	69
+gem-pro	Proto-Germanic	proto	68
+non	Old Norse	stage	66
+urj-fin-pro	Proto-Finnic	proto	66
+arc	Aramaic	ancient	59
+sga	Old Irish	stage	53
+frm	Middle French	stage	50
+roa-opt	Old Galician-Portuguese	stage	42
+txb	Tocharian B	ancient	36
+dum	Middle Dutch	stage	35
+goh	Old High German	stage	35
+odt	Old Dutch	stage	33
+akk	Akkadian	ancient	29
+cu	Old Church Slavonic	stage	27
+poz-pro	Proto-Malayo-Polynesian	proto	27
+grc	Ancient Greek	ancient	25
+osp	Old Spanish	stage	25
+smi-pro	Proto-Samic	proto	24
+gmh	Middle High German	stage	23
+zlw-osk	Old Slovak	stage	23
+got	Gothic	ancient	22
+gmq-osw	Old Swedish	stage	19
+jpx-pro	Proto-Japonic	proto	19
+map-pro	Proto-Austronesian	proto	19
+cel-pro	Proto-Celtic	proto	18
+jpx-ryu-pro	Proto-Ryukyuan	proto	18
+ine-pro	Proto-Indo-European	proto	17
+poz-mly-pro	Proto-Malayic	proto	17
+trk-pro	Proto-Turkic	proto	17
+tup-gua-pro	Proto-Tupi-Guarani	proto	15
+xdc	Dacian	ancient	15
+alg-pro	Proto-Algonquian	proto	14
+bnt-pro	Proto-Bantu	proto	14
+urj-pro	Proto-Uralic	proto	13
+cel-bry-pro	Proto-Brythonic	proto	12
+prg	Old Prussian	stage	12
+cau-nkh-pro	Proto-Nakh	proto	11
+iir-pro	Proto-Indo-Iranian	proto	11
+itc-pro	Proto-Italic	proto	10
+osx	Old Saxon	stage	10
+sit-pro	Proto-Sino-Tibetan	proto	10
+tuw-pro	Proto-Tungusic	proto	10
+ath-pro	Proto-Athabaskan	proto	9
+ine-bsl-pro	Proto-Balto-Slavic	proto	9
+mga	Middle Irish	stage	9
+poz-oce-pro	Proto-Oceanic	proto	9
+sit-bdi-pro	Proto-Bodish	proto	9
+syd-pro	Proto-Samoyedic	proto	9
+aav-pro	Proto-Austroasiatic	proto	8
+dra-pro	Proto-Dravidian	proto	8
+hmx-pro	Proto-Hmong-Mien	proto	8
+ira-pro	Proto-Iranian	proto	8
+omq-mxt-pro	Proto-Mixtec	proto	8
+pal	Middle Persian	stage	8
+urj-prm-pro	Proto-Permic	proto	8
+ccs-pro	Proto-Kartvelian	proto	7
+wlm	Middle Welsh	stage	7
+xto	Tocharian A	ancient	7
+ccs-gzn-pro	Proto-Georgian-Zan	proto	6
+dra-sdo-pro	Proto-South Dravidian	proto	6
+euq-pro	Proto-Basque	proto	6
+ofs	Old Frisian	stage	6
+poz-mic-pro	Proto-Micronesian	proto	6
+sem-pro	Proto-Semitic	proto	6
+sit-nas-pro	Proto-Naish	proto	6
+sqj-pro	Proto-Albanian	proto	6
+tup-pro	Proto-Tupian	proto	6
+alv-yrd-pro	Proto-Yoruboid	proto	5
+gml	Middle Low German	stage	5
+gmq-oda	Old Danish	stage	5
+peo	Old Persian	stage	5
+pro	Old Occitan	stage	5
+ber-pro	Proto-Berber	proto	4
+dru-pro	Proto-Rukai	proto	4
+gmw-msc	Middle Scots	stage	4
+poz-pol-pro	Proto-Polynesian	proto	4
+qfa-yen-pro	Proto-Yeniseian	proto	4
+tai-pro	Proto-Tai	proto	4
+chm-pro	Proto-Mari	proto	3
+grk-pro	Proto-Hellenic	proto	3
+kca-pro	Proto-Khanty	proto	3
+map-ata-pro	Proto-Atayalic	proto	3
+mns-pro	Proto-Mansi	proto	3
+nai-mus-pro	Proto-Muskogean	proto	3
+omq-cha-pro	Proto-Chatino	proto	3
+phi-pro	Proto-Philippine	proto	3
+qfa-kra-pro	Proto-Kra	proto	3
+sal-pro	Proto-Salish	proto	3
+urj-mdv-pro	Proto-Mordvinic	proto	3
+aql-pro	Proto-Algic	proto	2
+auf-pro	Proto-Arawa	proto	2
+cau-abz-pro	Proto-Abkhaz-Abaza	proto	2
+cmc-pro	Proto-Chamic	proto	2
+iir-nur-pro	Proto-Nuristani	proto	2
+iro-nor-pro	Proto-North Iroquoian	proto	2
+mkh-mvi	Middle Vietnamese	stage	2
+mkh-vie-pro	Proto-Vietic	proto	2
+osn	Old Sundanese	stage	2
+qfa-yuk-pro	Proto-Yukaghir	proto	2
+roa-ole	Old Leonese	stage	2
+tai-swe-pro	Proto-Southwestern Tai	proto	2
+xgn-pro	Proto-Mongolic	proto	2
+xsc-pro	Proto-Scythian	proto	2
+xum	Umbrian	ancient	2
+alv-pro	Proto-Atlantic-Congo	proto	1
+aus-cww-pro	Proto-Central New South Wales	proto	1
+awd-pro	Proto-Arawak	proto	1
+azc-nah-pro	Proto-Nahuan	proto	1
+azc-pro	Proto-Uto-Aztecan	proto	1
+cau-cir-pro	Proto-Circassian	proto	1
+cau-nwc-pro	Proto-Northwest Caucasian	proto	1
+cau-tsz-pro	Proto-Tsezian	proto	1
+esx-esk-pro	Proto-Eskimo	proto	1
+ira-shr-pro	Proto-Shughni-Roshani	proto	1
+ira-sym-pro	Proto-Shughni-Yazghulami-Munji	proto	1
+iro-pro	Proto-Iroquoian	proto	1
+mkh-ban-pro	Proto-Bahnaric	proto	1
+mkh-pro	Proto-Mon-Khmer	proto	1
+myn-pro	Proto-Mayan	proto	1
+oco	Old Cornish	stage	1
+omq-pro	Proto-Oto-Manguean	proto	1
+omq-tri-pro	Proto-Triqui	proto	1
+omq-zap-pro	Proto-Zapotecan	proto	1
+omq-zpc-pro	Proto-Zapotec	proto	1
+omv-aro-pro	Proto-Aroid	proto	1
+oto-otm-pro	Proto-Otomi	proto	1
+oto-pro	Proto-Otomian	proto	1
+paa-nha-pro	Proto-North Halmahera	proto	1
+poz-ssw-pro	Proto-South Sulawesi	proto	1
+pqe-pro	Proto-Eastern Malayo-Polynesian	proto	1
+qfa-tak-pro	Proto-Kra-Dai	proto	1
+sai-car-pro	Proto-Cariban	proto	1
+sel-pro	Proto-Selkup	proto	1
+sem-wes-pro	Proto-West Semitic	proto	1
+sit-aao-pro	Proto-Central Naga	proto	1
+sit-khw-pro	Proto-Western Kho-Bwa	proto	1
+xfa	Faliscan	ancient	1

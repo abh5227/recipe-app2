@@ -99,7 +99,15 @@ HEAD_TERMS = {
     "slur, as a manner of walking, and a verb for what to do to a horse."),
  "honey": ("clean", "5 entries agree."),
  "pepper": ("contaminated", "the bucket holds Wikidata bell pepper, a Capsicum, and "
-    "peppercorn, a Piper. Two unrelated plants under one spelling."),
+    "peppercorn, a Piper. Two unrelated plants under one spelling.\n\n"
+    "⚠️ RULED 2026-08-25, AND THE RULING GOES AGAINST THE NEXT LINE RATHER THAN WITH IT. "
+    "What is read below is right. AGROVOC, Open Food Facts, Wikidata and Wiktionary all "
+    "call the peppercorn pepper and none of them is wrong. The authored 'pepper' row "
+    "exists precisely because the bare word resolving to whichever of the two wins the "
+    "lookup is the problem, so resolving to the general row is what it was authored for. "
+    "build_library rule 4 takes 'pepper' and 'Pepper' off peppercorn over 10 recipe "
+    "lines, and all ten are the bare word with nothing more specific to lose. Without "
+    "this note the reading reads as unresolved."),
  "tahini": ("clean", "7 entries agree, tahini and tehina."),
  "yellow onion": ("clean", "4 entries agree."),
  "bay leaves": ("clean", "3 entries agree, resting on an AGROVOC altLabel, an OFF synonym "

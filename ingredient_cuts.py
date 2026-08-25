@@ -122,7 +122,12 @@ CUTS = {
         anchor="wikidata",
         rule="the entry subclasses a Wikidata cultivar or variety class, AND one source "
              "carries it, AND it has no variations at all",
-        takes=602,
+        # ⚠️ 602 UNTIL THE DEAD-LANGUAGE CUT, 603 AFTER IT, AND THE ONE IS 'Kemp'. That
+        #    apple cultivar carried two Middle English words, 'kemp' and 'kempe', and
+        #    they were the only thing holding it above this rule's zero-variation
+        #    ceiling. Nothing alive said it, and it reaches no recipe line. See
+        #    build_library.drop_dead_language_names.
+        takes=603,
         why="Breeder-register names. A8812-3 is an accession code. Hormead Pearmain, "
             "Neild's Drooper, Stobo Castle, Orange Goff, Taubenapfel von St. Louis are "
             "register entries nobody types into a recipe. The cultivar exclusion the "
