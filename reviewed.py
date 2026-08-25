@@ -2,7 +2,7 @@
 """reviewed.py: the hand-read verdicts behind every threshold in ingredient_cuts.py.
 
 ⚠️ THIS IS THE ONE FILE THAT CANNOT BE REGENERATED AT ANY PRICE. Everything else in the
-pipeline is code plus a cached fetch. This is 363 entries opened one at a time, every
+pipeline is code plus a cached fetch. This is 385 entries opened one at a time, every
 member row and every gloss read, across seven samples and the extraction readings. The
 ⚠️ EXTRACTION READINGS ARE MODEL-READ AND THE SEVEN SAMPLES ARE HAND-READ, which is a
 real difference and is marked on every entry. The count is reviewed.counts(),
@@ -383,16 +383,6 @@ EXTRACTION_READ = {
     "Wiktionary: fflour, fflowr, fleur, floure, flowr, flowre, flowyr, flor, flur, floor. "
     "Reading the field set the pipeline actually uses, build_library.PRIMARY_CLAIM, gives "
     "6. See docs/measuring-the-premise.md."),
- "broth": ("members found, not extracted, model-read 2026-08-25",
-    "457 variations, 10 English orphan primaries, and unlike flour there is real material "
-    "here. bone broth and fish stock are distinct products with no row. stock and stocks "
-    "are one concept and it is the largest, since a recipe saying stock has nowhere to "
-    "land. Rosół is Polish, Yahni and yahni are one Turkish concept spelled two ways, "
-    "blöta is Swedish, fish fumet groups with fish stock. bouillon and fish broth already "
-    "have rows.\n"
-    "  NOT EXTRACTED, and the reason is priority rather than difficulty: no recipe line "
-    "in the corpus reaches any of them today, against 7 for heavy cream. Worth an "
-    "evening, not urgent."),
  "white sugar": ("nothing to extract, model-read 2026-08-25",
     "3 candidate names, 1 concept, 0 rows. granulated sugar (35 lines), refined sugar, "
     "regular sugar, table sugar, white granulated sugar and white refined sugar are ONE "
@@ -559,6 +549,121 @@ EXTRACTION_READ = {
  "egg yolk": ("nothing to extract, model-read 2026-08-25",
     "2 names, 2 concepts, neither an egg. ⚠️ 'Amanita caesarea' is a MUSHROOM, named for "
     "being the color of a yolk, and 'Yema' is a Spanish and Filipino confection."),
+
+ # ── holders 31 to 51 of the extraction list, model-read 2026-08-25 ──────────────────
+ "lime juice": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept, and it is a BRAND. Rose's lime juice is a sweetened cordial, and "
+    "the pipeline cuts brands by kind everywhere else."),
+ "cereal": ("1 row extracted, model-read 2026-08-25",
+    "6 names, 6 concepts. ⚠️ EXTRACTED bread, see the bread entry. Gurnard and Red gurnard "
+    "are ONE concept and a FISH, 'rock snail' is a mollusc, 'Pan' is Spanish for bread and "
+    "already on roti, cereals is the plural and grain crops is an AGROVOC broader term."),
+ "paprika": ("nothing to extract, model-read 2026-08-25",
+    "2 names, 1 concept. paprika powder (1 line) is the form and 'paprika or bell pepper' "
+    "is Open Food Facts declining to choose, which is honest of it and not a member."),
+ "basil": ("1 row extracted, model-read 2026-08-25",
+    "1 name, 1 concept, and it is a different herb. ⚠️ EXTRACTED spearmint, Mentha spicata, "
+    "which Open Food Facts states as a primary name on basil.\n"
+    "  ⚠️ Falooda seed, Sabja, Hột é and Kasa kasa are on this row and are BASIL SEED, a "
+    "separate product used in drinks. No source states one as a primary name so none is "
+    "flagged, and it is worth a row when someone reads it."),
+ "ground pork": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. minced pork is the same thing and the canonical already uses the "
+    "American word."),
+ "broth": ("1 row extracted, model-read 2026-08-25",
+    "10 names, 6 concepts. ⚠️ EXTRACTED bone broth, simmered from bones long enough to "
+    "draw out the gelatin that sets it in the fridge.\n"
+    "  ⚠️ 'stock' IS RECORDED AS UNSURE RATHER THAN EXTRACTED, and the reason is the "
+    "sources. Stock from bones against broth from meat is a real distinction, but Open "
+    "Food Facts entry 6527 states Stocks, bouillon, broth, broths and stock on ONE entry, "
+    "and Wikidata Q275068 and Q3075310 each state both. Nothing in the store separates "
+    "them, so extracting would be picking rather than reading.\n"
+    "  ⚠️ READ TWICE. The first pass on 2026-08-25 recorded it as members found and not "
+    "extracted, on the reasoning that no recipe line reached any of them. That was "
+    "priority, not a verdict, and the second pass extracted bone broth anyway, because "
+    "'nobody in this corpus cooks it yet' is the corpus-as-target error.\n"
+    "  fish stock and fish fumet are ONE concept and fish broth already has the row. soup, "
+    "clear soup, canned soup, cold soup, condensed soup and dessert soup are one concept "
+    "and a dish. Rosół is Polish and already on chicken broth, Yahni and yahni are one "
+    "Turkish concept already on ragù, blöta is Swedish."),
+ "bread": ("EXTRACTED 2026-08-25, model-read",
+    "⚠️ 4 RECIPE LINES SAY BREAD AND THE LIBRARY HAD NO ROW FOR IT. The name sat on "
+    "'cereal', the grain crop, and on 'roti', an Indian flatbread, so which one answered "
+    "depended on which won the lookup. The commonest food in the corpus with no row of "
+    "its own, and the biggest wrong answer found since eggs."),
+ "potato": ("nothing to extract, model-read 2026-08-25",
+    "7 names, 7 concepts, none a potato variety. ⚠️ 'Canada' is the country and "
+    "'Dioscorea alata' is a YAM. Irish potato candy is a confection with no potato in it, "
+    "potato cake is a dish, Solanum tuberosum is the species, potatoes is the plural, and "
+    "tuber is already carried by truffle."),
+ "cannabis": ("nothing to extract, model-read 2026-08-25",
+    "6 names, 6 concepts. ⚠️ 'Kinder' and 'Kinder Chocolate' are a confectionery brand. "
+    "buds, pots, herb and dagga are the holder under other words."),
+ "Foeniculum vulgare": ("2 rows extracted, model-read 2026-08-25",
+    "6 names, 6 concepts, and ⚠️ THREE OF THEM ARE DIFFERENT PLANTS ON A FENNEL ROW.\n"
+    "  EXTRACTED dill, Anethum graveolens. Fennel was once filed as Anethum foeniculum, so "
+    "the genus name collided and dill arrived.\n"
+    "  EXTRACTED fenugreek, Trigonella foenum-graecum, which reached this row through the "
+    "shared Latin foenum rather than any resemblance.\n"
+    "  'Cuminum cyminum' is CUMIN and 'Lens' is the lentil genus, and both already have "
+    "rows, so neither is extracted. Foeniculum is the genus and fennel is already on "
+    "fennel fruit.\n"
+    "  ⚠️ RENAME CANDIDATE. The canonical is a binomial and the row is fennel."),
+ "vanilla": ("nothing to extract, model-read 2026-08-25",
+    "6 names, 5 concepts. Bourbon vanilla is already on Madagascar vanilla, which is the "
+    "same thing. Vanilla (genus), Vanilla planifolia and vanilla (spice) are the plant and "
+    "the spice, herbaceous plants is an AGROVOC broader term.\n"
+    "  ⚠️ 'vanilla flavouring' IS RECORDED AS UNSURE. With Artificial vanilla, Vanilla "
+    "substitute and Vanilla flavor it could be one concept, imitation vanilla, which is a "
+    "real product distinct from the extract at 37 recipe lines. Or it could be flavoring "
+    "in general. No source on the row separates the two."),
+ "bell pepper": ("nothing to extract, model-read 2026-08-25",
+    "4 names, 3 concepts. Capsicum annuum is the species and covers chilies too, sweet "
+    "peppers is the plural, yellow bell pepper is a color and Open Food Facts has the "
+    "other three as well. ⚠️ 'Paprika' and 'Red paprika' are on this row and paprika has "
+    "its own."),
+ "pine nut": ("nothing to extract, model-read 2026-08-25",
+    "3 names, 3 concepts. pine nuts (4 lines) is the plural, Pinus edulis is one pine "
+    "among several that give edible nuts, Pignolo is Italian."),
+ "roti": ("nothing to extract, model-read 2026-08-25",
+    "3 names, 2 concepts. ⚠️ 'bread' at 4 lines left this row when bread was extracted. "
+    "chapati with twelve spellings and Indian Bread are the holder, since chapati is a "
+    "roti rather than a different thing."),
+ "mozzarella": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept, AND ITS ROW ALREADY EXISTS. buffalo mozzarella is carried by "
+    "'Mozzarella di Bufala Campana PDO'. ⚠️ THE TAMARI SHAPE: the concept has a row under "
+    "a name nobody writes, so this is a rename rather than an extraction.\n"
+    "  Fiordilatte and Fior-di-latte are cow's milk mozzarella and are arguably a third "
+    "thing. No source states either as a primary name."),
+ "sumac": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. Rhus is the genus. sumach, sumaq and Sicilian sumac are spellings."),
+ "table salt": ("nothing to extract, model-read 2026-08-25",
+    "8 names, 6 concepts, and only one is salt. common salt, sodium chloride and NaCl are "
+    "the holder. ⚠️ 'Shorea robusta seed oil', 'Sal oil' and 'Sal tree oil' are ONE "
+    "concept and an INDIAN TREE OIL, reached through sal. 'jumping', 'soil' and 'sun' are "
+    "AGROVOC concepts that the symbol cut does not reach, because their entries state no "
+    "symbol. 'viand' is a Wikipedia label."),
+ "spinach": ("nothing to extract, model-read 2026-08-25",
+    "3 names, 2 concepts. Spinacia is the genus, spinach leaves is the form, and 'spinach "
+    "or amaranth' is Open Food Facts declining to choose."),
+ "cumin": ("nothing to extract, model-read 2026-08-25",
+    "2 names, 2 concepts. Cuminum is cumin's genus. ⚠️ 'Carum' IS CARAWAY'S GENUS and is "
+    "already flagged for Andy. Both are genera rather than members."),
+ "Parmesan": ("nothing to extract, model-read 2026-08-25",
+    "2 names, 1 concept. Parmigiano-Reggiano and parmigiano reggiano are the holder under "
+    "its protected name. ⚠️ 'Grana Padano' is on this row and is a DIFFERENT CHEESE, made "
+    "under different rules. No source states it as a primary name here so it is not "
+    "flagged, and it is worth a row."),
+ "tomato": ("nothing to extract, model-read 2026-08-25",
+    "2 names, 2 concepts. Solanum is the genus and tomatoes (3 lines) is the plural."),
+ "crushed red pepper": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept, and it is ⚠️ MILITARY RATIONS. field ration, Combat Ration Pack, "
+    "combat ration, ration and One-One are one concept reached through the initialism CRP. "
+    "The same shape as the Wiktionary and AGROVOC initialisms, from Wikipedia this time."),
+ "distilled vinegar": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. spirit vinegar, white vinegar and virgin vinegar are the holder. "
+    "⚠️ spirit vinegar is ALSO on 'malt vinegar', which is the right-row-wrong-traffic case "
+    "Andy raised, seen from the other side."),
 }
 
 
