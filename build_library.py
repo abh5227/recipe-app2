@@ -810,9 +810,20 @@ def depluralize(key):
     """The English plural of a normalized name, or None. Deliberately small: three
     endings and a length floor, not a stemmer.
 
-    ⚠️ IT IS WRONG ABOUT THREE NAMES IN 169 AND THEY ARE NAMED IN resolve_borrowed."""
+    ⚠️ IT IS WRONG ABOUT THREE NAMES IN 169 AND THEY ARE NAMED IN resolve_borrowed.
+
+    ⚠️ -oes AND -ves WERE MISSING FROM THE FIRST DRAFT, WHICH MADE potatoes STEM TO
+    'potatoe' AND leaves TO 'leave'. Worth almost nothing in moves, because a plural
+    usually sits on the row its own singular names and rule 6 skips those by construction:
+    41 pairs gain a correct stem and only TWO of them cross to a different row, both
+    'Citrus hystrix' losing lime-leaf names, both at zero recipe lines. Fixed anyway,
+    since a stemmer that is wrong about tomatoes is wrong wherever it is next used."""
     if key.endswith("ies") and len(key) > 4:
         return key[:-3] + "y"
+    if key.endswith("ves") and len(key) > 4:
+        return key[:-3] + "f"
+    if key.endswith("oes") and len(key) > 4:
+        return key[:-2]
     if key.endswith(("ches", "shes", "sses", "xes", "zes")):
         return key[:-2]
     if key.endswith("s") and not key.endswith(("ss", "us", "is")) and len(key) > 3:
