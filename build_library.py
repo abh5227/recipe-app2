@@ -72,6 +72,7 @@ except ImportError:                                   # the verdicts are optiona
     reviewed = None
 
 HAND_REMOVALS = os.environ.get("HAND_REMOVALS", "hand_removals.csv")
+AUTHORED_ROWS = os.environ.get("AUTHORED_ROWS", "authored_rows.csv")
 JOIN_DB = os.environ.get("JOIN_DB", "join.db")
 SOURCES_DB = os.environ.get("SOURCES_DB", "sources.db")
 VOCAB = os.environ.get("VOCAB_DIR", "vocab")
@@ -93,10 +94,54 @@ INGREDIENT = "Ingredient or foodstuff"
 #    Drink are NOT here, because ingredient-plus-those is the dual nature and is kept.
 FATAL_KINDS = {"Fictional food": "fictional",
                "Brand or trademark": "a brand or trademark"}
+# ⚠️ MARKED, NEVER MOVED, AND THE MEASUREMENT IS IN ingredient_cuts.DECLINED.
+#    653 rows carry one of these kinds AND "Ingredient or foodstuff". Reading 40 found
+#    16 dishes and 24 ingredients, so a batch move would take chocolate, shrimp, honey,
+#    ham, soy sauce and 387 others out of the library. The flag makes the 653 sortable
+#    so the separation happens by reading, one row at a time.
+DISH_KINDS = {"Dish or prepared food", "Cuisine, recipe or meal"}
 E_NUMBER = re.compile(r"^e\s?\d{3}", re.I)
 PROCESS_NAMES = {"frying", "cooking", "baking", "smoking", "drying", "fermentation",
                  "roasting", "preparation"}
 BINOMIAL = re.compile(r"^[A-Z][a-z]+ [a-z]+(?: (?:subsp|var|f)\.? [a-z]+)?$")
+
+
+def is_binomial(canonical, variations):
+    """⚠️ SHAPE IS NOT EVIDENCE, AND ON ITS OWN IT WAS WRONG ABOUT 9 NAMES IN 10.
+
+    BINOMIAL alone is a capital word followed by a lowercase one, which is the shape of
+    every English name carrying a proper noun in front of it. It fired on 705 rows.
+    Reading 60 of them found 5 genuine binomials, 8.3%, 95% CI [3.6%, 18.1%], so roughly
+    646 of the 705 were wrong. Kaiser roll, Swiss roll, Welsh onion, Atlantic salmon,
+    Shaoxing wine, Napa cabbage, Cheddar cheese, Serrano ham and Manuka honey all fired.
+
+    ⚠️ THE FLAG IS NOT DECORATION. It tells the reader to pick a cook's name out of the
+    variations by hand, so a wrong flag is work that should never have been started.
+
+    The evidence the shape lacked is a source calling the string Latin. 56 of the 705
+    carry a Latin language tag on the canonical itself, and the hand-read 5 were all 5 of
+    them. Known cost, both directions:
+
+      one false positive   'American cheese'. la.wikipedia did not translate the name, so
+                           Wikidata carries it as a Latin label. Real tag, real name,
+                           not a binomial.
+      about fifteen misses mostly bacterial culture names that no source tags as Latin.
+                           Lactobacillus acidophilus, Bifidobacterium longum,
+                           Streptococcus thermophilus, Tuber magnatum, Tamarindus indica.
+                           ⚠️ A MISS COSTS LESS THAN A FALSE POSITIVE HERE. Nobody writes
+                           Lactobacillus acidophilus in a recipe, so an unflagged one
+                           creates no work. A wrong flag does.
+
+    ⚠️ A GENUS VOCABULARY WAS TRIED AND MADE IT WORSE, recorded so it is not retried.
+    Deriving genus names from the corpus's own Latin-tagged strings yielded 339 genera and
+    added 14 rows, only 5 of them real. 'American cheese' put 'American' in the genus list
+    and pulled in American lobster, American mustard, American beef and three more. One
+    bad tag propagated. Requiring the genus twice and the epithet absent from an English
+    wordlist cut it to 4 correct additions, at the price of a system wordlist this repo
+    does not otherwise need."""
+    if not BINOMIAL.match(canonical):
+        return False
+    return any(lang.startswith("la") for _, _, lang in variations.get(canonical, ()))
 
 
 def load_vocab():
@@ -251,6 +296,49 @@ def load_removals(path=HAND_REMOVALS):
     return dict(removals), rejected
 
 
+def load_authored(path=AUTHORED_ROWS):
+    """Rows Andy authored, the mirror of load_removals.
+
+    ⚠️ AN AUTHORED ROW HAS NO ANCHOR AND THAT IS THE POINT. Every other row traces to a
+    fetch. These exist because the thing exists and no source we hold has it: 'salt' is
+    52 recipe lines and 32 dependents and had no row, so a line saying salt reached
+    'table salt' or 'sea salt', which is the wrong specific rather than the general
+    thing. anchor is left EMPTY rather than set to "authored", because a fourth source
+    name would read as data and there is no fetch, no entry_id and nothing to
+    re-derive behind it.
+
+    ⚠️ A ROW WITH NO REASON IS REJECTED, the same rule as OVERRIDES and hand_removals."""
+    if not os.path.exists(path):
+        return [], []
+    with open(path, encoding="utf-8") as fh:
+        raw = list(csv.DictReader(l for l in fh if not l.startswith("#")))
+    good, rejected = [], []
+    for row in raw:
+        (good if (row.get("reason") or "").strip() else rejected).append(row)
+    return good, rejected
+
+
+def add_authored(rows, authored, subclass_count):
+    """Build the row dicts. ⚠️ sources stays EMPTY, so the 'only one source' flag cannot
+    fire on a row that has none, and the authored flag says the true thing instead."""
+    for row in authored:
+        name = row["name"].strip()
+        sources = [s.strip() for s in (row.get("sources") or "").split(";") if s.strip()]
+        rows.append({
+            "canonical": name, "how": "authored by hand, no source",
+            # The tag makes the name English to english_names() without inventing a
+            # source: the language is a fact about the string, not a claim by anyone.
+            "variations": {name: {("authored", "label", "en")}}, "n_variations": 0,
+            "anchor": "", "id": row["id"].strip(), "kinds": [],
+            "why": f"AUTHORED. {row['reason'].strip()}",
+            "sources": sources, "languages": ["en"],
+            "subclasses": subclass_count.get(row["id"].strip(), 0),
+            "binomial": False, "rule2": False, "override": False, "dish": False,
+            "authored": True, "added": (row.get("added") or "").strip(),
+        })
+    return rows
+
+
 def apply_removals(rows, removals):
     """Mark entries 'hand' and trim variations. Nothing is deleted: a dropped entry moves
     to the cut sheet with the reason, and a trimmed name is recorded on the row it left."""
@@ -366,9 +454,10 @@ def build_rows(join, src, kinds, superclasses, off_parents):
             "languages": sorted({l for tags in variations.values()
                                  for _, _, l in tags if l}),
             "subclasses": subclass_count.get(entry["id"], 0),
-            "binomial": bool(BINOMIAL.match(canonical)),
+            "binomial": is_binomial(canonical, variations),
             "rule2": entry["why"].startswith("Wikidata carries no kind"),
-            "override": False,
+            "dish": bool(DISH_KINDS & set(item_kinds)) and INGREDIENT in item_kinds,
+            "override": False, "authored": False,
         })
     return rows, dropped, by_entry, by_bucket
 
@@ -404,7 +493,10 @@ def add_overrides(rows, by_entry, by_bucket, kinds, subclass_count):
             "sources": sorted({s for tags in variations.values() for s, _, _ in tags}),
             "languages": sorted({l for tags in variations.values() for _, _, l in tags if l}),
             "subclasses": subclass_count.get(ident, 0),
-            "binomial": bool(BINOMIAL.match(canonical)), "rule2": False, "override": True,
+            "binomial": is_binomial(canonical, variations), "rule2": False, "override": True,
+            "dish": bool(DISH_KINDS & set(kinds.get(ident, {}).get("kinds", {})))
+                    and INGREDIENT in kinds.get(ident, {}).get("kinds", {}),
+            "authored": False,
         })
     return rows
 
@@ -438,6 +530,9 @@ def annotate(rows, superclasses, off_parents):
             flags.append(f"VARIATIONS TRIMMED BY HAND: {note}")
         if row["override"]:
             flags.append("ADMITTED BY HAND. See 'Why it is in the list' for the reason.")
+        if row["authored"]:
+            flags.append("AUTHORED BY HAND AND UNSOURCED. No source in the store has this "
+                         "term. GENERATED under docs/sourcing-tiers.md until traced.")
         if row["borrowed"]:
             flags.append(f"holds {len(row['borrowed'])} name(s) another entry claims as "
                          "its own: " + "; ".join(
@@ -468,7 +563,10 @@ def annotate(rows, superclasses, off_parents):
         row["flags"] = flags
         row["n_flags"] = len(flags)
 
-        if row["borrowed"] or len(row["sources"]) == 1 or (row["rule2"] and row["subclasses"]):
+        # ⚠️ An authored row is floored at low on purpose. Nothing corroborates it, and
+        #    low sorts it to the top of the reading order where it stays visible.
+        if (row["borrowed"] or len(row["sources"]) == 1 or row["authored"]
+                or (row["rule2"] and row["subclasses"])):
             row["confidence"] = "low"
         elif len(flags) >= 2:
             row["confidence"] = "medium"
@@ -500,18 +598,46 @@ NOTES = {
    "their known false positives live in ingredient_cuts.py.",
  "n_variations": "How many other names resolve to this entry. Five or more is a flag, not a "
    "verdict: garlic genuinely has hundreds across the languages the store holds.",
- "vars": "Every variation as  name  [language | sources | field].\n\n⚠ LANGUAGE IS SHOWN, and "
-   "it is what makes the hing case readable. 'hing' on ginger is Zhuang. 'hing' on asafoetida "
+ "vars": "Every variation as  name  [language | sources | field]. ENGLISH FIRST, then "
+   "by how many sources carry the name.\n\n⚠ THE CELL IS CAPPED AT 60 AND 832 ROWS "
+   "OVERFLOW IT. Alphabetical order hid 32.9% of every variation in the store and 35.9% "
+   "of the English names on the rows that overflow. What is hidden now is the least "
+   "corroborated tail, and the last line says how many and how many were English.\n\n"
+   "⚠ LANGUAGE IS SHOWN, and it is what makes the hing case readable. 'hing' on ginger is Zhuang. 'hing' on asafoetida "
    "is English.\n\nTRANSLATIONS ARE NOT HERE. join.db excludes them by rule, because including "
    "them puts a pillow in the guanciale bucket.",
  "sources": "Which of the five sources contribute anything.",
- "languages": "Every language code appearing on a variation.",
+ "languages": "Every language code appearing on a variation, ENGLISH FIRST.\n\n"
+   "⚠ SORTED ALPHABETICALLY THIS COLUMN COULD NOT ANSWER THE ONE QUESTION IT GETS ASKED. "
+   "milk holds 312 codes and its 'en' sat at position 67, so the first twenty read "
+   "'aa, ab, aeb-arab, af, am' and stopped. 176 rows had an English name the column hid.",
  "kinds": "The Wikidata grouping. SEVERAL KINDS IS THE DUAL NATURE, NOT AN ERROR.\n\n"
    "⚠ 'Cultivar or plant variety' matched zero of the 28,630 items, so the cultivar "
    "exclusion never fired. See vocab/README.md.",
  "anchor": "Which source made this an entry. Only Wikidata and OFF can anchor, plus the "
    "hand-added overrides.",
  "rule2": "TRUE for the 487 entries admitted by rule 2, the weakest rule.",
+ "authored": "TRUE for rows Andy wrote, which no source in the store has.\n\n"
+   "⚠ THESE ARE THE ONLY ROWS WITH NO ANCHOR. Every other row traces to a fetch. These "
+   "exist because the thing exists and nothing we hold names it: 'salt' is 52 recipe "
+   "lines and 32 dependents and had no row, so a line saying salt reached 'table salt' "
+   "or 'sea salt', the wrong specific rather than the general thing.\n\n"
+   "⚠ GENERATED under docs/sourcing-tiers.md until traced. Floored at low confidence "
+   "because nothing corroborates them. The reason and the measurement behind each one "
+   "are in authored_rows.csv.",
+ "dish": "TRUE for the 653 rows Wikidata calls BOTH a dish or a cuisine AND an "
+   "ingredient. Sort on it to read them.\n\n"
+   "⚠ A MARK, NOT A VERDICT, AND NOT A REMOVAL QUEUE. Reading 40 at random found 16 "
+   "dishes and 24 ingredients, 40% dishes, 95% CI [26%, 55%]. Moving all 653 would take "
+   "chocolate, shrimp, honey, ham, soy sauce, oyster, carrot and rolled oats out of the "
+   "library, and would cost 46 recipe lines.\n\n"
+   "⚠ THE 'X as food' ROWS ARE NOT DISHES. pike as food, squid as food, razor shell as "
+   "food, gar as food and dog cockle as food are Wikidata separating the ANIMAL from the "
+   "FOOD, which is the distinction an ingredient library wants. 52 rows. Do not read them "
+   "as removal candidates.\n\n"
+   "⚠ Six discriminators were measured and none is usable, so nobody should propose one "
+   "from memory. The best is a coin flip. The numbers are in ingredient_cuts.DECLINED "
+   "under 'dish_separation'.",
  "confidence": "low / medium / high.\n\n⚠ CONFIDENCE IS NOT A QUALITY AXIS AND NO CUT USES IT. "
    "614 low entries carry three or more sources and Allium sativum is one of them.",
  "flags": "What I was unsure about, one per line. A line beginning HAND-READ is a verdict "
@@ -531,7 +657,9 @@ COLUMNS = [
  ("Every variation, with language, source and field", "vars", 70),
  ("Sources", "sources", 22), ("Languages", "languages", 20),
  ("What kind of thing it is", "kinds", 26), ("Anchored on", "anchor", 22),
- ("Admitted by rule 2", "rule2", 11), (">>> JUDGEMENTS BELOW >>>", "__div1", 4),
+ ("Admitted by rule 2", "rule2", 11), ("Dish as well as ingredient", "dish", 12),
+ ("Authored, not sourced", "authored", 12),
+ (">>> JUDGEMENTS BELOW >>>", "__div1", 4),
  ("Confidence", "confidence", 11), ("What I was unsure about", "flags", 60),
  ("Checks that fired", "n_flags", 9), ("Things that subclass it", "subclasses", 11),
  ("Why it is in the list", "why", 42), ("How the name was chosen", "how", 30),
@@ -555,17 +683,60 @@ def write_sheet(rows, path):
     order = {"low": 0, "medium": 1, "high": 2}
 
     def variation_text(row, cap=60):
-        out = []
-        for text, tags in sorted(row["variations"].items(), key=lambda kv: kv[0].casefold()):
+        """⚠️ ORDER BEFORE TRUNCATING. THE OLD CAP DROPPED THE END OF THE ALPHABET.
+
+        Measured over 11,153 rows: 832 hold more than 60 variations and the alphabetical
+        cap hid 65,766 of 199,728 variation rows, 32.9% of everything the store knows.
+        Worse than the volume is which rows it fell on. All 832 are flagged "5 or more
+        variations, and a third of buckets this large measured wrong", so the truncation
+        landed exactly on the rows most worth reading, and it hid 5,816 of their 16,197
+        ENGLISH names, 35.9%, on 454 of the 832.
+
+        milk is the worked case. 523 variations, 40 of them English, and the visible cell
+        opened with Abe', abe', akeffay, akʷfay, amata.
+
+        English first, then by how many sources carry the name, then alphabetical. What
+        falls off the end is now the least corroborated tail rather than the letters after
+        the sixtieth."""
+        items = []
+        for text, tags in row["variations"].items():
             if text == row["canonical"]:
                 continue
             langs = sorted({l for _, _, l in tags if l})
-            out.append("{}   [{} | {} | {}]".format(
-                text, ", ".join(langs) if langs else "no language stated",
-                ", ".join(sorted({SOURCE_NAME[s] for s, _, _ in tags})),
-                ", ".join(sorted({FIELD_NAME.get(k, k) for _, k, _ in tags}))))
-        extra = [f"... and {len(out) - cap} more"] if len(out) > cap else []
-        return "\n".join(out[:cap] + extra)
+            sources = sorted({SOURCE_NAME[s] for s, _, _ in tags})
+            items.append(((text not in row["english"], -len(sources), text.casefold()),
+                          "{}   [{} | {} | {}]".format(
+                              text, ", ".join(langs) if langs else "no language stated",
+                              ", ".join(sources),
+                              ", ".join(sorted({FIELD_NAME.get(k, k) for _, k, _ in tags})))))
+        items.sort(key=lambda kv: kv[0])
+        if len(items) <= cap:
+            return "\n".join(text for _, text in items)
+        hidden = items[cap:]
+        n_en = sum(1 for key, _ in hidden if not key[0])
+        return "\n".join([text for _, text in items[:cap]] + [
+            f"... and {len(hidden)} more, {n_en} of them English. English names and the "
+            "best-corroborated come first, so what is hidden is the least corroborated "
+            "tail."])
+
+    def language_text(row, cap=20):
+        """⚠️ ENGLISH FIRST, BECAUSE THE QUESTION THIS COLUMN GETS ASKED IS WHETHER THE ROW
+        HAS AN ENGLISH NAME AT ALL, and sorted alphabetically it could not answer.
+
+        1,783 rows carry more than 20 language codes and the first-20 cut hid 57,589 of
+        them. milk holds 312 and its 'en' sat at alphabetical position 67, so the column
+        read aa, ab, aeb-arab, af, am and stopped. On 176 rows the code was present and
+        invisible.
+
+        ⚠️ Every row with an English name carries an 'en*' code, all 9,668 of them, so the
+        column can answer the question once 'en' is put where it can be seen. The
+        wikipedia_redirect rows that state no language of their own are all covered by an
+        en-tagged name from another source."""
+        first = [l for l in row["languages"] if l.startswith("en")]
+        rest = [l for l in row["languages"] if not l.startswith("en")]
+        shown = (first + rest)[:cap]
+        extra = len(row["languages"]) - len(shown)
+        return ", ".join(shown) + (f", ... and {extra} more" if extra else "")
 
     def sheet(ws, data, banner):
         divider = next(i for i, (_, k, _) in enumerate(COLUMNS, 1) if k == "__div1")
@@ -597,12 +768,16 @@ def write_sheet(rows, path):
                 "cut_txt": "\n".join(CUT_RULE_TEXT[c] for c in row["cut_by"]),
                 "n_variations": row["n_variations"], "vars": variation_text(row),
                 "sources": ", ".join(SOURCE_NAME[s] for s in row["sources"]),
-                "languages": ", ".join(row["languages"][:20]),
+                "languages": language_text(row),
                 "kinds": ", ".join(row["kinds"]) or (
+                    "(authored, so no source classified it)" if row["authored"] else
                     "(OFF entry, Wikidata never classified it)"
                     if row["anchor"] == "off_taxonomy" else "(Wikidata carries no kind)"),
-                "anchor": f"{SOURCE_NAME[row['anchor']]}  {row['id']}",
-                "rule2": "yes" if row["rule2"] else "", "confidence": row["confidence"],
+                "anchor": (f"authored by hand, no source  {row['id']}" if row["authored"]
+                           else f"{SOURCE_NAME[row['anchor']]}  {row['id']}"),
+                "rule2": "yes" if row["rule2"] else "",
+                "dish": "yes" if row["dish"] else "",
+                "authored": "yes" if row["authored"] else "", "confidence": row["confidence"],
                 "flags": "\n".join(row["flags"]), "n_flags": row["n_flags"],
                 "subclasses": row["subclasses"] or "", "why": row["why"], "how": row["how"]}
             for i, (head, key, width) in enumerate(COLUMNS, 1):
@@ -739,6 +914,10 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
         for parent in parents:
             subclass_count[parent] += 1
     rows = add_overrides(rows, by_entry, by_bucket, kinds, subclass_count)
+    # ⚠️ AFTER the overrides and BEFORE the removals, so a hand removal can target an
+    #    authored row the same way it targets any other. Its key is ("", <id>).
+    authored, authored_rejected = load_authored()
+    rows = add_authored(rows, authored, subclass_count)
 
     removals, rejected = load_removals()
     rows, dangling = apply_removals(rows, removals)
@@ -756,6 +935,11 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
                "   (hand removals, reasons in hand_removals.csv)"
         say(f"  marked {name:20s} {n:5,d}{note}")
     n_removals = sum(len(v) for v in removals.values())
+    say(f"  authored rows read: {len(authored):,}   "
+        + (", ".join(r["name"] for r in authored) if authored else "none"))
+    for row in authored_rejected:
+        say(f"  ⚠️  REJECTED, no reason given: authored row {row.get('id')}. "
+            "A row without a reason is not created.")
     say(f"  hand removals read: {n_removals:,} over {len(removals):,} entries")
     for row in rejected:
         say(f"  ⚠️  REJECTED, no reason given: {row.get('anchor')} {row.get('id')} "

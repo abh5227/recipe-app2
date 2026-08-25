@@ -221,6 +221,47 @@ DECLINED = {
             "The label class is about 1,359 rows, which is readable, and "
             "hand_removals.csv is where that reading persists.",
     ),
+    "dish_separation": dict(
+        anchor="wikidata",
+        rule="the entry carries a Wikidata kind of 'Dish or prepared food' or 'Cuisine, "
+             "recipe or meal' AND ALSO 'Ingredient or foodstuff'",
+        took=653,
+        why="⚠️ DECLINED AS A BATCH MOVE, NOT AS AN IDEA. The rows were to move to their "
+            "own table rather than be deleted, so that a named dish could be described "
+            "when someone imports a recipe for it. That reasoning stands. What does not "
+            "stand is that the 653 share the property.",
+        measurement="A random 40, read one at a time.\n"
+            "    dishes        16 of 40   40%   95% CI [26%, 55%]\n"
+            "    ingredients   24 of 40   60%\n"
+            "  Projected onto 653: 261 dishes [172, 362], and 392 ORDINARY INGREDIENTS "
+            "that a batch move would take with them. The best-corroborated rows in the "
+            "class are all five-source: ice cream, honey, jam, ham, chocolate, soy sauce, "
+            "shrimp, oyster, peanut butter, hummus, soy milk.",
+        cost="Moving all 653 costs 46 recipe lines and drops claimed-name coverage from "
+             "26.7% to 25.2%. soy sauce alone is 58 lines.",
+        as_food="⚠️ THE 'X as food' ROWS ARE NOT DISHES AND MUST NOT BE READ AS "
+            "CANDIDATES. pike as food, squid as food, razor shell as food, gar as food, "
+            "dog cockle as food. 52 rows. Wikidata uses that phrasing to separate the "
+            "ANIMAL from the FOOD, which is exactly the distinction this library wants.",
+        jar_cases="⚠️ 'A PREPARED THING SOLD IN A JAR' IS NOT THE EXCEPTION LIST. It runs "
+            "down the middle of the class. IN the 653: kimchi, miso, hummus, fish sauce, "
+            "soy sauce. NOT in it: gochujang, doubanjiang, ketchup, mayonnaise, pesto, "
+            "mustard, oyster sauce. Not rows at all: harissa, tahini.",
+        discriminators="⚠️ SIX WERE MEASURED AGAINST THE READ 40 AND NONE IS USABLE. "
+            "Recorded so none is re-proposed from memory. The best is a coin flip.\n"
+            "    'Dish' present and 'Cuisine' absent   precision 50%  recall  88%\n"
+            "    'Taxon or organism' absent            precision 47%  recall 100%\n"
+            "    no Open Food Facts among the sources  precision 44%  recall 100%\n"
+            "    fewer than 3 sources                  precision 46%  recall  81%\n"
+            "    'Cuisine, recipe or meal' present     precision 17%  recall  12%\n"
+            "    name ends ' as food'                  precision  0%  recall   0%\n"
+            "  ⚠️ 'fewer than 3 sources' is ALSO forbidden by the anchor clause at the "
+            "head of this file, whatever its precision had been.",
+        instead="⚠️ OUTSTANDING, NOT DONE. build_library.py marks all 653 with a 'dish' "
+            "column so the sheet sorts on it and the separation happens by reading, one "
+            "row at a time, into hand_removals.csv. The 653 still need reading. Nothing "
+            "was moved and coverage did not drop.",
+    ),
     "no_english_anywhere": dict(
         anchor="none, and that was the defect",
         rule="one source and no English name anywhere",
