@@ -471,6 +471,22 @@ def assign_ownership(entries, by_entry, by_bucket):
     return names, intruders, articles
 
 
+def is_english(lang):
+    """⚠️ 'en' AND 'en-*', NEVER 'en*'. A prefix test on the bare string matches 'enm',
+    which is MIDDLE ENGLISH, and this file used one at four places. Measured on the kept
+    rows: 96 names over 35 rows were counted as English when a source had tagged them a
+    dead language. 'honey' held mede and med, 'meat' held flesh and gos, 'half-and-half'
+    held creme and 'verjuice' held verjus. Nobody writes a recipe in Middle English, and
+    an English name is what the canonical picker picks and what english_names() returns
+    to the sheet, so the wrong ones were reaching a reader.
+
+    Every en* code in the store, measured: en 146,850 rows, en-gb 1,278, enm 912,
+    en-ca 829, en-us 536. Four regional Englishes and one dead language, and the prefix
+    could not tell them apart."""
+    lang = (lang or "").lower()
+    return lang == "en" or lang.startswith("en-")
+
+
 def choose_canonical(entry, by_entry, stored_names):
     """⚠️ THE ANCHOR'S OWN ENGLISH LABEL WINS. No promotion off a binomial and no tiebreak
     on string length. An earlier build did both and picked 'ail' for garlic, because the
@@ -478,7 +494,7 @@ def choose_canonical(entry, by_entry, stored_names):
     plant. A binomial canonical is FLAGGED instead and the cook's name is picked by hand."""
     for key in sorted(entry["seed"]):
         for _, kind, lang, text in by_entry[key]:
-            if kind in PRIMARY_KINDS and (lang or "").lower().startswith("en"):
+            if kind in PRIMARY_KINDS and is_english(lang):
                 return text, "the anchor's own English name"
     for key in sorted(entry["seed"]):
         name = stored_names.get((key[0], key[2]))
@@ -488,10 +504,12 @@ def choose_canonical(entry, by_entry, stored_names):
 
 
 def english_names(variations):
-    """A name is English when a source states lang en*, or when it comes from
-    wikipedia_redirect, which is enwiki and states no language at all."""
+    """A name is English when a source states en or a regional en-*, or when it comes
+    from wikipedia_redirect, which is enwiki and states no language at all.
+
+    ⚠️ NOT A PREFIX TEST. See is_english."""
     return {text for text, tags in variations.items()
-            if any(lang.startswith("en") or source == "wikipedia_redirect"
+            if any(is_english(lang) or source == "wikipedia_redirect"
                    for source, _, lang in tags)}
 
 
@@ -884,7 +902,7 @@ def mark_strength(rows):
         seen = collections.defaultdict(set)
         for text in list(row["variations"]) + [row["canonical"]]:
             tags = row["variations"].get(text, {("", "", "en")})
-            if not any(lang.startswith("en") for _, _, lang in tags):
+            if not any(is_english(lang) for _, _, lang in tags):
                 continue
             words, stem = strength_split(text)
             if words and stem:
@@ -1138,7 +1156,7 @@ def add_overrides(rows, by_entry, by_bucket, kinds, subclass_count):
             continue
         variations = collect_variations(seed, by_entry, by_bucket)
         canonical = next((t for key in sorted(seed) for _, k, l, t in by_entry[key]
-                          if k in PRIMARY_KINDS and (l or "").lower().startswith("en")),
+                          if k in PRIMARY_KINDS and is_english(l)),
                          term)
         anchor = "wikidata" if ident.startswith("Q") else "wiktextract"
         rows.append({
@@ -1481,8 +1499,8 @@ def write_sheet(rows, path):
         column can answer the question once 'en' is put where it can be seen. The
         wikipedia_redirect rows that state no language of their own are all covered by an
         en-tagged name from another source."""
-        first = [l for l in row["languages"] if l.startswith("en")]
-        rest = [l for l in row["languages"] if not l.startswith("en")]
+        first = [l for l in row["languages"] if is_english(l)]
+        rest = [l for l in row["languages"] if not is_english(l)]
         shown = (first + rest)[:cap]
         extra = len(row["languages"]) - len(shown)
         return ", ".join(shown) + (f", ... and {extra} more" if extra else "")
