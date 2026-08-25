@@ -2,7 +2,7 @@
 """reviewed.py: the hand-read verdicts behind every threshold in ingredient_cuts.py.
 
 ⚠️ THIS IS THE ONE FILE THAT CANNOT BE REGENERATED AT ANY PRICE. Everything else in the
-pipeline is code plus a cached fetch. This is 412 entries opened one at a time, every
+pipeline is code plus a cached fetch. This is 433 entries opened one at a time, every
 member row and every gloss read, across seven samples and the extraction readings. The
 ⚠️ EXTRACTION READINGS ARE MODEL-READ AND THE SEVEN SAMPLES ARE HAND-READ, which is a
 real difference and is marked on every entry. The count is reviewed.counts(),
@@ -343,6 +343,154 @@ DRINKS_SAMPLE = {
 #    visible to disagree with, not as settled. Each carries who read it.
 # ─────────────────────────────────────────────────────────────────────────────────────
 EXTRACTION_READ = {
+ # ─────────────────────────────────────────────────────────────────────────────────────
+ # THE 10-TO-19 ENGLISH-NAME SAMPLE, drawn at random with seed 20260825 from the 570
+ # unread holders in that band, and read the way the 83 above were read.
+ #
+ # ⚠️ IT REFUTES THE 20-NAME NEGATIVE FILTER. The filter came from 43 holders below 20
+ # names, none of which yielded, and was carried as "0 of 43". This second sample of 20
+ # yields 4 to 8 rows, so the floor is not zero. What the sample also shows is WHY the
+ # first one read as zero. The families down here are already mostly extracted. green
+ # sauce names five members and two of them, salsa verde and chimichurri, already have
+ # their own rows. nước mắm carries the whole Asian fish-sauce family and four of them,
+ # nam pla, Shottsuru, garum and Budu, already have rows. That is the tamari shape at
+ # scale, and it means the band is LOW YIELD rather than NO YIELD.
+ # ─────────────────────────────────────────────────────────────────────────────────────
+ "Riesling": ("0 rows, model-read 2026-08-25",
+    "⚠️ MARKED AS A FAMILY FROM THE SCAN SHEET AND IT IS NOT ONE. 148 names, 116 of them "
+    "English, 0 recipe lines, and every English name is the same grape. Rhine Riesling, "
+    "Weisser Riesling, Johannisberg Riesling, Rajnski Rizling, Ryzlink Rynsky, "
+    "Klingelberger, Petracine, Rossling and about a hundred more are the Vitis "
+    "International Variety Catalogue synonym list for Vitis vinifera Riesling, carried "
+    "in as wikidata aliases. Only 4 names are stated as a primary anywhere, and all four "
+    "are spellings of Riesling in another language.\n"
+    "  ⚠️ THIS IS THE COUNTER-SHAPE TO sausage AND dumpling, and it is what a large "
+    "English-name count looks like when it is NOT a family. A culinary family holds "
+    "different THINGS under one head. A cultivar register holds one thing under "
+    "different NAMES. Both present as a big holder and the member count cannot tell "
+    "them apart.\n"
+    "  WHAT WOULD HAVE BEEN A FAMILY AND IS ABSENT: the Prädikatswein ripeness levels. "
+    "Kabinett, Spätlese, Auslese, Beerenauslese, Trockenbeerenauslese and Eiswein are "
+    "real, distinct, buyable products, and NONE of them is on this row or on any other "
+    "row. Eiswein and ice wine sit on dessert wine. So the Riesling gap is a MISSING "
+    "SET rather than a buried one, and extraction cannot reach it.\n"
+    "  Welschriesling is a different grape entirely and already has its own row."),
+ "Avena sativa": ("0 rows, model-read 2026-08-25",
+    "222 names, 19 English, 0 lines. Spellings of oat plus parts and processes. Avenin "
+    "is the storage protein, Oat fiber and Oatstraw are parts, Oat milling is a process "
+    "and Pc98 (gene) is a crown-rust resistance gene. None is an ingredient."),
+ "free-range eggs": ("0 rows, model-read 2026-08-25",
+    "45 names, 12 English, 0 lines. ⚠️ Cage free and Cage-free egg are a DIFFERENT "
+    "production standard from free-range in US labeling, not a spelling, so they are "
+    "flagged rather than dismissed. Neither is an ingredient a recipe line asks for. "
+    "Free-range management is farm practice and is contamination."),
+ "food additive": ("0 rows, model-read 2026-08-25",
+    "169 names, 11 English, 0 lines, 64 subclasses. A category rather than an "
+    "ingredient. Its members are already in the subclass tree, and the hidden English "
+    "names (adjuncts, E numbers, Chemical additives, Specialty Food Ingredients) are "
+    "restatements of the head."),
+ "dried apricot": ("0 rows, model-read 2026-08-25",
+    "45 names, 11 English, 0 lines. ⚠️ ONE POSSIBLE MEMBER, recorded and not taken. "
+    "kuraga and uryuk are both Central Asian and in a market they are different goods, "
+    "kuraga pitted and halved, uryuk whole with the pit in. No source on the row states "
+    "the distinction, so taking it would be a world-judgement the row does not support. "
+    "Gheysi is Persian and Turkish apricot is an origin."),
+ "green sauce": ("⚠️ 2 ROWS AVAILABLE, NOT TAKEN, model-read 2026-08-25",
+    "48 names, 17 English, 0 lines. ⚠️ A FAMILY, AND WIKIDATA SAYS SO IN WORDS. Its own "
+    "description reads 'family of cold, uncooked sauces based on herbs, including the "
+    "Spanish and Italian salsa verde, the French sauce verte, the German Grüne Soße or "
+    "Frankfurter Grie Soß, and the Argentinian chimichurri'. That is five members named "
+    "by the source.\n"
+    "  ⚠️ THE TAMARI CHECK CUTS THE YIELD FROM FIVE TO TWO. salsa verde already has a "
+    "row (Q20747642) and so does chimichurri (Q1073142). Only sauce verte and Grüne Soße "
+    "with its Frankfurter Grie Soß name have no home. Frankfurter Grüne Soße is a "
+    "protected designation over seven named herbs, so it is a real distinct product.\n"
+    "  ⚠️ HELD FOR ANDY. This is one of the two hits that refute the 20-name filter."),
+ "Lancashire cheese": ("0 to 3 rows, model-read 2026-08-25",
+    "37 names, 14 English, 0 lines. ⚠️ BORDERLINE AND FLAGGED. Creamy Lancashire, "
+    "Crumbly Lancashire and Tasty Lancashire are the three named styles of the cheese "
+    "and a shop sells them as three things. Beacon Fell Traditional Lancashire is the "
+    "protected one. Whether a style of one cheese is a row or an attribute of a row is "
+    "the same question the tomato three-axis case asked, and it is not settled here."),
+ "soybean sprout": ("0 rows, model-read 2026-08-25",
+    "41 names, 12 English, 0 lines. Kongnamul and Congnamul are romanizations of the "
+    "same Korean word. ⚠️ Beansprouts is CONTAMINATION and worth naming, since mung bean "
+    "sprouts are a different product from soybean sprouts and a recipe line reading "
+    "'bean sprouts' would land here wrongly."),
+ "poppy seed": ("0 rows, model-read 2026-08-25",
+    "110 names, 18 English, 0 lines. Khas khas, Posto, Postu and mohn are the seed in "
+    "Hindi, Bengali and German. Poppy seed grinder is equipment and Poppyseed filling is "
+    "a preparation, both contamination. ⚠️ The real distinction, blue against white "
+    "poppy seed, is on NEITHER this row nor any other, so it is a missing set."),
+ "pea": ("0 rows, model-read 2026-08-25",
+    "248 names, 13 English, 0 lines, 23 merged entries. ⚠️ MOSTLY CONTAMINATION. Olivier "
+    "salad, Russian salad, American salad, Party Salad and vegetable salad are one DISH "
+    "merged onto the pea row. field pea and garden pea are a real agronomic distinction "
+    "from AGROVOC, and neither is what a recipe line means by peas."),
+ "Olallieberry": ("0 rows, model-read 2026-08-25",
+    "15 names, 14 English, 0 lines, and 6 of them are misspellings of the same berry. "
+    "olallaberry, olalliberry, ollalaberry, ollaliberry, ollalieberry, Olallie berry. "
+    "⚠️ THE PUREST SPELLING-VARIANT CASE IN THE SAMPLE, and useful as a negative "
+    "example, since 14 English names on a 15-name row looks exactly like a holder."),
+ "peach": ("0 rows, model-read 2026-08-25",
+    "148 names, 11 English, 0 lines. ⚠️ TWO CONTAMINATIONS, both cross-language. Momo "
+    "and Mo:mo are the Nepali and Tibetan DUMPLING, reached because momo is also "
+    "Japanese for peach. fishing and catching fish come from AGROVOC. Neither has "
+    "anything to do with the fruit."),
+ "Kanpei": ("0 rows, model-read 2026-08-25",
+    "13 names, 10 English, 0 lines. One Japanese citrus cultivar with its parentage "
+    "written out eight ways. Dekopon x nishinokaori, Dekopon × nishinokaori, "
+    "Nishinokaori x dekopon, Shiranui × nishinokaori and so on. Cross notation, not "
+    "members."),
+ "Nephelium lappaceum": ("0 rows, model-read 2026-08-25",
+    "86 names, 15 English, 0 lines. Rambutin, Ramutan, Ramutans and ramboostan are "
+    "spellings. Ang Mo Dan and Mamon chino are the fruit in Singapore and Central "
+    "America. Wild rambutan is the uncultivated form and no source states it as a "
+    "separate product."),
+ "Gruyère": ("0 to 1 rows, model-read 2026-08-25",
+    "55 names, 12 English, 0 lines. ⚠️ ONE BORDERLINE MEMBER. French Gruyère and Swiss "
+    "Gruyère are two protected cheeses that share a name and differ in holes, age and "
+    "rind. A cook told to use Gruyère is told one thing, so this is a note on the row "
+    "rather than a second row, and it is flagged rather than decided."),
+ "chocolate liquor": ("0 rows, model-read 2026-08-25",
+    "96 names, 13 English, 0 lines. cocoa mass, cacao mass, cacao paste, cocoa liquor "
+    "and Pure cocoa are one thing under five names. ⚠️ chocolate liqueur is flagged as a "
+    "member and IS NOT ONE. It is an alcoholic drink, and liquor against liqueur is a "
+    "one-letter homograph that the store cannot see. This is the clearest single-letter "
+    "case found so far."),
+ "whitebait": ("1 to 3 rows available, NOT TAKEN, model-read 2026-08-25",
+    "40 names, 11 English, 0 lines. ⚠️ A REAL FAMILY IN THE LOW BAND. shirasu (Japanese, "
+    "boiled and dried), Gianchetti (Ligurian) and Chirimen jako are named products, and "
+    "New Zealand whitebait is a DIFFERENT ANIMAL, a galaxiid rather than a clupeid, "
+    "sharing the English word. None of the four has a row. Whitebait fritter is a dish "
+    "and Whitebaiting is the activity, both contamination."),
+ "white rice": ("0 rows, model-read 2026-08-25",
+    "75 names, 11 English, 3 recipe lines. polished rice and milled rice are the same "
+    "thing. ⚠️ TWO FILIPINO CONTAMINATIONS. Pinais is fish wrapped in banana leaf and "
+    "carries its own article title onto this row, and Sinaing is a cooking method. "
+    "Neither is white rice, and Pinais being an article_title means it reads as a "
+    "primary name."),
+ "nước mắm": ("⚠️ 1 TO 2 ROWS AVAILABLE, NOT TAKEN, model-read 2026-08-25",
+    "28 names, 15 English, 0 lines. ⚠️ THE SECOND FAMILY IN THE SAMPLE. The row is "
+    "Vietnamese fish sauce and it carries the whole Asian family through the Fish sauce "
+    "article. Cambodian, Chinese, Japanese and Korean fish sauce, plus Teuk trey and Nam "
+    "pa.\n"
+    "  ⚠️ THE TAMARI CHECK AGAIN, and it takes most of it. nam pla, Shottsuru, garum and "
+    "Budu already have rows. patis sits on the general fish sauce row, which carries 24 "
+    "recipe lines. aekjeot sits on jeotgal. Only Teuk trey (Cambodia) and arguably Nam "
+    "pa (Laos) have no home anywhere.\n"
+    "  ⚠️ HELD FOR ANDY, with green sauce."),
+ "cranberry": ("0 rows, model-read 2026-08-25",
+    "158 names, 15 English, 0 lines. V. oxycoccos, V. microcarpum, Oxycoccos, Fenberry "
+    "and Common cranberry are species-level botany rather than things a cook buys "
+    "separately. Cranberry bog is a place and Cranberries extract is an industrial "
+    "input, both contamination."),
+ "sardine": ("0 to 1 rows, model-read 2026-08-25",
+    "39 names, 17 English, 0 lines. Grilled sardines, Sardinha assada and Tinned "
+    "sardines are preparations. ⚠️ ONE BORDERLINE MEMBER. pilchard is a real British "
+    "distinction, the same fish over about 15 centimeters sold under a different name "
+    "and usually canned, and pilchard has NO row. It sits on Clupea, the genus, which is "
+    "an animal rather than a food."),
  "cream": ("1 row extracted, model-read 2026-08-25",
     "413 variations, 28 of them English, grouping to 11 concepts and 4 further names for "
     "cream itself. ONE concept is an ingredient carrying recipe lines: heavy cream, at 7 "
