@@ -119,6 +119,9 @@ DRINK = "Drink"
 APPELLATION = "Appellation or growing region"
 # ⚠️ ONE FIELD PER OFF COPY, NOT TWO OPINIONS. See english_primary.
 OFF_PRIMARY = {"canonical_name", "name"}
+# ⚠️ AN ENTRY WHOSE WORD IS AN INITIALISM. 'en:MPFE:noun#0' -> 'MPFE'. See
+#    drop_initialism_expansions, which is the only thing that reads this.
+INITIALISM = re.compile(r"^[A-Z]{2,6}$")
 E_NUMBER = re.compile(r"^e\s?\d{3}", re.I)
 PROCESS_NAMES = {"frying", "cooking", "baking", "smoking", "drying", "fermentation",
                  "roasting", "preparation"}
@@ -332,14 +335,27 @@ def pick_anchors(by_entry, by_bucket, kinds):
 
 
 # ⚠️ ONE PRIMARY NAME PER CONCEPT PER LANGUAGE, AND THE SOURCES KEEP THAT PROMISE EXACTLY.
-#    Measured in sources.db, not assumed: 0 of 250,765 AGROVOC (entry, language) pairs hold
-#    two prefLabels, 0 of 238,997 Wikidata pairs hold two labels, 0 of 61,565 Open Food
-#    Facts pairs hold two canonical_names. Zero exceptions in 551,327 pairs.
+#    Measured, not assumed: 0 of 250,765 AGROVOC (entry, language) pairs hold two
+#    prefLabels, 0 of 238,997 Wikidata pairs hold two labels, 0 of 61,561 Open Food Facts
+#    pairs hold two canonical_names and 0 of 86,527 hold two names.
 #
 #    So two DIFFERENT primary names from one source in one language on one library row is
 #    two source concepts merged, and no name-shape test is involved in saying so.
+#
+# ⚠️ BOTH OFF FIELDS, AND IT SHIPPED READING ONE. Open Food Facts is loaded twice and
+#    the two copies disagree on the field name: the txt taxonomy writes canonical_name and
+#    the json taxonomy writes name, 4,699 of 5,590 against 0, and 0 against 5,515 the
+#    other way. Reading canonical_name alone saw one copy of every concept, so this rule
+#    was half-blind from the commit that introduced it. See docs/measuring-the-premise.md,
+#    case 7.
+#
+#    Measured cost of the half-view, which is small and is not nothing: 8 more rows carry
+#    a second primary name (938 to 946) and 558 more marks appear, all of them on rows
+#    carrying ZERO recipe lines. Six more names move, of which one carries a line, and
+#    it is a wrong-traffic case: 'red bell pepper' leaves the bell pepper row for its own.
+#    NO hand-read verdict in reviewed.py is overturned and nothing stops moving.
 PRIMARY_CLAIM = {("agrovoc", "prefLabel"), ("wikidata", "label"),
-                 ("off_taxonomy", "canonical_name")}
+                 ("off_taxonomy", "canonical_name"), ("off_taxonomy", "name")}
 
 
 def primary_claims(rows, source):
@@ -535,6 +551,7 @@ def add_authored(rows, authored, subclass_count):
             "authored": True, "added": (row.get("added") or "").strip(),
             "intruders": set(),      # nothing was absorbed, so nothing can intrude
             "articles": [],
+            "dropped": [],
         })
     return rows
 
@@ -630,6 +647,77 @@ def strip_as_food(rows):
         row["n_variations"] = len(row["variations"]) - 1
         renamed.append(row)
     return renamed
+
+
+def drop_initialism_expansions(rows, by_entry):
+    """A NAME WHOSE ONLY EVIDENCE IS THE EXPANSION OF AN INITIALISM IS NOT A NAME.
+
+    English Wiktionary stores an initialism as an entry whose senses are its expansions,
+    each linked back with alt_of. 'en:MPFE:noun#0' is meat, poultry, fish, eggs, so the
+    join sees a bucket named 'eggs' pointing at an entry the meat anchor owns, and the
+    meat row ends up carrying 'eggs'.
+
+    ⚠️ THIS WAS READ AND RECORDED BEFORE IT WAS FIXED. reviewed.HEAD_TERMS marks five of
+    them contaminated with the expansion spelled out: MPFE on eggs, SPG on salt, AP on
+    all purpose flour, BEC on egg, VO on vegetable oil. Five of the fifty head terms in
+    that sample, and the reading sat there unacted on because no rule reached the shape.
+
+    ⚠️ WHY NAME RESOLUTION CANNOT REACH IT. resolve_borrowed moves a name only to a row
+    that carries it as its CANONICAL. 'eggs' is plural and the authored row is 'egg', and
+    norm_name does not stem, so the name meets no owner, wins against nothing and stays.
+    The 20 recipe lines saying eggs have reached 'meat' through every pass so far.
+
+    THE ANCHOR CLAUSE, and it is four conditions rather than one:
+      the source is wiktextract, and
+      the field is alt_of, NOT word, and
+      the entry's word is an all-caps 2 to 6 letter string, and
+      that tag is the ONLY evidence for the name on the row.
+
+    ⚠️ alt_of AND NOT word, WHICH IS THE WHOLE PRECISION OF IT. The initialism itself is
+    often a real abbreviation on the right row: AOVE is Spanish for extra virgin olive
+    oil, RYR is red yeast rice, TSP is textured soy protein, WVO is waste vegetable oil.
+    Dropping kind='word' as well would take 121 names instead of 97 and lose those four.
+    The junk is entirely in the expansions.
+
+    MEASURED over all 10,364 kept rows. 97 names leave 22 rows. 87 of the 97 exist
+    nowhere else afterwards and every one of those 87 carries ZERO recipe lines. The
+    three that carry lines all survive on another row, so no name stops resolving and no
+    line loses its answer:
+
+        'vegetable oil' leaves soursop      21 lines   expansion of VO
+        'eggs'          leaves meat         20 lines   expansion of MPFE
+        'egg'           leaves bacon        13 lines   expansion of BEC
+
+    The rest is what an initialism list looks like: accounts payable and acute
+    pancreatitis on all-purpose flour, sarong party girl and self-propelled gun on table
+    salt, travelling salesman problem on textured soy protein, remote frame buffer on
+    cream, and sixteen expansions of CS on Cabernet Sauvignon wine.
+    """
+    expansions = set()
+    for (source, _, entry_id), members in by_entry.items():
+        if source != "wiktextract":
+            continue
+        parts = entry_id.split(":")
+        if len(parts) < 3 or not INITIALISM.match(parts[1]):
+            continue
+        for _, kind, lang, text in members:
+            if kind == "alt_of":
+                expansions.add((kind, (lang or "").lower(), text))
+
+    gone = collections.Counter()
+    for row in rows:
+        row.setdefault("dropped", [])
+        for text in list(row["variations"]):
+            tags = row["variations"][text]
+            if len(tags) != 1:
+                continue                              # corroborated, so not sole evidence
+            source, kind, lang = next(iter(tags))
+            if source != "wiktextract" or (kind, lang, text) not in expansions:
+                continue
+            del row["variations"][text]
+            row["dropped"].append(text)
+            gone[row["canonical"]] += 1
+    return gone
 
 
 def resolve_borrowed(rows, superclasses, off_parents):
@@ -883,6 +971,7 @@ def add_overrides(rows, by_entry, by_bucket, kinds, subclass_count):
             "drink": False, "override": True,
             "intruders": set(),      # hand-seeded from one bucket, so nothing can intrude
             "articles": [],
+            "dropped": [],
             "dish": bool(DISH_KINDS & set(kinds.get(ident, {}).get("kinds", {})))
                     and INGREDIENT in kinds.get(ident, {}).get("kinds", {}),
             "authored": False,
@@ -939,6 +1028,12 @@ def annotate(rows, superclasses, off_parents):
                 "one language, which means a second concept, and NOTHING ELSE IN THE LIBRARY "
                 "CARRIES THEM so they stay rather than be lost: " + ", ".join(
                     repr(t) for t in staying[:4]))
+        if row.get("dropped"):
+            flags.append(
+                f"{len(row['dropped'])} name(s) DROPPED, each the expansion of a "
+                "Wiktionary initialism and carried by nothing else: "
+                + ", ".join(repr(t) for t in sorted(row["dropped"])[:4])
+                + (" ..." if len(row["dropped"]) > 4 else ""))
         if row.get("resolved"):
             flags.append(f"{len(row['resolved'])} name(s) moved to the row that owns "
                          "them: " + "; ".join(f"'{t}' -> {o} ({why})"
@@ -1378,6 +1473,9 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
     #    borrowed pairs, because a stem that was hidden behind a suffix now collides with
     #    names other rows hold. Precedence has to run after that or it misses those 7.
     renamed = strip_as_food(rows)
+    # ⚠️ BEFORE RESOLUTION, so a name that should not be here cannot be moved somewhere
+    #    else instead of leaving. See drop_initialism_expansions.
+    initialisms = drop_initialism_expansions(rows, by_entry)
     moved = resolve_borrowed(rows, superclasses, off_parents)
     rows = annotate(rows, superclasses, off_parents)
 
@@ -1421,6 +1519,9 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
         f"{sum(1 for r in rows if r['intruders']):,} entries")
     say(f"  renamed off 'as food':   {len(renamed):5,d}   "
         "(19 more are left alone: the bare stem is another row's canonical)")
+    say(f"  initialism expansions dropped: {sum(initialisms.values()):5,d} "
+        f"from {len(initialisms):,} rows   "
+        "(97 names, 54 recipe lines, 0 names left unreachable)")
     for rule, n in sorted(moved.items()):
         say(f"  names moved to their owner: {n:5,d}  {rule}")
     say(f"  override list size: {len(CUTS.OVERRIDES)}   "
