@@ -119,6 +119,14 @@ DRINK = "Drink"
 APPELLATION = "Appellation or growing region"
 # ⚠️ ONE FIELD PER OFF COPY, NOT TWO OPINIONS. See english_primary.
 OFF_PRIMARY = {"canonical_name", "name"}
+# ⚠️ WORDS THAT NAME A CONCENTRATION RATHER THAN A DIFFERENT INGREDIENT.
+#    See mark_strength. Deliberately not a complete list of preparation words: 'smoked'
+#    and 'pickled' make a different ingredient, 'powder' and 'paste' make the same one at
+#    a different strength, and only the second kind belongs here.
+STRENGTH_WORDS = {"paste", "concentrate", "extract", "essence", "juice", "water", "powder",
+                  "puree", "purée", "syrup", "granules", "cube", "dried", "fresh", "raw",
+                  "ground", "minced", "liquid", "condensed", "evaporated", "flakes",
+                  "desiccated", "milk", "cream", "flour"}
 # ⚠️ AN ENTRY WHOSE WORD IS AN INITIALISM. 'en:MPFE:noun#0' -> 'MPFE'. See
 #    drop_initialism_expansions, which is the only thing that reads this.
 INITIALISM = re.compile(r"^[A-Z]{2,6}$")
@@ -552,6 +560,7 @@ def add_authored(rows, authored, subclass_count):
             "intruders": set(),      # nothing was absorbed, so nothing can intrude
             "articles": [],
             "dropped": [],
+            "strength_a": {}, "strength_b": [],
         })
     return rows
 
@@ -718,6 +727,81 @@ def drop_initialism_expansions(rows, by_entry):
             row["dropped"].append(text)
             gone[row["canonical"]] += 1
     return gone
+
+
+def strength_split(name):
+    """(the strength words in a name, what is left of it). 'tomato paste' -> (['paste'], 'tomato')"""
+    words = norm_name(name).split()
+    return ([w for w in words if w in STRENGTH_WORDS],
+            " ".join(w for w in words if w not in STRENGTH_WORDS))
+
+
+def mark_strength(rows):
+    """THE STRENGTH SHAPE. THE SAME INGREDIENT AT SEVERAL CONCENTRATIONS, IN TWO FORMS.
+
+    A cook writing 'tamarind' and a cook writing 'tamarind concentrate' want the same
+    fruit, and a spoonful of one is several spoonfuls of the other. That is not a naming
+    collision and no existing mark sees it. The reader gets a plausible answer at the
+    wrong ratio, which is worse to act on than an answer that is obviously wrong.
+
+    FORM A, COLLAPSED. One row carries several strength words for one stem.
+        tamarind paste holds paste, concentrate, extract, water, juice and liquid.
+        tomato paste holds paste, concentrate and purée.
+        broth holds bouillon, stock, bone stock and fish stock.
+        cinnamon powder holds ground and powder, on 23 recipe lines.
+      Measured: 148 rows, 98 recipe lines.
+
+    FORM B, SCATTERED, AND IT IS THE LARGER ONE. Each strength has its OWN row and
+    nothing links them. vanilla extract carries 37 recipe lines and sits beside vanilla
+    powder, vanilla pod, vanilla sugar and pure vanilla extract as unrelated entries.
+    lemon splits five ways, ginger six, lime five.
+      Measured: 148 families over 402 rows, 128 recipe lines, 51 families with 3+ rows.
+      ⚠️ THAT COUNT IS THE DETECTOR'S, NOT A READING. Hand-reading the top 18 by recipe
+      line found 14 real families and 4 false ones ('food paste' beside 'raw food', 'ice
+      cube' beside 'ice cream'), so the honest figure is on the order of 115.
+
+    ⚠️ FORM B IS A RELATIONSHIP AND THE ROW MODEL CANNOT HOLD ONE. Every mark in this
+    file describes a row on its own. Form B is a fact ABOUT TWO ROWS, and the only reason
+    it can be written here at all is that the marker computes it across the whole set and
+    copies the answer onto each member. That is the THIRD time the missing parent-child
+    link has surfaced: the dish separation needed it, the category rows needed it, and now
+    this. It is a schema gap rather than a data defect.
+    """
+    families = collections.defaultdict(list)
+    for i, row in enumerate(rows):
+        if row.get("cut_by"):
+            continue
+        words, stem = strength_split(row["canonical"])
+        if words and stem:
+            families[stem].append((i, tuple(sorted(words))))
+
+    for row in rows:
+        row.setdefault("strength_a", {})
+        row.setdefault("strength_b", [])
+
+    a = b = 0
+    for row in rows:
+        seen = collections.defaultdict(set)
+        for text in list(row["variations"]) + [row["canonical"]]:
+            tags = row["variations"].get(text, {("", "", "en")})
+            if not any(lang.startswith("en") for _, _, lang in tags):
+                continue
+            words, stem = strength_split(text)
+            if words and stem:
+                seen[stem] |= set(words)
+        hit = {k: sorted(v) for k, v in seen.items() if len(v) > 1}
+        if hit:
+            row["strength_a"] = hit
+            a += 1
+
+    for stem, members in families.items():
+        if len(members) < 2 or len({w for _, w in members}) < 2:
+            continue                              # one row, or all the same strength
+        names = [rows[i]["canonical"] for i, _ in members]
+        for i, _ in members:
+            rows[i]["strength_b"] = [c for c in names if c != rows[i]["canonical"]]
+            b += 1
+    return a, b
 
 
 def resolve_borrowed(rows, superclasses, off_parents):
@@ -972,6 +1056,7 @@ def add_overrides(rows, by_entry, by_bucket, kinds, subclass_count):
             "intruders": set(),      # hand-seeded from one bucket, so nothing can intrude
             "articles": [],
             "dropped": [],
+            "strength_a": {}, "strength_b": [],
             "dish": bool(DISH_KINDS & set(kinds.get(ident, {}).get("kinds", {})))
                     and INGREDIENT in kinds.get(ident, {}).get("kinds", {}),
             "authored": False,
@@ -1028,6 +1113,18 @@ def annotate(rows, superclasses, off_parents):
                 "one language, which means a second concept, and NOTHING ELSE IN THE LIBRARY "
                 "CARRIES THEM so they stay rather than be lost: " + ", ".join(
                     repr(t) for t in staying[:4]))
+        if row.get("strength_a"):
+            flags.append(
+                "STRENGTH SHAPE, FORM A. This row carries one thing at several "
+                "concentrations, so a line matching it can be out by a multiple: "
+                + "; ".join(f"{k} as {', '.join(v)}" for k, v in
+                            list(row["strength_a"].items())[:2]))
+        if row.get("strength_b"):
+            flags.append(
+                f"STRENGTH SHAPE, FORM B. {len(row['strength_b']) + 1} rows hold this "
+                "ingredient at different strengths and NOTHING IN THE MODEL LINKS THEM: "
+                + ", ".join(row["strength_b"][:5])
+                + (" ..." if len(row["strength_b"]) > 5 else ""))
         if row.get("dropped"):
             flags.append(
                 f"{len(row['dropped'])} name(s) DROPPED, each the expansion of a "
@@ -1183,6 +1280,16 @@ NOTES = {
    "mapped variation TEXT back to redirect entries instead and reported 340 rows over 168 "
    "lines. It double-counted a name several articles redirect, and missed rows whose "
    "article title is not itself a variation. Ownership is the truth: 218 and 281.",
+ "strength_b": "OTHER ROWS holding this same ingredient at a different concentration.\n\n"
+   "⚠ THE STRENGTH SHAPE, FORM B, AND IT IS A RELATIONSHIP RATHER THAN A PROPERTY. "
+   "'vanilla extract' carries 37 recipe lines and sits beside 'vanilla powder' as an "
+   "unrelated entry. lemon splits five ways, ginger six, lime five. A cook writing the "
+   "bare word wants one of them and the model cannot say which, because nothing here "
+   "records that they are one ingredient.\n\n148 families over 402 rows, 128 recipe "
+   "lines, 51 families with three or more rows. ⚠ THAT IS THE DETECTOR'S COUNT. Reading "
+   "the top 18 by line found 14 real and 4 false, so the honest figure is nearer 115.\n\n"
+   "Form A, the collapsed version, is in 'What I was unsure about' instead, because it "
+   "is a property of one row. See build_library.mark_strength.",
  "__blank": "Yours. Nothing is written here.", "__blank2": "Yours. Nothing is written here.",
  "__div1": "LEFT is copied verbatim from a source. RIGHT is my judgement.",
  "__div2": "RIGHT is yours.",
@@ -1198,6 +1305,7 @@ COLUMNS = [
  ("Authored, not sourced", "authored", 12),
  ("Names moved to their owner", "resolved", 46),
  ("Wikipedia articles it answers for", "articles", 34),
+ ("Same thing at another strength", "strength_b", 40),
  (">>> JUDGEMENTS BELOW >>>", "__div1", 4),
  ("Confidence", "confidence", 11), ("What I was unsure about", "flags", 60),
  ("Checks that fired", "n_flags", 9), ("Things that subclass it", "subclasses", 11),
@@ -1321,6 +1429,7 @@ def write_sheet(rows, path):
                 "resolved": "\n".join(f"{t}  ->  {o}   [{why}]"
                                       for t, o, why in row.get("resolved", ())),
                 "articles": "\n".join(row["articles"]) if len(row["articles"]) > 1 else "",
+                "strength_b": "\n".join(row.get("strength_b", ())),
                 "confidence": row["confidence"],
                 "flags": "\n".join(row["flags"]), "n_flags": row["n_flags"],
                 "subclasses": row["subclasses"] or "", "why": row["why"], "how": row["how"]}
@@ -1477,6 +1586,10 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
     #    else instead of leaving. See drop_initialism_expansions.
     initialisms = drop_initialism_expansions(rows, by_entry)
     moved = resolve_borrowed(rows, superclasses, off_parents)
+    # ⚠️ AFTER RESOLUTION, because a strength word that leaves a row should not be counted
+    #    against it. See mark_strength.
+    rows = annotate(rows, superclasses, off_parents)
+    strength_a, strength_b = mark_strength(rows)
     rows = annotate(rows, superclasses, off_parents)
 
     say(f"\nentries: {len(rows):,}")
@@ -1514,6 +1627,10 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
     drinks = [r for r in rows if r["drink"]]
     say(f"  admitted by the drinks rule: {len(drinks):5,d}   "
         "(the loose version admits 65 at 60%)")
+    families = {strength_split(r["canonical"])[1] for r in rows if r.get("strength_b")}
+    say(f"  strength shape: form A {strength_a:5,d} rows   "
+        f"form B {sum(1 for r in rows if r.get('strength_b')):,} rows in "
+        f"{len(families):,} families")
     marked = sum(len(r["intruders"]) for r in rows)
     say(f"  second primary names marked: {marked:5,d} over "
         f"{sum(1 for r in rows if r['intruders']):,} entries")
