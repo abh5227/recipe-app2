@@ -2,7 +2,7 @@
 """reviewed.py: the hand-read verdicts behind every threshold in ingredient_cuts.py.
 
 ⚠️ THIS IS THE ONE FILE THAT CANNOT BE REGENERATED AT ANY PRICE. Everything else in the
-pipeline is code plus a cached fetch. This is 333 entries opened one at a time, every
+pipeline is code plus a cached fetch. This is 343 entries opened one at a time, every
 member row and every gloss read, across seven samples and the extraction readings. The
 ⚠️ EXTRACTION READINGS ARE MODEL-READ AND THE SEVEN SAMPLES ARE HAND-READ, which is a
 real difference and is marked on every entry. The count is reviewed.counts(),
@@ -393,6 +393,74 @@ EXTRACTION_READ = {
     "  NOT EXTRACTED, and the reason is priority rather than difficulty: no recipe line "
     "in the corpus reaches any of them today, against 7 for heavy cream. Worth an "
     "evening, not urgent."),
+ "white sugar": ("nothing to extract, model-read 2026-08-25",
+    "3 candidate names, 1 concept, 0 rows. granulated sugar (35 lines), refined sugar, "
+    "regular sugar, table sugar, white granulated sugar and white refined sugar are ONE "
+    "concept and it is white sugar itself. ⚠️ 'sand' is AGROVOC's mineral and is "
+    "contamination, not a member."),
+ "baking powder": ("nothing to extract, model-read 2026-08-25",
+    "1 candidate, 0 concepts. bakery additives and flour improvers are AGROVOC BROADER "
+    "terms that merged downward. A parent is not a member."),
+ "peppercorn": ("nothing to extract, model-read 2026-08-25",
+    "2 candidates, 2 concepts, 0 rows. Piper nigrum is the same plant under its botanical "
+    "name. grey pepper and gray pepper are one concept, a French grind of black pepper, "
+    "DECLINED as a grade rather than an ingredient. Pebre and pebre are a Chilean "
+    "condiment and are contamination.\n"
+    "  ⚠️ THE REAL PROBLEM ON THIS ROW IS NOT A MEMBER. It also holds 'black pepper' at 13 "
+    "recipe lines and 'white pepper' at 9, and BOTH ALREADY HAVE THEIR OWN ROWS. No "
+    "resolution rule reaches the pair, so 22 recipe lines land on a row that holds two "
+    "other rows' canonicals. That is the 668-pair class, and it is Andy's to read."),
+ "vegetable oil": ("nothing to extract, model-read 2026-08-25",
+    "3 candidates, 1 concept, 0 rows. plant oil, plant oils, vegetable oils, vegetal oil, "
+    "vegetal oils, vegetable oil and fat and vegetable fat and oil are ONE concept and it "
+    "is the holder. ⚠️ 'Brunsli' is a Swiss Christmas biscuit and is contamination."),
+ "soy sauce": ("read, one concept blocked on a merge, model-read 2026-08-25",
+    "2 candidates, and the interesting one is tamari.\n"
+    "  ⚠️ TAMARI WAS EXTRACTED AND THE ROW WAS REVERTED THE SAME DAY. tamari, tamari "
+    "sauce and tamari soy sauce are one concept and a genuinely different product, "
+    "wheat-free and brewed from what separates off miso. But a row for it ALREADY EXISTS "
+    "under the canonical 'tamari shoyu' (Wikidata Q3514675, one source, 5 names), and the "
+    "authored row seeded that same item and split it in two. So this is a RENAME and a "
+    "merge, not an extraction, and both are Andy's call.\n"
+    "  ⚠️ AND IT EXPOSED A LIMIT OF THE MEMBER MEASURE. member_names asks whether another "
+    "row owns the name as its CANONICAL. 'tamari shoyu' does not own 'tamari', so tamari "
+    "read as an orphan when its concept already had a row. Every extraction has to check "
+    "the concept, not just the name.\n"
+    "  Toyo and toyo are Filipino for soy sauce, the same concept. ganjang, shoyu and "
+    "jiangyou are the Korean, Japanese and Chinese national products, left alone."),
+ "egg as food": ("nothing to extract, model-read 2026-08-25",
+    "1 candidate and it is not a member. 'eggs' carries 20 recipe lines and is the PLURAL "
+    "of the authored 'egg' row. norm_name does not stem, so the name meets no owner and "
+    "no rule moves it. ⚠️ 20 LINES ON A PLURAL IS A STEMMING PROBLEM, NOT AN EXTRACTION "
+    "ONE, and it is the second time this exact shape has surfaced. 'Pu'er tea' on this "
+    "row is contamination."),
+ "turmeric": ("nothing to extract, model-read 2026-08-25",
+    "2 candidates, 2 concepts, 0 rows. Curcuma and curcuma are the genus, the same thing. "
+    "turmeric powder (3 lines), ground turmeric and powdered turmeric are ONE concept and "
+    "it is the STRENGTH shape rather than a member, the same class as tamarind paste: "
+    "fresh root against ground, where the reader gets a plausible answer at the wrong "
+    "ratio. Left for the strength decision rather than extracted."),
+ "sesame oil": ("nothing to extract, model-read 2026-08-25",
+    "1 candidate, 0 concepts that are food. ⚠️ Myanmar, Burma, Union of Myanmar, "
+    "Socialist Republic of Burma and Republic of the Union of Myanmar are ONE concept and "
+    "it is a COUNTRY, arriving from AGROVOC, which is a major sesame producer. Five names "
+    "of a nation state on a bottle of oil. sesame seed oil is the holder.\n"
+    "  ⚠️ THE DISTINCTION A COOK NEEDS IS NOT ON THIS ROW AT ALL. Toasted sesame oil has "
+    "its own row at 2 lines, and plain against toasted is the choice that matters."),
+ "bay leaf": ("nothing to extract, model-read 2026-08-25",
+    "2 candidates, 2 concepts. bay laurel, laurel, laurel leaves, sweet bay, bay, bay "
+    "leaves and bayleaf are ONE concept, the plant and its leaf. ⚠️ lager and lagers are "
+    "the beer and are contamination. Turkish against Californian bay is the distinction "
+    "worth having and no source on this row carries it."),
+ "Allium sativum": ("1 row extracted, model-read 2026-08-25",
+    "2 candidates and one of them is a different species. ⚠️ WILD GARLIC IS Allium "
+    "ursinum, NOT A VARIETY OF Allium sativum. A woodland plant with broad leaves and no "
+    "bulb worth using. About 200 names for it were sitting on the garlic row in 115 "
+    "languages: wild garlic, ramsons, ransoms, buckrams, bear leek, bear's garlic, "
+    "broad-leaved garlic, wood garlic, Bärlauch, ail des ours, черемша. EXTRACTED.\n"
+    "  fresh garlic is a FORM of the holder, not a member, and is left.\n"
+    "  ⚠️ THIS ROW'S OWN CANONICAL IS A BINOMIAL and 'garlic' is a separate row. That is a "
+    "merge question and is not touched here."),
 }
 
 

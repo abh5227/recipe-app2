@@ -1076,7 +1076,25 @@ def resolve_borrowed(rows, superclasses, off_parents):
     names are marked across 939 entries and 64 leave. 14,791 stay because nothing else in
     the library carries them, so removing one would take the name out altogether. They are
     named on the row in 'What I was unsure about' instead. The marks are a reading list, and
-    deciding which of two entries keeps the row is a merge question, not a rule."""
+    deciding which of two entries keeps the row is a merge question, not a rule.
+
+    RULE 4, AN AUTHORED ROW WINS THE NAME IT WAS AUTHORED FOR. Blast radius when it was
+    added: one row. 'peppercorn' loses 'pepper' and 'Pepper' over 10 recipe lines, all ten
+    the bare word. Rules 1 and 2 already clear salt, sugar, water, egg and oil.
+    ⚠️ It overrides a reading reviewed.py records as the sources not being wrong, and that
+    is deliberate. See the pepper entry there.
+
+    RULE 5, A SEEDED AUTHORED ROW CLAIMS EVERY NAME IT WAS SEEDED WITH. ⚠️ WITHOUT IT
+    EXTRACTION IS HALF DONE, and the case that showed it is 'wild garlic'. Extracting
+    Allium ursinum off the garlic row moved the canonical and left ramsons, buckrams,
+    bear leek, broad-leaved garlic and about 200 more names for the same plant sitting on
+    Allium sativum, because no row owns those as a canonical and rules 1 to 4 only fire
+    where one does.
+
+    ⚠️ IT RESTS ON THE SEED BEING READ BY A PERSON, WHICH IS WHY IT IS SAFE. A seed names
+    source entries, so the names it claims are the names those entries carry. Blast radius
+    when it was added: 219 pairs, ZERO recipe lines, ZERO rows lost, and 213 of the 219
+    are one plant leaving the wrong species."""
     moved = collections.Counter()
     # ⚠️ A CUT ROW NEVER WINS A NAME, AND WITHOUT THIS GUARD TWO DID. 'Red Rome' moved off
     #    'Rome' and 'Bohnapfel' off 'Rheinischer Bohnapfel', both to rows the cultivar
@@ -1090,6 +1108,16 @@ def resolve_borrowed(rows, superclasses, off_parents):
     for i, row in enumerate(rows):
         if not cut[i]:
             canonical[norm_name(row["canonical"])].append(i)
+    # ⚠️ RULE 5 READS A DIFFERENT INDEX, AND THAT IS THE WHOLE POINT. The four rules above
+    #    only ever fire on a name ANOTHER ROW OWNS AS ITS CANONICAL, so a member's other
+    #    names have no owner to go to and no rule reaches them. This index is every name a
+    #    SEEDED authored row carries.
+    seeded_claim = collections.defaultdict(list)
+    for i, row in enumerate(rows):
+        if cut[i] or not row["seeded"]:
+            continue
+        for text in row["variations"]:
+            seeded_claim[norm_name(text)].append(i)
 
     for i, row in enumerate(rows):
         row.setdefault("resolved", [])
@@ -1100,6 +1128,12 @@ def resolve_borrowed(rows, superclasses, off_parents):
                 continue
             owners = [j for j in canonical.get(key, ()) if j != i]
             if not owners:
+                claim = [j for j in seeded_claim.get(key, ()) if j != i]
+                if claim and not row["seeded"]:
+                    del row["variations"][text]
+                    row["resolved"].append((text, rows[claim[0]]["canonical"],
+                                            "a seeded authored row claims the name"))
+                    moved["a seeded authored row claims the name"] += 1
                 continue                              # a redirect wins against nothing
             tags = row["variations"][text]
             if all(source == "wikipedia_redirect" for source, _, _ in tags):
