@@ -2,7 +2,7 @@
 """reviewed.py: the hand-read verdicts behind every threshold in ingredient_cuts.py.
 
 ⚠️ THIS IS THE ONE FILE THAT CANNOT BE REGENERATED AT ANY PRICE. Everything else in the
-pipeline is code plus a cached fetch. This is 385 entries opened one at a time, every
+pipeline is code plus a cached fetch. This is 406 entries opened one at a time, every
 member row and every gloss read, across seven samples and the extraction readings. The
 ⚠️ EXTRACTION READINGS ARE MODEL-READ AND THE SEVEN SAMPLES ARE HAND-READ, which is a
 real difference and is marked on every entry. The count is reviewed.counts(),
@@ -664,6 +664,83 @@ EXTRACTION_READ = {
     "1 name, 1 concept. spirit vinegar, white vinegar and virgin vinegar are the holder. "
     "⚠️ spirit vinegar is ALSO on 'malt vinegar', which is the right-row-wrong-traffic case "
     "Andy raised, seen from the other side."),
+
+ # ── holders 52 to 72, model-read 2026-08-25. ZERO extractions, and that is the finding ──
+ "ground cinnamon": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. cinnamon powder is the old canonical. The three species came off "
+    "the general 'cinnamon' row, not this one."),
+ "cornstarch": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. corn starch, Maize starch, Maizena and Corn-starch are the holder."),
+ "ground ginger": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. ginger powder is the old canonical, and Open Food Facts is the "
+    "only source on the row."),
+ "sesame seed": ("nothing to extract, model-read 2026-08-25",
+    "3 names, 3 concepts, none extractable. Sesamum indicum is the species, sesame seeds "
+    "is the plural, gingelly and til are Indian names for the same. ⚠️ 'sesame' has no row "
+    "and carries no line, so the plant against the seed is a distinction nothing needs yet."),
+ "fennel seeds": ("nothing to extract, model-read 2026-08-25",
+    "3 names, 1 concept. fennel fruit is the old canonical and fennel seed the singular. "
+    "⚠️ 'fennel' the BULB is a different vegetable from this spice and has no row of its "
+    "own. Its concept IS the row called 'Foeniculum vulgare', so that is a rename."),
+ "buttermilk": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. Mattha is an Indian drink made from it. ⚠️ 'Cultured buttermilk' "
+    "and 'sweet cream buttermilk' are on the row and are genuinely different products, "
+    "fermented against the liquid left from churning. Neither is stated as a primary name "
+    "so neither is flagged, and it is worth a reading."),
+ "ginger": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. Zingiber is the genus. ⚠️ 'hing' is on this row and hing is "
+    "ASAFOETIDA, which has its own row at 1 recipe line. A spice on the wrong spice."),
+ "sea salt flakes": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. flake sea salt is the same words reordered."),
+ "white vinegar": ("nothing to extract, model-read 2026-08-25",
+    "1 name, 1 concept. table vinegar is the holder."),
+ "green bean": ("nothing to extract, model-read 2026-08-25",
+    "6 names, 5 concepts. ⚠️ Cornetto and cornetto are ONE concept and an ICE CREAM, "
+    "already carried by pain au chocolat. Vigna unguiculata sesquipedalis is the YARDLONG "
+    "BEAN, a different species with no row and no recipe line. flageolets is another bean "
+    "again, and its own bucket resolves to Wikidata 'Pochas' at seven names, which is too "
+    "thin to build on. RECORDED AS UNSURE rather than extracted. fine bean and green beans "
+    "are the holder."),
+ "meatball": ("nothing to extract, model-read 2026-08-25",
+    "4 names, 4 concepts, all DISHES. Swedish meatballs, Tefteli, frikadeller and "
+    "pârjoale are national meatball dishes, and frikadeller is already on frikandel."),
+ "avocado": ("nothing to extract, model-read 2026-08-25",
+    "3 names, 3 concepts. Persea is the genus, Persea americana the species, avocados the "
+    "plural. Machilus and Persea gratissima are synonymy."),
+ "carrot": ("nothing to extract, model-read 2026-08-25",
+    "3 names, 3 concepts. Daucus is the genus, carrots the plural, and 'karas' is a "
+    "Wikipedia label that is not a carrot."),
+ "chili powder": ("nothing to extract, model-read 2026-08-25",
+    "3 names, 3 concepts. ⚠️ 'chilli con carne' is a DISH. 'chili' is already on chili "
+    "pepper. chilli powder is a spelling.\n"
+    "  ⚠️ GOCHUGARU IS ON THIS ROW UNDER TEN SPELLINGS and is not flagged, because no "
+    "source states one as a primary name. It is a distinct product and its concept "
+    "already has TWO rows, 'Korean chili pepper' and 'Korean chili powder', so it is a "
+    "rename plus a merge rather than an extraction."),
+ "semolina": ("nothing to extract, model-read 2026-08-25",
+    "3 names, 2 concepts. semolina flour and wheat semolina are the holder. ⚠️ 'Suji ka "
+    "halwa' is a DISH made from it."),
+ "strained yogurt": ("nothing to extract, model-read 2026-08-25",
+    "3 names, 2 concepts. greek yogurt at 2 lines and eight spellings of it are the "
+    "holder, and ⚠️ THAT IS A RENAME CANDIDATE since the canonical carries no line.\n"
+    "  ⚠️ Labneh under nine spellings is on this row and is RECORDED AS UNSURE. It is "
+    "either the same thing under an Arabic name or a thicker product strained further, "
+    "and no source on the row separates them. suzma is Central Asian."),
+ "walnut": ("nothing to extract, model-read 2026-08-25",
+    "3 names, 3 concepts. Juglans the genus, Juglans regia the species, walnuts the plural."),
+ "white wine": ("nothing to extract, model-read 2026-08-25",
+    "3 names, 3 concepts. shirozake is a Japanese sweet sake, white vermouth is already on "
+    "dry vermouth, white wines is the plural."),
+ "clove": ("nothing to extract, model-read 2026-08-25",
+    "2 names, 2 concepts. cloves is the plural. ⚠️ 'Dianthus' is the CARNATION genus, on "
+    "the spice row because the flower is also called a clove pink."),
+ "five-spice powder": ("nothing to extract, model-read 2026-08-25",
+    "2 names, 1 concept, and it is not a spice. ⚠️ Ngo hiang, Ngohiong, Kikiam, Loh bak "
+    "and Lumpiang ngohiong are ONE concept and a Hokkien and Filipino DISH, a spring roll "
+    "seasoned with this blend. Thirteen spellings of a dish on a spice row."),
+ "Sichuan peppercorns": ("nothing to extract, model-read 2026-08-25",
+    "2 names, 2 concepts. Sichuan pepper is the old canonical. ⚠️ 'Zanthoxylum piperitum' "
+    "is a DIFFERENT SPECIES, the Japanese sansho, and already has its own row."),
 }
 
 
