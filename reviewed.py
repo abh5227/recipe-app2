@@ -2,8 +2,10 @@
 """reviewed.py: the hand-read verdicts behind every threshold in ingredient_cuts.py.
 
 ⚠️ THIS IS THE ONE FILE THAT CANNOT BE REGENERATED AT ANY PRICE. Everything else in the
-pipeline is code plus a cached fetch. This is 250 entries opened one at a time, every
-member row and every gloss read, across six samples. Re-running the samples would draw
+pipeline is code plus a cached fetch. This is 330 entries opened one at a time, every
+member row and every gloss read, across seven samples. The count is reviewed.counts(),
+and the prose said 250 for six samples while counts() said 265, so it now reads off the
+function rather than off a memory of it. Re-running the samples would draw
 different rows, and a model re-reading them would not reach the same calls.
 
 Nothing here is inferred. Each verdict is what was actually seen in the source rows.
@@ -12,7 +14,7 @@ HOW TO ADD TO IT. Same shape as ingredient_cuts.OVERRIDES: what was read, what t
 was, and the reasoning where it was not obvious. A verdict with no reasoning is only worth
 recording when the reading was trivial, and most were not.
 
-WHAT THE SIX SAMPLES WERE FOR, and which threshold each one set:
+WHAT THE SEVEN SAMPLES WERE FOR, and which threshold each one set:
 
   1  50 recipe head terms          set rule 4 of build_join.py. 11 of 50 contaminated,
                                    22%, against 4.5% on a random 200. Head terms attract
@@ -25,6 +27,10 @@ WHAT THE SIX SAMPLES WERE FOR, and which threshold each one set:
                                    against the stated impression would have reached.
   5  35 distinct-Wikidata merges   set the apostrophe policy in build_join.py.norm_name.
   6  40 never-met merges           confirmed 82% of punctuation merges are pure cleanup.
+  7  65 excluded drinks              set rule 4 of build_library.py. The loose version,
+                                     any OFF ingredient entry sharing a name bucket, is
+                                     right on 39 of 65. Requiring the two ENGLISH names
+                                     to be equal admits 22 and is wrong on none.
 """
 
 # ─────────────────────────────────────────────────────────────────────────────────────
@@ -251,13 +257,68 @@ NEVER_MET_SAMPLE = {
 }
 
 
+# ─────────────────────────────────────────────────────────────────────────────────────
+# SAMPLE 7. Every Wikidata item that Wikidata calls a Drink and not an ingredient, and
+# that an Open Food Facts ingredient entry shares a name bucket with. 65 items, each one
+# opened and its OFF match read. 39 right, 21 wrong, 5 borderline.
+#
+# ⚠️ THIS IS WHAT SET RULE 4 TO REQUIRE EQUAL ENGLISH NAMES RATHER THAN A SHARED BUCKET.
+# The verdicts below are the reading. The rule is drawn through them rather than the
+# other way round, and the 60% figure is what the shared-bucket version scores here.
+#
+# ⚠️ EVERY WRONG ONE IS A CROSS-LANGUAGE HOMOGRAPH OR A DRINK MEETING ITS OWN INGREDIENT.
+# That is the third time in this pipeline. 'ni' is nickel and it is milk, 'gula' is sugar
+# and it is yolk, 'granada' is a city and it is a pomegranate.
+# ─────────────────────────────────────────────────────────────────────────────────────
+DRINKS_SAMPLE = {
+ "right, and the English names are equal": ["wine", "coffee", "tea", "green tea",
+    "black tea", "white tea", "gunpowder tea", "rooibos", "instant coffee",
+    "cold brew coffee", "decaffeinated coffee", "sake", "rice wine", "vermouth",
+    "kombucha", "coconut water", "milk substitute", "apricot juice", "strawberry juice",
+    "lingonberry juice"],
+ "borderline, and the English names are equal": ["cider", "sparkling wine"],
+ "right, but the OFF match is a PARENT rather than the same thing": ["hot chocolate",
+    "horchata", "kvass", "Hibiscus tea", "masala chai", "drip coffee", "robusta coffee",
+    "doujiang", "non-dairy creamer", "tibicos", "Federweisser", "instant tea",
+    "fermented tea", "Kopi O", "caffe", "coffee drink", "nitro cold brew coffee",
+    "mate based soft drink", "Ceylon tea"],
+ "borderline, and no name match either": ["apple cider", "effervescent wine",
+    "palm wine"],
+ "wrong, a cross-language homograph": ["latte", "latte macchiato", "Uva", "Doogh",
+    "Posca", "Turkish coffee", "julmust", "perry", "ayran", "lassi", "Tang",
+    "Club-Mate", "cola", "Coca-Cola"],
+ "wrong, a drink meeting the ingredient it is made from": ["weak coffee",
+    "Rose's lime juice", "caffe crema", "coffee milk", "fruit wine", "beady wine",
+    "frizzante"],
+ "note": "⚠️ 'weak coffee' IS THE ONE THAT MATTERS AND IT IS WHY THE LOOSE VERSION IS "
+    "NOT SHIPPABLE. Its OFF match is en:water, on a bucket carrying 33 recipe lines, so "
+    "the shared-bucket rule would put a 'weak coffee' row in front of every line that "
+    "says water. The equal-names test drops it, along with 'latte' matching milk, 'Uva' "
+    "matching grape, 'Doogh' matching dough, 'Posca' matching vinegar and 'Turkish "
+    "coffee' matching flour.\n\n"
+    "⚠️ THE THIRD GROUP IS OUTSTANDING, NOT A LOSS. Those 19 read as real ingredients, "
+    "and rule 4 declines them because the OFF entry names their PARENT. Declining "
+    "'masala chai' because OFF says tea, and 'drip coffee' because OFF says coffee, is "
+    "correct: the parent already has a row. Four are not covered by a parent row and are "
+    "worth a reading when there is an evening for it, in this order: hot chocolate (OFF "
+    "says cocoa), horchata (OFF says tigernut milk), kvass (OFF says sourdough), "
+    "Hibiscus tea (OFF says roselle flower). None is urgent and none carries a recipe "
+    "line today.\n\n"
+    "⚠️ APPELLATIONS ARE NOT IN THIS SAMPLE AND THE RULE DOES NOT REACH THEM. Equal "
+    "English names over the 1,034 excluded appellations admits six, four of which are "
+    "wine regions, so build_library.drinks_rule excludes the appellation kind by name. "
+    "It blocks exactly one item here, Cava.",
+}
+
+
 def _flatten():
     out = {}
     for term, (verdict, why) in HEAD_TERMS.items():
         out[term.casefold()] = f"{verdict}. {why}"
     for group, name in ((WIKTIONARY_SAMPLE, "Wiktionary sample"),
                         (OFF_ONLY_SAMPLE, "OFF-only sample"),
-                        (LOW_GROUP_SAMPLE, "low-group sample")):
+                        (LOW_GROUP_SAMPLE, "low-group sample"),
+                        (DRINKS_SAMPLE, "excluded-drinks sample")):
         for verdict, items in group.items():
             if verdict == "note" or not isinstance(items, list):
                 continue
@@ -289,6 +350,8 @@ def counts():
                                              if isinstance(v, list)),
         "never-met merges read": sum(len(v) for v in NEVER_MET_SAMPLE.values()
                                      if isinstance(v, list)),
+        "excluded drinks read": sum(len(v) for v in DRINKS_SAMPLE.values()
+                                    if isinstance(v, list)),
     }
 
 

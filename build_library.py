@@ -22,7 +22,7 @@ WHAT IT READS
                        filter reads OFF's stored names and matched nothing.
     vocab/*.json       the classification model. ⚠️ CANNOT BE REGENERATED, see vocab/README.md
     ingredient_cuts.py the cut rules and the override list
-    reviewed.py        the 265 hand-read verdicts
+    reviewed.py        the 330 hand-read verdicts
     hand_removals.csv  ⚠️ Andy's removals. THE DECISION LIVES THERE, NOT IN THE SHEET,
                        because the sheet is regenerated. Marked in the spreadsheet and
                        pulled back by harvest_marks.py.
@@ -32,8 +32,8 @@ script is deterministic and rebuilds the sheet exactly. What it CANNOT rebuild i
 judgement in ingredient_cuts.py and reviewed.py, which is why both are committed as data
 rather than recomputed here.
 
-THE THREE ADMISSION RULES, strongest first. Only Wikidata and Open Food Facts may create
-an entry, because only they carry anything resembling a food classification.
+THE FOUR ADMISSION RULES. Only Wikidata and Open Food Facts may create an entry,
+because only they carry anything resembling a food classification.
 
   1  Wikidata classifies the item "Ingredient or foodstuff".                6,605
   2  Wikidata carries NO classification, but an OFF ingredients-taxonomy       487
@@ -43,6 +43,12 @@ an entry, because only they carry anything resembling a food classification.
      seed, legume, flavoring and biscuit, which is why the sheet marks all 487.
   3  An OFF ingredients-taxonomy entry reaching no Wikidata item, after the    4,269
      json and txt copies of one concept are merged.
+  4  THE DRINKS RULE. Wikidata calls the item a Drink and NOT an ingredient,           22
+     and an OFF ingredients-taxonomy entry's ENGLISH canonical_name EQUALS the
+     item's ENGLISH label. See drinks_rule for the measurement.
+     ⚠️ NUMBERED LAST, MEASURED SECOND. It is wrong on none of its 22 where rule 2
+     admitted dish, diet and biscuit. The numbers are quoted across ingredient_cuts.py,
+     reviewed.py and the sheet, so rule 2 keeps its number rather than being demoted.
 
 ⚠️ AGROVOC, WIKTIONARY AND WIKIPEDIA NEVER CREATE AN ENTRY. They supply variations only.
 None carries a food classification: AGROVOC has no type field in the store and its entries
@@ -108,6 +114,11 @@ FATAL_KINDS = {"Fictional food": "fictional",
 #    ham, soy sauce and 387 others out of the library. The flag makes the 653 sortable
 #    so the separation happens by reading, one row at a time.
 DISH_KINDS = {"Dish or prepared food", "Cuisine, recipe or meal"}
+# ⚠️ RULE 4 ADMITS FROM THE FIRST AND NEVER FROM THE SECOND. See drinks_rule.
+DRINK = "Drink"
+APPELLATION = "Appellation or growing region"
+# ⚠️ ONE FIELD PER OFF COPY, NOT TWO OPINIONS. See english_primary.
+OFF_PRIMARY = {"canonical_name", "name"}
 E_NUMBER = re.compile(r"^e\s?\d{3}", re.I)
 PROCESS_NAMES = {"frying", "cooking", "baking", "smoking", "drying", "fermentation",
                  "roasting", "preparation"}
@@ -195,8 +206,79 @@ def read_members(join):
     return by_entry, by_bucket
 
 
+def english_primary(by_entry):
+    """The English primary name each source entry states, read off the join's own members.
+
+    ⚠️ NOT A SECOND QUERY AGAINST sources.db, AND THE TWO WERE CHECKED EQUAL BEFORE THIS
+    WAS WRITTEN. The join carries the Wikidata label and the OFF English name as ordinary
+    member rows, so both derivations admit exactly the same 22 drinks. Reading the join
+    keeps rule 4 inside the same data every other rule is decided on.
+
+    ⚠️ BOTH OFF FIELDS, BECAUSE OFF IS LOADED TWICE AND THE TWO COPIES DISAGREE ON THE
+    FIELD NAME. The txt taxonomy writes canonical_name and the json taxonomy writes name.
+    Measured: 4,699 txt entries carry an English canonical_name and ZERO of the 6,442
+    json entries do, so reading canonical_name alone sees one copy of every concept and
+    misses the other. It does not change who is admitted, and that was checked rather
+    than assumed: canonical_name alone and canonical_name-or-name admit the same 22. It
+    changes what those 22 ABSORB, which is what left a duplicate 'black tea' row behind.
+    """
+    wikidata, off = {}, collections.defaultdict(set)
+    for (source, dataset, entry_id), rows in by_entry.items():
+        for _, kind, lang, text in rows:
+            if (lang or "").lower() != "en":
+                continue
+            if source == "wikidata" and kind == "label":
+                wikidata.setdefault(entry_id, text)
+            elif source == "off_taxonomy" and kind in OFF_PRIMARY:
+                off[norm_name(text)].add((dataset, entry_id))
+    return wikidata, off
+
+
+def drinks_rule(by_entry, kinds, admitted):
+    """RULE 4. A Wikidata Drink carrying no ingredient kind is admitted when an Open Food
+    Facts ingredient entry's ENGLISH canonical_name EQUALS the item's ENGLISH label.
+
+    ⚠️ THE NARROWING IS THE RULE, AND THE OBVIOUS VERSION WAS MEASURED AS A COIN FLIP.
+    Admitting every excluded drink that merely SHARES A NAME BUCKET with an OFF ingredient
+    entry admits 65 and is right on 39, which is 60%. Requiring the two English names to
+    be EQUAL admits 22 and is wrong on none, 91% strict and 100% counting cider and
+    sparkling wine as ingredients. All 65 are read one at a time in reviewed.DRINKS_SAMPLE.
+
+    ⚠️ DO NOT RELAX THIS BACK TO SHARED BUCKETS. What the loose version lets in is a
+    cross-language homograph every time, and that is the THIRD time the same failure has
+    landed in this pipeline: 'ni' is nickel and it is milk, 'gula' is sugar and it is yolk,
+    'granada' is a city and it is a pomegranate. The drinks repeat it exactly. 'latte'
+    shares a bucket with OFF milk, 'Uva' with grape, 'Doogh' with dough, 'Posca' with
+    vinegar, 'Turkish coffee' with flour, and 'weak coffee' with WATER on a bucket carrying
+    33 recipe lines. Equal English names kill all six and cost nothing.
+
+    ⚠️ AND DO NOT POINT IT AT APPELLATIONS. The same narrowing over the 1,034 excluded
+    appellations admits six, four of which are wine regions, so the appellation kind is
+    excluded here explicitly rather than by luck. It blocks exactly one item, Cava.
+
+    ⚠️ WHAT IT DOES NOT ADMIT IS RECORDED, NOT LOST. 19 of the 65 read as real ingredients
+    and fail the name test because their OFF match is a PARENT rather than the same thing:
+    hot chocolate matches cocoa, horchata matches tigernut milk, kvass matches sourdough,
+    Hibiscus tea matches roselle flower. Dropping masala chai to tea and drip coffee to
+    coffee is correct. Those four are an outstanding reading, listed in
+    reviewed.DRINKS_SAMPLE under 'outstanding', and they are readable at leisure.
+    """
+    wikidata, off = english_primary(by_entry)
+    out = set()
+    for source, _, entry_id in by_entry:
+        if source != "wikidata" or entry_id in admitted:
+            continue
+        item = kinds.get(entry_id, {}).get("kinds", {})
+        if DRINK not in item or INGREDIENT in item or APPELLATION in item:
+            continue
+        label = norm_name(wikidata.get(entry_id, "") or "")
+        if label and label in off:
+            out.add(entry_id)
+    return out
+
+
 def pick_anchors(by_entry, by_bucket, kinds):
-    """The three admission rules. Returns (wikidata_anchors, off_only_groups)."""
+    """The four admission rules. Returns (rule1, rule2, drinks, off_only_groups)."""
     wd_in_join = {e for (s, d, e) in by_entry if s == "wikidata"}
     off_in_join = {(d, e) for (s, d, e) in by_entry if s == "off_taxonomy"}
 
@@ -207,11 +289,28 @@ def pick_anchors(by_entry, by_bucket, kinds):
 
     rule1 = {q for q in wd_in_join if INGREDIENT in kinds.get(q, {}).get("kinds", {})}
     rule2 = {q for q in wd_in_join if not kinds.get(q, {}).get("kinds")} & wd_with_off
+    drinks = drinks_rule(by_entry, kinds, rule1 | rule2)
 
     covered = set()
     for q in rule1 | rule2:
         for norm, *_ in by_entry[("wikidata", "food_items_q2095", q)]:
             covered |= {(d, e) for (s, d, e, *_) in by_bucket[norm] if s == "off_taxonomy"}
+    # ⚠️ A RULE-4 ANCHOR COVERS EXACTLY THE OFF ENTRY IT WAS ADMITTED ON, AND NOTHING
+    #    ELSE. Covering suppresses the OFF-only row for an entry a Wikidata anchor already
+    #    reaches, and it is computed over EVERY bucket the anchor touches. Measured on the
+    #    22 drinks, that width is a defect in both directions:
+    #      letting them cover everything they touch DELETED SIX EXISTING ROWS. Italian
+    #      'melù' is blue whiting the FISH and also a wine, so the wine anchor swallowed
+    #      the fish's row. Spanish 'Espumante' is sparkling wine and also OFF's additive
+    #      'Foaming agent'. And 'champagne', the appellation kept out of rule 4 on
+    #      purpose, arrived as a variation while its own row was deleted.
+    #      letting them cover NOTHING left 12 names carried by two rows, one Wikidata and
+    #      one OFF, which is the defect 'one name, one row' was written to remove.
+    #    The same equal-English-names test that admits the anchor decides what it absorbs,
+    #    so it takes en:black-tea and leaves the fish alone.
+    wd_label, off_by_name = english_primary(by_entry)
+    for q in drinks:
+        covered |= off_by_name.get(norm_name(wd_label.get(q, "") or ""), set())
 
     # ⚠️ OFF IS LOADED TWICE, as a json taxonomy and a txt taxonomy, so most concepts
     #    appear as TWO entries. Two OFF entries sharing a bucket are one concept.
@@ -229,7 +328,7 @@ def pick_anchors(by_entry, by_bucket, kinds):
                         stack.append((d2, e2))
         seen |= group
         groups.append(sorted(group))
-    return rule1, rule2, groups
+    return rule1, rule2, drinks, groups
 
 
 # ⚠️ ONE PRIMARY NAME PER CONCEPT PER LANGUAGE, AND THE SOURCES KEEP THAT PROMISE EXACTLY.
@@ -431,7 +530,8 @@ def add_authored(rows, authored, subclass_count):
             "why": f"AUTHORED. {row['reason'].strip()}",
             "sources": sources, "languages": ["en"],
             "subclasses": subclass_count.get(row["id"].strip(), 0),
-            "binomial": False, "rule2": False, "override": False, "dish": False,
+            "binomial": False, "rule2": False, "drink": False, "override": False,
+            "dish": False,
             "authored": True, "added": (row.get("added") or "").strip(),
             "intruders": set(),      # nothing was absorbed, so nothing can intrude
             "articles": [],
@@ -672,7 +772,7 @@ def apply_cuts(row, superclasses, off_parents):
 
 def build_rows(join, src, kinds, superclasses, off_parents):
     by_entry, by_bucket = read_members(join)
-    rule1, rule2, off_groups = pick_anchors(by_entry, by_bucket, kinds)
+    rule1, rule2, drinks, off_groups = pick_anchors(by_entry, by_bucket, kinds)
 
     stored_names = {}
     if src is not None:
@@ -682,13 +782,17 @@ def build_rows(join, src, kinds, superclasses, off_parents):
                 stored_names[(source, entry_id)] = name
 
     entries = []
-    for q in sorted(rule1 | rule2):
+    for q in sorted(rule1 | rule2 | drinks):
         key = ("wikidata", "food_items_q2095", q)
+        if q in rule1:
+            why = "Wikidata kind is Ingredient or foodstuff"
+        elif q in rule2:
+            why = "Wikidata carries no kind, an OFF ingredient entry shares its name"
+        else:
+            why = ("Wikidata calls it a drink and an OFF ingredient entry carries the "
+                   "same English name")
         entries.append({"anchor": "wikidata", "id": q, "seed": {key},
-                        "buckets": {n for n, *_ in by_entry[key]},
-                        "why": ("Wikidata kind is Ingredient or foodstuff" if q in rule1
-                                else "Wikidata carries no kind, an OFF ingredient entry "
-                                     "shares its name")})
+                        "buckets": {n for n, *_ in by_entry[key]}, "why": why})
     for group in off_groups:
         name = stored_names.get(("off_taxonomy", group[0][1]), "")
         if E_NUMBER.match(name.strip()) or name.strip().lower() in PROCESS_NAMES:
@@ -730,6 +834,7 @@ def build_rows(join, src, kinds, superclasses, off_parents):
             "subclasses": subclass_count.get(entry["id"], 0),
             "binomial": is_binomial(canonical, variations),
             "rule2": entry["why"].startswith("Wikidata carries no kind"),
+            "drink": entry["why"].startswith("Wikidata calls it a drink"),
             "dish": bool(DISH_KINDS & set(item_kinds)) and INGREDIENT in item_kinds,
             "override": False, "authored": False,
             # ⚠️ Names this row holds that are a SECOND primary name from one source in one
@@ -774,7 +879,8 @@ def add_overrides(rows, by_entry, by_bucket, kinds, subclass_count):
             "sources": sorted({s for tags in variations.values() for s, _, _ in tags}),
             "languages": sorted({l for tags in variations.values() for _, _, l in tags if l}),
             "subclasses": subclass_count.get(ident, 0),
-            "binomial": is_binomial(canonical, variations), "rule2": False, "override": True,
+            "binomial": is_binomial(canonical, variations), "rule2": False,
+            "drink": False, "override": True,
             "intruders": set(),      # hand-seeded from one bucket, so nothing can intrude
             "articles": [],
             "dish": bool(DISH_KINDS & set(kinds.get(ident, {}).get("kinds", {})))
@@ -921,6 +1027,17 @@ NOTES = {
  "anchor": "Which source made this an entry. Only Wikidata and OFF can anchor, plus the "
    "hand-added overrides.",
  "rule2": "TRUE for the 487 entries admitted by rule 2, the weakest rule.",
+ "drink": "TRUE for the 22 entries admitted by rule 4, the drinks rule.\n\n"
+   "⚠ A NARROWING, NOT A RELAXATION. Wikidata calls these drinks and not ingredients, so "
+   "the kind filter excluded them and wine, coffee and tea had no row at all. The loose "
+   "version, any OFF ingredient entry sharing a name bucket, admits 65 at 60%. Requiring "
+   "the two ENGLISH names to be EQUAL admits 22 and is wrong on none of them.\n\n"
+   "⚠ WHAT THE LOOSE VERSION LET IN WAS A CROSS-LANGUAGE HOMOGRAPH EVERY TIME, the third "
+   "time that has been the failure here after 'ni' for nickel and 'gula' for sugar. "
+   "'latte' matched OFF milk, 'Uva' matched grape, 'weak coffee' matched WATER on a "
+   "bucket carrying 33 recipe lines.\n\nAll 65 are read in reviewed.DRINKS_SAMPLE, "
+   "including the 19 this rule drops because their OFF match is a parent rather than the "
+   "same thing. Appellations stay excluded. See build_library.drinks_rule.",
  "authored": "TRUE for rows Andy wrote, which no source in the store has.\n\n"
    "⚠ THESE ARE THE ONLY ROWS WITH NO ANCHOR. Every other row traces to a fetch. These "
    "exist because the thing exists and nothing we hold names it: 'salt' is 52 recipe "
@@ -963,14 +1080,14 @@ NOTES = {
    "en.wikipedia keeps apart. fortified wine holds Fortified wine, Port wine and Sherry. "
    "dumpling holds ten, Gnocchi and Knedle and Knodel among them.\n\n⚠ THIS COSTS NOTHING "
    "AND WAS ALREADY IN join.db. 12,055 redirect entries, every one carrying its article "
-   "title, and build_library read the field and ignored what it meant.\n\n217 rows are "
-   "flagged over 281 recipe lines, 57% of them subclassed by something against a sheet "
-   "baseline of 11.3%. 59 of the 217 carry NO second primary name, so the two signals are "
+   "title, and build_library read the field and ignored what it meant.\n\n218 rows are "
+   "flagged over 281 recipe lines, 57.3% of them subclassed by something against a sheet "
+   "baseline of 11.4%. 60 of the 218 carry NO second primary name, so the two signals are "
    "not the same check: peppercorn merging Pebre at 32 recipe lines is one of them.\n\n"
-   "⚠ BOTH COUNTS ARE COMPUTED FROM OWNERSHIP. A first pass mapped variation TEXT back "
-   "to redirect entries instead and reported 340 rows over 168 lines. It double-counted "
-   "a name several articles redirect, and missed rows whose article title is not itself "
-   "a variation. Ownership is the truth: 217 and 281.",
+   "⚠ THE ROW COUNT AND THE LINE COUNT ARE BOTH COMPUTED FROM OWNERSHIP. A first pass "
+   "mapped variation TEXT back to redirect entries instead and reported 340 rows over 168 "
+   "lines. It double-counted a name several articles redirect, and missed rows whose "
+   "article title is not itself a variation. Ownership is the truth: 218 and 281.",
  "__blank": "Yours. Nothing is written here.", "__blank2": "Yours. Nothing is written here.",
  "__div1": "LEFT is copied verbatim from a source. RIGHT is my judgement.",
  "__div2": "RIGHT is yours.",
@@ -981,7 +1098,8 @@ COLUMNS = [
  ("Every variation, with language, source and field", "vars", 70),
  ("Sources", "sources", 22), ("Languages", "languages", 20),
  ("What kind of thing it is", "kinds", 26), ("Anchored on", "anchor", 22),
- ("Admitted by rule 2", "rule2", 11), ("Dish as well as ingredient", "dish", 12),
+ ("Admitted by rule 2", "rule2", 11), ("Admitted by the drinks rule", "drink", 12),
+ ("Dish as well as ingredient", "dish", 12),
  ("Authored, not sourced", "authored", 12),
  ("Names moved to their owner", "resolved", 46),
  ("Wikipedia articles it answers for", "articles", 34),
@@ -1102,6 +1220,7 @@ def write_sheet(rows, path):
                 "anchor": (f"authored by hand, no source  {row['id']}" if row["authored"]
                            else f"{SOURCE_NAME[row['anchor']]}  {row['id']}"),
                 "rule2": "yes" if row["rule2"] else "",
+                "drink": "yes" if row["drink"] else "",
                 "dish": "yes" if row["dish"] else "",
                 "authored": "yes" if row["authored"] else "",
                 "resolved": "\n".join(f"{t}  ->  {o}   [{why}]"
@@ -1294,6 +1413,9 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
     multi = [r for r in rows if len(r["articles"]) > 1]
     say(f"  rows answering for 2+ en.wikipedia articles: {len(multi):5,d}   "
         f"{sum(len(r['articles']) for r in multi):,} articles between them")
+    drinks = [r for r in rows if r["drink"]]
+    say(f"  admitted by the drinks rule: {len(drinks):5,d}   "
+        "(the loose version admits 65 at 60%)")
     marked = sum(len(r["intruders"]) for r in rows)
     say(f"  second primary names marked: {marked:5,d} over "
         f"{sum(1 for r in rows if r['intruders']):,} entries")
