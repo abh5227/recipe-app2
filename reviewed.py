@@ -2,7 +2,7 @@
 """reviewed.py: the hand-read verdicts behind every threshold in ingredient_cuts.py.
 
 ⚠️ THIS IS THE ONE FILE THAT CANNOT BE REGENERATED AT ANY PRICE. Everything else in the
-pipeline is code plus a cached fetch. This is 406 entries opened one at a time, every
+pipeline is code plus a cached fetch. This is 412 entries opened one at a time, every
 member row and every gloss read, across seven samples and the extraction readings. The
 ⚠️ EXTRACTION READINGS ARE MODEL-READ AND THE SEVEN SAMPLES ARE HAND-READ, which is a
 real difference and is marked on every entry. The count is reviewed.counts(),
@@ -741,6 +741,81 @@ EXTRACTION_READ = {
  "Sichuan peppercorns": ("nothing to extract, model-read 2026-08-25",
     "2 names, 2 concepts. Sichuan pepper is the old canonical. ⚠️ 'Zanthoxylum piperitum' "
     "is a DIFFERENT SPECIES, the Japanese sansho, and already has its own row."),
+
+ # ── the four big merged holders, read out of order at Andy's direction, 2026-08-25 ──
+ "dumpling": ("8 rows extracted, model-read 2026-08-25",
+    "187 English names, ⚠️ NINE en.wikipedia ARTICLES, THE MOST IN THE LIBRARY, and about "
+    "fourteen concepts. EXTRACTED gnocchi, wonton, spätzle, knödel, halušky, mandu, "
+    "maultasche and matzah ball. pierogi and knedle already had rows.\n"
+    "  THE GROUPS. knödel is 18 spellings across German and the Slavic languages. wonton is "
+    "7 transliterations. halušky is 6, mandu 7, gnocchi 12, spätzle 6, matzah ball 6 "
+    "including knaidel and knaidelach.\n"
+    "  ⚠️ FOUR SEEDS HAD A TRAP. gnocchi and maultasche both share their bucket with "
+    "Q1854639, which IS the dumpling row. mandu shares its bucket with AGROVOC c_3190, "
+    "GARCINIA, a fruit genus. knödel shares its bucket with Q5265534, which is the existing "
+    "knedle row, and with a Brazilian steamed bread. All four excluded from the seeds.\n"
+    "  306 names left the parent, which went from 444 variations to 141."),
+ "Sausage": ("9 rows extracted, model-read 2026-08-25",
+    "155 English names, SEVEN en.wikipedia articles and about twenty-one concepts. EXTRACTED "
+    "hot dog, bratwurst, longaniza, luganega, mettwurst, sobrassada, andouille, lap cheong "
+    "and sucuk. chorizo, salami, kielbasa and chipolata already had rows.\n"
+    "  ⚠️ EVERY SEED SHARED ITS BUCKET WITH Q131419, WHICH IS THIS ROW, so every one excludes "
+    "it. sucuk also shares with Q1477592, CHURCHKHELA, a Georgian walnut and grape-must "
+    "sweet.\n"
+    "  ⚠️ butifarra IS NOT EXTRACTED. Its concept already has a row called 'Botifarra', so it "
+    "is a rename. Q5736147 in that bucket is a PERUVIAN SANDWICH, not the Catalan sausage.\n"
+    "  NOT MEMBERS AND NOT ROWS: salume, salumi and 'Italian charcuterie' are charcuterie "
+    "rather than a sausage. 'sausage roll' is a pastry. Vegan and vegetarian sausage are a "
+    "real product class and nobody has read them.\n"
+    "  365 names left the parent, which went from 655 variations to 293."),
+ "Crêpe": ("2 rows extracted, model-read 2026-08-25",
+    "124 English names, four articles, about six concepts. ⚠️ A CRÊPE IS THIN AND UNLEAVENED "
+    "AND A PANCAKE IS THICK AND LEAVENED, and this row was both. EXTRACTED pancake, which was "
+    "the biggest group at about fifty-five names and was not the canonical, and "
+    "palatschinke.\n"
+    "  naleśniki, pannenkoek and Boûkète are national names left on the parent. ⚠️ 'Pancake "
+    "race', 'Pancake Mix' and 'Pancake restaurant chain' are on it and are not foods.\n"
+    "  191 names left the parent, which went from 322 variations to 132."),
+ "biscuit": ("renamed to cookie, model-read 2026-08-25",
+    "46 English names, two articles, three concepts: cookie, biscuit and cracker.\n"
+    "  ⚠️ RENAMED Q13270 TO cookie UNDER THE AMERICAN READING. That row is the British "
+    "biscuit, which is the American cookie, and cookie had no row at all.\n"
+    "  ⚠️ AND I AUTHORED A biscuit ROW FOR THE AMERICAN QUICK BREAD AND HAD TO REVERT IT THE "
+    "SAME DAY. Wikidata Q4917272 ALREADY IS that row, carrying American biscuit, Biscuit "
+    "(bread), Biscuit (North America), Buttermilk biscuit, Baking powder biscuit and Cat head "
+    "biscuit. THE TAMARI LESSON, AND I WALKED STRAIGHT INTO IT: the concept check printed "
+    "'biscuit' as a holder and I read that as the row being renamed, when 'biscuit' was TWO "
+    "rows. Checking a name is not checking a concept when the name is duplicated.\n"
+    "  ⚠️ cracker is kept OUT of both. Saltines are a third thing and they are not cookies. It "
+    "has no row and Q856330 exists for it when someone wants one.\n"
+    "  ⚠️ The cookie row still holds 'biscuit', which is another row's canonical, and no "
+    "resolution rule reaches the pair. That is the 668-pair class."),
+ "hot dog": ("EXTRACTED 2026-08-25, and 12 names removed from it",
+    "⚠️ TWELVE OF ITS NAMES WERE ARTICLE TITLES ABOUT AN ARGUMENT, NOT NAMES FOR A FOOD. 'Are "
+    "hotdogs sandwiches?', 'Hot dog is a sandwich', 'Hot dogs are not sandwiches', 'Is a hot "
+    "dog a sandwich?', 'Hot dog sandwich debate', 'The great hot dog debate', 'Ketchup on Hot "
+    "Dogs' and five more. en.wikipedia redirects them at the Hot dog article and the join "
+    "copied them in, so the library offered to answer a recipe line reading 'Are hotdogs "
+    "sandwiches?'.\n"
+    "  ⚠️ NOTHING IN THE STORE WOULD EVER FLAG THEM. All twelve are wikipedia_redirect with "
+    "no language and no other source. They are well formed English, not initialisms, not "
+    "symbols, not dead languages and not translations. Every mechanical cut so far keys on a "
+    "property these do not have. The clearest case yet of a redirect that is not a name, and "
+    "they came out by hand."),
+ "nationality forms and descriptors": ("read and DECLINED as a class, 2026-08-25",
+    "⚠️ NOT MEMBERS AND THEY SHOULD NOT BECOME ROWS, recorded so nobody proposes them again. "
+    "A nationality plus a head noun is a description, not a product: German sausage, French "
+    "sausage, Japanese sausage, Russian, Ukrainian, Norwegian, Thai, Turkish, Chilean, "
+    "Colombian, Mexican, Finnish and African sausage. Brazilian, Chilean, French, Indian, "
+    "Italian, Japanese, Korean, Norwegian and Puerto Rican dumplings. American, Australian, "
+    "Austrian, Dutch, English, Greek, Icelandic, Indian, Indonesian, Mexican, Polish, "
+    "Scandinavian, Scottish and Swedish pancakes.\n"
+    "  The same for a cut or an ingredient plus a head noun: Pork sausage, Beef sausage, Fish "
+    "sausage, Fresh sausage, Boiled sausage, Bulk sausage, Cocktail sausage, Link sausage, "
+    "Potato dumpling, Bread dumpling, Plum dumplings, Banana pancakes, Blueberry pancakes, "
+    "Chocolate chip pancakes, Buttermilk pancake.\n"
+    "  ⚠️ THE TEST IS WHETHER A SHOP SELLS IT UNDER THAT NAME. Bratwurst passes and 'German "
+    "sausage' does not, even though a source states both."),
 }
 
 
