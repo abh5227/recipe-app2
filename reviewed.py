@@ -2,8 +2,10 @@
 """reviewed.py: the hand-read verdicts behind every threshold in ingredient_cuts.py.
 
 ⚠️ THIS IS THE ONE FILE THAT CANNOT BE REGENERATED AT ANY PRICE. Everything else in the
-pipeline is code plus a cached fetch. This is 330 entries opened one at a time, every
-member row and every gloss read, across seven samples. The count is reviewed.counts(),
+pipeline is code plus a cached fetch. This is 333 entries opened one at a time, every
+member row and every gloss read, across seven samples and the extraction readings. The
+⚠️ EXTRACTION READINGS ARE MODEL-READ AND THE SEVEN SAMPLES ARE HAND-READ, which is a
+real difference and is marked on every entry. The count is reviewed.counts(),
 and the prose said 250 for six samples while counts() said 265, so it now reads off the
 function rather than off a memory of it. Re-running the samples would draw
 different rows, and a model re-reading them would not reach the same calls.
@@ -311,10 +313,87 @@ DRINKS_SAMPLE = {
 }
 
 
+# ─────────────────────────────────────────────────────────────────────────────────────
+# EXTRACTION. Category rows opened one at a time, every English name on the row grouped
+# into concepts, and each concept judged an ingredient or not.
+#
+# ⚠️ THE POINT IS THAT A CATEGORY IS NOT RE-EXAMINED. 2,639 rows carry at least one
+#    signal of holding members and 1,317 of them hold nothing, so most of this reading
+#    ends in "nothing here". A verdict of nothing is worth exactly as much as a verdict
+#    of five rows, and only one of the two gets recorded anywhere else.
+#
+# ⚠️ EXTRACTION IS TWO STEPS AND THE GROUPING IS THE FIRST. A name is not a member. On
+#    'fortified wine' 15 candidate names cover 5 concepts, and on 'cream' 28 English
+#    names cover 11, so roughly two to three names per concept both times. One row per
+#    NAME would be worse than not extracting, since it would put Port and Porto and
+#    Vinho do Porto in the library as three different drinks.
+#
+# ⚠️ THESE READINGS ARE MODEL-READ, NOT HAND-READ, AND THAT IS THE DIFFERENCE THAT
+#    MATTERS IN THIS FILE. Every other sample here is Andy at the source rows. These are
+#    a model laying out the names and grouping them, and the grouping is where the
+#    judgement sits. They are recorded so the work is not repeated and so the calls are
+#    visible to disagree with, not as settled. Each carries who read it.
+# ─────────────────────────────────────────────────────────────────────────────────────
+EXTRACTION_READ = {
+ "cream": ("1 row extracted, model-read 2026-08-25",
+    "413 variations, 28 of them English, grouping to 11 concepts and 4 further names for "
+    "cream itself. ONE concept is an ingredient carrying recipe lines: heavy cream, at 7 "
+    "lines, which landed on this row until it was extracted.\n"
+    "  THE GROUPS. (1) heavy cream, alone, the US 36 percent product, Open Food Facts "
+    "states it as a canonical_name and files it under cream. (2) butterfat, milkfat, "
+    "milk fat, one concept, the fat fraction rather than the cream. Read and DECLINED: "
+    "it is a label term and a measurement, no recipe line reaches it, and what a cook "
+    "buys is the cream. (3) caffe crema, caffè crema, one coffee drink, two spellings, "
+    "reached through Italian crema, the same cross-language name match as latte for milk "
+    "and gula for sugar. (4) Krema, Kréma, one Greek dessert, two spellings. (5) pastel "
+    "de nata, pastéis de nata, pastel de Belém, pastéis de Belém, one Portuguese tart, "
+    "singular, plural and its Belém name. (6) panera (dessert), held apart from group 5 "
+    "and ⚠️ THE ONE I AM UNSURE OF, since it may be the same tart under a Spanish name "
+    "and no source on the row says either way. (7) cream soup, puréed soup, one dish. "
+    "(8) rum, rhum, one spirit, reached because Dutch room means cream and the bucket "
+    "collides. (9) Panax, ginseng, one plant genus from AGROVOC, and ginseng already has "
+    "its own row. (10) key, keyseat, keyway, Wiktionary engineering senses. (11) panne, "
+    "⚠️ ALSO UNSURE, a Wiktionary word that is French for both a fabric and pork fat.\n"
+    "  WHAT STAYS ON CREAM: dairy cream, milk cream, sweet cream and room are further "
+    "names for the holder, not members, so they stay.\n"
+    "  ⚠️ THE OFF SUBTREE IS A SEPARATE JOB AND IS NOT DONE. Open Food Facts files 34 "
+    "children under cream and 13 have no row, including single cream, whipping cream and "
+    "eight graded by milk fat percentage. None of them is a NAME on this row, so reading "
+    "the row cannot reach them. They are an admission question rather than an extraction "
+    "one."),
+ "flour": ("nothing to extract, model-read 2026-08-25",
+    "453 variations and 6 English orphan primaries, none of them a member. Three are "
+    "merge contamination that belongs on the reading pile instead: Turkish coffee, Koba "
+    "and UN, the last being AGROVOC's United Nations arriving through a Chinese name "
+    "bucket. The other three are cereal flour, cereal flours and flours, which are "
+    "further names for flour itself. The real members already have their own rows: "
+    "all-purpose flour and bread flour both moved off this row during resolution, and 18 "
+    "of the 24 children Open Food Facts files under flour resolve to rows that exist.\n"
+    "  ⚠️ MEASURED WRONG ONCE. An earlier sweep put flour at 16 orphan members by "
+    "counting any name carried by a field named label, prefLabel, canonical_name, name, "
+    "article_title or word. Ten of those 16 were Middle English spellings of flour from "
+    "Wiktionary: fflour, fflowr, fleur, floure, flowr, flowre, flowyr, flor, flur, floor. "
+    "Reading the field set the pipeline actually uses, build_library.PRIMARY_CLAIM, gives "
+    "6. See docs/measuring-the-premise.md."),
+ "broth": ("members found, not extracted, model-read 2026-08-25",
+    "457 variations, 10 English orphan primaries, and unlike flour there is real material "
+    "here. bone broth and fish stock are distinct products with no row. stock and stocks "
+    "are one concept and it is the largest, since a recipe saying stock has nowhere to "
+    "land. Rosół is Polish, Yahni and yahni are one Turkish concept spelled two ways, "
+    "blöta is Swedish, fish fumet groups with fish stock. bouillon and fish broth already "
+    "have rows.\n"
+    "  NOT EXTRACTED, and the reason is priority rather than difficulty: no recipe line "
+    "in the corpus reaches any of them today, against 7 for heavy cream. Worth an "
+    "evening, not urgent."),
+}
+
+
 def _flatten():
     out = {}
     for term, (verdict, why) in HEAD_TERMS.items():
         out[term.casefold()] = f"{verdict}. {why}"
+    for holder, (verdict, why) in EXTRACTION_READ.items():
+        out[holder.casefold()] = f"read for members: {verdict}. {why.splitlines()[0]}"
     for group, name in ((WIKTIONARY_SAMPLE, "Wiktionary sample"),
                         (OFF_ONLY_SAMPLE, "OFF-only sample"),
                         (LOW_GROUP_SAMPLE, "low-group sample"),
@@ -352,6 +431,7 @@ def counts():
                                      if isinstance(v, list)),
         "excluded drinks read": sum(len(v) for v in DRINKS_SAMPLE.values()
                                     if isinstance(v, list)),
+        "categories read for members": len(EXTRACTION_READ),
     }
 
 

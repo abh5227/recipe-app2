@@ -26,16 +26,31 @@
 #             rows are general to lives in this sentence until something models it.
 # added    the date, so a GENERATED claim carries its age.
 # sources  optional, usually empty at creation. Filling it is the promotion path from
-#          GENERATED to CURATED. Semicolon-separated.
+#          GENERATED to CURATED. Semicolon-separated. ⚠️ IGNORED ON A SEEDED ROW, which
+#          computes its sources from the tags its names actually carry.
+# seed     optional. Semicolon-separated names or Q-numbers. ⚠️ THE COLUMN THAT MAKES
+#          EXTRACTION POSSIBLE. A row with no seed carries one name and no provenance,
+#          which is right for 'salt' and wrong for a member read out of a category.
+#          Seeding pulls in every name the named buckets carry, each with the source,
+#          field and language that supplied it, exactly as ingredient_cuts.OVERRIDES does.
+#          ⚠️ A SEED NAMES ONE CONCEPT AND USUALLY TAKES SEVERAL TOKENS TO DO IT.
+#             Measured on fortified wine: 15 candidate names, 5 concepts, so about three
+#             names per concept. Port, port, Porto, Port wine, Port Wine (DOC) and Vinho
+#             do Porto are one thing spelled six ways and belong in ONE seed, not six
+#             rows. Grouping the names into concepts is the reading, and it happens
+#             before anything is written here.
+#          The six rows below are UNSEEDED on purpose: they are general terms the corpus
+#          needed a home for, not members read out of anything.
 #
 # ⚠️ These six are FLAT. Nothing records that 'kosher salt' is a specific of 'salt'.
 #    That relationship is real and is deliberately not built yet: honey with 37 varietal
 #    children and sesame oil with 4 distinct products are different relationships, and
 #    nothing measured separates them. Building the link now means building it twice.
-id,name,reason,added,sources
-salt,salt,"52 recipe lines and 32 dependents in the library, and no row of its own. A line saying salt currently reaches table salt or sea salt, which is the wrong specific rather than the general thing.",2026-08-24,
-sugar,sugar,"44 recipe lines, the second-heaviest term in the corpus, and 33 dependents. Held today by 'sugar product', which Wikidata describes as a sucrose umbrella, and by 'egg yolk'.",2026-08-24,
-water,water,"33 recipe lines and 13 dependents. ⚠️ Held today by 'cabbage'. The most common substance in the corpus and the library has no row for it at all.",2026-08-24,
-egg,egg,"33 recipe lines across 'egg' and 'eggs', and 42 dependents. Held today by 'bacon', 'chicken egg' and 'meat'. 'egg as food' exists and is the nearest thing, but it is Wikidata's phrasing for the foodstuff, not the word a recipe writes.",2026-08-24,
-oil,oil,"11 recipe lines and 115 dependents, the largest dependent count in the library. Held today by 'cooking oil'.",2026-08-24,
-pepper,pepper,"10 recipe lines and 40 dependents. ⚠️ Held today by 'bell pepper' and 'peppercorn', which are two different plants, so the bare word currently resolves to whichever wins the lookup.",2026-08-24,
+id,name,reason,added,sources,seed
+salt,salt,"52 recipe lines and 32 dependents in the library, and no row of its own. A line saying salt currently reaches table salt or sea salt, which is the wrong specific rather than the general thing.",2026-08-24,,
+sugar,sugar,"44 recipe lines, the second-heaviest term in the corpus, and 33 dependents. Held today by 'sugar product', which Wikidata describes as a sucrose umbrella, and by 'egg yolk'.",2026-08-24,,
+water,water,"33 recipe lines and 13 dependents. ⚠️ Held today by 'cabbage'. The most common substance in the corpus and the library has no row for it at all.",2026-08-24,,
+egg,egg,"33 recipe lines across 'egg' and 'eggs', and 42 dependents. Held today by 'bacon', 'chicken egg' and 'meat'. 'egg as food' exists and is the nearest thing, but it is Wikidata's phrasing for the foodstuff, not the word a recipe writes.",2026-08-24,,
+oil,oil,"11 recipe lines and 115 dependents, the largest dependent count in the library. Held today by 'cooking oil'.",2026-08-24,,
+pepper,pepper,"10 recipe lines and 40 dependents. ⚠️ Held today by 'bell pepper' and 'peppercorn', which are two different plants, so the bare word currently resolves to whichever wins the lookup.",2026-08-24,,
+heavy-cream,heavy cream,"7 recipe lines and no row of its own. Held today by 'cream', so a line saying heavy cream reaches the general dairy category rather than the 36 percent product a US recipe means. EXTRACTED from the cream row on 2026-08-25: 28 English names on it group to 11 concepts, and this is the only concept that is an ingredient carrying recipe lines. The seed names the two Open Food Facts entries rather than the bucket, because the bucket also holds en.wikipedia's redirect of 'Heavy cream' at the Cream article and would drag the parent concept back onto the child row.",2026-08-25,,off_taxonomy:en:heavy-cream;off_taxonomy:376

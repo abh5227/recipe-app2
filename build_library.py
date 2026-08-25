@@ -528,7 +528,13 @@ def load_authored(path=AUTHORED_ROWS):
     name would read as data and there is no fetch, no entry_id and nothing to
     re-derive behind it.
 
-    ⚠️ A ROW WITH NO REASON IS REJECTED, the same rule as OVERRIDES and hand_removals."""
+    ⚠️ A ROW WITH NO REASON IS REJECTED, the same rule as OVERRIDES and hand_removals.
+
+    ⚠️ THE OPTIONAL seed COLUMN IS WHAT MAKES EXTRACTION POSSIBLE. Without it an authored
+    row carries one name and no provenance, which is right for 'salt' and wrong for a
+    member read out of a category: sherry taken off 'fortified wine' has four sources and
+    fourteen languages behind its names, and dropping all of that to write the row would
+    lose more than the row adds. See add_authored and seed_keys."""
     if not os.path.exists(path):
         return [], []
     with open(path, encoding="utf-8") as fh:
@@ -539,20 +545,114 @@ def load_authored(path=AUTHORED_ROWS):
     return good, rejected
 
 
-def add_authored(rows, authored, subclass_count):
-    """Build the row dicts. ⚠️ sources stays EMPTY, so the 'only one source' flag cannot
-    fire on a row that has none, and the authored flag says the true thing instead."""
+def collect_variations(seed, by_entry, by_bucket):
+    """Every name the seeded entries carry, each with the source, field and language that
+    supplied it. Shared by add_overrides and add_authored.
+
+    ⚠️ NOT AN ADMISSION ROUTE, AND THE DISTINCTION IS THE WHOLE POINT. Nothing here
+    decides that a row should exist. A hand-written line already decided that, and this
+    only answers "what is this thing called, and who says so". The seed is read as
+    (source, dataset, entry_id) keys, so a name arrives with its provenance attached
+    rather than as a bare string.
+
+    Keys absent from by_entry are dropped rather than raising, because a seed can outlive
+    an entry the vocabularies stopped shipping."""
+    seed = {k for k in seed if k in by_entry}
+    variations, buckets = collections.defaultdict(set), set()
+    for key in seed:
+        for norm, kind, lang, text in by_entry[key]:
+            variations[text].add((key[0], kind, (lang or "").lower()))
+            buckets.add(norm)
+    for bucket in buckets:
+        for s, d, e, kind, lang, text in by_bucket[bucket]:
+            if (s, d, e) in seed:
+                variations[text].add((s, kind, (lang or "").lower()))
+    return variations
+
+
+SEED_SOURCES = ("agrovoc", "off_taxonomy", "wikidata", "wikipedia_redirect", "wiktextract")
+
+
+def seed_keys(spec, by_entry, by_bucket):
+    """Read authored_rows.csv's seed column into (source, dataset, entry_id) keys.
+
+    Three token forms, semicolon-separated:
+
+      Q13228                       a Wikidata item
+      off_taxonomy:en:heavy-cream  one named entry, in every dataset that carries it
+      heavy cream                  a bucket, every entry any source files under the name
+
+    ⚠️ THE BUCKET FORM IS THE BLUNT ONE AND IT IS NOT THE DEFAULT FOR A MEMBER. Measured
+    while extracting 'cream': seeding 'heavy cream' as a bucket returns 168 names in 147
+    languages, because en.wikipedia redirects 'Heavy cream' at the Cream article and the
+    redirect sits in the same bucket, so the seed drags Q13228 and the whole parent
+    concept onto the child row. 'single cream' does the same and adds 'light cream' on
+    top. A member is seeded by ENTRY. The bucket form is kept because add_overrides needs
+    it, and because it is right when the row IS the bucket.
+
+    ⚠️ A SOURCE-AND-ID TOKEN EXPANDS ACROSS DATASETS ON PURPOSE. Open Food Facts is loaded
+    twice under different field names, and 4,173 wiktextract entry ids appear in both the
+    English and Chinese dumps. Those are copies of one entry, not two opinions, so the
+    token takes all of them. See docs/measuring-the-premise.md, case 7.
+
+    ⚠️ A SEED NAMES A CONCEPT AND USUALLY TAKES SEVERAL TOKENS TO DO IT. Measured on
+    fortified wine, its 15 candidate names cover 5 concepts, so roughly three names per
+    concept: Port, port, Porto, Port wine, Port Wine (DOC) and Vinho do Porto are one
+    thing spelled six ways. Grouping the names is the reading job and it happens before
+    this function, in a person's head. Semicolons are how the result is written down."""
+    keys = set()
+    for token in (t.strip() for t in (spec or "").split(";")):
+        if not token:
+            continue
+        if re.fullmatch(r"Q\d+", token):
+            keys.add(("wikidata", "food_items_q2095", token))
+        elif token.split(":")[0] in SEED_SOURCES and ":" in token:
+            source, entry = token.split(":", 1)
+            keys |= {(s, d, e) for (s, d, e) in by_entry
+                     if s == source and e == entry}
+        else:
+            keys |= {(s, d, e) for s, d, e, *_ in by_bucket.get(norm_name(token), ())}
+    return keys
+
+
+def add_authored(rows, authored, subclass_count, by_entry, by_bucket):
+    """Build the row dicts.
+
+    ⚠️ AN UNSEEDED ROW KEEPS ITS EMPTY sources, so the 'only one source' flag cannot fire
+    on a row that has none and the authored flag says the true thing instead.
+
+    ⚠️ A SEEDED ROW IS A DIFFERENT CLAIM AND CARRIES A DIFFERENT RECORD. Extraction is
+    where this matters. Reading 'fortified wine' and naming sherry as a member creates a
+    row that no source made an entry, but the NAMES are not invented: Open Food Facts,
+    Wikidata and AGROVOC all say sherry, and that provenance existed before the row did.
+    So a seeded row's sources are computed from the tags rather than left blank, and the
+    one-source flag keeps telling the truth about the names instead of lying by omission
+    about all of them. What stays unsourced is the row's EXISTENCE, which is what the
+    authored flag and the low-confidence floor already say.
+
+    ⚠️ THE PLACEHOLDER 'authored' TAG IS EXCLUDED FROM sources DELIBERATELY. It marks the
+    canonical as English without inventing a fetch, and the sheet renders source names
+    through SOURCE_NAME, where the word would be a KeyError as well as a false claim."""
     for row in authored:
         name = row["name"].strip()
         sources = [s.strip() for s in (row.get("sources") or "").split(";") if s.strip()]
+        seeded = collect_variations(seed_keys(row.get("seed"), by_entry, by_bucket),
+                                    by_entry, by_bucket) if row.get("seed") else {}
+        # The tag makes the name English to english_names() without inventing a source:
+        # the language is a fact about the string, not a claim by anyone.
+        variations = dict(seeded)
+        variations.setdefault(name, set()).add(("authored", "label", "en"))
+        if seeded:
+            sources = sorted({s for tags in variations.values() for s, _, _ in tags}
+                             - {"authored"})
         rows.append({
             "canonical": name, "how": "authored by hand, no source",
-            # The tag makes the name English to english_names() without inventing a
-            # source: the language is a fact about the string, not a claim by anyone.
-            "variations": {name: {("authored", "label", "en")}}, "n_variations": 0,
+            "variations": variations, "n_variations": len(variations) - 1,
             "anchor": "", "id": row["id"].strip(), "kinds": [],
             "why": f"AUTHORED. {row['reason'].strip()}",
-            "sources": sources, "languages": ["en"],
+            "sources": sources, "seeded": bool(seeded),
+            "languages": sorted({l for tags in variations.values()
+                                 for _, _, l in tags if l}) or ["en"],
             "subclasses": subclass_count.get(row["id"].strip(), 0),
             "binomial": False, "rule2": False, "drink": False, "override": False,
             "dish": False,
@@ -892,6 +992,8 @@ def resolve_borrowed(rows, superclasses, off_parents):
                 rule = "the general term leaves the specific holder"
             elif text in row.get("intruders", ()):
                 rule = "a second primary name from one source in one language"
+            elif rows[owners[0]]["authored"]:
+                rule = "an authored row wins the name it was authored for"
             else:
                 continue
             del row["variations"][text]
@@ -905,13 +1007,17 @@ def resolve_borrowed(rows, superclasses, off_parents):
         #    source (camembert de Normandie, wild carrot, pesto variants, Dutch Mimolette),
         #    which correctly moves all four into the one-source flag.
         row["n_variations"] = len(row["variations"]) - 1
-        if row["authored"]:
-            # ⚠️ AN AUTHORED ROW KEEPS ITS EMPTY sources, WHICH IS THE POINT OF add_authored.
-            #    Recomputing from the tags would put the placeholder word 'authored' into
-            #    the source list, where it would read as a source name and would fire the
-            #    "only one source says this exists" flag on a row that has none.
+        if row["authored"] and not row["seeded"]:
+            # ⚠️ AN UNSEEDED AUTHORED ROW KEEPS ITS EMPTY sources, WHICH IS THE POINT OF
+            #    add_authored. Recomputing from the tags would put the placeholder word
+            #    'authored' into the source list, where it would read as a source name and
+            #    would fire the "only one source says this exists" flag on a row that has
+            #    none. A SEEDED row is recomputed like any other, minus that placeholder,
+            #    because its names really do have sources and a name that left the row
+            #    should stop counting as evidence for it.
             continue
-        row["sources"] = sorted({s for tags in row["variations"].values() for s, _, _ in tags})
+        row["sources"] = sorted({s for tags in row["variations"].values()
+                                 for s, _, _ in tags} - {"authored"})
         row["languages"] = sorted({l for tags in row["variations"].values()
                                    for _, _, l in tags if l})
     return moved
@@ -1008,7 +1114,7 @@ def build_rows(join, src, kinds, superclasses, off_parents):
             "rule2": entry["why"].startswith("Wikidata carries no kind"),
             "drink": entry["why"].startswith("Wikidata calls it a drink"),
             "dish": bool(DISH_KINDS & set(item_kinds)) and INGREDIENT in item_kinds,
-            "override": False, "authored": False,
+            "override": False, "authored": False, "seeded": False,
             # ⚠️ Names this row holds that are a SECOND primary name from one source in one
             #    language. See assign_ownership. resolve_borrowed decides what happens.
             "intruders": {t for t in intruders.get(i, ()) if t in variations},
@@ -1030,15 +1136,7 @@ def add_overrides(rows, by_entry, by_bucket, kinds, subclass_count):
         seed = {k for k in seed if k in by_entry}
         if not seed:
             continue
-        variations, buckets = collections.defaultdict(set), set()
-        for key in seed:
-            for norm, kind, lang, text in by_entry[key]:
-                variations[text].add((key[0], kind, (lang or "").lower()))
-                buckets.add(norm)
-        for bucket in buckets:
-            for s, d, e, kind, lang, text in by_bucket[bucket]:
-                if (s, d, e) in seed:
-                    variations[text].add((s, kind, (lang or "").lower()))
+        variations = collect_variations(seed, by_entry, by_bucket)
         canonical = next((t for key in sorted(seed) for _, k, l, t in by_entry[key]
                           if k in PRIMARY_KINDS and (l or "").lower().startswith("en")),
                          term)
@@ -1056,7 +1154,7 @@ def add_overrides(rows, by_entry, by_bucket, kinds, subclass_count):
             "intruders": set(),      # hand-seeded from one bucket, so nothing can intrude
             "articles": [],
             "dropped": [],
-            "strength_a": {}, "strength_b": [],
+            "strength_a": {}, "strength_b": [], "seeded": False,
             "dish": bool(DISH_KINDS & set(kinds.get(ident, {}).get("kinds", {})))
                     and INGREDIENT in kinds.get(ident, {}).get("kinds", {}),
             "authored": False,
@@ -1093,9 +1191,13 @@ def annotate(rows, superclasses, off_parents):
             flags.append(f"VARIATIONS TRIMMED BY HAND: {note}")
         if row["override"]:
             flags.append("ADMITTED BY HAND. See 'Why it is in the list' for the reason.")
-        if row["authored"]:
+        if row["authored"] and not row["seeded"]:
             flags.append("AUTHORED BY HAND AND UNSOURCED. No source in the store has this "
                          "term. GENERATED under docs/sourcing-tiers.md until traced.")
+        if row["seeded"]:
+            flags.append("AUTHORED BY HAND, NAMES SEEDED. No source made this an entry, "
+                         "so the ROW is GENERATED under docs/sourcing-tiers.md. Its names "
+                         "and their provenance are read from the store and are not.")
         if row.get("renamed_from"):
             flags.append(f"RENAMED from '{row['renamed_from']}'. Wikidata's 'as food' "
                          "suffix is its own disambiguator, and no row claims the stem.")
@@ -1571,7 +1673,7 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
     # ⚠️ AFTER the overrides and BEFORE the removals, so a hand removal can target an
     #    authored row the same way it targets any other. Its key is ("", <id>).
     authored, authored_rejected = load_authored()
-    rows = add_authored(rows, authored, subclass_count)
+    rows = add_authored(rows, authored, subclass_count, by_entry, by_bucket)
 
     removals, rejected = load_removals()
     rows, dangling = apply_removals(rows, removals)
