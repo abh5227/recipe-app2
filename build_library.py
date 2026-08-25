@@ -232,21 +232,94 @@ def pick_anchors(by_entry, by_bucket, kinds):
     return rule1, rule2, groups
 
 
+# ⚠️ ONE PRIMARY NAME PER CONCEPT PER LANGUAGE, AND THE SOURCES KEEP THAT PROMISE EXACTLY.
+#    Measured in sources.db, not assumed: 0 of 250,765 AGROVOC (entry, language) pairs hold
+#    two prefLabels, 0 of 238,997 Wikidata pairs hold two labels, 0 of 61,565 Open Food
+#    Facts pairs hold two canonical_names. Zero exceptions in 551,327 pairs.
+#
+#    So two DIFFERENT primary names from one source in one language on one library row is
+#    two source concepts merged, and no name-shape test is involved in saying so.
+PRIMARY_CLAIM = {("agrovoc", "prefLabel"), ("wikidata", "label"),
+                 ("off_taxonomy", "canonical_name")}
+
+
+def primary_claims(rows, source):
+    """The (source, language) slot -> the primary name an entry states in it.
+
+    ⚠️ THE NAME, NOT JUST THE SLOT, AND THE FIRST DRAFT KEPT ONLY THE SLOT. It marked any
+    second primary name in an occupied language, so two entries that AGREE got flagged as a
+    merge: 'rosemary' was marked an intruder on the rosemary row. The premise is two
+    DIFFERENT primary names. Measured, the correction removes 914 of 15,850 marks, 5.8%,
+    which is smaller than it looks worth: the marks it removes are the ones that would have
+    read as nonsense to anyone checking the column."""
+    return {(source, (lang or "").lower()): text
+            for _, kind, lang, text in rows if (source, kind) in PRIMARY_CLAIM}
+
+
 def assign_ownership(entries, by_entry, by_bucket):
     """Every source entry belongs to at most ONE library entry. See the module docstring
-    for the hing bucket, which is why this exists."""
-    owner, seeds = {}, {}
+    for the hing bucket, which is why this exists.
+
+    ⚠️ AND AN ENTRY CARRYING A PRIMARY NAME DOES NOT JOIN AN ANCHOR THAT ALREADY HOLDS ONE
+    FROM THE SAME SOURCE IN THE SAME LANGUAGE. Without this, 954 rows carried two or more
+    concepts of one source over 698 recipe lines. egg yolk held sugar AND Amanita caesarea,
+    milk held nickel, cabbage held water, cream held Panax, honey held common sole.
+
+    The cause is that the "most shared buckets" tie-break has no floor and one homograph
+    is enough to win. milk absorbed AGROVOC's nickel on the single bucket 'ni', the chemical
+    symbol, out of 263 buckets. egg yolk absorbed Open Food Facts' sugar on the single
+    bucket 'gula', which is sugar in Malay, out of 147.
+
+    ⚠️ A SHARED-BUCKET FLOOR WAS MEASURED AND REJECTED. 17,933 of 23,814 absorbed entries,
+    75.3%, share exactly ONE bucket with their owner, so a floor of two would un-own three
+    quarters of the library's variation coverage to fix 954 rows. The precision is in the
+    field rather than the count: of entries that carry a primary name, only 32.1% won on a
+    single bucket. This rule has no threshold in it.
+
+    ⚠️ NOTHING IS UN-OWNED AND NOTHING IS RESHUFFLED. An unowned entry is a name nothing can
+    reach, which is worse than a name on the wrong row. What the rule marks is the intruding
+    PRIMARY NAME, and resolve_borrowed then takes it off the row only where another row
+    carries it, so no name can be lost. The entry's other names stay: Open Food Facts' sugar
+    entry keeps contributing its 90 translations to whatever row it landed on, and only the
+    word 'sugar' stops answering for egg yolk.
+
+    ⚠️ RESHUFFLING WAS BUILT FIRST AND MEASURED AND IT DOES NOT WORK. Sending the entry to
+    its next-best free anchor moved 954 merged rows to 931 and put recipe lines UP from 698
+    to 721, because 1,727 of 1,914 displaced entries had no free anchor at all. A Wikidata
+    anchor's own seed already holds a label in every language it is labeled in, so a second
+    Wikidata item is blocked from every candidate and lands back where it started. The 187
+    that did move took their clash with them to a new row.
+
+    Entries are placed strongest-claim-first, so the ordering is deterministic rather than
+    dictionary order, in which an entry sharing one bucket could take the slot from one
+    sharing forty."""
+    owner, seeds, held = {}, {}, collections.defaultdict(dict)
     for i, entry in enumerate(entries):
         for key in entry["seed"]:
             owner[key] = seeds[key] = i
+            held[i].update(primary_claims(by_entry[key], key[0]))
     shared = collections.defaultdict(collections.Counter)
     for i, entry in enumerate(entries):
         for bucket in entry["buckets"]:
             for source, dataset, entry_id, *_ in by_bucket[bucket]:
                 if (source, dataset, entry_id) not in seeds:
                     shared[(source, dataset, entry_id)][i] += 1
-    for key, counts in shared.items():
-        owner[key] = max(counts.items(), key=lambda kv: (kv[1], -kv[0]))[0]
+
+    # ⚠️ STRONGEST CLAIM FIRST, AND THE SORT IS THE RULE'S DETERMINISM. Placing entries in
+    #    dict order would let an entry sharing one bucket take the slot from one sharing forty.
+    order = sorted(shared, key=lambda k: (-max(shared[k].values()), k))
+    intruders = collections.defaultdict(set)
+    for key in order:
+        best = max(shared[key].items(), key=lambda kv: (kv[1], -kv[0]))[0]
+        owner[key] = best
+        wants = primary_claims(by_entry[key], key[0])
+        if not wants:
+            continue                                  # variations only, nothing to clash
+        for slot, text in wants.items():
+            sitting = held[best].get(slot)
+            if sitting is not None and norm_name(sitting) != norm_name(text):
+                intruders[best].add(text)             # a SECOND, DIFFERENT primary name
+            held[best].setdefault(slot, text)
 
     names = collections.defaultdict(lambda: collections.defaultdict(set))
     for key, rows in by_entry.items():
@@ -255,7 +328,7 @@ def assign_ownership(entries, by_entry, by_bucket):
             continue
         for _, kind, lang, text in rows:
             names[i][text].add((key[0], kind, (lang or "").lower()))
-    return names
+    return names, intruders
 
 
 def choose_canonical(entry, by_entry, stored_names):
@@ -343,6 +416,7 @@ def add_authored(rows, authored, subclass_count):
             "subclasses": subclass_count.get(row["id"].strip(), 0),
             "binomial": False, "rule2": False, "override": False, "dish": False,
             "authored": True, "added": (row.get("added") or "").strip(),
+            "intruders": set(),      # nothing was absorbed, so nothing can intrude
         })
     return rows
 
@@ -474,11 +548,29 @@ def resolve_borrowed(rows, superclasses, off_parents):
     EXIST BEFORE STAGE 1. Rule 2 is worth almost nothing without authored_rows.csv,
     because there was no general row for the general term to go to.
 
-    ⚠️ WHAT THIS DOES NOT REACH, AND IT IS 732 PAIRS. Neither rule touches a pair whose two
-    names share no word and where no source is a redirect. 'peppercorn' holding 'pepper'
+    RULE 3, A SECOND PRIMARY NAME FROM ONE SOURCE IN ONE LANGUAGE LEAVES. A source gives a
+    concept at most ONE primary name per language and all three keep that promise exactly,
+    measured in sources.db rather than assumed: 0 of 250,765 AGROVOC (entry, language) pairs
+    hold two prefLabels, 0 of 238,997 Wikidata pairs hold two labels, 0 of 61,565 OFF pairs
+    hold two canonical_names. Zero exceptions in 551,327 pairs. So a row holding two is a
+    row holding two concepts, and assign_ownership marks the later one.
+
+    ⚠️ AND IT STILL ONLY LEAVES IF ANOTHER ROW CARRIES THE NAME, the same guard as rules 1
+    and 2. Without that guard this rule could take a name out of the library, which the
+    other two cannot do by construction.
+
+    ⚠️ WHAT THIS DOES NOT REACH, AND IT IS 668 PAIRS. No rule touches a pair whose two
+    names share no word, where no source is a redirect, and where both are the first primary
+    name their source states in their language. 'peppercorn' holding 'pepper'
     has AGROVOC, Open Food Facts, Wikidata and Wiktionary behind it and they are not
     wrong. 'cabbage' holding 'water' has Open Food Facts behind it and is. Source count
-    does not separate the two, so they are read by hand rather than ruled on."""
+    does not separate the two, so they are read by hand rather than ruled on.
+
+    ⚠️ RULE 3 MARKS FAR MORE THAN IT MOVES, AND THE GUARD IS WHY. 14,936 second primary
+    names are marked across 939 entries and 64 leave. 14,791 stay because nothing else in
+    the library carries them, so removing one would take the name out altogether. They are
+    named on the row in 'What I was unsure about' instead. The marks are a reading list, and
+    deciding which of two entries keeps the row is a merge question, not a rule."""
     moved = collections.Counter()
     # ⚠️ A CUT ROW NEVER WINS A NAME, AND WITHOUT THIS GUARD TWO DID. 'Red Rome' moved off
     #    'Rome' and 'Bohnapfel' off 'Rheinischer Bohnapfel', both to rows the cultivar
@@ -508,6 +600,8 @@ def resolve_borrowed(rows, superclasses, off_parents):
                 rule = "redirect loses to a canonical"
             elif set(key.split()) < head:
                 rule = "the general term leaves the specific holder"
+            elif text in row.get("intruders", ()):
+                rule = "a second primary name from one source in one language"
             else:
                 continue
             del row["variations"][text]
@@ -587,7 +681,7 @@ def build_rows(join, src, kinds, superclasses, off_parents):
                         "why": "an Open Food Facts ingredients-taxonomy entry that "
                                "reaches no Wikidata item"})
 
-    owned = assign_ownership(entries, by_entry, by_bucket)
+    owned, intruders = assign_ownership(entries, by_entry, by_bucket)
     subclass_count = collections.Counter()
     for parents in superclasses.values():
         for parent in parents:
@@ -620,6 +714,9 @@ def build_rows(join, src, kinds, superclasses, off_parents):
             "rule2": entry["why"].startswith("Wikidata carries no kind"),
             "dish": bool(DISH_KINDS & set(item_kinds)) and INGREDIENT in item_kinds,
             "override": False, "authored": False,
+            # ⚠️ Names this row holds that are a SECOND primary name from one source in one
+            #    language. See assign_ownership. resolve_borrowed decides what happens.
+            "intruders": {t for t in intruders.get(i, ()) if t in variations},
         })
     return rows, dropped, by_entry, by_bucket
 
@@ -656,6 +753,7 @@ def add_overrides(rows, by_entry, by_bucket, kinds, subclass_count):
             "languages": sorted({l for tags in variations.values() for _, _, l in tags if l}),
             "subclasses": subclass_count.get(ident, 0),
             "binomial": is_binomial(canonical, variations), "rule2": False, "override": True,
+            "intruders": set(),      # hand-seeded from one bucket, so nothing can intrude
             "dish": bool(DISH_KINDS & set(kinds.get(ident, {}).get("kinds", {})))
                     and INGREDIENT in kinds.get(ident, {}).get("kinds", {}),
             "authored": False,
@@ -698,6 +796,14 @@ def annotate(rows, superclasses, off_parents):
         if row.get("renamed_from"):
             flags.append(f"RENAMED from '{row['renamed_from']}'. Wikidata's 'as food' "
                          "suffix is its own disambiguator, and no row claims the stem.")
+        staying = sorted(row["intruders"] - {t for t, _, _ in row.get("resolved", ())}
+                         - {row["canonical"]})
+        if staying:
+            flags.append(
+                f"{len(staying)} name(s) here are a SECOND primary name from one source in "
+                "one language, which means a second concept, and NOTHING ELSE IN THE LIBRARY "
+                "CARRIES THEM so they stay rather than be lost: " + ", ".join(
+                    repr(t) for t in staying[:4]))
         if row.get("resolved"):
             flags.append(f"{len(row['resolved'])} name(s) moved to the row that owns "
                          "them: " + "; ".join(f"'{t}' -> {o} ({why})"
@@ -1087,7 +1193,8 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
     off_parents = off_tree(src) or committed_tree
     say(f"OFF tree: {len(off_parents):,} entries with a parent, rebuilt from sources.db")
 
-    rows, dropped, by_entry, by_bucket = build_rows(join, src, kinds, superclasses, off_parents)
+    rows, dropped, by_entry, by_bucket = build_rows(join, src, kinds, superclasses,
+                                                    off_parents)
     subclass_count = collections.Counter()
     for parents in superclasses.values():
         for parent in parents:
@@ -1139,6 +1246,9 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
             "may have shifted.")
         for row in dangling[:15]:
             say(f"        {row['anchor']} {row['id']} {row['action']}  ({row['reason'][:60]})")
+    marked = sum(len(r["intruders"]) for r in rows)
+    say(f"  second primary names marked: {marked:5,d} over "
+        f"{sum(1 for r in rows if r['intruders']):,} entries")
     say(f"  renamed off 'as food':   {len(renamed):5,d}   "
         "(19 more are left alone: the bare stem is another row's canonical)")
     for rule, n in sorted(moved.items()):
