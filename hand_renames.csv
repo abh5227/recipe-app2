@@ -1,0 +1,48 @@
+# hand_renames.csv — canonical names Andy changed, read by build_library.py on every build.
+#
+# ⚠️ THE THIRD HAND FILE. hand_removals.csv is what comes out, authored_rows.csv is what
+#    goes in, and this is what gets called something else. A rename is none of the other
+#    two: the row is right and its name is wrong.
+#
+# ⚠️ WHY THIS EXISTS AS A CLASS. 26 kept rows carry FEWER recipe lines on their canonical
+#    than on a name sitting inside them, over 202 lines. 'white sugar' had 4 and held
+#    'granulated sugar' at 35. 'corn starch' had 0 and held 'cornstarch' at 20. The
+#    library was answering under names nobody typed.
+#
+# ⚠️ AND MOST OF IT IS THE AMERICAN READING APPLIED TO ROWS WRITTEN BEFORE THE RULE. See
+#    the surface split in CLAUDE.md. granulated sugar, cornstarch, ground cinnamon,
+#    ground ginger, powdered sugar, red pepper flakes are not judgement calls.
+#
+# ⚠️ NOTHING IS LOST. The old canonical stays on the row as a variation marked 'derived',
+#    the same way strip_as_food records a stripped suffix, so a line using the old name
+#    still resolves and the change reads back and reverses by name.
+#
+# ⚠️ A RENAME IS NOT A MERGE AND THE BUILD REFUSES ONE THAT WOULD BE. If the new name is
+#    already another kept row's canonical the rename is rejected and reported, because
+#    two rows would then answer to one name and deciding which keeps it is a merge.
+#
+# anchor   the source that anchored the row, or empty for an authored row
+# id       the source's own identifier. (anchor, id) is the key, as in hand_removals.csv
+# name     the new canonical. ⚠️ It must already be a name ON the row. Inventing one here
+#          would put a string in the library that no source ever stated.
+# reason   ⚠️ REQUIRED. A rename with no reason is not applied.
+# added    the date
+anchor,id,name,reason,added
+wikidata,Q4409456,granulated sugar,"35 recipe lines say granulated sugar and 4 say white sugar. American reading.",2026-08-25
+wikidata,Q30038889,ground cinnamon,"22 lines say ground cinnamon and 1 says cinnamon powder. American reading.",2026-08-25
+off_taxonomy,en:ginger-powder,ground ginger,"6 lines say ground ginger and none says ginger powder. American reading.",2026-08-25
+wikidata,Q756800,Sichuan peppercorns,"2 lines say Sichuan peppercorns and none says Sichuan pepper.",2026-08-25
+wikidata,Q465934,makrut lime leaves,"1 line says makrut lime leaves. The canonical was a binomial.",2026-08-25
+wikidata,Q3393961,cornstarch,"20 lines say cornstarch and none says corn starch. American reading, one word.",2026-08-25
+wikidata,Q383389,tahini,"9 lines say tahini and none says tehina.",2026-08-25
+off_taxonomy,en:icing-sugar,powdered sugar,"4 lines say powdered sugar and none says icing sugar. American reading, and powdered is commoner than confectioners'.",2026-08-25
+wikidata,Q27658833,fennel seeds,"4 lines say fennel seeds and none says fennel fruit, which is the botanical term.",2026-08-25
+wikidata,Q14088,mozzarella cheese,"3 lines say mozzarella cheese and 1 says mozzarella.",2026-08-25
+wikidata,Q5190222,red pepper flakes,"3 lines say red pepper flakes and none says crushed red pepper. American reading.",2026-08-25
+wikidata,Q4733897,almond flour,"2 lines say almond flour and none says almond meal.",2026-08-25
+wikidata,Q16530385,asafetida,"1 line says asafetida and none says asafoetida. US spelling.",2026-08-25
+wikidata,Q618345,applesauce,"1 line says applesauce and none says apple sauce. American reading, one word.",2026-08-25
+wikidata,Q651829,chickpea flour,"1 line says chickpea flour and none says besan.",2026-08-25
+wikidata,Q1364507,brown butter,"1 line says brown butter and none says beurre noisette.",2026-08-25
+wikidata,Q1392674,sriracha,"1 line says sriracha and none says sriracha sauce. ⚠️ Q17054141 is a SECOND 'Sriracha sauce' row and is not renamed, since which of the two keeps the concept is a merge.",2026-08-25
+wikidata,Q125895282,spaghetti,"1 line says spaghetti and none says Haitian spaghetti, which is a dish rather than the pasta.",2026-08-25

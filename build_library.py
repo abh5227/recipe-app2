@@ -85,6 +85,7 @@ except ImportError:                                   # the verdicts are optiona
 
 HAND_REMOVALS = os.environ.get("HAND_REMOVALS", "hand_removals.csv")
 AUTHORED_ROWS = os.environ.get("AUTHORED_ROWS", "authored_rows.csv")
+HAND_RENAMES = os.environ.get("HAND_RENAMES", "hand_renames.csv")
 JOIN_DB = os.environ.get("JOIN_DB", "join.db")
 SOURCES_DB = os.environ.get("SOURCES_DB", "sources.db")
 VOCAB = os.environ.get("VOCAB_DIR", "vocab")
@@ -681,6 +682,71 @@ def add_authored(rows, authored, subclass_count, by_entry, by_bucket):
             "strength_a": {}, "strength_b": [],
         })
     return rows
+
+
+def load_renames(path=HAND_RENAMES):
+    """Andy's canonical renames, keyed on (anchor, id) like load_removals.
+
+    ⚠️ A ROW WITH NO REASON IS REJECTED, the same rule as OVERRIDES, hand_removals and
+    authored_rows."""
+    if not os.path.exists(path):
+        return {}, []
+    with open(path, encoding="utf-8") as fh:
+        raw = list(csv.DictReader(l for l in fh if not l.startswith("#")))
+    good, rejected = {}, []
+    for row in raw:
+        if (row.get("reason") or "").strip() and (row.get("name") or "").strip():
+            good[(row["anchor"].strip(), str(row["id"]).strip())] = row
+        else:
+            rejected.append(row)
+    return good, rejected
+
+
+def apply_renames(rows, renames):
+    """Change a row's canonical to a name already sitting on it.
+
+    ⚠️ 26 ROWS ANSWERED UNDER A NAME NOBODY TYPED, over 202 recipe lines. 'white sugar'
+    carried 4 lines and held 'granulated sugar' at 35. 'corn starch' carried 0 and held
+    'cornstarch' at 20. Most of the class is the American reading applied to rows written
+    before that rule existed.
+
+    ⚠️ NOTHING IS LOST AND THE CHANGE REVERSES BY NAME. The old canonical stays on the row
+    as a variation marked 'derived', the same way strip_as_food records a stripped suffix,
+    so a line using the old name still resolves to the same row.
+
+    THREE REFUSALS, each reported rather than silently skipped:
+      the new name is not already ON the row, which would put a string in the library
+        that no source ever stated,
+      the new name is already another KEPT row's canonical, which is a merge rather than
+        a rename and needs a person to say which row keeps it,
+      the key matches no row, which usually means a rule dropped the entry first."""
+    owned = {norm_name(row["canonical"]) for row in rows if not row.get("cut_by")}
+    done, refused = [], []
+    for row in rows:
+        rule = renames.get((row["anchor"], str(row["id"])))
+        if not rule:
+            continue
+        new = rule["name"].strip()
+        match = next((t for t in row["variations"] if norm_name(t) == norm_name(new)), None)
+        if match is None:
+            refused.append((rule, f"'{new}' is not a name on the row"))
+            continue
+        if norm_name(new) in owned - {norm_name(row["canonical"])}:
+            refused.append((rule, f"'{new}' is already another row's canonical, so this "
+                                  "is a merge rather than a rename"))
+            continue
+        row["variations"].setdefault(row["canonical"], set()).add(
+            (row["anchor"] or "authored", DERIVED, "en"))
+        row["renamed_from"] = row["canonical"]
+        row["rename_reason"] = rule["reason"].strip()
+        row["canonical"] = new
+        row["n_variations"] = len(row["variations"]) - 1
+        done.append(row)
+    seen = {(r["anchor"], str(r["id"])) for r in done}
+    for key, rule in renames.items():
+        if key not in seen and not any(rule is x for x, _ in refused):
+            refused.append((rule, "no row carries that (anchor, id)"))
+    return done, refused
 
 
 def apply_removals(rows, removals):
@@ -1495,7 +1561,10 @@ def annotate(rows, superclasses, off_parents):
             flags.append("AUTHORED BY HAND, NAMES SEEDED. No source made this an entry, "
                          "so the ROW is GENERATED under docs/sourcing-tiers.md. Its names "
                          "and their provenance are read from the store and are not.")
-        if row.get("renamed_from"):
+        if row.get("rename_reason"):
+            flags.append(f"RENAMED BY HAND from '{row['renamed_from']}'. "
+                         + row["rename_reason"])
+        elif row.get("renamed_from"):
             flags.append(f"RENAMED from '{row['renamed_from']}'. Wikidata's 'as food' "
                          "suffix is its own disambiguator, and no row claims the stem.")
         if len(row["articles"]) > 1:
@@ -2001,12 +2070,27 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
 
     removals, rejected = load_removals()
     rows, dangling = apply_removals(rows, removals)
+    # ⚠️ AFTER the removals and BEFORE strip_as_food, for the reason strip_as_food gives:
+    #    a rename changes the canonical set the precedence rules read, so every rename has
+    #    to land before resolution runs.
+    renames, rename_rejected = load_renames()
+    renamed_by_hand, rename_refused = apply_renames(rows, renames)
 
     # ⚠️ THE RENAME RUNS FIRST AND THE PRECEDENCE RULES SECOND, because a rename changes
     #    the canonical set the precedence rules read. Measured both orders: renaming first
     #    costs 5 of rule 1's 509 names and 0 of rule 2's, and stripping 'as food' ADDS 7
     #    borrowed pairs, because a stem that was hidden behind a suffix now collides with
     #    names other rows hold. Precedence has to run after that or it misses those 7.
+    for row in rename_rejected:
+        say(f"  ⚠️  REJECTED, no reason or no name: rename {row.get('anchor')} "
+            f"{row.get('id')}. A rename without a reason is not applied.")
+    say(f"  renamed by hand: {len(renamed_by_hand):5,d}   "
+        + ", ".join(f"{r['renamed_from']} -> {r['canonical']}"
+                    for r in renamed_by_hand[:4])
+        + (" ..." if len(renamed_by_hand) > 4 else ""))
+    for rule, why in rename_refused:
+        say(f"  ⚠️  REFUSED rename {rule.get('anchor')} {rule.get('id')} "
+            f"-> '{rule.get('name')}': {why}")
     renamed = strip_as_food(rows)
     # ⚠️ BEFORE RESOLUTION, so a name that should not be here cannot be moved somewhere
     #    else instead of leaving. See drop_initialism_expansions.
