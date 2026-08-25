@@ -733,6 +733,20 @@ def apply_removals(rows, removals):
 #    recipe lines match a library name before and after, and 963 of them land on a
 #    canonical before and after. Both figures are unchanged to the line.
 # ─────────────────────────────────────────────────────────────────────────────────────
+def depluralize(key):
+    """The English plural of a normalized name, or None. Deliberately small: three
+    endings and a length floor, not a stemmer.
+
+    ⚠️ IT IS WRONG ABOUT THREE NAMES IN 169 AND THEY ARE NAMED IN resolve_borrowed."""
+    if key.endswith("ies") and len(key) > 4:
+        return key[:-3] + "y"
+    if key.endswith(("ches", "shes", "sses", "xes", "zes")):
+        return key[:-2]
+    if key.endswith("s") and not key.endswith(("ss", "us", "is")) and len(key) > 3:
+        return key[:-1]
+    return None
+
+
 AS_FOOD = " as food"
 DERIVED = "derived"          # ⚠️ NOT A SOURCE FIELD. See strip_as_food.
 
@@ -1094,7 +1108,35 @@ def resolve_borrowed(rows, superclasses, off_parents):
     ⚠️ IT RESTS ON THE SEED BEING READ BY A PERSON, WHICH IS WHY IT IS SAFE. A seed names
     source entries, so the names it claims are the names those entries carry. Blast radius
     when it was added: 219 pairs, ZERO recipe lines, ZERO rows lost, and 213 of the 219
-    are one plant leaving the wrong species."""
+    are one plant leaving the wrong species.
+
+    RULE 6, A PLURAL GOES TO THE ROW THAT OWNS ITS SINGULAR. 'eggs' carried 20 recipe
+    lines on 'meat' and then on 'egg as food' and survived every pass, because norm_name
+    does not stem and the authored row is 'egg', so the name met no owner and won against
+    nothing. Second time the shape surfaced, after 'Egg yolks' on chicken egg yolk.
+
+    ⚠️ THIS ONE MOVES THE NAME INSTEAD OF DELETING IT, AND IT IS THE ONLY RULE THAT DOES.
+    The five above take a name the destination already carries AS ITS CANONICAL, so the
+    name still answers by construction. A plural is not the destination's canonical.
+    Deleting 'eggs' off 'egg as food' without putting it on 'egg' would take 20 recipe
+    lines out of the library.
+
+    ⚠️ MEASURED BEFORE APPLYING, AND THE GUARD CAME OUT OF THE MEASUREMENT. Unguarded, the
+    stemmer fires on 191 pairs and is WRONG about nine, every one of them an English
+    plural rule applied to a word that is not English: 'garos' to Garo, 'jambas' to Jamba,
+    'maces' to mace, 'bigas' to biga, 'bolos' to bolo, 'Cremas' to Crema. Requiring the
+    name to be English by english_names()'s own test, which counts wikipedia_redirect
+    because enwiki states no language, gives 169 pairs and 31 recipe lines.
+
+    ⚠️ THREE KNOWN FALSE POSITIVES, NAMED. 'Fideos' to Fideo, 'marrows' to marrow and
+    'elks' to elk. Marrow is a vegetable and a bone, and an elk is a moose in Europe and
+    a different animal in North America. All three carry ZERO recipe lines. They are
+    recorded rather than special-cased, the same way is_binomial records American cheese.
+
+    All nine pairs that carry recipe lines were read and all nine are right: eggs to egg
+    at 20 lines, Egg yolks to egg yolk at 3, CARROTS off black carrot at 2, and Pork chops
+    off pork ribs, bean sprouts, chicken wings, Button mushrooms and two spellings of
+    chocolate chips at 1 each."""
     moved = collections.Counter()
     # ⚠️ A CUT ROW NEVER WINS A NAME, AND WITHOUT THIS GUARD TWO DID. 'Red Rome' moved off
     #    'Rome' and 'Bohnapfel' off 'Rheinischer Bohnapfel', both to rows the cultivar
@@ -1134,6 +1176,27 @@ def resolve_borrowed(rows, superclasses, off_parents):
                     row["resolved"].append((text, rows[claim[0]]["canonical"],
                                             "a seeded authored row claims the name"))
                     moved["a seeded authored row claims the name"] += 1
+                    continue
+                stem = depluralize(key)
+                tags = row["variations"][text]
+                if (stem and stem != key
+                        and any(is_english(l) or s == "wikipedia_redirect"
+                                for s, _, l in tags)):
+                    holders = [j for j in canonical.get(stem, ()) if j != i]
+                    if holders:
+                        j = holders[0]
+                        del row["variations"][text]
+                        # ⚠️ MOVED, NOT DELETED, AND THIS IS THE DIFFERENCE FROM EVERY
+                        #    RULE ABOVE. Rules 1 to 5 take a name the destination already
+                        #    carries as its canonical, so the name still answers by
+                        #    construction. A PLURAL IS NOT THE DESTINATION'S CANONICAL.
+                        #    Deleting 'eggs' off 'egg as food' without putting it on 'egg'
+                        #    would take 20 recipe lines out of the library altogether.
+                        rows[j]["variations"].setdefault(text, set()).update(
+                            (src, DERIVED, lang) for src, _, lang in tags)
+                        row["resolved"].append((text, rows[j]["canonical"],
+                                                "the plural of a name another row owns"))
+                        moved["the plural of a name another row owns"] += 1
                 continue                              # a redirect wins against nothing
             tags = row["variations"][text]
             if all(source == "wikipedia_redirect" for source, _, _ in tags):
