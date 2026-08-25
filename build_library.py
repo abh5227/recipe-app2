@@ -733,6 +733,79 @@ def apply_removals(rows, removals):
 #    recipe lines match a library name before and after, and 963 of them land on a
 #    canonical before and after. Both figures are unchanged to the line.
 # ─────────────────────────────────────────────────────────────────────────────────────
+# ⚠️ AGROVOC WRITES A SYMBOL TWO WAYS AND THE FIRST DRAFT CAUGHT ONE. Some entries state
+#    the bare form, AU for African Union and UN for United Nations. Others state it with
+#    AGROVOC's own marker, 'Cu (symbol)' for copper and 'Al (symbol)' for aluminium. The
+#    bare-only version missed Cu on honey, Al on garlic and Be on butter, which were three
+#    of the five cases the rule was written for.
+SYMBOL = re.compile(r"^[A-Z][a-z]?$|^[A-Z]{2,4}$|^[A-Z][a-z]? \(symbol\)$")
+
+
+def drop_agrovoc_symbols(rows, by_entry):
+    """A CHEMICAL SYMBOL IS NOT A NAME ANYONE WRITES, AND NEITHER IS AN ORGANIZATION'S
+    INITIALS. 'honey' carried 'Cu', 'table salt' carried 'Na', 'grape' carried AU, EU,
+    EEC and OAU, 'flour' carried UN, UNO, United Nations and United Nations Organization,
+    'oyster' carried TMTD, thiram and thiuram.
+
+    Same shape as drop_initialism_expansions and a different source. AGROVOC files a
+    concept with its symbol as one English label and its name as another, so a bucket
+    keyed on the symbol collides with any food whose name matches it in some language,
+    and the whole entry arrives on the food row.
+
+    THE ANCHOR CLAUSE, four conditions:
+      every tag on the name is agrovoc, so it is sole evidence, and
+      the name shares an AGROVOC entry with a symbol-shaped English label, and
+      that label is one or two letters capitalized, or two to four capitals, and
+      AGROVOC did not anchor the row, so the row is not the concept itself.
+
+    MEASURED over the kept rows: 78 names leave 32 rows, and ZERO recipe lines reach any
+    of them. They exist nowhere else afterwards, which is the same profile as the
+    initialism cut, where 87 of 97 did and every one carried zero lines.
+
+    ⚠️ WHAT IT REACHES AND WHAT IT DOES NOT, STATED EXACTLY, BECAUSE THE FIRST DRAFT WAS
+    DESCRIBED WRONG. The bare-symbol-only version took 48 names off 14 rows and was
+    reported as not reaching copper, nickel or Myanmar. Once the '(symbol)' form was
+    added it DOES reach nickel on milk, aluminium on garlic and beryllium on butter,
+    because those three sit on rows where AGROVOC is the sole evidence.
+
+      REACHED   Cu (symbol), Al (symbol), Be (symbol), Ni (symbol), AU, EU, EEC, OAU, UN,
+                UNO, TMTD, CAN, and the expansions on the same entry: African Union,
+                European Union, United Nations, calcium ammonium nitrate, thiram, nickel,
+                aluminium, beryllium.
+      NOT       'copper' on honey, because Open Food Facts states it too, so it is not
+                sole evidence and the guard keeps it.
+      NOT       'Myanmar' on sesame oil, because AGROVOC's country entry states no symbol
+                at all. Nothing on that entry is symbol-shaped, so there is no handle.
+
+    ⚠️ NOBODY SHOULD WIDEN THIS TO REACH Myanmar. It arrives by a different route: the
+    collision is on the food's own name in some language rather than on a symbol, so the
+    entry that lands has nothing to catch it by. Widening to AGROVOC-only names in general
+    would take real ingredient names with it, since AGROVOC alone carries some. Myanmar
+    stays a reading job."""
+    symbolic = set()
+    for (source, _, entry_id), members in by_entry.items():
+        if source != "agrovoc":
+            continue
+        english = [text for _, _, lang, text in members if is_english(lang)]
+        if any(SYMBOL.match(text) for text in english):
+            symbolic |= {norm_name(text) for text in english}
+
+    gone = collections.Counter()
+    for row in rows:
+        if row["anchor"] == "agrovoc":
+            continue                                  # the row IS the AGROVOC concept
+        for text in list(row["variations"]):
+            if text == row["canonical"] or norm_name(text) not in symbolic:
+                continue
+            if not all(source == "agrovoc" for source, _, _ in row["variations"][text]):
+                continue                              # corroborated, so not sole evidence
+            del row["variations"][text]
+            row["dropped"].append(text)
+            gone[row["canonical"]] += 1
+        row["n_variations"] = len(row["variations"]) - 1
+    return gone
+
+
 def depluralize(key):
     """The English plural of a normalized name, or None. Deliberately small: three
     endings and a length floor, not a stemmer.
@@ -1442,8 +1515,8 @@ def annotate(rows, superclasses, off_parents):
                 + (" ..." if len(row["strength_b"]) > 5 else ""))
         if row.get("dropped"):
             flags.append(
-                f"{len(row['dropped'])} name(s) DROPPED, each the expansion of a "
-                "Wiktionary initialism and carried by nothing else: "
+                f"{len(row['dropped'])} name(s) DROPPED, each a Wiktionary initialism "
+                "expansion or an AGROVOC symbol entry, carried by nothing else: "
                 + ", ".join(repr(t) for t in sorted(row["dropped"])[:4])
                 + (" ..." if len(row["dropped"]) > 4 else ""))
         if row.get("dead_dropped"):
@@ -1931,6 +2004,7 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
     #    should leave rather than be moved to another row. See drop_dead_language_names.
     dead = load_dead_languages()
     dead_gone = drop_dead_language_names(rows, dead)
+    symbols = drop_agrovoc_symbols(rows, by_entry)
     moved = resolve_borrowed(rows, superclasses, off_parents)
     # ⚠️ AFTER RESOLUTION, because a strength word that leaves a row should not be counted
     #    against it. See mark_strength.
@@ -1988,6 +2062,9 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
     say(f"  dead-language names dropped: {sum(dead_gone.values()):5,d} "
         f"from {len(dead_gone):,} rows   "
         f"({len(dead)} codes, Latin deliberately NOT among them, 0 recipe lines)")
+    say(f"  AGROVOC symbol names dropped: {sum(symbols.values()):5,d} "
+        f"from {len(symbols):,} rows   "
+        "(Cu, Al, Be, Ni, UN, EU, TMTD and their expansions; NOT copper or Myanmar)")
     for rule, n in sorted(moved.items()):
         say(f"  names moved to their owner: {n:5,d}  {rule}")
     say(f"  override list size: {len(CUTS.OVERRIDES)}   "
