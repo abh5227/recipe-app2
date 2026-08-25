@@ -618,7 +618,27 @@ def seed_keys(spec, by_entry, by_bucket):
     fortified wine, its 15 candidate names cover 5 concepts, so roughly three names per
     concept: Port, port, Porto, Port wine, Port Wine (DOC) and Vinho do Porto are one
     thing spelled six ways. Grouping the names is the reading job and it happens before
-    this function, in a person's head. Semicolons are how the result is written down."""
+    this function, in a person's head. Semicolons are how the result is written down.
+
+    ⚠️ THE PARENT SITS IN THE CHILD'S BUCKET, AND IT WILL FIRE ON EVERY EXTRACTION. This is
+    not a run of unlucky cases, it is the shape of the data: a category and its member
+    share names, which is WHY the member was on the category row in the first place, so
+    the bucket that reaches the member also reaches the parent. Seeding by bucket pulls
+    the parent's whole name set onto the child.
+
+    Every case met so far, and the list is only going to grow:
+      heavy cream    the bucket holds Q13228, cream, 168 names in 147 languages
+      single cream   the same, plus light cream on top
+      all NINE sausage members  every bucket holds Q131419, Sausage
+      gnocchi, maultasche       both hold Q1854639, dumpling
+      knödel                    holds Q5265534, the existing knedle row
+      Ceylon cinnamon           holds Q28165, cinnamon, 253 names
+      palatschinke              holds Q12200, crêpe
+      tamari                    held Q3514675, which WAS already a row, and the row split
+
+    THE GUARD IS TO SEED BY ENTRY, and build() reports any seed that names an entry
+    another kept row is anchored on, so the trap is caught at build time rather than by
+    reading the result. See the seed-collision check there."""
     keys = set()
     for token in (t.strip() for t in (spec or "").split(";")):
         if not token:
@@ -2126,6 +2146,23 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, verbose=True):
                "   (hand removals, reasons in hand_removals.csv)"
         say(f"  marked {name:20s} {n:5,d}{note}")
     n_removals = sum(len(v) for v in removals.values())
+    # ⚠️ THE PARENT-IN-THE-CHILD'S-BUCKET CHECK. See seed_keys. A seed that names an entry
+    #    another kept row is anchored on is almost always the parent, and it drags that
+    #    row's whole name set onto the child. Reported every build, never fatal, because a
+    #    deliberate overlap is possible and a person has to say so.
+    anchored = {(r["anchor"], str(r["id"])): r["canonical"] for r in rows
+                if r["anchor"] and not r["cut_by"]}
+    collisions = []
+    for row in authored:
+        for key in seed_keys(row.get("seed"), by_entry, by_bucket):
+            owner = anchored.get((key[0], key[2]))
+            if owner and owner.casefold() != row["name"].strip().casefold():
+                collisions.append((row["name"].strip(), key[0], key[2], owner))
+    for name, src, ident, owner in collisions:
+        say(f"  ⚠️  SEED COLLISION: '{name}' seeds {src}:{ident}, which anchors the kept row "
+            f"'{owner}'. That is usually the PARENT and it drags its whole name set in.")
+    if not collisions:
+        say("  seed-collision check: no authored seed names another kept row's anchor")
     say(f"  authored rows read: {len(authored):,}   "
         + (", ".join(r["name"] for r in authored) if authored else "none"))
     for row in authored_rejected:
