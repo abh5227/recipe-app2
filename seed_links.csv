@@ -1,0 +1,69 @@
+# seed_links.csv — the 50 hand-made ingredient links, and THE ONLY GROUND TRUTH THERE IS.
+#
+# ⚠️ THESE CANNOT BE REGENERATED. They came from seed.py's RECIPES, which migration 016
+#    emptied to []. They exist as rows in recipes.db and nowhere else, so a blind
+#    recompute overwrites them and a DELETE-then-INSERT loses them.
+#
+# ⚠️ THEY ARE ALSO THE HELD-OUT SAMPLE. Any linkage pass is scored against this file
+#    before it is trusted, because nothing else in the project says what a correct link
+#    looks like.
+#
+# Six recipes, all originally seeded and later flipped to source='app':
+#   aloo-gobhi 10, bulgogi-bowls 15, gai-yang 13, mussakhan 9, no-knead-bread 2,
+#   basic-hummus 1.
+#
+# ingredient_id references ingredients(id), the 36-row seed library, NOT the 10,387-row
+# built library, which lives in a spreadsheet and has never been in the database.
+#
+# Dumped 2026-08-25 from recipes.db at sha256 83cd7be8e837beb1a53e2e54.
+recipe_id,position,ingredient_id,label,qty,raw_text
+aloo-gobhi,0,potato,"russet potatoes, cut into 2-inch sticks",2 medium,"2 medium russet potatoes, cut into 2-inch sticks"
+aloo-gobhi,1,cauliflower,"cauliflower, cut into small florets",1 medium head,"1 medium head cauliflower, cut into small florets"
+aloo-gobhi,3,cumin,cumin seeds,1 tsp,1 tsp cumin seeds
+aloo-gobhi,4,turmeric,ground turmeric,½ tsp,½ tsp ground turmeric
+aloo-gobhi,5,onion,"yellow onion, finely diced",1 small,"1 small yellow onion, finely diced"
+aloo-gobhi,6,asafetida,asafetida,pinch,"pinch asafetidaoptional, but really great"
+aloo-gobhi,7,chile_powder,red chile powder,pinch,pinch red chile powder
+aloo-gobhi,8,ginger,"fresh ginger, julienned",1 tbsp,"1 tbsp fresh ginger, julienned"
+aloo-gobhi,9,lime,lime juice,1 tbsp,"1 tbsp lime juice about half a lime, plus more if needed"
+aloo-gobhi,11,cilantro,"fresh cilantro, chopped, for garnish",½ cup,"½ cup fresh cilantro, chopped, for garnish"
+basic-hummus,5,garlic,"garlic, crushed",4 cloves,"4 cloves garlic, crushed"
+bulgogi-bowls,2,onion,"onion, finely grated ",1 tbsp,"1 tbsp onion, finely grated ~¼ onion"
+bulgogi-bowls,3,asian_pear,"Asian pear, finely grated",3 tbsp,"3 tbsp Asian pear, finely grated"
+bulgogi-bowls,4,garlic,"garlic, finely grated",3 cloves,"3 cloves garlic, finely grated"
+bulgogi-bowls,5,ginger,"ginger, finely grated",1 tsp,"1 tsp ginger, finely grated"
+bulgogi-bowls,6,soy_sauce,soy sauce,2½ tbsp,2½ tbsp soy sauceall-purpose or light
+bulgogi-bowls,7,sesame_oil,sesame oil,1 tbsp,1 tbsp sesame oil
+bulgogi-bowls,8,mirin,mirin,1 tbsp,1 tbsp mirin
+bulgogi-bowls,12,soy_sauce,soy sauce,2 tbsp,2 tbsp soy sauce
+bulgogi-bowls,13,sesame_oil,sesame oil,1 tbsp,1 tbsp sesame oil
+bulgogi-bowls,15,lime,lime (or lemon) juice,2 tsp,2 tsp lime (or lemon) juice
+bulgogi-bowls,18,spinach,baby spinach,4 large handfuls,"4 large handfuls baby spinach or chopped greens — cabbage, kale"
+bulgogi-bowls,19,carrot,"carrot, peeled and julienned",1 large,"1 large carrot, peeled and julienned"
+bulgogi-bowls,20,avocado,"avocado, mashed",1,"1 avocado, mashed"
+bulgogi-bowls,22,sesame_seed,white sesame seeds,1 tsp,1 tsp white sesame seeds
+bulgogi-bowls,23,green_onion,"green onion, finely sliced",1,"1 green onion, finely sliced"
+gai-yang,2,white_pepper,white peppercorns,1½ tsp,1½ tsp white peppercorns
+gai-yang,3,coriander_seed,toasted coriander seeds,2 tsp,2 tsp toasted coriander seeds
+gai-yang,4,lemongrass,"lemongrass, bottom half only, thinly sliced",1 stalk,"1 stalk lemongrass, bottom half only, thinly sliced"
+gai-yang,5,garlic,garlic,5 cloves,5 cloves garlic
+gai-yang,6,soy_sauce,soy sauce,3 tbsp,3 tbsp soy sauce
+gai-yang,7,fish_sauce,fish sauce,3 tbsp,3 tbsp fish sauce
+gai-yang,13,tamarind,tamarind paste,2 tbsp,2 tbsp tamarind pastestore-bought or homemade
+gai-yang,14,palm_sugar,"palm sugar, finely chopped",1 tbsp,"1 tbsp palm sugar, finely choppedor light brown sugar"
+gai-yang,15,fish_sauce,fish sauce,1 tbsp,1 tbsp fish sauce
+gai-yang,16,lime,lime juice,1 tbsp,1 tbsp lime juice
+gai-yang,18,shallot,"shallots, finely chopped",1 tbsp,"1 tbsp shallots, finely chopped"
+gai-yang,19,green_onion,"green onion, chopped",1 tbsp,"1 tbsp green onion, chopped"
+gai-yang,20,cilantro,"cilantro, chopped",3 sprigs,"3 sprigs cilantro, chopped"
+mussakhan,2,cumin,ground cumin,½ tsp,½ tsp ground cumin
+mussakhan,3,allspice,ground allspice,½ tsp,½ tsp ground allspice
+mussakhan,4,cinnamon,ground cinnamon,¼ tsp,¼ tsp ground cinnamon
+mussakhan,5,sumac,sumac,1½ tbsp,1½ tbsp sumacplus more to dust
+mussakhan,6,lemon,"lemon, juiced",1,"1 lemon, juiced"
+mussakhan,7,garlic,"garlic, crushed",4 cloves,"4 cloves garlic, crushed"
+mussakhan,9,red_onion,"red onions, finely sliced into half-moons",2 large,"2 large red onions, finely sliced into half-moons"
+mussakhan,10,pine_nut,pine nuts,2 tbsp,2 tbsp pine nuts
+mussakhan,13,parsley,chopped parsley leaves,,chopped parsley leaves
+no-knead-bread,0,bread_flour,bread flour,450 g,450 g bread flour
+no-knead-bread,1,yeast,instant or rapid-rise yeast,2 tsp,2 tsp instant or rapid-rise yeast
