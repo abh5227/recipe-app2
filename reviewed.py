@@ -2,7 +2,7 @@
 """reviewed.py: the hand-read verdicts behind every threshold in ingredient_cuts.py.
 
 ⚠️ THIS IS THE ONE FILE THAT CANNOT BE REGENERATED AT ANY PRICE. Everything else in the
-pipeline is code plus a cached fetch. This is 433 entries opened one at a time, every
+pipeline is code plus a cached fetch. This is 434 entries opened one at a time, every
 member row and every gloss read, across seven samples and the extraction readings. The
 ⚠️ EXTRACTION READINGS ARE MODEL-READ AND THE SEVEN SAMPLES ARE HAND-READ, which is a
 real difference and is marked on every entry. The count is reviewed.counts(),
@@ -343,6 +343,42 @@ DRINKS_SAMPLE = {
 #    visible to disagree with, not as settled. Each carries who read it.
 # ─────────────────────────────────────────────────────────────────────────────────────
 EXTRACTION_READ = {
+ "espresso": ("6 rows extracted, model-read 2026-08-25",
+    "314 names, 114 English, 0 recipe lines, 83 merged entries, and it answered for 5 "
+    "en.wikipedia articles. Eleven concepts.\n"
+    "  THE GROUPS. (1) cappuccino, 31 names, Q159774, espresso plus steamed milk plus a "
+    "foam cap, and ⚠️ 25 OF THE 31 ARE MISSPELLINGS: Capachino, Cappucino, Capuchinno "
+    "and twenty-two more, all en.wikipedia redirects. KEPT ON PURPOSE, since a line typed "
+    "cappucino matching is the import matcher working. (2) caffè macchiato, 9 names, "
+    "Q731543, espresso marked with a spot of milk. (3) caffè corretto, 11 names, Q62451, "
+    "espresso with a shot of liquor, and it brings the Frisian Dokkumer koffie names "
+    "with it. (4) babycino, 3 names, Q4838470, ⚠️ STEAMED MILK FOAM WITH NO COFFEE IN IT, "
+    "which is why it was the clearest wrong answer on the row. (5) lungo, 10 names, "
+    "Q59048, the long pull. (6) ristretto, 2 names, Q59047, the short pull, and Spanish "
+    "corto. All six became rows.\n"
+    "  ⚠️ (7) doppio, 10 names, Q5297347, READ AND DECLINED. A doppio is two espressos, "
+    "which is a QUANTITY rather than a drink, and 'large' is the reductio. lungo and "
+    "ristretto pass the substitutability test that doppio fails: same grounds, different "
+    "water, and they taste different from each other and from an espresso. Doppio, "
+    "Doppios, Double shots and Espresso doppio stay on the espresso row.\n"
+    "  (8) espresso itself, 25 further names including Short black, Petit noir, God shot "
+    "and five misspellings. (9) Coffee in Italy, Italian coffee culture and "
+    "Espresso-based drinks, ⚠️ ARTICLE TITLES ABOUT A CATEGORY OR A COUNTRY, the same "
+    "shape as the twelve hot dog debate titles, left on the row and NOT ruled on. "
+    "(10) Steamer (milk), Schiuma and Crema foam, components rather than drinks. "
+    "(11) ⚠️ Piper methysticum and kava, CONTAMINATION, the kava plant reached because "
+    "Croatian and Italian kava means coffee. Fifth cross-language homograph in the "
+    "pipeline, alongside costo on hashish in the same pass.\n"
+    "  ⚠️ THE SEEDING TRAP, caught before writing. The bucket 'macchiato' also holds "
+    "Q22929, which is LATTE MACCHIATO, built the other way round with espresso poured "
+    "into milk. Seeded on Q731543 instead. Verified after the build: Macchiato resolves "
+    "to caffè macchiato and latte macchiato stays on milk.\n"
+    "  ⚠️ THE SIBLING FORM OF THE PARENT-IN-BUCKET TRAP. en.wikipedia redirects Babycino "
+    "AND Babyccino at the Cappuccino article, so seeding cappuccino there to get the "
+    "misspellings brought both. Babycino resolved to its own row under rule 5. Babyccino "
+    "did not, was dropped off cappuccino, reappeared on espresso under a Wikidata alias, "
+    "and needed BOTH string forms named before it went. apply_removals matches the "
+    "variation exactly, so a capitalized twin needs its own line."),
  # ─────────────────────────────────────────────────────────────────────────────────────
  # THE 10-TO-19 ENGLISH-NAME SAMPLE, drawn at random with seed 20260825 from the 570
  # unread holders in that band, and read the way the 83 above were read.
@@ -374,7 +410,16 @@ EXTRACTION_READ = {
     "real, distinct, buyable products, and NONE of them is on this row or on any other "
     "row. Eiswein and ice wine sit on dessert wine. So the Riesling gap is a MISSING "
     "SET rather than a buried one, and extraction cannot reach it.\n"
-    "  Welschriesling is a different grape entirely and already has its own row."),
+    "  Welschriesling is a different grape entirely and already has its own row.\n"
+    "  ⚠️ RECORDED AS A CLASS in docs/reading-a-holder.md, with the measurement. 571 "
+    "kept rows subclass a Wikidata cultivar class and 537 of them carry names, which "
+    "the existing cultivar_register cut cannot reach at all: its ceiling is zero "
+    "variations, so it protects the bottom of the distribution and the problem is at "
+    "the top. 14 sit above the 20-name scan threshold. ⚠️ AND THE SIGNAL DOES NOT MAKE "
+    "THE CALL: Riesling at 116 English names and 0 lines and cayenne pepper at 24 and "
+    "24 match it equally and want opposite answers. The Prädikatswein gap is recorded "
+    "there too, as a different class again. Those terms are in join.db and never "
+    "became rows, so no cut records them and extraction has nothing to reach."),
  "Avena sativa": ("0 rows, model-read 2026-08-25",
     "222 names, 19 English, 0 lines. Spellings of oat plus parts and processes. Avenin "
     "is the storage protein, Oat fiber and Oatstraw are parts, Oat milling is a process "
