@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """ingredient_cuts.py: the cut rules and the override list for the ingredient library.
 
+⚠️ WHAT THE LIBRARY IS FOR comes first. docs/what-the-library-is-for.md states the standing
+   purpose: a list of cooking-facing ingredient names serving other people's imports, where the
+   default is KEEP and recipe-line count is never a cut signal. A rule written without it will
+   remove real ingredients. Read it before adding a cut below.
+
 Nothing here deletes. A cut MARKS a row with the rule that removed it, the same way
 join_exclusion records an excluded label row, so "what did we drop and why" is a query
 and a cut can be reversed by name.

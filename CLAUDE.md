@@ -18,6 +18,8 @@ import pipeline from Paprika native exports.
 - `OVERVIEW.md` — 2-minute orientation and vision
 - `CODE_WALKTHROUGH.md` — guided tour, architecture, and living history
 - `ROADMAP.md` — features by priority tier
+- `docs/what-the-library-is-for.md` — the ingredient library's standing purpose. Read before
+  writing any rule that admits, cuts, renames, or merges a row.
 - `docs/design-decisions.md` — "used cookbook" design direction, Round 1/2 staging
 - `docs/import-reference-15.md` — regression baseline for the 15 verified recipes
 
