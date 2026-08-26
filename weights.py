@@ -10,6 +10,7 @@ Source of the weight chart: King Arthur Baking Ingredient Weight Chart
 (king-arthur-staples-v2.csv, loaded by build_db.py).
 """
 import re
+import unicodedata
 
 # Volume units → millilitres. PHYSICAL CONSTANTS, deliberately duplicated from the
 # Phase 1b converter in static/app.js (UNIT_TO_ML): the SAME numbers in two languages.
@@ -48,13 +49,45 @@ def parse_reference_volume(text):
         return None
 
 
+def fold_accents(s):
+    """Accented letters to their base letter: jalapeño -> jalapeno, purée -> puree.
+
+    ⚠️ NFD, NOT NFKD, AND NOT build_join's NFKC. The compatibility forms decompose a
+    vulgar fraction as well as an accent, so NFKD turns "juice of ½ lemon" into
+    "juice of 1⁄2 lemon". Measured on the recipe corpus, that alone took three
+    currently-matching lemon-juice lines to a miss. NFD leaves ½ ¼ ¾ ⅓ untouched and
+    moves only the combining marks, which is the whole of the bug.
+
+    ⚠️ ø, æ and ß ARE NOT FOLDED and that is correct here. They carry no combining mark,
+    so NFD leaves them, and they fall through to the punctuation strip exactly as they do
+    today. This changes nothing for them."""
+    return "".join(c for c in unicodedata.normalize("NFD", s) if not unicodedata.combining(c))
+
+
 def normalize(name):
     """Lowercased, punctuation-stripped lookup key. Keeps parenthetical words
     ("Sugar (granulated white)" -> "sugar granulated white") and drops a trailing
-    clause after a comma ("olive oil, divided" -> "olive oil")."""
+    clause after a comma ("olive oil, divided" -> "olive oil").
+
+    ⚠️ ACCENTS ARE FOLDED, NOT DELETED, AND THEY USED TO BE DELETED. The punctuation
+    strip below matches [^a-z0-9 ], which put an accented letter outside the class, so
+    jalapeño became 'jalape o', purée 'pur e', crème 'cr me' and café 'caf'. The library
+    index carries BOTH spellings for those words, so folding reaches the plain one.
+    Measured on the recipe corpus: 5 jalapeño lines go from miss to matched, no line
+    regresses, and no line becomes ambiguous.
+
+    ⚠️ THE INDEX IS NOT FOLDED AND MUST NOT BE FOLDED HERE. build_join.norm_name keeps
+    diacritics on purpose, and folding the 183,651-key name index would merge 3,536
+    currently-distinct groups (masa with masã, gateau with gâteau, fuba with fubá). This
+    function is the QUERY side only.
+
+    ⚠️ THE STORED WEIGHT KEYS ARE UNAFFECTED. build_db writes normalize(display_name) into
+    ingredient_weights.lookup_key, so build-time and query-time must agree. Measured: 0 of
+    129 stored rows carry a non-ASCII character and king-arthur-staples-v2.csv contains
+    none at all, so old and new produce byte-identical keys for every chart row."""
     if not name:
         return ""
-    s = name.strip().lower()
+    s = fold_accents(name).strip().lower()
     s = s.split(",")[0]                  # drop trailing clause: ", divided", ", chopped"
     s = s.replace("-", " ")             # all-purpose -> all purpose
     s = re.sub(r"[^a-z0-9 ]+", " ", s)  # drop ()'/&. -> spaces
