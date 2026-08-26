@@ -42,6 +42,39 @@ is only about corroboration (source count, variation count, language coverage). 
 anchor clause, and re-run OVERRIDES through any new cut before shipping it.
 
 ═══════════════════════════════════════════════════════════════════════════════════════
+⚠️ THE CLEANUP PARADOX. READ THIS BEFORE SCORING A NEW DETECTOR.
+═══════════════════════════════════════════════════════════════════════════════════════
+
+A DETECTOR BUILT AFTER A CLEANUP HAS NO POSITIVES LEFT TO SCORE AGAINST, AND THE CLEANER
+THE LIBRARY GETS THE WORSE THIS BECOMES.
+
+Measured on 25 August 2026, building a detector for cross-language homographs. Eight had
+been found by reading, one at a time, over several passes:
+
+    ni / nickel          gula / sugar         granada / pomegranate
+    moka / flour         costo / hashish      kava / coffee
+    Kapuziner / birch bolete                  polo / Tabasco pepper
+
+⚠️ SEVEN OF THE EIGHT WERE ALREADY FIXED BY THE TIME THE DETECTOR RAN. Each was removed
+or resolved in the same pass that found it, which is correct behavior and destroys the
+label set. The detector scored against ONE live positive over 5,076 candidate pairs. A
+precision figure on one example is not a precision figure.
+
+This is not specific to homographs. Every class in this project is found by reading, and
+reading is followed immediately by a removal, so the evidence is always consumed before
+anything mechanical can be measured on it.
+
+⚠️ THE RULE: when a class is worth a detector, SNAPSHOT THE POSITIVES BEFORE FIXING THEM.
+A list of (name, row A, row B) triples in a scratch file costs nothing at the time and is
+the only thing that makes a later precision number mean anything. Failing that, score the
+detector against a build from before the cleanup, and say in the report which build.
+
+⚠️ WHAT THIS DID NOT AFFECT, so nobody over-reads it: the article-title rules shipped the
+same day scored fine, because their twelve positives were recorded verbatim in
+hand_removals.csv with their reasons rather than only deleted. The hand-removal file was
+the snapshot. That is the pattern to copy.
+
+═══════════════════════════════════════════════════════════════════════════════════════
 """
 
 # ─────────────────────────────────────────────────────────────────────────────────────

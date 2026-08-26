@@ -169,3 +169,61 @@ The general rule this leaves: **a seedless member is created only when the spell
 stays behind is zero or one.** Above that, record it here and leave the parent whole. Reopen it
 when a seedless member turns up that carries recipe lines, because that is the case worth
 paying a precedent for.
+
+
+## 4. The article title that is not a name, and the seven rules that catch it
+
+Some names on a row describe a **topic** rather than name a food. `Are hotdogs sandwiches?`,
+`History of pasta`, `List of Mexican cheeses`, `Pancake race`, `Instituto do Vinho do Porto`.
+
+⚠️ **Every mechanical cut before this one keys on a property these do not have.** They are
+well-formed English. Not initialisms, not symbols, not dead languages, not translations. The
+only thing they share is shape, so the rule has to key on shape.
+
+Population: names on a kept row supplied **only** by an en.wikipedia redirect, 13,223 of them.
+Recall was 11 of the 12 hot dog debate titles removed by hand, the miss being `Ketchup on hot
+dogs`. Each rule was read in full and shipped only at 100 percent.
+
+```
+list_or_superlative   31   List of Mexican cheeses, World's most expensive hot dog
+history_of            29   History of pasta, Taco history, Evolutionary history of sharks
+event_or_activity     14   Pancake race, Cider festival, Meat eating, Dog eating
+debate_or_claim        7   Hot dogs are sandwiches, How chocolate is made
+question_mark          2   Are hotdogs sandwiches?
+institution            6   Instituto do Vinho do Porto, McIlhenny Company, Big Mac Museum
+commercial_venue       7   Port Wine lodges, Kebab restaurant, Bleach (brand)
+                     ───
+                      96   names, 0 recipe lines
+```
+
+### Three rules were rejected or narrowed, and the rejections are the useful part
+
+**`culture or cuisine` was rejected outright at 43 percent.** ⚠️ **`X (cuisine)` is Wikipedia
+disambiguating a real name, not marking a topic.** `Bacalao (cuisine)`, `Kielbasa (Polish
+cuisine)`, `Mirepoix (cuisine)`, `Bumbu (cuisine)`, `Salsa (Mexican cuisine)` and `Tape
+(Indonesian cuisine)` are all real foods. And `Cheese culture` and `Starter culture` are
+ingredients someone buys.
+
+**`X in <Country>` was rejected at 91 percent**, which sounds shippable and is not. All six
+misses are **regional products the library exists to know**: `Herbs of Provence`, `Red onion of
+Tropea`, `Pecorino of Carmasciano`, `Blanquette of South Australia`. Losing four protected
+regional foods to catch sixty-four topic titles is the wrong trade at any precision.
+
+**`commercial` was narrowed twice.** The first form keyed on `mix` and took `Cake mix`,
+`Seasoning mix`, `Chili mix`, `Herb mix`, `Whipped topping mix` and `Pancake mix`, which are
+products on a shelf. The second keyed on bare `brand` and took `Brand flakes`, an en.wikipedia
+misspelling redirect for bran flakes, which is a useful match of exactly the kind the
+cappuccino misspellings are kept for.
+
+**`institution` was narrowed and it cost three correct catches.** The wider form included
+`Foods`, which also took `Raw Foods` and `Live Foods`. So `Birds Eye Foods`, `Birdseye Frozen
+Foods` and `Sriracha sauce (Huy Fong Foods)` are left in rather than taken by a rule at 82
+percent.
+
+**The pattern: seven narrow rules at 100 percent beat one broad rule at 85.** A rule that is
+wrong about one regional cheese costs more than a rule that misses sixty topic titles, because
+the topic titles answer nothing and the cheese is the product.
+
+⚠️ On scoring any detector built after a cleanup, see the cleanup-paradox note at the head of
+`ingredient_cuts.py`. The article-title rules could be scored only because their twelve
+positives were recorded verbatim in `hand_removals.csv` rather than merely deleted.
