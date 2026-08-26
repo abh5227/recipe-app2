@@ -42,6 +42,35 @@ is only about corroboration (source count, variation count, language coverage). 
 anchor clause, and re-run OVERRIDES through any new cut before shipping it.
 
 ═══════════════════════════════════════════════════════════════════════════════════════
+⚠️ A NAME IS NOT A (ROW, STRING) PAIR. READ THIS BEFORE WRITING A LIST OF REMOVALS.
+═══════════════════════════════════════════════════════════════════════════════════════
+
+apply_removals is keyed on (anchor, id) and matches the variation string EXACTLY. A rule
+that finds a bad name and writes one removal for the row it was seen on will leave the
+name reachable, in two ways at once:
+
+    a differently cased twin ON THE SAME ROW      'Cider Festival' beside 'Cider festival'
+                                                  'Mcilhenny company' beside 'McIlhenny Company'
+    a copy on a SECOND ROW                        'Pancake race' on Crêpe as well as pancake
+                                                  'History of pasta' on dried pasta as well
+
+⚠️ THIS HAS FIRED THREE TIMES. Babyccino needed dropping off cappuccino and then off
+espresso, in both string cases. The article-title rules shipped 96 removals and 6 of them
+removed nothing, which is a 6.3% silent failure rate on a rule reported as complete.
+
+⚠️ NOTHING IN THE BUILD REPORTS IT. A removal that matches a row and deletes a name looks
+identical to one that matched a row which no longer holds the name. The dangling-removal
+list only catches a key that matches NO row at all.
+
+⚠️ THE RULE: expand a removal over EVERY kept row carrying a string that normalizes to the
+target, and over EVERY exact string on each of those rows. Then re-derive from the built
+library and assert the name is reachable nowhere. That assertion is the only thing that
+catches this, and it costs one query.
+
+How it was caught, which is the reason it is written here: the scan sheet was rebuilt and
+Crêpe's English name count went UP in a pass that only removed names.
+
+═══════════════════════════════════════════════════════════════════════════════════════
 ⚠️ THE CLEANUP PARADOX. READ THIS BEFORE SCORING A NEW DETECTOR.
 ═══════════════════════════════════════════════════════════════════════════════════════
 
