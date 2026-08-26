@@ -4,9 +4,16 @@ Every row in the ingredient library is flat. A row has a canonical name, a set o
 with provenance, sources, languages and flags. **Nothing records that one row is a kind of
 another, or a form of another, or the same thing at a different strength.**
 
-This file exists because that gap has surfaced five times in five different shapes, and each
+This file exists because that gap has surfaced six times in six different shapes, and each
 time it was patched with a flag rather than a model. It is a record for whoever builds the
 model, not a proposal.
+
+⚠️ **Two of the six are now RESOLVED and were never modelling problems.** The tomato
+three-axis case and the multi-axis case behind it closed on 25 August 2026, and the reason
+they closed is a mechanical one. See the resolution section below. **The sixth surfacing, the
+homograph detector, is the one that still stands**, because same-thing, parent-child and
+genus-species pairs are indistinguishable from unrelated ones when nothing records how two
+rows relate.
 
 ## The five surfacings, in the order they appeared
 
@@ -33,6 +40,61 @@ for its only holder. Those are not children needing a parent, they are parents n
 exist, and the flat model cannot tell the two cases apart before someone reads them.
 
 **5. ⚠️ The tomato family, which is the clearest case and is not the worst.**
+
+## ⚠️ RESOLVED 25 August 2026. Tomato was not a modelling problem.
+
+**The section below is kept as written because the reasoning in it was wrong and the record of
+being wrong is the useful part.** Read it, then read this.
+
+**Cultivar is a ROW, not an attribute.** A Roma tomato is denser and less watery than a
+beefsteak and it is what you use for sauce, so it is a different ingredient in the way kosher
+salt and cassia and gochugaru are different ingredients. **The rows already exist and are
+already correct.** `Roma tomato` carries 13 names, `San Marzano tomato` 22, `cherry tomato`
+97. Nothing needed building.
+
+**They were not matching, and the reason was mechanical.** Measured over the 42 tomato recipe
+lines:
+
+```
+roma tomatoes                            ->  Roma tomato        ANSWERED ALL ALONG
+Roma tomatoes, finely diced              ->  nothing
+Roma tomatoes, seeded and finely diced   ->  nothing
+Whole Peeled San Marzano Tomatoes        ->  nothing
+```
+
+Same head term, same row. The one without a clause lands. **It fails on the trailing clause and
+on leading modifiers, and on nothing else.** Two mechanical operations, dropping everything
+after the first comma and dropping leading modifiers, take tomato from 15 answered lines of 42
+to 36.
+
+**So the multi-axis case closes with it.** After those two operations, **not one of the 42
+tomato lines needs a combination row.** `Roma tomatoes, finely diced` resolves to `Roma tomato`
+plus line metadata. `canned crushed tomato` resolves to `tomato` plus two preparation facts.
+The roughly 800 combinations were never asked for, and the six the sources enumerated stay
+redundant rather than becoming necessary.
+
+**Preparation is not an axis of the ingredient.** It is what you do after buying, and it belongs
+to the recipe line. Across the whole corpus, once preparation words are separated out, labels
+stating two or more genuine product axes fall from 394 lines to **53**, and the unanswered
+share of those is roughly 15 to 20 lines. For scale, one missing row, `baking soda`, was 29.
+
+## ⚠️ AND THE ERROR UNDERNEATH IT, which is the part worth carrying
+
+**17 of the 20 cultivar rows carry zero recipe lines, and that is correct. They stay.**
+
+The corpus names three: Roma at 7 lines, San Marzano at 1, plum at 1. The other seventeen are
+never mentioned. **They were never a matching problem.** Nobody in these recipes cooks with a
+Hanover tomato.
+
+**Expecting those rows to gain lines is the corpus-as-target error.** A library that has
+`beefsteak tomato` ready is doing its job for the import that mentions it. This corpus is one
+person's recipes, which makes it a test set rather than a scope, and a row scoring zero against
+it has been told nothing about whether it is worth having. The same reasoning already applies
+to broth's members, where zero lines here says nothing about whether someone importing a French
+cookbook needs fumet.
+
+**The rule: a zero-line row is evidence about this corpus, never about the row.** Use recipe
+lines to rank what to fix first. Never use them to decide what to keep.
 
 ## Tomato: three independent axes, and the sources have enumerated six combinations
 
