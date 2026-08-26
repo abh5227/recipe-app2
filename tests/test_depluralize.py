@@ -68,3 +68,45 @@ def test_every_ves_singular_entry_really_ends_in_f_or_fe():
 def test_every_ves_singular_key_ends_in_ves():
     wrong = [p for p in build_library.VES_SINGULAR if not p.endswith("ves")]
     assert wrong == []
+
+
+# The ss/us/is guard is a two-character suffix test, so it blocked every plural of a
+# singular ending in -i: zucchinis, chilis, paninis, raviolis and macaronis all returned
+# None. Measured cost on the recipe corpus: 4 lines reading 'chilis' and 1 reading
+# 'zucchinis' reached no row, and all five were reported as a library gap when the library
+# has both 'chili' and 'zucchini'.
+I_PLURALS = [
+    ("zucchinis", "zucchini"), ("chilis", "chili"), ("chillis", "chilli"),
+    ("paninis", "panini"), ("raviolis", "ravioli"), ("macaronis", "macaroni"),
+    ("rotis", "roti"), ("sushis", "sushi"), ("tahinis", "tahini"),
+    ("creminis", "cremini"), ("pierogis", "pierogi"), ("litchis", "litchi"),
+]
+
+# Plain -s plurals that never needed the exception and must not move.
+PLAIN_S = [("bagels", "bagel"), ("onions", "onion"), ("carrots", "carrot")]
+
+# ⚠️ What the guard EXISTS to protect. Every one of these ends in ss, us or is and is a
+# singular, and the exception list must not reach any of them. tennis and iris are here
+# because they are the shape collisions: 'tennis' ends "nis" like zucchinis, 'iris' ends
+# "ris" like a plural of 'iri'.
+PROTECTED = ["analysis", "basis", "crisis", "thesis", "oasis", "iris", "tennis",
+             "hummus", "asparagus", "octopus", "couscous", "citrus", "lotus",
+             "bus", "boneless", "plus", "paris", "propolis"]
+
+
+@pytest.mark.parametrize("plural,singular", I_PLURALS + PLAIN_S)
+def test_depluralize_stems_a_plural_whose_singular_ends_in_i(plural, singular):
+    assert build_library.depluralize(plural) == singular
+
+
+@pytest.mark.parametrize("plural,singular", [
+    ("jalapeno chilis", "jalapeno chili"), ("red chilis", "red chili"),
+    ("baby zucchinis", "baby zucchini"),
+])
+def test_the_i_plural_exception_stems_the_last_word_of_a_compound(plural, singular):
+    assert build_library.depluralize(plural) == singular
+
+
+@pytest.mark.parametrize("word", PROTECTED)
+def test_the_ss_us_is_guard_still_protects_a_real_singular(word):
+    assert build_library.depluralize(word) is None

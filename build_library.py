@@ -906,6 +906,30 @@ VES_SINGULAR = {
 }
 
 
+# ⚠️ THE PLURALS THE ss/us/is GUARD IN depluralize WRONGLY BLOCKS. A singular ending in -i
+#    takes a plain -s, so its plural ends in "is" and is indistinguishable BY SHAPE from a
+#    Greek or Latin singular. zucchinis and tennis both end "nis". chilis and iris both end
+#    "lis". paninis and analysis both end in a consonant plus "is". Membership, not shape,
+#    for the same reason VES_SINGULAR above is a list.
+#
+#    THE GUARD ITSELF STAYS, and the measurement is why. Over the whole 3,332-line recipe
+#    corpus it blocks 26 distinct words and only chilis and zucchinis are real plurals.
+#    Removing it would stem 'plus' to 'plu' on 97 lines, 'boneless' to 'boneles' on 18 and
+#    'skinless' to 'skinles' on 14. Over the index the same holds: 1,418 keys end in "is"
+#    and 74 of them look like plurals, so the blocked class is right about 95 percent of
+#    the time and only the exceptions need naming.
+#
+#    Every entry below is either a word this bug was reported on or was generated from the
+#    index (currently blocked, carries an English tag, and its stem is a real key) and then
+#    read. The generated list also offered paris, propolis, sinapis and souris, which are
+#    not plurals at all, so it is a candidate list and not the rule.
+I_PLURAL = frozenset({
+    "chilis", "chillis", "creminis", "kaseris", "kluskis", "litchis", "macaronis",
+    "mueslis", "paninis", "pierogis", "pignolis", "pinolis", "raviolis", "rotis",
+    "sushis", "tahinis", "ugalis", "uglis", "zucchinis",
+})
+
+
 def depluralize(key):
     """The English plural of a normalized name, or None. Deliberately small: three
     endings and a length floor, not a stemmer.
@@ -928,7 +952,15 @@ def depluralize(key):
     so 'bay leaves' still reaches 'bay leaf'. Blast radius on a full rebuild: rows 11,217
     and kept 10,387 both unchanged, one move rule goes 255 to 260, and the five names that
     move are Conserves and Conſerves to conserve, Arbequina olives to arbequina olive, and
-    Endives and endives to endive. All five land on a kept row."""
+    Endives and endives to endive. All five land on a kept row.
+
+    ⚠️ AND THE ss/us/is GUARD, WHICH BLOCKED EVERY PLURAL OF A SINGULAR ENDING IN -i.
+    zucchinis, chilis, paninis, raviolis and macaronis all returned None, because the guard
+    is a two-character suffix test and their plurals end in "is" exactly as analysis and
+    basis do. The named exceptions in I_PLURAL run before the guard, on the last word, so
+    'jalapeno chilis' reaches 'jalapeno chili'. Blast radius on a full rebuild: rows 11,217
+    and kept 10,387 both unchanged, NO row's name set changes at all, and one move rule goes
+    260 to 262, both of them Litchis swapping between the two duplicate litchi rows."""
     if key.endswith("ies") and len(key) > 4:
         return key[:-3] + "y"
     if key.endswith("ves") and len(key) > 4:
@@ -941,6 +973,9 @@ def depluralize(key):
         return key[:-2]
     if key.endswith(("ches", "shes", "sses", "xes", "zes")):
         return key[:-2]
+    head, _, last = key.rpartition(" ")
+    if (last or key) in I_PLURAL:
+        return (head + " " + (last or key)[:-1]) if head else key[:-1]
     if key.endswith("s") and not key.endswith(("ss", "us", "is")) and len(key) > 3:
         return key[:-1]
     return None
