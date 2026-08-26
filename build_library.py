@@ -892,6 +892,20 @@ def drop_agrovoc_symbols(rows, by_entry):
     return gone
 
 
+# ⚠️ THE ONLY -ves PLURALS WHOSE SINGULAR IS NOT THE WORD MINUS ITS s. Every other word
+#    ending in "ves" is an ordinary -s plural and must fall through: clove, glove, olive,
+#    chive, dove, stove, sleeve. A blanket "ves" -> "f" rule shipped first and was wrong
+#    about all of them, and about knife/life/wife too, because those take -fe not -f.
+#    Membership, not shape, because no shape test separates cloves from wolves.
+VES_SINGULAR = {
+    "calves": "calf", "dwarves": "dwarf", "elves": "elf", "halves": "half",
+    "hooves": "hoof", "knives": "knife", "leaves": "leaf", "lives": "life",
+    "loaves": "loaf", "scarves": "scarf", "selves": "self", "sheaves": "sheaf",
+    "shelves": "shelf", "thieves": "thief", "turves": "turf", "wharves": "wharf",
+    "wives": "wife", "wolves": "wolf",
+}
+
+
 def depluralize(key):
     """The English plural of a normalized name, or None. Deliberately small: three
     endings and a length floor, not a stemmer.
@@ -903,11 +917,26 @@ def depluralize(key):
     usually sits on the row its own singular names and rule 6 skips those by construction:
     41 pairs gain a correct stem and only TWO of them cross to a different row, both
     'Citrus hystrix' losing lime-leaf names, both at zero recipe lines. Fixed anyway,
-    since a stemmer that is wrong about tomatoes is wrong wherever it is next used."""
+    since a stemmer that is wrong about tomatoes is wrong wherever it is next used.
+
+    ⚠️ AND THE -ves FIX THAT FOLLOWED IT, BECAUSE "ves" -> "f" WAS APPLIED TO EVERY WORD.
+    cloves stemmed to 'clof', gloves to 'glof', olives to 'olif', chives to 'chif', and
+    knives to 'knif' rather than 'knife'. Measured cost on the recipe corpus: 46 lines
+    reading 'garlic cloves' reached no row, the single largest miss in the library, while
+    'garlic clove' sits on Q28966859. A word not in VES_SINGULAR now falls through to the
+    ordinary -s rule below, which is right for it. The suffix is matched on the LAST WORD
+    so 'bay leaves' still reaches 'bay leaf'. Blast radius on a full rebuild: rows 11,217
+    and kept 10,387 both unchanged, one move rule goes 255 to 260, and the five names that
+    move are Conserves and Conſerves to conserve, Arbequina olives to arbequina olive, and
+    Endives and endives to endive. All five land on a kept row."""
     if key.endswith("ies") and len(key) > 4:
         return key[:-3] + "y"
     if key.endswith("ves") and len(key) > 4:
-        return key[:-3] + "f"
+        head, _, last = key.rpartition(" ")
+        single = VES_SINGULAR.get(last or key)
+        if single:
+            return (head + " " + single) if head else single
+        # not a -f/-fe plural (cloves, olives): the ordinary -s rule below is correct
     if key.endswith("oes") and len(key) > 4:
         return key[:-2]
     if key.endswith(("ches", "shes", "sses", "xes", "zes")):
