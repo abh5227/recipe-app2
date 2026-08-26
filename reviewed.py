@@ -378,7 +378,17 @@ EXTRACTION_READ = {
     "misspellings brought both. Babycino resolved to its own row under rule 5. Babyccino "
     "did not, was dropped off cappuccino, reappeared on espresso under a Wikidata alias, "
     "and needed BOTH string forms named before it went. apply_removals matches the "
-    "variation exactly, so a capitalized twin needs its own line."),
+    "variation exactly, so a capitalized twin needs its own line.\n"
+    "  ⚠️ AND THE ROW FIXED A CONTAMINATED MUSHROOM NOBODY HAD FLAGGED. Wikidata gives "
+    "the birch bolete (Q67442012) a German alias 'Kapuziner', and cappuccino (Q159774) "
+    "carries 'Kapuziner' in German and English, the drink being named for the color of "
+    "the Capuchin habit. The two normalized into one bucket, so the MUSHROOM was holding "
+    "76 cappuccino names in 60 scripts, from Froðukaffi to カプチーノ. Creating the "
+    "cappuccino row moved all 76 off it under rule 5, and birch bolete went from 78 "
+    "names to its actual two. It has now dropped off the scan sheet entirely, which is "
+    "the correct outcome rather than a loss. ⚠️ SIXTH CROSS-LANGUAGE HOMOGRAPH, and the "
+    "first one a routine extraction cleaned up as a side effect rather than a person "
+    "spotting it."),
  # ─────────────────────────────────────────────────────────────────────────────────────
  # THE 10-TO-19 ENGLISH-NAME SAMPLE, drawn at random with seed 20260825 from the 570
  # unread holders in that band, and read the way the 83 above were read.
