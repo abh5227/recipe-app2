@@ -147,3 +147,25 @@ because a reader now gets the parent for four spellings and the child for one.
 **Count the spellings before writing the row.** Zero or one is a thin row. Nine is a decision
 about whether to seed on the parent's article and trim the siblings back out, which nothing in
 the pipeline does yet and which would set a precedent for every future extraction.
+
+### Grüne Soße: settled, and the ruling is the useful part
+
+**Decided on 25 August 2026. No row.** Two reasons, and they are separate.
+
+**The row would be wrong on its own terms.** A `Grüne Soße` row carrying one name leaves
+`Frankfurter Grüne Soße`, `Frankfurter Grüne Sauce`, `Frankfurter Grie Soß`, `Grüne Sauce`,
+`Grüne Sosse`, `Gruene Sosse`, `Gruene sosse`, `Grie Soß` and `Grie soß` on the parent. A
+reader then gets the child for one spelling and the parent for nine, including the protected
+designation, which is the name that most identifies the thing. **That is a split concept, and
+it reads worse than no row at all.**
+
+**And the fix would set a precedent in the wrong place.** Seeding on the parent's article and
+trimming the siblings back out is a new pattern. It would apply to every future extraction
+where the member has no entry of its own, which is 134 names. ⚠️ **A zero-line term is the
+worst possible place to establish a pattern that size.** Nothing about this row tests whether
+the pattern is right, because nothing reaches it.
+
+The general rule this leaves: **a seedless member is created only when the spelling count that
+stays behind is zero or one.** Above that, record it here and leave the parent whole. Reopen it
+when a seedless member turns up that carries recipe lines, because that is the case worth
+paying a precedent for.
