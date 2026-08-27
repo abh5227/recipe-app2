@@ -32,7 +32,7 @@ script is deterministic and rebuilds the sheet exactly. What it CANNOT rebuild i
 judgement in ingredient_cuts.py and reviewed.py, which is why both are committed as data
 rather than recomputed here.
 
-THE FOUR ADMISSION RULES. Only Wikidata and Open Food Facts may create an entry,
+THE FIVE ADMISSION RULES. Only Wikidata and Open Food Facts may create an entry,
 because only they carry anything resembling a food classification.
 
   1  Wikidata classifies the item "Ingredient or foodstuff".                6,605
@@ -49,6 +49,12 @@ because only they carry anything resembling a food classification.
      ⚠️ NUMBERED LAST, MEASURED SECOND. It is wrong on none of its 22 where rule 2
      admitted dish, diet and biscuit. The numbers are quoted across ingredient_cuts.py,
      reviewed.py and the sheet, so rule 2 keeps its number rather than being demoted.
+  5  Wikidata names Q178 "pasta" as a DIRECT superclass, one P279 hop.               146
+     ⚠️ THE ONLY RULE THAT READS P279 RATHER THAN THE KIND FIELD, and it exists because
+     the kind field is wrong on every dry pasta shape. rigatoni, ditalini, penne and
+     macaroni are all "Dish or prepared food", so rule 1 refuses them and five recipe
+     lines miss. One hop, Q178 only, and NOT extended to noodle or bread. See pasta_rule
+     for the head-to-head against Q2625877 and against two hops.
 
 ⚠️ AGROVOC, WIKTIONARY AND WIKIPEDIA NEVER CREATE AN ENTRY. They supply variations only.
 None carries a food classification: AGROVOC has no type field in the store and its entries
@@ -118,6 +124,8 @@ DISH_KINDS = {"Dish or prepared food", "Cuisine, recipe or meal"}
 # ⚠️ RULE 4 ADMITS FROM THE FIRST AND NEVER FROM THE SECOND. See drinks_rule.
 DRINK = "Drink"
 APPELLATION = "Appellation or growing region"
+# ⚠️ RULE 5's ONLY TARGET, AND ONE HOP IS THE WHOLE RULE. See pasta_rule.
+PASTA = "Q178"
 # ⚠️ ONE FIELD PER OFF COPY, NOT TWO OPINIONS. See english_primary.
 OFF_PRIMARY = {"canonical_name", "name"}
 # ⚠️ WORDS THAT NAME A CONCENTRATION RATHER THAN A DIFFERENT INGREDIENT.
@@ -289,8 +297,55 @@ def drinks_rule(by_entry, kinds, admitted):
     return out
 
 
-def pick_anchors(by_entry, by_bucket, kinds):
-    """The four admission rules. Returns (rule1, rule2, drinks, off_only_groups)."""
+def pasta_rule(wd_in_join, superclasses, admitted):
+    """RULE 5. A Wikidata item is admitted when it names Q178 'pasta' as a DIRECT
+    superclass, one P279 hop, and no earlier rule already reached it.
+
+    ⚠️ WHY THE RULE EXISTS. rigatoni, ditalini, penne, macaroni and linguine all carry
+    the kind 'Dish or prepared food', so rule 1 refuses every one of them. The kind is
+    simply wrong on these items and it is wrong the same way on the dry shape and on the
+    cooked dish, so no reading of the kind field separates them. The P279 parent does.
+    Measured on the corpus, five ingredient lines miss for this reason and nothing else:
+    two bare 'Rigatoni', 'of Mezze Rigatoni', 'Ditalini, about 1/4 per person' and
+    'of Felicetti Ditalini'.
+
+    ⚠️ ONE HOP, AND THE SECOND HOP WAS MEASURED AND REFUSED. Two hops admits 231 items
+    instead of 146 and buys exactly one more corpus resolution, 'Lu Bao herb packet' to
+    baozi, which is wrong. A Chinese braising spice packet is not a steamed bun. The
+    extra 85 rows are 24 more dishes and 13 more things that are not items at all, and
+    the dry-good share falls from 62% to 44%.
+
+    ⚠️ Q178, NOT Q2625877 'type of pasta', AND THE OBVIOUS-LOOKING TARGET IS WORSE.
+    'type of pasta' is a metaclass most shapes name alongside 'pasta', so it reads as the
+    tighter signal. Measured head to head at one hop it admits 104 rows at 58% dry goods
+    against Q178's 146 at 62%, creates 10 duplicate canonicals against 7, and resolves
+    the same five lines. It misses 39 ordinary shapes Q178 catches, conchiglie,
+    cavatappi, cannelloni, paccheri, pastina and lumache among them. It is a trade that
+    loses on every axis.
+
+    ⚠️ WHAT THIS RULE ADMITS THAT IS NOT AN INGREDIENT, stated because a rule is judged on
+    what it lets through. All 146 were read one at a time: 91 dry pasta shapes, 17 things
+    sold dry and also served as a dish, 23 cooked dishes and 15 that are not items at all.
+    The dishes arrive because Q178 itself P279s to Q746549 'dish', which is the edge to
+    cut if this ever needs narrowing. 'Pasta all'Ortolana', 'chicken riggies' and
+    'toasted ravioli' are the shape of the error, and none of them carries a recipe line.
+
+    ⚠️ NOT EXTENDED TO NOODLE OR BREAD, and both were measured rather than assumed.
+    Q192874 'noodle' admits 156 items of which TWO are dry goods, because Wikidata files
+    the bowl and the packet under one class and Q98826752 'noodle dish' P279s straight to
+    it. Q7802 'bread' admits 674 for one corpus line, half of them dishes, country
+    articles and a UNESCO heritage listing, so bagel is one override instead.
+    """
+    return {q for q in wd_in_join
+            if q not in admitted and PASTA in superclasses.get(q, ())}
+
+
+def pick_anchors(by_entry, by_bucket, kinds, superclasses):
+    """The five admission rules. Returns (rule1, rule2, drinks, pasta, off_only_groups).
+
+    ⚠️ NUMBERED 5 BECAUSE 3 IS TAKEN. The docblock at the top of this file numbers the
+    OFF-only groups rule 3 and the drinks rule 4, and those numbers are quoted across
+    ingredient_cuts.py, reviewed.py and the sheet."""
     wd_in_join = {e for (s, d, e) in by_entry if s == "wikidata"}
     off_in_join = {(d, e) for (s, d, e) in by_entry if s == "off_taxonomy"}
 
@@ -302,9 +357,10 @@ def pick_anchors(by_entry, by_bucket, kinds):
     rule1 = {q for q in wd_in_join if INGREDIENT in kinds.get(q, {}).get("kinds", {})}
     rule2 = {q for q in wd_in_join if not kinds.get(q, {}).get("kinds")} & wd_with_off
     drinks = drinks_rule(by_entry, kinds, rule1 | rule2)
+    pasta = pasta_rule(wd_in_join, superclasses, rule1 | rule2 | drinks)
 
     covered = set()
-    for q in rule1 | rule2:
+    for q in rule1 | rule2 | pasta:
         for norm, *_ in by_entry[("wikidata", "food_items_q2095", q)]:
             covered |= {(d, e) for (s, d, e, *_) in by_bucket[norm] if s == "off_taxonomy"}
     # ⚠️ A RULE-4 ANCHOR COVERS EXACTLY THE OFF ENTRY IT WAS ADMITTED ON, AND NOTHING
@@ -340,7 +396,7 @@ def pick_anchors(by_entry, by_bucket, kinds):
                         stack.append((d2, e2))
         seen |= group
         groups.append(sorted(group))
-    return rule1, rule2, drinks, groups
+    return rule1, rule2, drinks, pasta, groups
 
 
 # ⚠️ ONE PRIMARY NAME PER CONCEPT PER LANGUAGE, AND THE SOURCES KEEP THAT PROMISE EXACTLY.
@@ -1504,7 +1560,8 @@ def apply_cuts(row, superclasses, off_parents):
 
 def build_rows(join, src, kinds, superclasses, off_parents):
     by_entry, by_bucket = read_members(join)
-    rule1, rule2, drinks, off_groups = pick_anchors(by_entry, by_bucket, kinds)
+    rule1, rule2, drinks, pasta, off_groups = pick_anchors(by_entry, by_bucket, kinds,
+                                                           superclasses)
 
     stored_names = {}
     if src is not None:
@@ -1514,15 +1571,17 @@ def build_rows(join, src, kinds, superclasses, off_parents):
                 stored_names[(source, entry_id)] = name
 
     entries = []
-    for q in sorted(rule1 | rule2 | drinks):
+    for q in sorted(rule1 | rule2 | drinks | pasta):
         key = ("wikidata", "food_items_q2095", q)
         if q in rule1:
             why = "Wikidata kind is Ingredient or foodstuff"
         elif q in rule2:
             why = "Wikidata carries no kind, an OFF ingredient entry shares its name"
-        else:
+        elif q in drinks:
             why = ("Wikidata calls it a drink and an OFF ingredient entry carries the "
                    "same English name")
+        else:
+            why = "Wikidata names pasta as a direct superclass"
         entries.append({"anchor": "wikidata", "id": q, "seed": {key},
                         "buckets": {n for n, *_ in by_entry[key]}, "why": why})
     for group in off_groups:
@@ -1581,7 +1640,7 @@ def build_rows(join, src, kinds, superclasses, off_parents):
 
 
 def add_overrides(rows, by_entry, by_bucket, kinds, subclass_count):
-    """The five hand-added terms. ⚠️ Report the list's size after every change: if it
+    """The six hand-added terms. ⚠️ Report the list's size after every change: if it
     passes a few dozen the anchor rule is drawn in the wrong place."""
     for term, (failure, ident, reason) in CUTS.OVERRIDES.items():
         seed = {(s, d, e) for s, d, e, *_ in by_bucket.get(term, [])}

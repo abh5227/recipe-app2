@@ -117,13 +117,21 @@ the snapshot. That is the pattern to copy.
 # ⚠️ REPORT THE SIZE AFTER EVERY CHANGE. If it passes a few dozen, the anchor rule is
 #    drawn in the wrong place and the fix is redrawing it, not adding lines here.
 #
-# ⚠️ THE FIVE COVER TWO DIFFERENT FAILURES AND ONLY CLASS A IS WHAT THE LIST WAS FOR.
+# ⚠️ THE SIX COVER TWO DIFFERENT FAILURES AND ONLY CLASS A IS WHAT THE LIST WAS FOR.
 #    A  no source can anchor it. Only Wiktionary has the term, and Wiktionary carries no
 #       food classification. Measured, its topics-and-categories signal is 57 to 75%
 #       wrong and misses Shaoxing wine outright, so there is nothing better to use.
 #    B  Wikidata HAS it and declined to classify it. 7,187 items carry no kind, rule 2
 #       reached 487, and 6,700 are still out. A SECOND CLASS-B OVERRIDE IS A SIGNAL TO
 #       REDRAW THE ANCHOR RULE, not to add another line.
+#    C  Wikidata HAS it and classified it WRONG. bagel is "Dish or prepared food", which
+#       is the same wrong kind that rule 5 exists to route around for pasta shapes.
+#       ⚠️ A SEPARATE LETTER ON PURPOSE. Filing bagel under B would have tripped the
+#       warning above and it is not the same failure: B declined to answer, C answered
+#       incorrectly. A redrawn anchor rule fixes B. Only a different SIGNAL fixes C, and
+#       for bread that signal was measured and rejected at 674 rows for one line.
+#       ⚠️ THE SAME WARNING APPLIES. A THIRD CLASS-C OVERRIDE means the bread class is
+#       being hand-copied one row at a time and should be admitted or refused properly.
 # ─────────────────────────────────────────────────────────────────────────────────────
 OVERRIDES = {
     "shaoxing wine": ("A", "en:Shaoxing wine:noun#0",
@@ -144,6 +152,14 @@ OVERRIDES = {
         "languages and a Wikipedia article, and carries NO classification. Rule 2 would "
         "have admitted it had any OFF entry shared the name, which is the only reason "
         "gochugaru got in."),
+    "bagel": ("C", "Q272502",
+        "⚠️ ONE LINE, AND THE CLASS THAT WOULD REACH IT COSTS 674 ROWS. Wikidata has it "
+        "as Q272502 and calls it 'Dish or prepared food', so rule 1 refuses it. Its P279 "
+        "parent is yeast bread, which is two hops from Q178's sibling Q7802 'bread', so "
+        "rule 5 cannot see it either. Admitting the bread class instead was measured: 674 "
+        "rows, of which 199 are cooked dishes, 94 are country articles, brands and a "
+        "UNESCO heritage listing, and exactly one corpus line resolves. One override is "
+        "cheaper than that by every count."),
 }
 
 # ⚠️ serrano pepper was on the agreed list of six and is NOT an override. It is already
