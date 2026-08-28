@@ -33,6 +33,7 @@ from import_cleanup import clean_recipe, split_qty   # shared qty->quantity+unit
 # (see docs/migration-plan.md).
 from models import (
     Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
+    LibraryName,         # the id -> canonical lookup the library search reads (migration 029)
     Rating, CookLog, CookPhoto, RecipeSnapshot, User, Friendship, SharedPost, Comment, RecipeQueue,
     ImportFlag,          # U5: the imported_via provenance row, and the gate on baseline-at-first-save
     ingredient_weights,
@@ -194,6 +195,28 @@ def slugify(name):
     s = re.sub(r"[\s_]+", "-", s)      # spaces / underscores -> hyphen
     s = re.sub(r"-+", "-", s).strip("-")
     return s
+
+
+def ingredient_slug(name):
+    r"""Mint an ingredients.id from a library canonical: 'egg pasta' -> 'egg_pasta'.
+
+    ⚠️ UNDERSCORES, AND THIS IS NOT slugify() ABOVE. slugify mints RECIPE ids and emits hyphens
+    ('andys-roast-chicken'). Every one of the 36 hand-authored ingredient ids uses underscores
+    (red_onion, soy_sauce, chile_powder), so an ingredient minted with hyphens would sit in the same
+    column in a different shape and would never match the ones already there.
+
+    ⚠️ \w IS UNICODE-AWARE AND THAT IS THE POINT. Folding to ASCII first, which import_write's
+    _base_slug does for recipe titles, erases 56 of the 10,527 library canonicals outright: 丸糯米,
+    オーロラソース, لحم مقدد, клёцки all reduce to the empty string. This keeps them.
+
+    ⚠️ THE SEARCH ROUTE AND THE FUTURE SAVE PATH MUST BOTH CALL THIS ONE FUNCTION. The route reports
+    whether a library row's slug is already taken in `ingredients`; the save path (a later stage)
+    mints the id. Two implementations that drift by one character make the route's answer a lie.
+    """
+    s = (name or "").strip().lower()
+    s = re.sub(r"[^\w\s-]", "", s)     # drop punctuation, keep letters in every script
+    s = re.sub(r"[\s_-]+", "_", s)     # spaces, hyphens and underscores collapse to one underscore
+    return s.strip("_")
 
 
 def recipe_stats(s, rid, user_id):
@@ -972,6 +995,101 @@ def in_season(month=None):
             .order_by(Ingredient.name)
         ).all()
     return jsonify({"month": month, "ingredients": [dict(r._mapping) for r in rows]})
+
+
+# ---- the ingredient library lookup ----
+# The FIRST route that reads a library table. It reads library_names ONLY, the ~10,500-row lookup
+# build_db loads from a server-side file. It never opens join.db (894 MB) or sources.db (5.18 GB),
+# which are not present on a server and which app.py has no access to.
+
+LIBRARY_SEARCH_LIMIT = 50
+
+
+def _like_escape(text_):
+    """Make a typed % or _ literal rather than a LIKE wildcard. 36 library canonicals carry a %
+    ('3% fat reduced cocoa powder', 'Сливки питьевые с массовой долей жира от 10 % до 19 %'), so an
+    unescaped query silently turns into a wildcard search."""
+    return text_.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+@app.route("/api/library/search")
+def search_library():
+    """Search the ingredient library by name, for the picker a later stage will build.
+
+    MATCHING IS A CASE-INSENSITIVE SUBSTRING ON THE CANONICAL, and that is the whole of it. No
+    prefix weighting, no token splitting, no fuzzy distance. The picker does not exist yet, so there
+    is nothing to tune against, and a v1 that is easy to describe is easier to replace than one
+    carrying invented ranking.
+    ⚠️ CASE-INSENSITIVE FOR ASCII ONLY, because SQLite's LIKE is. Measured: 'масло' does not match
+    'МАСЛО' and 'ölsäure' does not match 'Ölsäure'. Non-Latin names match at their own case. Fixing
+    it needs a collation or a folded search column, which is a decision for when a picker exists.
+
+    ORDERED BY LENGTH, THEN NAME, WHICH IS WHAT MAKES THE CAP HONEST. An exact match is always the
+    shortest string containing the query, so shortest-first puts it top without a ranking rule. A
+    bare LIMIT with no ORDER BY would return 50 arbitrary rows and could drop the exact match.
+
+    CAPPED AT 50, with `capped` telling the caller there were more. A one-letter query matches
+    thousands of the ~10,500 rows, and no picker wants that payload.
+
+    ⚠️ `ingredient_id` IS THE ANSWER THE PICKER ACTUALLY NEEDS, and null is the interesting value.
+    Non-null means an `ingredients` row already holds this concept, so the picker links to that id
+    and the save path creates nothing. Null means the row would be created on link. `matched_by`
+    says which of two different facts produced it:
+      "library_id"  an ingredients row records THIS library row as its origin. Exact, no inference.
+      "slug"        no provenance match, but an ingredients row already OCCUPIES the id this
+                    canonical would mint. That is the hand-authored case: 32 of the 36 seed ids are
+                    reproduced exactly by slugifying some library canonical (garlic, red_onion,
+                    soy_sauce), and those rows carry no library_id because nobody promoted them.
+                    Linking to them is right, and it is what stops a promotion colliding on the
+                    primary key.
+    A slug match is an inference from a name, so it is reported as its own kind rather than folded
+    into the certain one.
+
+    EMPTY RESULTS ON AN EMPTY TABLE, WHICH IS THE NORMAL STATE. library_names is loaded from a
+    gitignored server-side file, so a fresh clone and CI have none. The route answers 200 with an
+    empty list rather than erroring, which is the same self-disabling this feature does everywhere.
+
+    Login-gated by the before_request allowlist (NOT in PUBLIC_ENDPOINTS), same as every other
+    ingredient route."""
+    q = (request.args.get("q") or "").strip()
+    if not q:
+        return jsonify({"query": "", "capped": False, "results": []})
+
+    pattern = f"%{_like_escape(q)}%"
+    with orm_session() as s:
+        found = s.execute(
+            select(LibraryName.library_id, LibraryName.canonical)
+            .where(LibraryName.canonical.like(pattern, escape="\\"))
+            .order_by(func.length(LibraryName.canonical), LibraryName.canonical)
+            .limit(LIBRARY_SEARCH_LIMIT + 1)          # one extra, purely to detect the cap
+        ).all()
+        capped = len(found) > LIBRARY_SEARCH_LIMIT
+        found = found[:LIBRARY_SEARCH_LIMIT]
+
+        slugs = {r.canonical: ingredient_slug(r.canonical) for r in found}
+        by_library_id, taken_slugs = {}, set()
+        if found:
+            # ONE query for both halves of the answer, over at most 50 ids and 50 slugs.
+            existing = s.execute(
+                select(Ingredient.id, Ingredient.library_id).where(or_(
+                    Ingredient.library_id.in_([r.library_id for r in found]),
+                    Ingredient.id.in_([sl for sl in slugs.values() if sl]),
+                ))
+            ).all()
+            for row in existing:
+                if row.library_id:
+                    by_library_id[row.library_id] = row.id
+                taken_slugs.add(row.id)
+
+    results = []
+    for r in found:
+        ident, matched_by = by_library_id.get(r.library_id), "library_id"
+        if ident is None:
+            slug = slugs[r.canonical]
+            ident, matched_by = (slug, "slug") if slug in taken_slugs else (None, None)
+        results.append({"library_id": r.library_id, "canonical": r.canonical,
+                        "ingredient_id": ident, "matched_by": matched_by})
+    return jsonify({"query": q, "capped": capped, "results": results})
 
 
 # ---- cooking log + ratings ----
