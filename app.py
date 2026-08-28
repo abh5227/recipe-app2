@@ -271,11 +271,75 @@ def upsert_rating(s, rid, user_id, rating):
     ))
 
 
-def validate_recipe_payload(s, payload):
-    """Return (clean, error). Requires a name, and checks that any *linked*
-    ingredient (a line with 'item', or a [[key]] in a step) exists in the library.
-    Brand-new ingredients are fine as plain text — they just aren't links.
-    Reads via the caller's ORM session `s` (Stage 1c)."""
+def _promote_library_row(s, library_id, known):
+    """Resolve a line's `item_library_id` to an ingredients.id, creating the row if it is new.
+
+    Returns (ingredient_id, error). Called only by resolve_recipe_payload, and split out so the
+    three cases below are readable rather than nested inside the gate's loop.
+
+    ⚠️ THE CANONICAL COMES FROM library_names, NEVER FROM THE REQUEST. That is the whole of the
+    junk-proofing. A caller supplies a key and nothing else, this function looks the name up, and a
+    key the table does not hold creates nothing. The id space is closed at whatever the lookup holds,
+    every entry of which the library's admission rules already sanctioned.
+
+    ⚠️ CHECK-THEN-LINK BEFORE INSERT, AND SKIPPING IT IS A PRIMARY-KEY CONFLICT. 32 of the 36
+    hand-authored ingredient ids are reproduced exactly by slugifying some library canonical (garlic,
+    red_onion, soy_sauce), and those rows carry no library_id because nobody promoted them. When the
+    slug is already taken the existing row is linked to and left ALONE: its name, descr, pairs and
+    library_id are not overwritten, because a hand-written row is not improved by a library name.
+
+    ⚠️ ingredient_slug IS THE SHARED MINTING RULE, and /api/library/search calls the same function to
+    decide its matched_by:"slug" answer. Re-implementing it here by one character would make that
+    route's answer false.
+    """
+    canonical = s.scalars(
+        select(LibraryName.canonical).where(LibraryName.library_id == library_id)).first()
+    if not canonical:
+        # CASE 3. Not in the lookup, so nothing is created. This is also the whole of the
+        # self-disabled state: on a fresh clone and in CI library_names is EMPTY, every
+        # item_library_id lands here, and the gate behaves exactly as it did before add-on-save.
+        return None, f"an ingredient line links to library id '{library_id}', which isn't in the library"
+
+    slug = ingredient_slug(canonical)
+    if not slug:
+        return None, f"an ingredient line links to '{canonical}', which has no usable name"
+    if slug in known:
+        return slug, None                      # CASE 2a: the id is taken, link and do not touch it
+
+    # CASE 2b: genuinely new. source='app' so stage 6's delete path may remove it and so it is
+    # distinguishable from the hand-authored 36 (migration 030). descr and pairs stay NULL.
+    s.execute(insert(Ingredient.__table__).values(
+        id=slug, name=canonical, source="app", library_id=library_id, created_at=now_utc()))
+    known.add(slug)                            # a second line naming it in the same payload links
+    return slug, None
+
+
+def resolve_recipe_payload(s, payload):
+    """Return (clean, error). Validates a payload and RESOLVES its ingredient links, CREATING an
+    ingredients row when a line names a library entry that has not been promoted yet.
+
+    ⚠️ THIS FUNCTION WRITES. It was called validate_recipe_payload and it was renamed when add-on-save
+    gave it a create path, because a reader of create_recipe should not have to open a function named
+    validate_* to discover that saving a recipe can add a row to a table every other recipe shares.
+    The write is one INSERT into `ingredients`, described in _promote_library_row.
+
+    ⚠️ IT WRITES ON THE CALLER'S SESSION AND DOES NOT COMMIT. Both callers (create_recipe,
+    update_recipe) return early on error and on their own later failures, and `with orm_session()`
+    closes without committing, so a created row is rolled back with everything else. A test pins this
+    against the 409 duplicate-name path, which fails AFTER the gate has already created a row.
+
+    THE THREE CASES for an ingredient line, and a line carries at most one of the two keys:
+      1. `item`               an ingredients.id, meaning exactly what it has always meant. Rejected
+                              if absent from the table, exactly as before.
+      2. `item_library_id`    a library_names.library_id. Resolved to a slug and created if new,
+                              linked if the slug is already taken. See _promote_library_row.
+      3. neither              a plain-text line. Always fine, never a link.
+    A line sending BOTH is refused rather than guessed at.
+
+    ⚠️ STEP [[key]] LINKS ARE UNCHANGED AND CANNOT CREATE. Step-link promotion was dropped, so a
+    step's key is still checked against existing ingredient ids and still refused when missing. The
+    reverse lookup a step would need is not a function anyway: 63 slugs map to 129 library rows.
+    """
     name = (payload.get("name") or "").strip()
     if not name:
         return None, "a name is required"
@@ -286,17 +350,28 @@ def validate_recipe_payload(s, payload):
 
     known = set(s.scalars(select(Ingredient.id)))
 
+    resolved = []
     for row in ingredients:
-        item = (row or {}).get("item")
+        row = dict(row) if row else {}
+        item, library_id = row.get("item"), row.pop("item_library_id", None)
+        if item and library_id:
+            return None, "an ingredient line sends both an item and a library id — pick one"
         if item and item not in known:
             return None, f"an ingredient line links to '{item}', which isn't in your library"
+        if library_id:
+            item, err = _promote_library_row(s, library_id, known)
+            if err:
+                return None, err
+            row["item"] = item                 # downstream sees an ordinary link and nothing new
+        resolved.append(row)
+
     for step in steps:
         text = step if isinstance(step, str) else (step or {}).get("heading", "")
         for m in re.finditer(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]", text or ""):
             key = m.group(1).strip()
             if key not in known:
                 return None, f"a step links to '{key}', which isn't in your library"
-    return {"name": name, "ingredients": ingredients, "steps": steps}, None
+    return {"name": name, "ingredients": resolved, "steps": steps}, None
 
 
 def _preserve_key(qty, name):
@@ -567,7 +642,7 @@ def create_recipe():
     """Create a new app-owned recipe. Rejects a name whose slug already exists."""
     payload = request.get_json(silent=True) or {}
     with orm_session() as s:
-        clean, err = validate_recipe_payload(s, payload)
+        clean, err = resolve_recipe_payload(s, payload)
         if err:
             return jsonify({"error": err}), 400
         slug = slugify(clean["name"])
@@ -729,7 +804,7 @@ def update_recipe(rid):
             return jsonify({"error": "this recipe is from seed.py and is read-only here — edit it in seed.py"}), 403
         if row.owner != current_user.id:                     # default-deny: only the owner may edit
             return jsonify({"error": "not your recipe"}), 403
-        clean, err = validate_recipe_payload(s, payload)
+        clean, err = resolve_recipe_payload(s, payload)
         if err:
             return jsonify({"error": err}), 400
         s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rid).values(
