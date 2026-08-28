@@ -1057,6 +1057,61 @@ def get_ingredient(iid):
     return jsonify(d)
 
 
+# Ingredient tiers the app may delete. ONLY 'app', which is what the save gate stamps on a row it
+# promoted from the library (migration 030). An ALLOWLIST rather than "anything that is not seed" on
+# purpose: a tier added later is then protected by default instead of deletable by default. Mirrors
+# EDITABLE_SOURCES, which does the same job for recipes.
+DELETABLE_INGREDIENT_SOURCES = ("app",)
+
+
+@app.route("/api/ingredients/<iid>", methods=["DELETE"])
+def delete_ingredient(iid):
+    """Remove a promoted ingredient nobody links to. The undo for the save gate's create path.
+
+    THE FIRST AND ONLY WAY TO REMOVE AN INGREDIENT. Until now nothing in the app deleted from this
+    table, so a row created by mistake was permanent. It exists so a wrong promote is reversible, and
+    it landed before the library lookup file was generated so that has always been true.
+
+    ⚠️ SEED ROWS ARE REFUSED, AND THAT IS THE POINT OF THE TIER COLUMN. The 36 hand-authored rows
+    carry source='seed' and hold prose nothing regenerates. TIER IS CHECKED FIRST, before the
+    reference count, for the reason delete_recipe gives about ownership: all 36 are both seed AND
+    linked, and refusing on the intrinsic property yields the truer message.
+
+    ⚠️ A LINKED ROW IS REFUSED BY A PRE-CHECK, WITH THE FOREIGN KEY AS THE BACKSTOP. Deleting a row
+    some recipe points at would dangle that link, and recipe_ingredients.ingredient_id carries NO
+    ondelete, so with foreign_keys=ON (set per connection in orm_session) the database already
+    refuses. The pre-check is not what makes it safe, it is what makes it EXPLICABLE: the constraint
+    raises "FOREIGN KEY constraint failed", which tells the reader nothing, while a count can say
+    which recipes to unlink first. It costs one covering-index lookup on idx_ri_ingredient.
+
+    Child rows go with it. ingredient_seasons and ingredient_regions both cascade, so a row carrying
+    either is cleaned up by the database. A promoted row has neither, and the cascade is what keeps
+    this correct anyway if one ever does.
+
+    404 / 403 / 409 / 200 {"deleted": id}, matching delete_recipe. Login-gated by the before_request
+    allowlist, like every other write route."""
+    with orm_session() as s:
+        row = s.execute(
+            select(Ingredient.source, Ingredient.name).where(Ingredient.id == iid)).first()
+        if row is None:
+            return jsonify({"error": "ingredient not found"}), 404
+        if row.source not in DELETABLE_INGREDIENT_SOURCES:   # TIER first — see the docstring
+            return jsonify({
+                "error": "hand-authored ingredients can't be deleted here, edit seed.py instead"
+            }), 403
+        used = s.scalar(
+            select(func.count(func.distinct(RecipeIngredient.recipe_id)))
+            .where(RecipeIngredient.ingredient_id == iid))
+        if used:
+            return jsonify({
+                "error": f"{row.name} is still linked by {used} "
+                         f"recipe{'s' if used != 1 else ''}, unlink it there first"
+            }), 409
+        s.execute(delete(Ingredient.__table__).where(Ingredient.__table__.c.id == iid))
+        s.commit()
+    return jsonify({"deleted": iid})
+
+
 @app.route("/api/in-season")
 @app.route("/api/in-season/<int:month>")
 def in_season(month=None):
