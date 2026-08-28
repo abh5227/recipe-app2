@@ -6,7 +6,7 @@ different confidence levels, and they are labelled rather than blended:
 | label | what it means | who to ask |
 | --- | --- | --- |
 | **✅ VERIFIED** | checked against the repo or the live `recipes.db` while writing this. The check is named. | nobody, re-run the check |
-| **🟡 STATED INTENT, UNCONFIRMED** | rules Andy gave in conversation, transcribed by an assistant and **not confirmed by him**. | Andy |
+| **🟢 CONFIRMED INTENT** | rules Andy gave in conversation and has since **reviewed and confirmed**. Settled as intent. How to build them is a separate question. | nobody, they are agreed |
 | **🔵 PROPOSED** | an assistant's inference or suggestion. Open to revision, decided by nobody. | Andy |
 
 **Not a build plan.** Nothing here is scheduled and no stage is approved.
@@ -14,9 +14,9 @@ different confidence levels, and they are labelled rather than blended:
 ## What this is about
 
 The add-on-save backend, shipped and pushed, creates a row in the one shared `ingredients` table
-when any authenticated user saves a recipe that references a library entry. **🟡 Andy has said he
-wants a different model instead:** a curated shared library he controls, personal ingredients each
-user owns, and an optional submission path from personal up to shared.
+when any authenticated user saves a recipe that references a library entry. **🟢 Andy wants a
+different model instead, and has confirmed it:** a curated shared library he controls, personal
+ingredients each user owns, and an optional submission path from personal up to shared.
 
 ⚠️ **🔵 PROPOSED framing, and it may be too generous:** the shipped machinery is largely reusable
 rather than wasted. See "What survives, and what does not" below, which is less comfortable than it
@@ -94,15 +94,18 @@ in `app.py`**. ✅ queried and grepped.
 - **SHARED.** Ingredients every user can use. Today's 36 rows are effectively this, since the
   table has no owner column at all. ✅
 - **PERSONAL.** A user's own ingredients, server-stored per-user data rather than device-local,
-  private to them, usable in their own recipes. 🟡 Andy's stated shape.
+  private to them, usable in their own recipes. 🟢 Andy's confirmed shape.
 - ⚠️ **The structural gap is real and verified:** `ingredients` has no owner column, so *nothing*
   in this model is expressible today. ✅
 
-## 🟡 STATED INTENT, PENDING ANDY'S CONFIRMATION
+## 🟢 CONFIRMED INTENT: the eight rules
 
-**These eight rules came from Andy in conversation and were transcribed by an assistant. He has not
-reviewed the transcription.** They are recorded here so they are not lost, not because they are
-settled. Anything built on them should re-confirm them first.
+**Andy has reviewed and confirmed these.** They came from him in conversation, an assistant
+transcribed them, and he has since checked the transcription against what he meant. They are
+settled as intent.
+
+⚠️ **Settled as intent is not settled as design.** Rules 1 to 8 say what the model does. They do
+not say how any of it is built, and every 🔵 below is still an assistant's proposal.
 
 1. An ingredient is either shared (no owner) or personal (owned by one user).
 2. Admin creates goes to shared, and every user without their own version simply uses it. No
@@ -119,19 +122,60 @@ settled. Anything built on them should re-confirm them first.
 ⚠️ Rule 8's "must have a review UI" is the one with teeth, and the reason is ✅ verified above:
 `import_flags` is 593 rows in a table with no review route and no status column.
 
-## Open decisions, none settled
+## 🟢 DECIDED: how submit and approve work
 
-- **A. What "submit" does mechanically.** A separate suggestions table, or a status flag on the
-  ingredient row.
-- **B. What approval does to the submitter's personal copy.** Promote in place, create a new shared
-  row, or re-point the personal one.
+**A. Submitting creates a SEPARATE suggestion object.** A new suggestions table, not a status flag
+on the ingredient row. **The user's personal ingredient row is left completely untouched by
+submitting.**
+
+Three reasons, in order:
+- It mirrors `friendships`, which is ✅ verified above as a working request/approve pattern in this
+  codebase: a `status` CHECK constraint, a `created_at` and a `reviewed_at`, and authorization that
+  falls out of the row key rather than an `if`. Copying a proven shape beats inventing one.
+- It keeps the ingredient row clean. An ingredient is a thing you cook with. Whether somebody once
+  offered it for review is not a property of the ingredient, and a status column on the row would
+  make every reader of `ingredients` step around a workflow field.
+- The review gets its own object, so it can carry what a review needs (who asked, when, what the
+  admin decided, when) without any of that living on the ingredient.
+
+**B. Approval PROMOTES THE PERSONAL ROW IN PLACE.** The submitter's row flips from owned to shared,
+which under rule 1 means its owner is set to null. **The same row, the same id.**
+
+- **Recipe links keep working with nothing to re-point.** The id never changes, so every
+  `recipe_ingredients.ingredient_id` pointing at it stays valid. ✅ This matters because the id is
+  the durable link target, which is the architecture already shipped and recorded in
+  `docs/ingredient-linkage-state.md`.
+- **No duplicate is created.** The alternative, minting a fresh shared row, would leave the
+  submitter's personal copy shadowing the shared one they themselves asked for.
+- ⚠️ **This does not violate rule 5.** Rule 5 says an admin's shared addition never clobbers a
+  user's personal row. Promotion is not a clobber, because **the submitter consented by submitting**.
+  Rule 5 protects a user from OTHER people's actions, not from the consequences of their own.
+
+## Open decisions, still unsettled
+
 - **C. The review UI's shape.**
-- **D. Recipe links across the personal and shared boundary.** What happens to a
-  `recipe_ingredients.ingredient_id` when the row it points at changes ownership.
-- **E. Whether an admin's add goes straight to shared or also queues.** The rules as transcribed
-  read as admin-direct. 🟡 Confirm with Andy.
+- **D. Recipe links across the personal and shared boundary.** ⚠️ **Narrowed by B, not closed.**
+  Promotion in place keeps the id, so a link to a promoted row needs no re-pointing at all. What
+  remains open is every other crossing: what a link does if a personal row is deleted, and whether
+  one user's recipe may link to another user's personal ingredient in the first place.
+- **E. Whether an admin's add goes straight to shared or also queues.** The confirmed rules read as
+  admin-direct, but they do not say so in as many words. Worth a sentence from Andy.
 - **F. Curation of personal ingredients.** A user editing their own row. May fold in the
   promoted-row curation tool already recorded in `docs/ingredient-linkage-state.md`.
+
+⚠️ **Deciding B surfaced two more, and neither is answered by it.** Both are listed rather than
+assumed, because guessing either one wrong leaves bad data rather than a bad screen.
+
+- **G. What happens to the suggestion row after approval.** Kept as approved-history, which gives an
+  audit trail and a record of who contributed what, or deleted, which keeps the table to live work
+  only. `friendships` keeps its row and flips `status`, which is a precedent rather than an argument.
+- **H. Two users submitting the same concept.** If user A's gochujang is promoted to shared while
+  user B already has a personal gochujang with a suggestion still pending, **B's suggestion is now
+  for something that exists**, and B's personal row now shadows a shared one. Rule 4 covers the row
+  itself: B keeps using theirs, no action needed. **B's pending suggestion still needs a
+  resolution**, and there is no obviously right answer. Auto-reject it as redundant, leave it for the
+  admin to reject by hand, or surface it to B as "this is already shared, adopt it?", which is rule
+  6's adopt operation arriving earlier than rule 6 intends.
 
 ## 🔵 PROPOSED build order, and one correction to it
 
@@ -175,7 +219,7 @@ slightly too comfortable.** Reading the code:
 
 ## Where this sits relative to what is shipped
 
-🟡 If Andy confirms the rules above, this supersedes the add-on-save-for-everyone model. **It does
+🟢 The rules above are confirmed, so this supersedes the add-on-save-for-everyone model. **It does
 not require undoing anything**, because ✅ the create path is unreachable and no row created by it
 exists. The scope change arrived at the cheapest possible moment.
 
