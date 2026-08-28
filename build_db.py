@@ -32,6 +32,8 @@ from stepscale import (
 BASE_DIR = Path(__file__).resolve().parent
 DB = BASE_DIR / "recipes.db"
 WEIGHTS_CSV = BASE_DIR / "king-arthur-staples-v2.csv"
+# ⚠️ SERVER-SIDE AND GITIGNORED, UNLIKE THE WEIGHTS CHART BESIDE IT. See seed_library_names.
+LIBRARY_NAMES_CSV = BASE_DIR / "library_names.csv"
 
 # Chart rows that should NOT smart-convert volume->grams in Metric (migration 013). Keyed by
 # normalize(display_name) so it matches the lookup_key seed_weights stores. Two kinds:
@@ -231,6 +233,59 @@ def seed_weights(conn):
             )
 
 
+def seed_library_names(conn):
+    """Load the ingredient library's id -> canonical-name lookup into library_names.
+
+    Pure reference data derived entirely from the file (nothing app-owned points at it), so it is
+    rebuilt wholesale each run, the same as the weights chart above. Rows missing either column are
+    skipped. If the file is missing, the table is left empty.
+
+    ⚠️ THE FILE IS SERVER-SIDE AND GITIGNORED, AND THAT IS THE FEATURE RATHER THAN A GAP. It is
+    ~624 KB derived from join.db (894 MB) and sources.db (5.18 GB), neither of which is ever committed
+    or present on a server, so it is placed by hand on a machine that has generated it. A fresh clone
+    and CI therefore get an EMPTY table, and the add-on-save gate (stage 5) can only match a row that
+    is present. With no rows it never fires and the save path keeps behaving exactly as it does today.
+    The feature self-disables wherever the file is absent, which is why nothing here raises on a miss.
+
+    ⚠️ AN ABSENT FILE LEAVES EXISTING ROWS ALONE rather than clearing them, because the early return
+    happens before the DELETE. Same semantics as seed_weights. Removing the file does not empty a
+    table that was already loaded, so a rebuild on a machine that has since lost the file keeps the
+    last-loaded lookup instead of silently disabling the feature mid-flight.
+
+    ⚠️ A DUPLICATE library_id RAISES rather than being skipped, and the difference from the missing-
+    column skip is deliberate. An incomplete row carries no data. A duplicate carries CONFLICTING
+    data, and quietly keeping whichever came first would make the lookup depend on file order. The
+    DELETE has not been committed at that point, so a raise leaves the database untouched.
+
+    ⚠️ POSTGRES IS NOT POPULATED BY THIS, AND THAT IS A DEFERRED TASK, NOT AN OVERSIGHT. build_db.py
+    is raw-SQLite by design and is never run against PG (docs/migration-plan.md), so on Postgres the
+    Alembic revision creates library_names and nothing fills it. An empty table there self-disables
+    the feature exactly as an absent file does, so PG keeps today's behavior rather than
+    half-enabling. A dialect-neutral loader is a separate decision.
+
+    Format: a two-column CSV, `library_id,canonical`, with `#` comment lines allowed. Two columns
+    because step-link promotion is dropped and nothing needs the reverse slug lookup (migration 029).
+    ⚠️ NOTHING IN THIS REPO GENERATES THE FILE YET. It is produced from build_library's kept rowset,
+    and that generator is not part of this commit.
+    """
+    if not LIBRARY_NAMES_CSV.exists():
+        print(f"Note: {LIBRARY_NAMES_CSV.name} not found — library-name lookup left empty.")
+        return
+    conn.execute("DELETE FROM library_names")
+    n = 0
+    with open(LIBRARY_NAMES_CSV, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(ln for ln in f if not ln.lstrip().startswith("#"))
+        for row in reader:
+            library_id = (row.get("library_id") or "").strip()
+            canonical = (row.get("canonical") or "").strip()
+            if not library_id or not canonical:
+                continue
+            conn.execute("INSERT INTO library_names (library_id, canonical) VALUES (?,?)",
+                         (library_id, canonical))
+            n += 1
+    print(f"Library-name lookup: {n:,} rows loaded from {LIBRARY_NAMES_CSV.name}.")
+
+
 def compute_coverage(conn):
     """Coverage of the volume->weight converter, computed live from the data (no stored
     counters). Uses the same matcher as the API (weights), so the report can't drift from
@@ -369,6 +424,7 @@ def build():
     conn.execute("PRAGMA foreign_keys = OFF")
     seed_content(conn)
     seed_weights(conn)
+    seed_library_names(conn)
     conn.commit()
     conn.execute("PRAGMA foreign_keys = ON")
 

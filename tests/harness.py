@@ -132,6 +132,15 @@ def make_kitchen(tmp_path, login=True):
     # breaking the suite. INGREDIENTS/PEOPLE still come from seed.py (they aren't being emptied).
     build_db.RECIPES = TEST_RECIPES
 
+    # The library-name lookup loads from a SERVER-SIDE file that the repo deliberately does not
+    # contain, so a fixture build must not pick up whatever happens to sit in the working copy. With
+    # the real ~10,500-row file present it would load into EVERY fixture DB (measured at 0.07s a
+    # build, roughly 21s across the suite) and make the suite's behavior depend on a file no clone
+    # has. Rebinding it into tmp_path is the same module-global pattern as build_db.DB above: the
+    # default is a path that does not exist, so fixtures get an empty lookup on every machine, and a
+    # test that WANTS rows writes tmp_path/"library_names.csv" before calling rebuild().
+    build_db.LIBRARY_NAMES_CSV = Path(tmp_path) / "library_names.csv"
+
     build_db.build()                       # apply migrations + load seed content (from TEST_RECIPES)
     client = app.app.test_client()
     if login:

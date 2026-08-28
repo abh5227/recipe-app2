@@ -79,3 +79,10 @@ join-*.db
 join-*.db-journal
 join-*.db-wal
 join-*.db-shm
+
+# The ingredient library's id -> canonical-name lookup, derived from join.db (which is itself derived
+# from sources.db). ~624 KB, two columns, loaded into the library_names table by build_db.py's
+# seed_library_names. SERVER-SIDE: placed by hand on a machine that has generated it, never committed.
+# A clone without it builds a working app with an EMPTY lookup, which self-disables the add-on-save
+# create path rather than breaking anything.
+library_names.csv
