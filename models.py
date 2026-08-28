@@ -64,12 +64,23 @@ class Recipe(Base):
 
 
 class Ingredient(Base):
+    """The ingredient field guide. Hand-authored rows come from seed.py's INGREDIENTS, 36 of them.
+    Add-on-save stage 5 will also create rows PROMOTED from the ingredient library, so migration 030
+    added the two columns that tell them apart. source mirrors recipes.source exactly, same vocabulary
+    and same TEXT NOT NULL DEFAULT 'seed'. It defaults to 'seed' because that is the fail-safe
+    direction. Stage 6's delete path refuses a seed row, so a writer that forgets to set 'app' leaves a
+    row undeletable rather than leaving the 36 curated rows deletable. library_id is AUDIT PROVENANCE
+    and is deliberately NOT a foreign key to library_names, since library ids are not durable across a
+    rebuild (7 died in commit 460cae5) and it is expected to dangle. Nothing on a page reads it. Both
+    columns are inert until stage 5."""
     __tablename__ = "ingredients"
     id = Column(Text, primary_key=True)
     name = Column(Text, nullable=False)
     descr = Column(Text)
     pairs = Column(Text)
     created_at = Column(Text)
+    source = Column(Text, nullable=False, server_default=text("'seed'"))   # 'seed' | 'app', as recipes.source
+    library_id = Column(Text)                                              # provenance, may dangle, no FK
 
 
 class Rating(Base):
