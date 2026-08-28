@@ -1,20 +1,26 @@
 # Ingredient linkage: where the work stands
 
-Written 2026-08-27 at `460cae5`. Every count here was re-derived from the repo, from
-`recipes.db` read-only, or from the `previews/` CSVs at the time of writing. Where an
-earlier figure was quoted from memory and disagreed with the measurement, the measurement
-won and the difference is noted in place.
+First written at `460cae5`, brought current at `5f2aacd`. Every count here was re-derived
+from the repo, from `recipes.db` read-only, or from the `previews/` CSVs. Where an earlier
+figure was quoted from memory and disagreed with the measurement, the measurement won and
+the difference is noted in place.
 
-**The one-line state.** The library is built and the matcher works. Nothing links. 50 of
-3,332 ingredient lines carry a stored `ingredient_id`, and the matcher that could raise
-that to about 3,300 has no committed home and nowhere to write. That second half is a
-decision, not an engineering task, and it is recorded under "The gate" below.
+**The one-line state.** The library is built, the matcher works, and there is now somewhere
+for a link to go. **Still nothing links.** 50 of 3,332 ingredient lines carry a stored
+`ingredient_id`, exactly as before, because the half that would raise that to about 3,300
+is the matcher, and the matcher still has no committed home. What changed is the other
+half: decision 4 is answered and its backend is shipped, so a link now has a destination.
 
-## What is committed, and not pushed
+⚠️ **Do not read the shipped backend as "linking is done".** It is plumbing with nothing
+flowing through it. No UI reaches it, `library_names.csv` exists on no machine, and the
+live `recipes.db` has not even had migrations 029 and 030 applied yet (checked: no `source`
+column on `ingredients`, no `library_names` table).
 
-Six commits ahead of `origin/main`, zero behind. Nothing pushed. `recipes.db` was never
-written by any of it and holds `83cd7be8e837beb1a53e2e54ce0a326106ef5f8b03dc38f8d2e107765dcfd9d7`
-throughout.
+## What is committed and pushed
+
+`origin/main` is at `5f2aacd`, local matches, zero ahead and zero behind. `recipes.db` was
+never written by any of it and holds
+`83cd7be8e837beb1a53e2e54ce0a326106ef5f8b03dc38f8d2e107765dcfd9d7` throughout.
 
 | commit | what it did |
 | --- | --- |
@@ -24,6 +30,92 @@ throughout.
 | `974c66d` | `normalize` deleted diacritics rather than folding them, `jalapeño` to `jalape o`. Dropped accented ingredients. NFD, not NFKD, and not `build_join`'s NFKC. |
 | `bc38181` | `depluralize`'s `ss/us/is` guard blocked real plurals whose singular ends in `-i`. `zucchinis`, `chilis`. Fixed with `I_PLURAL`, a membership set, because the shape is genuinely ambiguous. |
 | `460cae5` | Rule 5, the pasta-parent anchor. Admits a Wikidata item that names Q178 "pasta" as a direct superclass, one P279 hop. Plus `bagel` as override number six, filed as a new class C. |
+| `14575b4` | This document, first written. |
+
+## The add-on-save backend, shipped
+
+Eight commits, `41aeea6` through `5f2aacd`, all pushed and CI-green. They answer decision 4
+and build the whole backend for it. Nothing in the UI calls any of it.
+
+| commit | what it did |
+| --- | --- |
+| `41aeea6` | `library_names`, a two-column `(library_id, canonical)` lookup. Migration 029. Inert. |
+| `fcea950` | `ingredients.source` and `ingredients.library_id`. Migration 030. `source` mirrors `recipes.source` and defaults to `'seed'`, which marks the 36 hand-authored rows without a backfill. |
+| `9cb9365` | `build_db.seed_library_names`, which fills the lookup from a gitignored server-side file and leaves the table empty when the file is absent. Mirrors `seed_weights`. |
+| `5aa257a` | `build_library.write_library_names`, which writes that file from the kept rowset. Same `not row["cut_by"]` predicate the review sheet uses, so the two describe one list. |
+| `644c2e6` | `GET /api/library/search?q=`, plus `ingredient_slug()`. Returns matches with `ingredient_id` and `matched_by`, so a caller knows whether linking would create a row. |
+| `dd45959` | The save gate becomes create-or-reject. A line carrying `item_library_id` creates an `ingredients` row and links to it. `validate_recipe_payload` renamed to `resolve_recipe_payload`, because it writes now. |
+| `beae33d` | `DELETE /api/ingredients/<iid>`. The undo, landed before the lookup file could exist so a wrong promote was always reversible. |
+| `5f2aacd` | Five fixes from a whole-stack review, one of them a real cross-stage bug. See below. |
+
+**The backend is COMPLETE. The create path is INERT.** `library_names.csv` is gitignored
+and exists on no machine and in no clone, so the lookup is empty everywhere. An empty
+lookup means every `item_library_id` falls into the reject case, which means the gate
+behaves exactly as the old default-deny gate did. **The feature self-disables wherever the
+file is absent**, and that is true on a fresh clone, in CI, and on Postgres, where nothing
+populates the table at all.
+
+### The architecture, settled
+
+- **The `ingredients` table IS the durable link target, and it GROWS.** Links point at
+  `ingredients` rows, the way the existing 50 do. A library link creates a new row from
+  `library_names`: slug id, canonical name, `source='app'`, `library_id` recorded,
+  `descr`/`pairs` NULL.
+- **The library is a WRITE-TIME source, never a link target and never read at serve time.**
+  `app.py` has no access to `join.db` (894 MB) or `sources.db` (5.18 GB), and a test checks
+  that on the import graph. The only library data the app sees is the small lookup.
+- **Why not link to library ids directly:** they are not durable. `460cae5` destroyed seven
+  of them in one ordinary rebuild (`en:penne`, `en:lasagne`, `en:linguine` and four more).
+  An `ingredients` id is minted once and never recomputed, so churn cannot reach a stored
+  link. `ingredients.library_id` is audit provenance and is expected to dangle.
+- **Promotion is ADD-ON-SAVE.** The row is created when a save first references it, not by
+  a bulk migration and not by an offline batch.
+- **`library_names.csv` ships as a gitignored server-side file**, like `recipes.db` and the
+  two source databases it is derived from. Placed by hand on a machine that generated it.
+  This is precisely why the feature self-disables without it.
+- **`ingredient_slug()` is the shared minting rule.** Unicode-preserving (ASCII-folding
+  erases 56 of the 10,527 canonicals outright), underscores rather than `slugify()`'s
+  hyphens. The search route and the save gate both call it. Two copies would make the
+  route's `matched_by: "slug"` answer a lie.
+- **Tiers.** `'seed'` is the hand-authored 36 and is protected. `'app'` is promoted and
+  deletable. The delete path allowlists `('app',)` rather than refusing `'seed'`, so a
+  tier invented later is protected by default.
+- **Fail-closed throughout.** Names come from the table and never from the request. An id
+  the lookup does not hold creates nothing. Check-then-link runs before every insert,
+  because 32 of the 36 seed ids are reproduced exactly by slugifying some library canonical
+  and inserting over one is a primary-key conflict.
+- ⚠️ **STEP-LINK PROMOTION IS DROPPED.** A step's `[[key]]` still resolves against existing
+  ingredient ids exactly as before, and still cannot create. The reverse lookup a step would
+  need is not a function: 63 slugs map to 129 library rows. Dropping it also took the `slug`
+  column and its index out of `library_names` (624 KB rather than 1,044 KB) and removed four
+  of the gate's cases. The ingredient list is the natural entry point for linking anyway.
+
+### The pre-push review, and the lesson
+
+The six commits after `41aeea6` were each reviewed and tested at the time. A critical read
+of them **as a set**, before pushing, found five things. One was a real bug.
+
+⚠️ **`_promote_library_row` matched on the slug alone, which is not idempotent.** Promote
+`Q1063736` as `penne`, let a rebuild rename its canonical to `penne rigate`, promote the
+same library id again, and the new slug missed the old row and inserted a SECOND
+`ingredients` row carrying the same `library_id`. `/api/library/search` resolves a
+`library_id` through a dict built in a loop with no `ORDER BY`, so in that state it answered
+with whichever row the database returned last.
+
+**Why stage-by-stage testing could not catch it.** Stage 4 tested search's notion of
+"already promoted". Stage 5 tested the gate's notion. Both passed. **Neither ever tested the
+two notions against each other**, and they had silently diverged. Fixed in `5f2aacd`, where
+the resolution order became lookup, `library_id`, slug, insert, and a test now asks search
+and the gate the same question and asserts they agree.
+
+**The lesson: cross-stage consistency needs its own review pass.** A staged build with a
+stop at each seam catches what is wrong inside a stage. It cannot catch two stages that each
+work and disagree.
+
+The other four: a list or dict link key returned 500 rather than 400 (and the `item` half of
+that predates add-on-save), an em dash in a refusal string, a promoted line rendering its
+slug (`200g egg_pasta`) because `write_recipe_rows` falls back to the id, and the search
+route using `LIKE`, which folds ASCII case on SQLite and nothing at all on Postgres.
 
 ## The matcher
 
@@ -205,24 +297,35 @@ redirect following the nearest page. **This is the next place to look.**
 | `anchor-rule-admits.csv`, `type-of-pasta-admits.csv` | the anchor-rule head-to-head |
 | `merge-evidence.csv` | 1,228 candidate row pairs with evidence columns |
 
+`previews/seed-ingredient-descriptions.csv` holds all 36 hand-authored rows with full
+`descr` and `pairs`, per-row link counts, and the word/character measurements behind the
+boilerplate finding in the pile.
+
 ## The open decisions
 
-### ⚠️ Decision 4 is the gate
+### ✅ Decision 4 is ANSWERED and its backend is shipped
 
-**Where a stored link lives.** Three options.
+**Where a stored link lives.** The three options were an `ingredient_links` table keyed by
+Q-id, loading the library into the `ingredients` table, or staying a report.
 
-1. **An `ingredient_links` table keyed by Q-id.** The leaning. Additive, touches no serving
-   path, and the library keeps its own identifiers.
-2. **Load the library into the 36-row `ingredients` table.** Changes the drawer and the
-   picker, because those read that table today.
-3. **Stay a report.** The matcher output is a CSV that nobody's code consumes.
+**None of the three as framed.** The investigation showed the framing was wrong in two
+ways. A link "keyed by Q-id" can only address 61 percent of the library, since 38 percent of
+row ids are Open Food Facts strings like `en:egg-pasta`. And the real fork was never
+"additive versus migration" but **whether `recipes.db` gains a copy of library identity, and
+how much**, because option 1 needs a name to display and cannot reach the library at serve
+time either.
 
-**Nothing downstream ships until this is answered**, and that is why it is the gate. Four
-things sit behind it: the merge tool, the mixes panel, the autochecker, and the matcher
-having a committed home at all. Every one of them needs to know what a link *is* before it
-can be written.
+**What shipped is closer to option 2, lazily.** The `ingredients` table is the durable link
+target and it grows one row at a time as links are made. `recipes.db` gains identity plus
+display name only, in the small `library_names` lookup. The bulk-load that made option 2
+look expensive never happens: the corpus reaches 467 distinct library rows, so the realistic
+ceiling is about 500 rows rather than 10,527.
 
-### The merge job, gated on decision 4
+**Three of the four things behind this gate are now unblocked**, though none is built: the
+merge tool, the mixes panel, and the autochecker. The fourth, the matcher having a committed
+home, is unchanged and is now the binding constraint on actually linking anything.
+
+### The merge job, no longer gated
 
 **523 lines hit two or more rows.** They fall into 76 distinct row-sets, 63 of exactly two
 rows and 13 of three or more. The top 20 sets cover 409 of the 523, which is 78 percent, so
@@ -264,6 +367,35 @@ against Q2625877 "type of pasta" and against two hops.
 
 Cheap or known, recorded so it is not lost.
 
+### From the add-on-save build
+
+- ⚠️ **No Postgres coverage for any of the eight commits.** `tests/test_pg_integration.py`
+  names none of the new code: not the search route, not the save gate, not the delete path.
+  CI's green Postgres job means **the schema applies and the old paths still work**, not that
+  the new features are proven there. The `ilike` fix in `5f2aacd` exists *because* Postgres
+  behaves differently from SQLite, and nothing has ever run it on Postgres.
+- **The Postgres loader, deferred by decision.** `build_db.py` is raw-SQLite by design and is
+  never run against PG, so the Alembic revision creates `library_names` there and nothing
+  fills it. An empty table self-disables the feature, which is why deferring was safe.
+- ⚠️ **The description-writer gap.** A promoted row has `descr` and `pairs` NULL and **no
+  path in the app or the build can ever fill them**. It has no `seed.py` entry either, so the
+  one working authoring surface does not reach it. The 36 hand-authored rows can only be
+  edited by changing `seed.py` and rebuilding, which does propagate (`seed_content`'s upsert
+  names `descr` and `pairs`, proven on a database copy). An ingredient-description editor is
+  planned to ride with the drawer work.
+- **The 36 seed descriptions are model-written boilerplate.** 15 to 26 words, 32 of 36 in
+  exactly two sentences, 28 of 36 opening with an article, every `pairs` field on the same
+  three-to-five-item template. 13 carry a semicolon and 16 an em dash, both of which the
+  style guide bans. The facts inside them are often good and specific. The shape is the
+  problem. Rewriting is content work in `seed.py`, whenever. Full text in
+  `previews/seed-ingredient-descriptions.csv`.
+- **`ingredient_slug()` lives in `app.py`**, so build-time code cannot import it without
+  importing the Flask app. Fine for its two current callers, wrong for the third. Move it to
+  a shared module when one appears.
+- **`openpyxl` is missing from `requirements.txt`.** Pre-existing, found while placing the
+  generator. `build_library.write_sheet` imports it inside the function, so a machine without
+  it loses the review sheet. The lookup file is written before the sheet for that reason.
+
 - **Wrapped-line hand-edit.** Paprika exported about 6 lines pre-split, and the detector for
   them is 18 percent precise, so auto-rejoining corrupts more than it fixes. **Hand-edit,
   not a build.** 4 of the current 32 misses are this damage: three `freshly ground black`
@@ -285,6 +417,25 @@ Cheap or known, recorded so it is not lost.
   proxy for that, and the corpus is one household's cooking. Testing against ingredient
   lists from cuisines the corpus does not cover, Ethiopian and Peruvian and Filipino, is a
   genuinely different measurement and would probably move the numbers a long way.
+
+## The remaining build plan
+
+Stages 1 to 6 are shipped. Two remain, both client-side, both needing a browser check.
+
+- **Stage 7, the drawer fixes.** `buildSeason` turns "no season data" into "A pantry staple,
+  available year-round", which is a claim the app invents from an absence and which is wrong
+  for anything seasonal. Every promoted row has no season data. Separately, "Where it grows"
+  and "Pairs well with" are static markup with no empty state, so they render as headings
+  with nothing under them. **This matters the moment a promoted row exists**, which is the
+  moment stage 8 ships. The ingredient-description editor belongs here too.
+- **Stage 8, the picker. THE SWITCH.** A typeahead over `/api/library/search`, replacing the
+  `<select>`. ⚠️ **Nothing a user does reaches the create path until this exists**, because
+  the current picker's `<option value>` comes from `/api/ingredients`, which returns only
+  already-promoted rows, so the client literally cannot express an un-promoted library row.
+  Worth splitting into "the shared search control" then "adopt it at both call sites"
+  (`.ed-link` in the edit form and `.linksel` in inline edit), since shipping one leaves two
+  inconsistent pickers.
+- **Stage 9, DROPPED.** Step-link promotion. See the architecture notes above.
 
 ## What died, so it is not resurrected
 
