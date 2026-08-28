@@ -273,7 +273,7 @@ def test_sending_both_keys_is_refused_rather_than_guessed(kitchen):
     _lib(kitchen, ("Q1063736", "penne"))
     r = _create(kitchen, ingredients=[{"item": "carrot", "item_library_id": "Q1063736"}])
     assert r.status_code == 400
-    assert r.get_json()["error"] == "an ingredient line sends both an item and a library id — pick one"
+    assert r.get_json()["error"] == "an ingredient line sends both an item and a library id, pick one"
     assert kitchen.count("ingredients") == 36
 
 
@@ -322,3 +322,106 @@ def test_a_created_row_rolls_back_when_the_save_fails_later(kitchen):
     assert r.status_code == 409                          # fails after the gate ran
     assert kitchen.count("ingredients") == before        # and the created row is gone
     assert _ing(kitchen, "penne") is None
+
+
+# =================================================================================================
+# PRE-PUSH REVIEW FIXES. Each test below is the one that would have caught its finding.
+# =================================================================================================
+
+def test_a_renamed_canonical_does_not_duplicate_a_promoted_library_id(kitchen):
+    """⚠️ FINDING 1, THE CROSS-STAGE BUG. Checking the slug alone was not idempotent. Promote a
+    library row, let the library rename its canonical (apply_renames does exactly this, and the
+    loader replaces the table wholesale on every rebuild), promote the same library_id again, and the
+    new slug missed the old row and inserted a SECOND row carrying the same library_id.
+
+    This is the probe that found it, turned into a test."""
+    _lib(kitchen, ("Q1063736", "penne"))
+    _create(kitchen, name="First", ingredients=[{"item_library_id": "Q1063736"}])
+    assert _ing(kitchen, "penne")["library_id"] == "Q1063736"
+
+    with kitchen.conn() as c:                       # the rebuild renames it
+        c.execute("UPDATE library_names SET canonical='penne rigate' WHERE library_id='Q1063736'")
+
+    r = _create(kitchen, name="Second", ingredients=[{"item_library_id": "Q1063736"}])
+    assert r.status_code == 201
+    assert kitchen.count("ingredients", "library_id='Q1063736'") == 1      # was 2
+    assert _ing(kitchen, "penne_rigate") is None                          # no second row
+    assert kitchen.count("ingredients") == 37
+
+    rid = r.get_json()["id"]                        # and the new recipe links to the ORIGINAL row
+    with kitchen.conn() as c:
+        assert c.execute("SELECT ingredient_id FROM recipe_ingredients WHERE recipe_id=?",
+                         (rid,)).fetchone()["ingredient_id"] == "penne"
+
+
+def test_the_gate_and_the_search_route_resolve_to_the_same_row(kitchen):
+    """⚠️ FINDING 1, THE OTHER HALF. Search's matched_by and the gate's resolution are two answers to
+    one question, and before the fix they could disagree. They are checked against each other here
+    rather than each against its own idea of the truth."""
+    _lib(kitchen, ("Q1063736", "penne"), ("Q21546392", "garlic"), ("QNEW", "bucatini"))
+    _create(kitchen, name="Seed It", ingredients=[{"item_library_id": "Q1063736"}])
+    with kitchen.conn() as c:                       # rename, the state that used to split them
+        c.execute("UPDATE library_names SET canonical='penne rigate' WHERE library_id='Q1063736'")
+
+    for lid, q in (("Q1063736", "penne"), ("Q21546392", "garlic"), ("QNEW", "bucatini")):
+        hit = next(r for r in kitchen.client.get(
+            "/api/library/search", query_string={"q": q}).get_json()["results"]
+            if r["library_id"] == lid)
+        with kitchen.session() as s:
+            resolved, _canonical, err = app._promote_library_row(s, lid, set(
+                s.scalars(app.select(app.Ingredient.id))))
+            s.rollback()                            # a read-only comparison, create nothing
+        assert err is None
+        if hit["ingredient_id"] is not None:
+            assert resolved == hit["ingredient_id"], f"{lid}: search said {hit['ingredient_id']}, gate said {resolved}"
+
+
+def test_a_malformed_library_id_is_a_4xx_not_a_500(kitchen):
+    """⚠️ FINDING 2. A list or dict reached the driver's parameter binding and raised, so ordinary
+    malformed client input produced a 500 with a traceback."""
+    _lib(kitchen, ("Q1063736", "penne"))
+    for bad in (["Q1063736"], {"a": 1}, 3.5):
+        r = _create(kitchen, ingredients=[{"item_library_id": bad}])
+        assert r.status_code == 400, f"{bad!r} gave {r.status_code}"
+        assert r.get_json()["error"] == "an ingredient line's library id must be text"
+    assert kitchen.count("ingredients") == 36
+
+
+def test_a_malformed_item_is_a_4xx_not_a_500(kitchen):
+    """⚠️ FINDING 2's SIBLING, AND IT PREDATES add-on-save. `item not in known` on a list raises
+    TypeError (unhashable), which was a 500 on the original gate too. Same guard, same fix."""
+    for bad in (["carrot"], {"a": 1}):
+        r = _create(kitchen, ingredients=[{"item": bad}])
+        assert r.status_code == 400
+        assert r.get_json()["error"] == "an ingredient line's item must be text"
+
+
+def test_no_em_dash_in_the_gate_s_refusals(kitchen):
+    """⚠️ FINDING 3. The style guide lists em dashes first among the rules that get checked."""
+    _lib(kitchen, ("Q1063736", "penne"))
+    r = _create(kitchen, ingredients=[{"item": "carrot", "item_library_id": "Q1063736"}])
+    assert r.status_code == 400
+    assert r.get_json()["error"] == "an ingredient line sends both an item and a library id, pick one"
+    assert "—" not in r.get_json()["error"]
+
+
+def test_a_promoted_line_with_no_label_reads_as_the_canonical(kitchen):
+    """⚠️ FINDING 4. write_recipe_rows falls back to the id when no label is sent, so the line
+    rendered the slug: '200g egg_pasta'. The canonical is the readable form of the same thing."""
+    _lib(kitchen, ("Q1", "egg pasta"))
+    rid = _create(kitchen, ingredients=[{"qty": "200g", "item_library_id": "Q1"}]).get_json()["id"]
+    with kitchen.conn() as c:
+        row = c.execute("SELECT ingredient_id, label, raw_text FROM recipe_ingredients "
+                        "WHERE recipe_id=?", (rid,)).fetchone()
+    assert row["ingredient_id"] == "egg_pasta"          # the id still uses underscores
+    assert row["label"] == "egg pasta"                  # what the page shows does not
+    assert row["raw_text"] == "200g egg pasta"
+
+
+def test_an_explicit_label_still_wins(kitchen):
+    _lib(kitchen, ("Q1", "egg pasta"))
+    rid = _create(kitchen, ingredients=[
+        {"qty": "200g", "item_library_id": "Q1", "label": "fresh tagliatelle"}]).get_json()["id"]
+    with kitchen.conn() as c:
+        assert c.execute("SELECT label FROM recipe_ingredients WHERE recipe_id=?",
+                         (rid,)).fetchone()["label"] == "fresh tagliatelle"

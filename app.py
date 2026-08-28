@@ -274,13 +274,31 @@ def upsert_rating(s, rid, user_id, rating):
 def _promote_library_row(s, library_id, known):
     """Resolve a line's `item_library_id` to an ingredients.id, creating the row if it is new.
 
-    Returns (ingredient_id, error). Called only by resolve_recipe_payload, and split out so the
-    three cases below are readable rather than nested inside the gate's loop.
+    Returns (ingredient_id, canonical, error). Called only by resolve_recipe_payload, and split out
+    so the resolution order below is readable rather than nested inside the gate's loop.
+
+    ⚠️ THE ORDER IS THE WHOLE CORRECTNESS ARGUMENT, AND GETTING IT WRONG WAS A REAL BUG. It reads
+    lookup, then library_id, then slug, then insert:
+      1. LOOKUP     an id library_names does not hold creates nothing. Outermost on purpose, so the
+                    junk-proofing gate cannot be stepped around by any later branch.
+      2. LIBRARY_ID an ingredients row already recording THIS library row as its origin. ⚠️ THIS
+                    STEP WAS MISSING and a pre-push review found what that cost. Checking the slug
+                    alone is not idempotent: promote Q1063736 as 'penne', let apply_renames change
+                    its canonical to 'penne rigate' on the next rebuild, promote it again, and the
+                    new slug misses the old row and inserts a SECOND row carrying the same
+                    library_id. /api/library/search then resolves that library_id through a dict
+                    built in a loop, so it answers with whichever row the database returned last.
+                    Matching on library_id first makes a repeat promote a no-op and makes this
+                    function agree with what search reports as already promoted.
+      3. SLUG       the id this canonical would mint is already taken. See below.
+      4. INSERT     nothing else claimed it.
 
     ⚠️ THE CANONICAL COMES FROM library_names, NEVER FROM THE REQUEST. That is the whole of the
     junk-proofing. A caller supplies a key and nothing else, this function looks the name up, and a
     key the table does not hold creates nothing. The id space is closed at whatever the lookup holds,
-    every entry of which the library's admission rules already sanctioned.
+    every entry of which the library's admission rules already sanctioned. The canonical is returned
+    as well as used, so the gate can default a line's label to it and a promoted line reads
+    "egg pasta" rather than the slug's "egg_pasta".
 
     ⚠️ CHECK-THEN-LINK BEFORE INSERT, AND SKIPPING IT IS A PRIMARY-KEY CONFLICT. 32 of the 36
     hand-authored ingredient ids are reproduced exactly by slugifying some library canonical (garlic,
@@ -295,23 +313,29 @@ def _promote_library_row(s, library_id, known):
     canonical = s.scalars(
         select(LibraryName.canonical).where(LibraryName.library_id == library_id)).first()
     if not canonical:
-        # CASE 3. Not in the lookup, so nothing is created. This is also the whole of the
-        # self-disabled state: on a fresh clone and in CI library_names is EMPTY, every
-        # item_library_id lands here, and the gate behaves exactly as it did before add-on-save.
-        return None, f"an ingredient line links to library id '{library_id}', which isn't in the library"
+        # 1. Not in the lookup, so nothing is created. This is also the whole of the self-disabled
+        # state: on a fresh clone and in CI library_names is EMPTY, every item_library_id lands
+        # here, and the gate behaves exactly as it did before add-on-save.
+        return None, None, (f"an ingredient line links to library id '{library_id}', "
+                            "which isn't in the library")
+
+    promoted = s.scalars(
+        select(Ingredient.id).where(Ingredient.library_id == library_id)).first()
+    if promoted:
+        return promoted, canonical, None       # 2. already promoted, whatever its slug is now
 
     slug = ingredient_slug(canonical)
     if not slug:
-        return None, f"an ingredient line links to '{canonical}', which has no usable name"
+        return None, None, f"an ingredient line links to '{canonical}', which has no usable name"
     if slug in known:
-        return slug, None                      # CASE 2a: the id is taken, link and do not touch it
+        return slug, canonical, None           # 3. the id is taken, link and do not touch it
 
-    # CASE 2b: genuinely new. source='app' so stage 6's delete path may remove it and so it is
-    # distinguishable from the hand-authored 36 (migration 030). descr and pairs stay NULL.
+    # 4. Genuinely new. source='app' so the delete path may remove it and so it is distinguishable
+    # from the hand-authored 36 (migration 030). descr and pairs stay NULL.
     s.execute(insert(Ingredient.__table__).values(
         id=slug, name=canonical, source="app", library_id=library_id, created_at=now_utc()))
     known.add(slug)                            # a second line naming it in the same payload links
-    return slug, None
+    return slug, canonical, None
 
 
 def resolve_recipe_payload(s, payload):
@@ -354,15 +378,27 @@ def resolve_recipe_payload(s, payload):
     for row in ingredients:
         row = dict(row) if row else {}
         item, library_id = row.get("item"), row.pop("item_library_id", None)
+        # ⚠️ TYPE FIRST, BECAUSE THE ALTERNATIVE IS A 500. `item not in known` on a list raises
+        #    TypeError (unhashable), and a list bound into the library_id lookup raises in the
+        #    driver. Both surfaced as a 500 with a traceback on ordinary malformed client input.
+        #    The `item` half of this predates add-on-save and was found by the same review.
+        for key, value in (("item", item), ("library id", library_id)):
+            if value is not None and not isinstance(value, str):
+                return None, f"an ingredient line's {key} must be text"
         if item and library_id:
-            return None, "an ingredient line sends both an item and a library id — pick one"
+            return None, "an ingredient line sends both an item and a library id, pick one"
         if item and item not in known:
             return None, f"an ingredient line links to '{item}', which isn't in your library"
         if library_id:
-            item, err = _promote_library_row(s, library_id, known)
+            item, canonical, err = _promote_library_row(s, library_id, known)
             if err:
                 return None, err
             row["item"] = item                 # downstream sees an ordinary link and nothing new
+            label = row.get("label")
+            if not (isinstance(label, str) and label.strip()):
+                # write_recipe_rows falls back to the ID when a label is missing, which renders the
+                # slug: "egg_pasta". The canonical is the readable form of the same thing.
+                row["label"] = canonical
         resolved.append(row)
 
     for step in steps:
@@ -1150,9 +1186,13 @@ def search_library():
     prefix weighting, no token splitting, no fuzzy distance. The picker does not exist yet, so there
     is nothing to tune against, and a v1 that is easy to describe is easier to replace than one
     carrying invented ranking.
-    ⚠️ CASE-INSENSITIVE FOR ASCII ONLY, because SQLite's LIKE is. Measured: 'масло' does not match
-    'МАСЛО' and 'ölsäure' does not match 'Ölsäure'. Non-Latin names match at their own case. Fixing
-    it needs a collation or a folded search column, which is a decision for when a picker exists.
+    ⚠️ ILIKE, NOT LIKE, BECAUSE LIKE IS NOT THE SAME OPERATOR ON THE TWO DIALECTS THIS APP RUNS ON.
+    SQLite's LIKE folds ASCII case; Postgres's LIKE folds nothing at all, so a plain LIKE would have
+    made 'penne' miss 'Penne' the moment the app ran on PG. ilike compiles to ILIKE on Postgres and
+    to lower(x) LIKE lower(y) on SQLite, so the claim above is true on both. The two still differ on
+    NON-Latin text: SQLite's lower() is ASCII-only, so 'масло' does not match 'МАСЛО' there, while
+    Postgres folds by locale and does. Closing that gap needs a folded search column, which is a
+    decision for when a picker exists.
 
     ORDERED BY LENGTH, THEN NAME, WHICH IS WHAT MAKES THE CAP HONEST. An exact match is always the
     shortest string containing the query, so shortest-first puts it top without a ranking rule. A
@@ -1189,7 +1229,7 @@ def search_library():
     with orm_session() as s:
         found = s.execute(
             select(LibraryName.library_id, LibraryName.canonical)
-            .where(LibraryName.canonical.like(pattern, escape="\\"))
+            .where(LibraryName.canonical.ilike(pattern, escape="\\"))
             .order_by(func.length(LibraryName.canonical), LibraryName.canonical)
             .limit(LIBRARY_SEARCH_LIMIT + 1)          # one extra, purely to detect the cap
         ).all()

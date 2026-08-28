@@ -178,3 +178,36 @@ def test_login_gated_like_the_other_ingredient_routes(kitchen_logged_out):
     """Fail-closed default-deny: the route is not in PUBLIC_ENDPOINTS, so it is gated by adding it."""
     assert kitchen_logged_out.client.get("/api/library/search?q=penne").status_code == 401
     assert kitchen_logged_out.client.get("/api/ingredients").status_code == 401
+
+
+# ---- pre-push review, finding 5: ilike rather than like -------------------------------------------
+
+def test_case_insensitivity_is_dialect_correct(kitchen):
+    """⚠️ FINDING 5. The route used LIKE, which is not the same operator on the two dialects this app
+    runs on: SQLite folds ASCII case, Postgres folds nothing, so 'penne' would have missed 'Penne'
+    the moment it ran on PG. ilike compiles to ILIKE there and lower(x) LIKE lower(y) here, so the
+    docstring's claim is true on both. This pins that SQLite behavior did not regress."""
+    _lib(kitchen, ("Q1", "Penne Rigate"), ("Q2", "penne"), ("Q3", "PENNE ALL'ARRABBIATA"))
+    for q in ("penne", "PENNE", "PeNnE"):
+        got = {r["canonical"] for r in _search(kitchen, q)["results"]}
+        assert got == {"Penne Rigate", "penne", "PENNE ALL'ARRABBIATA"}, q
+
+
+def test_the_escape_still_holds_under_ilike(kitchen):
+    """The wildcard escape has to survive the operator change, or a typed % silently wildcards
+    again. 36 real canonicals carry one."""
+    _lib(kitchen, ("Q1", "3% fat reduced cocoa powder"), ("Q2", "cocoa powder"), ("Q3", "a_b"),
+         ("Q4", "axb"))
+    assert [r["canonical"] for r in _search(kitchen, "3%")["results"]] == \
+           ["3% fat reduced cocoa powder"]
+    assert [r["canonical"] for r in _search(kitchen, "a_b")["results"]] == ["a_b"]
+
+
+def test_the_operator_is_ilike_in_the_compiled_sql(kitchen):
+    """Read at the SQL layer, because the two operators are indistinguishable from the SQLite result
+    on ASCII input, which is how the wrong one shipped in the first place."""
+    import app
+    from sqlalchemy import select
+    stmt = select(app.LibraryName.canonical).where(
+        app.LibraryName.canonical.ilike("%x%", escape="\\"))
+    assert "lower(" in str(stmt).lower()
