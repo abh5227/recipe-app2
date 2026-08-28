@@ -10,6 +10,7 @@ import { removedInsertIndex } from "./annotation-place.js";
 import { wordDiffParts } from "./word-diff.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
+import { panelBlocks } from "./panel-blocks.js";
 import { uploadErrorHTML } from "./upload-status.js";
 import { makeBackdateSubmit, isStageableImage } from "./backdate-submit.js";
 import { mountStepEditors, destroyStepEditors, focusStepEditor } from "./step-editor.js";
@@ -2789,9 +2790,9 @@ const closeBtn = document.querySelector(".panel-close");
 let lastTrigger = null;
 
 function buildSeason(months) {
-  if (!months || !months.length) {
-    return `<p class="season-none">A pantry staple — available year-round.</p>`;
-  }
+  // Empty is the caller's problem now: openPanel hides the whole block rather than printing a
+  // sentence under a heading. See static/panel-blocks.js for why the year-round line went.
+  if (!months || !months.length) return "";
   const strip = MONTHS.map((label, i) => {
     const on = months.includes(i + 1) ? " in" : "";
     return `<div class="month${on}"><div class="bar"></div><div class="m">${label}</div></div>`;
@@ -2816,10 +2817,17 @@ async function openPanel(key, trigger) {
   panel.querySelector(".pairs").textContent = item.pairs || "";
 
   const used = item.used_in || [];
-  panel.querySelector(".used-block").style.display = used.length ? "" : "none";
   panel.querySelector(".used-list").innerHTML = used
     .map((u) => `<li><button data-recipe="${esc(u.id)}">${esc(u.name)}</button></li>`)
     .join("");
+
+  // No data, no block — the rule used-block always followed, now applied to all four. A promoted
+  // ingredient has none of season/regions/pairs, so its drawer is a name and its recipes.
+  const show = panelBlocks(item);
+  for (const [key, sel] of [["season", ".season-block"], ["regions", ".regions-block"],
+                            ["pairs", ".pairs-block"], ["used", ".used-block"]]) {
+    panel.querySelector(sel).style.display = show[key] ? "" : "none";
+  }
 
   scrim.hidden = false;
   panel.hidden = false;

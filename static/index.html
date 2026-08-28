@@ -31,17 +31,20 @@
     <h2 class="panel-name" id="panel-name"></h2>
     <p class="panel-desc"></p>
 
-    <div class="panel-block">
+    <!-- Each block carries its own class so openPanel can hide it when it has nothing to show.
+         used-block already did; the other three had no hook, which is why they rendered a heading
+         over nothing. See static/panel-blocks.js for the one rule all four now follow. -->
+    <div class="panel-block season-block">
       <h3>When it's in season</h3>
       <div class="season-host"></div>
     </div>
 
-    <div class="panel-block">
+    <div class="panel-block regions-block">
       <h3>Where it grows</h3>
       <div class="tags regions"></div>
     </div>
 
-    <div class="panel-block">
+    <div class="panel-block pairs-block">
       <h3>Pairs well with</h3>
       <p class="pairs"></p>
     </div>
