@@ -11,6 +11,81 @@ different confidence levels, and they are labelled rather than blended:
 
 **Not a build plan.** Nothing here is scheduled and no stage is approved.
 
+## 🛑 BLOCKERS, and they must be resolved before any stage starts
+
+⚠️ **The ground is NOT ready. Stage 1 must not start.** A ground-readiness inspection at `f994daf`
+found that **the schema cannot currently represent the confirmed model.** The rules below are still
+confirmed as intent. What the inspection found is that the database cannot yet express them.
+
+### 🛑 1. The primary key cannot express the model
+
+`ingredients.id` is `TEXT PRIMARY KEY`, globally unique, and `ingredient_slug()` mints it
+**deterministically from the name**. So a personal row and a shared row for the same concept want
+**the same id** and cannot both exist.
+
+**Proven by probe, not reasoned.** Against a real harness database:
+
+```
+user B's personal row exists: id='gochujang'
+admin promotes library Q_GOCH -> resolved id = 'gochujang', err = None
+>>> the admin was handed user B's PRIVATE row. No shared row was or could be created.
+```
+
+The mechanism is `_promote_library_row`'s check-then-link, reading an id set with **no ownership
+filter**, `known = set(s.scalars(select(Ingredient.id)))` at `app.py:375`.
+
+⚠️ **This breaks three CONFIRMED rules at once:**
+- **Rule 1**, because two rows for one concept is unrepresentable.
+- **Rule 3**, because if the shared row exists first, a user's create silently links to it instead
+  of making their own.
+- **Rule 5**, and worse than overwrite. The admin's shared addition does not clobber the user's
+  private row, it **becomes a pointer at it**.
+
+⚠️ **This sits UNDER stage 1, not stage 4. Adding an owner column does not fix it.** The identity
+scheme has to change first (a surrogate key with `UNIQUE(owner, slug)`, a composite PK, or
+per-owner slugs), because `ingredients.id` is what `recipe_ingredients.ingredient_id` points at,
+and that is the durable link target the entire shipped architecture rests on.
+
+### 🛑 2. Personal rows are readable by everyone
+
+Rule 3 says personal is "private to them". `get_ingredient(iid)` at `app.py:1066` is a bare primary
+key lookup with **no ownership check**, so any logged-in user can GET any ingredient by id. The ids
+are **guessable by construction**, because they are slugified names.
+
+**Proven by probe:** user 2 fetched user B's personal ingredient and got `200 OK`.
+
+Privacy is not only a stage-2 filter on the list route. **The detail route needs an ownership check
+too.**
+
+### ⚠️ 3. "Same concept" has no key, and it is blocker 1 wearing a second hat
+
+Rule 4 needs a key that says two rows mean the same thing. Every candidate fails:
+
+- **Same `id`** is impossible. It is the primary key.
+- **Same `library_id`** is null-on-null for a user-typed row, so it matches nothing.
+- **Same `name`** inherits the capitalization mess. `Gochujang` beside `gochujang`, and the shipped
+  decision recorded in `docs/ingredient-linkage-state.md` is that **no safe casing transform
+  exists**.
+
+**There is no concept key, and decisions A and B do not create one.** Until identity is answered,
+"personal wins" **cannot be written as a query**. This is not a separate problem. The identity
+decision answers the key structure, what `recipe_ingredients` points at, and "same concept", all at
+once.
+
+### The two decisions that precede everything
+
+**Q1. What is an ingredient's identity when two rows can mean the same concept?** The current
+answer, a global slug minted from the name, makes the model unrepresentable. This one decision
+settles the key structure, `recipe_ingredients`' target, and the "same concept" answer together.
+⚠️ **This likely wants its own diagnostic**, because `ingredients.id` is referenced across the app
+and any change to it reaches the shipped link architecture.
+
+**Q2. Does "a user creates an ingredient" mean picking a library row, or typing any name?** Picking
+a library row and getting a personal copy is close to a condition on the shipped gate. Typing a name
+the library does not have is a **new create path**: new route, new validation, new id-minting.
+**Rule 3 does not disambiguate**, and the shipped gate's only insert path requires a `library_names`
+hit, so ✅ free-text creation has **no code path today**.
+
 ## What this is about
 
 The add-on-save backend, shipped and pushed, creates a row in the one shared `ingredients` table
@@ -177,20 +252,33 @@ assumed, because guessing either one wrong leaves bad data rather than a bad scr
   admin to reject by hand, or surface it to B as "this is already shared, adopt it?", which is rule
   6's adopt operation arriving earlier than rule 6 intends.
 
-## 🔵 PROPOSED build order, and one correction to it
+## 🔵 PROPOSED build order, PROVISIONAL on Q1 and Q2
 
-This ordering is an assistant's inference. ⚠️ **The draft called it a "forced" order. Having read
-the code, only the first step is genuinely forced.**
+⚠️ **THE FIRST STEP OF THIS ORDER WAS WRONG AND IS CORRECTED HERE.** It read "an ownership column on
+`ingredients`. Genuinely the root: every other step reads it." **Identity is the root. The ownership
+column is a consequence of it**, and adding the column first would build on a key that cannot hold
+two rows for one concept. See the blockers at the top.
 
-1. **An ownership column on `ingredients`.** Genuinely the root: every other step reads it. ✅ The
-   blast radius is small, which is the good news. `app.py` touches the `Ingredient` model in only
-   five places (the gate's two, the gate's `known` set, `/api/ingredients`, and the drawer), plus
-   the search route's existence check and the delete path's tier check.
+**Everything below is provisional on Q1 and Q2 and may be reshaped by either answer.** Q1 in
+particular could change what `recipe_ingredients` points at, which reaches further than any step
+listed here.
+
+0. **🛑 Answer Q1, the identity scheme.** Not a stage. A decision, and probably its own diagnostic.
+   Nothing below can be sized until it is made.
+1. **An ownership column on `ingredients`**, whatever shape Q1 leaves it. ✅ The column itself is
+   clean: nullable FK to `users.id`, and the backfill is trivial because all 36 rows are shared
+   today, so `owner IS NULL` is correct for every one. ✅ The blast radius is small. `app.py` touches
+   the `Ingredient` model in only five places (the gate's two, the gate's `known` set,
+   `/api/ingredients`, and the drawer), plus the search route's existence check and the delete
+   path's tier check. ⚠️ The drawer reads `select(Ingredient.__table__)` into `dict(ing._mapping)`,
+   so **`owner` appears in that JSON response the moment the column exists**, exactly as `source`
+   and `library_id` did.
 2. **The effective-library read.** `/api/ingredients` today is
    `select(Ingredient.id, Ingredient.name).order_by(Ingredient.name)` with no scoping at all. ✅
    read. Making it personal-wins is the substantive change.
-3. **The create path stamps ownership.** A condition on the shipped gate. ✅ Cheap, since the gate
-   can reach `current_user` without plumbing.
+3. **The create path stamps ownership.** ⚠️ **A condition only if Q2 answers "library-pick".** ✅
+   The gate can reach `current_user` without plumbing, so the stamp itself is cheap. If Q2 answers
+   "free-text", this is a new create path rather than a condition.
 4. **The picker.** ⚠️ **Correcting the draft's dependency claim:** the picker does not strictly
    require step 2. It could ship against the flat list and be scoped later. What it *does* require
    is step 3, or it creates rows with no ownership at all. 🔵 Sequencing steps 2 and 4 is a real
@@ -206,22 +294,57 @@ slightly too comfortable.** Reading the code:
 
 - **Reused as-is:** `library_names` and its loader and generator, `ingredient_slug`, the provenance
   columns, migrations 029 and 030.
-- **Reused with a condition:** the create-gate. One check on `current_user.is_admin` decides shared
-  versus personal.
-- ⚠️ **Needs rework, not just a condition:** the **search route** answers "is this already
-  promoted" with a single `ingredient_id`, which becomes ambiguous the moment two rows can exist
-  for one concept (mine and the shared one). ✅ Its existence check is
-  `select(Ingredient.id, Ingredient.library_id).where(...)` with no ownership notion. And the
-  **delete path** gates on `DELETABLE_INGREDIENT_SOURCES = ("app",)` ✅, a tier check that says
-  nothing about who owns the row, so a user could delete another user's personal ingredient.
+- **Reused with a condition, IF Q2 allows it:** the create-gate. One check on
+  `current_user.is_admin` decides shared versus personal, but only when a user's create means
+  picking a library row. See the rework bullet below.
+- ⚠️ **The search route needs REDESIGN, not a tag.** Its contract is one `ingredient_id` per
+  library row, resolved through a **last-write-wins dict with no `ORDER BY`**
+  (`by_library_id[row.library_id] = row.id`). ✅ Once a personal and a shared row can both exist for
+  one library row, that dict silently picks one. **This is the same bug shape `5f2aacd` just
+  fixed.** The honest shape is `{shared, mine}` per result, and every caller changes with it.
+- ⚠️ **The delete path lets a user delete someone else's personal row.** It gates on
+  `DELETABLE_INGREDIENT_SOURCES = ("app",)` ✅, tier alone with no ownership notion, and a personal
+  row would be `source='app'`. Small change, real hole.
+- ⚠️ **The create-gate rework depends on Q2.** ✅ Its only insert path requires a `library_names`
+  hit, so if a user may type any name, there is no code path today.
 
-**Neither is fatal. Both are more than a flag.**
+**None is fatal. All are more than a flag.**
+
+### ✅ What is genuinely ready
+
+Recorded so the picture is balanced rather than only alarming. Each was checked.
+
+- **The owner column itself.** Nullable FK, trivial backfill, all 36 rows `owner IS NULL`.
+- **No positional coupling.** Nothing reads ingredients by column position, so adding one is
+  additive.
+- **`current_user` is reachable in the gate.** Module-level proxy at `app.py:21`, and
+  `update_recipe` reads it one line above the gate call.
+- ⚠️ **Decision B survives intact, and is the strongest part of the design.** Promote-in-place works
+  **because the id is durable**, which is the same property the identity fix has to preserve. Q1
+  should be answered with B in mind: whatever replaces the key must keep a promoted row's identity
+  stable, or B stops working.
+- **`friendships` transfers as the suggestions template.** One place it does not: friendships is
+  symmetric between two users, while a suggestion is one user to **a role**, so the addressee half
+  has no person in it.
+- **The client cache is fine.** `INGREDIENT_LIST` is a module global fetched once per session, and a
+  session is one user. Five read sites, none breaks on a per-user response.
+- **The harness supports multi-user.** `ensure_test_user(email=..., is_admin=...)` and
+  `login_test_client(client, uid)` both parameterize, and `tests/test_auth.py` already builds a
+  second client. ⚠️ But `make_kitchen` logs in exactly one user, so **every per-user scoping test
+  needs a second client built by hand**, and no existing ingredient test does that.
+- **Migrations 029 and 030 being unapplied is a non-issue.** The panel migration would be 031, next
+  in sequence. It only means the live database gains three at once on the next `build_db.py`.
 
 ## Where this sits relative to what is shipped
 
 🟢 The rules above are confirmed, so this supersedes the add-on-save-for-everyone model. **It does
 not require undoing anything**, because ✅ the create path is unreachable and no row created by it
 exists. The scope change arrived at the cheapest possible moment.
+
+⚠️ **And so did the blockers.** They were found before a column was added, before a row was
+promoted, and before a single stage was staged. Nothing has to be unwound to act on them. Finding
+the identity problem three stages in, with promoted rows already carrying ids that cannot hold the
+model, is the version of this that would have cost something.
 
 `docs/ingredient-linkage-state.md` remains the handoff doc for the linkage work and is not
 superseded by this. Its "Stage 8, the picker" entry is the item this design would redirect.
