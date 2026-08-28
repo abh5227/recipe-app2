@@ -1,6 +1,6 @@
 # Ingredient linkage: where the work stands
 
-First written at `460cae5`, brought current at `5f2aacd`. Every count here was re-derived
+First written at `460cae5`, brought current at `622a6a0`. Every count here was re-derived
 from the repo, from `recipes.db` read-only, or from the `previews/` CSVs. Where an earlier
 figure was quoted from memory and disagreed with the measurement, the measurement won and
 the difference is noted in place.
@@ -18,7 +18,7 @@ column on `ingredients`, no `library_names` table).
 
 ## What is committed and pushed
 
-`origin/main` is at `5f2aacd`, local matches, zero ahead and zero behind. `recipes.db` was
+`origin/main` is at `622a6a0`, local matches, zero ahead and zero behind. `recipes.db` was
 never written by any of it and holds
 `83cd7be8e837beb1a53e2e54ce0a326106ef5f8b03dc38f8d2e107765dcfd9d7` throughout.
 
@@ -47,6 +47,7 @@ and build the whole backend for it. Nothing in the UI calls any of it.
 | `dd45959` | The save gate becomes create-or-reject. A line carrying `item_library_id` creates an `ingredients` row and links to it. `validate_recipe_payload` renamed to `resolve_recipe_payload`, because it writes now. |
 | `beae33d` | `DELETE /api/ingredients/<iid>`. The undo, landed before the lookup file could exist so a wrong promote was always reversible. |
 | `5f2aacd` | Five fixes from a whole-stack review, one of them a real cross-stage bug. See below. |
+| `622a6a0` | Stage 7, the drawer. All four panel blocks now follow one rule: no data, no block. The visibility decision moved into `static/panel-blocks.js`, a pure module, and `buildSeason` stopped claiming "A pantry staple, available year-round" for a row with no month data. ⚠️ That line was showing on **22 of the 36 curated rows**, not only on promoted ones, so removing it changed what soy sauce and cumin display. Deliberate. |
 
 **The backend is COMPLETE. The create path is INERT.** `library_names.csv` is gitignored
 and exists on no machine and in no clone, so the lookup is empty everywhere. An empty
@@ -325,6 +326,37 @@ ceiling is about 500 rows rather than 10,527.
 merge tool, the mixes panel, and the autochecker. The fourth, the matcher having a committed
 home, is unchanged and is now the binding constraint on actually linking anything.
 
+### ✅ Promoted-row capitalization, DECIDED: accept the canonical's casing
+
+A promoted row shows the library canonical verbatim, so `penne` renders lowercase beside
+the title-cased `Soy Sauce`. **Decision: accept it. Transform it nowhere. Fix it per row in
+the curation tool when there is one.**
+
+⚠️ **The reasoning matters more than the decision, because the obvious fix is a trap.**
+
+- **The casing is source-given, not ours.** `choose_canonical` returns the anchor's own
+  English label verbatim. Every `.casefold()` in `build_library.py` is for comparison,
+  sorting or index keys and none touches a stored canonical. `penne` is lowercase because
+  Wikidata's label is. "Stop lowercasing upstream" is not an available fix, since nothing
+  lowercases.
+- **Only two thirds of canonicals are lowercase.** Measured over all 10,527: 66.3% all
+  lowercase, 13.6% Title Case, 11.0% Sentence case, 8.4% mixed, 0.6% non-Latin, 6 ALL CAPS.
+  The other third carry casing that means something.
+- ⚠️ **A blind `.title()` changes 9,079 of 10,527 names and DESTROYS casing in 1,339.**
+  938 promote a lowercase particle, 290 flatten interior caps, 111 mangle an apostrophe.
+  Real examples: `XO sauce` to `Xo Sauce`, `Elliott's blueberry` to `Elliott'S Blueberry`,
+  `half-and-half` to `Half-And-Half`, `leite de castanha` to `Leite De Castanha`.
+- **The library is inconsistent with itself**, so no transform can make promoted names agree
+  with each other, let alone with the 36. `Dijon mustard` sits beside `honey dijon
+  dressing`. `Brie de Meaux` sits beside `brie`.
+- **The only safe transform buys the wrong thing.** Uppercasing the first character only
+  destroys nothing (verified: 0 of 10,527), but yields sentence case, so `Egg pasta` still
+  sits beside `Soy Sauce`. Different, not consistent.
+
+**It affects zero rows today** and cannot until the picker ships. Evidence:
+`previews/canonical-casing.csv`, all 10,527 rows with casing bucket, trap flags and both
+transforms.
+
 ### The merge job, no longer gated
 
 **523 lines hit two or more rows.** They fall into 76 distinct row-sets, 63 of exactly two
@@ -377,12 +409,22 @@ Cheap or known, recorded so it is not lost.
 - **The Postgres loader, deferred by decision.** `build_db.py` is raw-SQLite by design and is
   never run against PG, so the Alembic revision creates `library_names` there and nothing
   fills it. An empty table self-disables the feature, which is why deferring was safe.
-- ⚠️ **The description-writer gap.** A promoted row has `descr` and `pairs` NULL and **no
-  path in the app or the build can ever fill them**. It has no `seed.py` entry either, so the
-  one working authoring surface does not reach it. The 36 hand-authored rows can only be
-  edited by changing `seed.py` and rebuilding, which does propagate (`seed_content`'s upsert
-  names `descr` and `pairs`, proven on a database copy). An ingredient-description editor is
-  planned to ride with the drawer work.
+- ⚠️ **A PROMOTED-ROW CURATION TOOL, and it is bigger than "edit a description".** A
+  promoted row has `descr` and `pairs` NULL and **no path in the app or the build can ever
+  fill them**. It has no `seed.py` entry either, so the one working authoring surface does
+  not reach it. The 36 hand-authored rows can only be edited by changing `seed.py` and
+  rebuilding, which does propagate (`seed_content`'s upsert names `descr` and `pairs`,
+  proven on a database copy).
+  **Three symptoms share one root.** The lowercase name, the null `descr` and the null
+  `pairs` are not three problems. They are one: *a promoted row is uncurated*. They all
+  resolve at the same moment, which is when somebody curates the row. So scope the tool as
+  **curate a promoted row** (name, description, pairings, possibly season and regions), not
+  narrowly as a description editor. Scoping it narrowly is how the capitalization question
+  turns back into a transform nobody should write.
+  ⚠️ **It is coupled to stage 8, and the sequencing is an unmade decision.** The picker
+  PRODUCES the uncurated rows this tool exists to fix. Shipping the picker first means
+  accumulating rows nobody can tidy. Shipping the tool first means building an editor for
+  rows that do not exist yet. Pairing them is a third option. Nobody has chosen.
 - **The 36 seed descriptions are model-written boilerplate.** 15 to 26 words, 32 of 36 in
   exactly two sentences, 28 of 36 opening with an article, every `pairs` field on the same
   three-to-five-item template. 13 carry a semicolon and 16 an em dash, both of which the
@@ -418,18 +460,35 @@ Cheap or known, recorded so it is not lost.
   lists from cuisines the corpus does not cover, Ethiopian and Peruvian and Filipino, is a
   genuinely different measurement and would probably move the numbers a long way.
 
+### Drawer design, a deliberate pass and explicitly not bug-fix scope
+
+Stage 7 made the drawer honest. It did not make it good. Two blocks are thin by design
+rather than by accident, and both are a design job rather than a fix.
+
+- **"Where it grows" wants a map.** Today it is a flat tag list, and rows carry up to four
+  regions. A clickable map with the list collapsed to the top three would say more in less
+  space, and region is the one field where a picture beats words outright.
+- **"Pairs well with" wants to be more than a comma list.** Today it is one sentence of
+  prose in a single `pairs` column. Chips, or links through to those ingredients' own
+  drawers, would make the field guide navigable rather than terminal. ⚠️ Note the schema
+  cost: `pairs` is free text, so linkable pairings need the names resolved to ids, which is
+  the same linking problem this whole document is about, pointed at a different column.
+
+### Trivial cleanups
+
+- **`.season-none` in `styles.css:1479` is dead CSS.** Nothing has rendered that class since
+  `622a6a0` removed the year-round line. One rule to delete, left alone rather than folding
+  a CSS change into a JS commit.
+
 ## The remaining build plan
 
-Stages 1 to 6 are shipped. Two remain, both client-side, both needing a browser check.
+**Stages 1 to 7 are shipped. One remains.**
 
-- **Stage 7, the drawer fixes.** `buildSeason` turns "no season data" into "A pantry staple,
-  available year-round", which is a claim the app invents from an absence and which is wrong
-  for anything seasonal. Every promoted row has no season data. Separately, "Where it grows"
-  and "Pairs well with" are static markup with no empty state, so they render as headings
-  with nothing under them. **This matters the moment a promoted row exists**, which is the
-  moment stage 8 ships. The ingredient-description editor belongs here too.
-- **Stage 8, the picker. THE SWITCH.** A typeahead over `/api/library/search`, replacing the
-  `<select>`. ⚠️ **Nothing a user does reaches the create path until this exists**, because
+- **Stage 7, the drawer fixes. ✅ SHIPPED in `622a6a0`.** All four panel blocks hide when
+  empty. The curation tool that was pencilled in here did NOT ride with it, and it grew in
+  the process: see the pile.
+- **Stage 8, the picker. THE SWITCH, and the only thing left.** A typeahead over
+  `/api/library/search`, replacing the `<select>`. ⚠️ **Nothing a user does reaches the create path until this exists**, because
   the current picker's `<option value>` comes from `/api/ingredients`, which returns only
   already-promoted rows, so the client literally cannot express an un-promoted library row.
   Worth splitting into "the shared search control" then "adopt it at both call sites"
