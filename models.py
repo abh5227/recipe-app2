@@ -358,6 +358,24 @@ class RecipeSnapshot(Base):
     )
 
 
+class LibraryName(Base):
+    """The ingredient library's id -> canonical-name lookup (add-on-save stage 1, migration 029).
+
+    It exists so the save path can later create an `ingredients` row from a library link without
+    opening join.db (894 MB) or sources.db (5.18 GB), neither of which is ever present on a server.
+    TWO COLUMNS: an earlier draft carried a `slug` column and an index for the reverse
+    slug -> library_id lookup that step-link promotion needed, step-link promotion is dropped, and the
+    column went with it (624 KB rather than 1,044 KB on the current 10,527-row library).
+    library_id is the library row's own id, which is a Wikidata Q-id 61.1% of the time, an Open Food
+    Facts id like 'en:egg-pasta' 38.4% of the time, and an authored slug or wiktextract key for the
+    rest, so one Text PK covers every shape. INERT: nothing reads this table, the loader is stage 3,
+    and it stays EMPTY on a fresh clone, in CI, and on Postgres, which is what keeps the later save
+    gate dormant. Queried with explicit select(), no relationship() (house style)."""
+    __tablename__ = "library_names"
+    library_id = Column(Text, primary_key=True)   # 'Q1063736', 'en:egg-pasta', 'salt'
+    canonical = Column(Text, nullable=False)      # its display name, the later source of ingredients.name
+
+
 # ingredient_weights has NO primary key in the live schema. ORM-mapped classes require a PK, so this
 # table is defined as a Core Table (part of the same metadata) — faithful in create_all (no synthetic
 # PK added, no structure change). It can be given an imperative ORM mapping in Stage 1b if it's queried.
