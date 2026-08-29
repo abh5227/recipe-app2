@@ -1046,9 +1046,11 @@ below reflect what's actually in the repo, not an idealized version of it.)
    React frontend is what pays off the editor-integration tax; the *adoption* itself is not pending.
 
 7. **Image / file storage.** Images are currently **filesystem path strings** served off local
-   `static/images/`, with **no upload endpoint**. On an ephemeral-filesystem host (e.g. Render),
-   uploaded files vanish on redeploy, so multi-user with user-supplied photos needs **object
-   storage** (S3 / R2-class) plus a real upload path. Not built today.
+   `static/images/`. ✅ **Upload endpoints DO exist**, six mutating photo routes (`upload_recipe_image`,
+   `add_cook_photo`, `edit_cook_photo`, `promote_cook_photo`, `delete_cook_photo`,
+   `reorder_cook_photos`) plus the serving route. What is missing is **durable** storage. On an
+   ephemeral-filesystem host (e.g. Render), uploaded files vanish on redeploy, so multi-user with
+   user-supplied photos needs **object storage** (S3 / R2-class). That part is not built today.
 
 8. **The seed / build-db / source-tier content model is itself a single-user conceit.** The current
    "content lives in `seed.py`, rebuilt every build, user data preserved by source tiers"

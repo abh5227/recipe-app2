@@ -333,11 +333,12 @@ def _promote_library_row(s, library_id, known):
     # 4. Genuinely new. source='app' so the delete path may remove it and so it is distinguishable
     # from the hand-authored 36 (migration 030). descr and pairs stay NULL.
     # ⚠️ concept MUST BE SUPPLIED, NOT LEFT TO THE COLUMN DEFAULT (migration 031). The default is ''
-    # and the partial unique index permits exactly ONE shared row at any concept, so omitting it here
+    # and the partial unique index permits exactly ONE library row at any concept, so omitting it here
     # creates the first promoted ingredient and then fails on the second. concept == slug today
     # because this path mints the id FROM the canonical, so the two are the same string by
-    # construction. owner stays NULL, which is the shared marker and is what add-on-save has always
-    # created. ⚠️ THAT IS WHAT THE PANEL'S STAGE 3 CHANGES, and this line is where it changes.
+    # construction. owner stays NULL, which marks a LIBRARY row, and under the corrected model that is
+    # PERMANENT for this path. Promoting a library entry always yields a library row. The Panel's stage 3
+    # adds a separate user-create path for personal rows. See docs/ingredient-model.md.
     s.execute(insert(Ingredient.__table__).values(
         id=slug, name=canonical, concept=slug, source="app", library_id=library_id,
         created_at=now_utc()))
@@ -1073,7 +1074,7 @@ def get_ingredient(iid):
     PUBLIC_ENDPOINTS), like every route that isn't the SPA shell or auth.
 
     ⚠️ OWNERSHIP IS PART OF THE LOOKUP, NOT A CHECK AFTER IT. The Panel's stage 1 (migration 031)
-    gave this table an `owner`: NULL means shared and anyone may read it, anything else means the row
+    gave this table an `owner`: NULL means a LIBRARY row and anyone may read it, anything else means the row
     belongs to one person. Folding that into the WHERE means a row you may not read is never fetched,
     and it leaves exactly ONE refusal branch, so "no such ingredient" and "not yours" cannot drift
     apart later. The season / region / used-in queries below run only on a row that passed, so a
@@ -1095,7 +1096,7 @@ def get_ingredient(iid):
         ing = s.execute(
             select(Ingredient.__table__).where(
                 Ingredient.id == iid,
-                or_(Ingredient.owner.is_(None),                  # shared, readable by everyone
+                or_(Ingredient.owner.is_(None),                  # a library row, readable by everyone
                     Ingredient.owner == current_user.id),        # or this reader's own personal row
             )
         ).first()

@@ -62,11 +62,12 @@ Framed as what the app **enforces and serves**, not as threats.
 
 ### Current model — coherent single-user, with per-user data already owner-shaped
 
-- **Recipe writes gate on login + source-tier, not owner.** `PUT` and `DELETE /api/recipes/<id>` check
-  only `source ∈ EDITABLE_SOURCES` (`app`/`test` editable; `seed` read-only) — they do **not** check
-  `owner == current_user`. The **one exception** is `POST /api/recipes/<id>/image`, which does
-  (`rec.owner != current_user.id → 403`) — the reference owner-check pattern. This is the single genuine
-  write-ownership gap; it is inert today because there is only one user.
+- **Recipe writes gate on login, source-tier AND owner.** `PUT` and `DELETE /api/recipes/<id>` check
+  `source ∈ EDITABLE_SOURCES` (`app`/`test` editable; `seed` read-only) **and** `owner == current_user`,
+  answering 403 "not your recipe". ✅ **The write-ownership gap this section used to record is CLOSED.**
+  Ownership is gated at **seven** sites: `update_recipe`, `delete_recipe`, `upload_recipe_image`,
+  `add_cook_photo`, `promote_cook_photo`, `reorder_cook_photos` and `create_share`. Tier is checked
+  **first**, so a recipe nobody owns refuses on the intrinsic property rather than on ownership.
 - **Per-user accruing data is ALREADY owner-shaped** (the R1/R3 rescoping, migrations 017–019, is
   complete): `ratings` has a **composite PK `(recipe_id, user_id)`** — one rating per (recipe, user),
   existing rows backfilled to the owner account (id 1) by `scripts/backfill_rescoping.py`; `cook_log`

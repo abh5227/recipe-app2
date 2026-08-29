@@ -88,6 +88,6 @@ funneled through `orm_session()`. `build_db`'s FK-rebuild trick + joins stay raw
 
 - **Auth** — Flask-Login/sessions: ~14 authorization checks on the mutating routes + login infra + a `users` table.
 - **Core-table RESCOPING** — `ratings` PK → `(recipe_id, user_id)`, `cook_log`/`recipes` user columns; ~17 query sites + a **241-row backfill** (116 ratings + 125 cooks). **Depends on auth.**
-- **Images → object storage** — isolated: 1 route + 1 column (path string → key/URL) + an upload path (none today).
+- **Images → object storage** — isolated: 1 column (path string → key/URL) across the six mutating photo routes. ✅ The upload path **EXISTS**. What is missing is durable storage behind `images.save_image`.
 - **Render hosting** — managed Postgres + object storage; move off local FS (SQLite file, `static/images/`, `backups/`).
 - The **per-person change layer** (`recipe_line_changes`/`recipe_additions`, seed-gated) is a multi-user primitive that gets reworked properly **inside** the auth/rescoping work.

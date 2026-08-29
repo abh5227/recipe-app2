@@ -2,11 +2,11 @@
 
 The route was a bare primary-key lookup. Any logged-in user could read any row by id, and ids are
 slugified NAMES (`garlic`, `egg_pasta`), so the id space is guessable by typing food words. Nothing
-leaked, because every row was shared, but the Panel's stage 3 creates the first personal rows and
+leaked, because every row was a library row, but the Panel's stage 3 creates the first personal rows
 this had to be closed before there was anything behind it to take.
 
 ⚠️ THE ONE TEST THAT MATTERS IS test_user_B_cannot_read_user_As_personal_row. Everything else here
-is either the behavior-neutral proof (shared rows still serve to everyone) or a property of the
+is either the behavior-neutral proof (library rows still serve to everyone) or a property of the
 refusal (uniform, childless, unguessable).
 
 Personal rows are inserted directly. The create path that stamps an owner does not exist yet (that
@@ -38,7 +38,7 @@ def _personal(kitchen, iid, name, owner):
 
 # ---- behavior-neutral on today's data ------------------------------------------------------------
 
-def test_all_36_shared_rows_still_serve_to_the_harness_user(kitchen):
+def test_all_36_library_rows_still_serve_to_the_harness_user(kitchen):
     """⚠️ THE NO-REGRESSION PROOF. Every row in the app today is owner NULL, so the gate must block
     nothing. Not a sample: all 36, because a check that passes garlic and fails one other row would
     be a silent hole in the field guide."""
@@ -52,8 +52,8 @@ def test_all_36_shared_rows_still_serve_to_the_harness_user(kitchen):
         assert r.get_json()["id"] == iid
 
 
-def test_a_shared_row_serves_to_a_DIFFERENT_user_too(kitchen):
-    """Shared means shared. A second account reads the same row, with the same body."""
+def test_a_library_row_serves_to_a_DIFFERENT_user_too(kitchen):
+    """A library row is readable by everyone. A second account reads it, with the same body."""
     _, b = _client("privacy-b@test.local")
     mine = kitchen.client.get("/api/ingredients/garlic").get_json()
     theirs = b.get("/api/ingredients/garlic")

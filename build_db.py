@@ -132,10 +132,10 @@ def seed_content(conn):
 
     # ---- ingredient library: upsert (never delete, to protect recipe references) ----
     # ⚠️ concept MUST BE SUPPLIED, NOT LEFT TO THE COLUMN DEFAULT (migration 031). The default is ''
-    # and the partial unique index permits exactly ONE shared row at any concept, so omitting it here
+    # and the partial unique index permits exactly ONE library row at any concept, so omitting it here
     # inserts the first seed ingredient and then fails on the second with "UNIQUE constraint failed:
     # ingredients.concept". A seed key IS its concept: these ids are hand-authored name slugs.
-    # owner is left NULL, which is the shared marker. Neither is touched on conflict, so a rebuild
+    # owner is left NULL, which marks a LIBRARY row. Neither is touched on conflict, so a rebuild
     # never rewrites the identity of a row that already exists.
     for key, ing in INGREDIENTS.items():
         conn.execute(

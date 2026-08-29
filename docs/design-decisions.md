@@ -804,9 +804,10 @@ the locked spec — recorded so future work reads them as **decisions, not bugs*
   a single seam, `images.save_image(bytes, *, slug) -> "images/<slug>.jpg"` — the **only** disk-writing
   boundary, so a later swap to object storage is one contained change (callers see only the returned path;
   the app.py handler does no direct file I/O). **Authorization:** owner-checked (`rec.owner != current_user.id`
-  → 403), mirroring the shares gate — deliberately **stronger** than the sibling `PUT`/`DELETE`, which still
-  gate on source-tier only (`EDITABLE_SOURCES`) with **no owner check** — a **pre-existing authorization gap,
-  recorded here as a follow-up, not fixed in this stage.** Endpoint is login-gated by `before_request` (NOT in
+  → 403), mirroring the shares gate. It was **stronger** than the sibling `PUT`/`DELETE` when written, which
+  gated on source-tier only (`EDITABLE_SOURCES`) with no owner check. ✅ **That gap is now CLOSED and this
+  paragraph no longer describes an open follow-up.** `update_recipe` and `delete_recipe` both gate on
+  `owner`, seven owner-gated sites in all (see `docs/SECURITY.md`). Endpoint is login-gated by `before_request` (NOT in
   `PUBLIC_ENDPOINTS`); the response carries **only** the new path (least-exposure). **Input hardening** (first
   endpoint to write user bytes to disk): S1 filename is **entirely server-derived** (`<rec.id>.jpg`; the client
   filename is never read) with an `is_relative_to(IMAGES_DIR)` containment check — *the stored name derives

@@ -65,14 +65,15 @@ class Recipe(Base):
 
 class Ingredient(Base):
     """The ingredient field guide. Hand-authored rows come from seed.py's INGREDIENTS, 36 of them.
-    Add-on-save stage 5 will also create rows PROMOTED from the ingredient library, so migration 030
-    added the two columns that tell them apart. source mirrors recipes.source exactly, same vocabulary
+    Add-on-save stage 5 SHIPPED and DOES create rows PROMOTED from the ingredient library, so migration
+    030 added the two columns that tell them apart. source mirrors recipes.source exactly, same vocabulary
     and same TEXT NOT NULL DEFAULT 'seed'. It defaults to 'seed' because that is the fail-safe
     direction. Stage 6's delete path refuses a seed row, so a writer that forgets to set 'app' leaves a
     row undeletable rather than leaving the 36 curated rows deletable. library_id is AUDIT PROVENANCE
     and is deliberately NOT a foreign key to library_names, since library ids are not durable across a
-    rebuild (7 died in commit 460cae5) and it is expected to dangle. Nothing on a page reads it. Both
-    columns are inert until stage 5."""
+    rebuild (7 died in commit 460cae5) and it is expected to dangle. It IS READ. _promote_library_row
+    matches on it so a repeat promote is a no-op, search_library reports a row as already promoted, and
+    the detail route's whole-row select serves it. Both columns are LIVE."""
     __tablename__ = "ingredients"
     id = Column(Text, primary_key=True)
     name = Column(Text, nullable=False)
@@ -83,14 +84,15 @@ class Ingredient(Base):
     library_id = Column(Text)                                              # provenance, may dangle, no FK
     # The Panel stage 1 (Option D, migration 031): identity splits into a ROW key and a CONCEPT key.
     # `id` above stays the row key, so the 50 stored links and the 30 [[key]]s in recipe prose keep
-    # resolving. `concept` is the plain slug and is NOT unique on its own. `owner` NULL means shared.
+    # resolving. `concept` is the plain slug and is NOT unique on its own. `owner` NULL means a LIBRARY
+    # row, readable by everyone (docs/ingredient-model.md is the source of record for the model).
     # ⚠️ concept's server_default of '' is a SQLite necessity, not a design choice: a NOT NULL column
     # cannot be added to a populated table without one, and the table-rebuild escape is unavailable
     # because three tables FK into ingredients. The migration overwrites it immediately and a test
     # asserts no row ever holds ''. Uniqueness needs BOTH indexes below, because SQLite treats NULLs as
-    # distinct, so UNIQUE(owner, concept) alone would permit two shared rows for one concept.
+    # distinct, so UNIQUE(owner, concept) alone would permit two library rows for one concept.
     concept = Column(Text, nullable=False, server_default=text("''"))      # the plain slug, not unique
-    owner = Column(Integer, ForeignKey("users.id"))                        # NULL = shared, else the owner
+    owner = Column(Integer, ForeignKey("users.id"))                        # NULL = a library row, else owner
     __table_args__ = (
         Index("idx_ingredients_owner_concept", "owner", "concept", unique=True),
         Index("idx_ingredients_shared_concept", "concept", unique=True,

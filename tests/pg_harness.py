@@ -106,7 +106,7 @@ def seed_all(conn):
     # column defaults to '' and idx_ingredients_shared_concept is UNIQUE(concept) WHERE owner IS NULL,
     # so leaving it to the default seeds the first ingredient and then fails on the second with
     # "duplicate key value violates unique constraint". A seed key IS its concept. owner stays NULL,
-    # the shared marker. This harness is the THIRD writer to `ingredients` and the only one that runs
+    # which marks a LIBRARY row. This harness is the THIRD writer to `ingredients` and the only one that runs
     # on Postgres alone, which is why it survived a green SQLite suite.
     for key, ing in INGREDIENTS.items():
         conn.execute(insert(Ingredient.__table__).values(

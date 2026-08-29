@@ -1,7 +1,7 @@
 """ingredients.concept and ingredients.owner, the Option D identity split (migration 031).
 
 The Panel's root. `ingredients.id` was doing two jobs, saying which row this is and which concept it
-is, and the model needs a personal and a shared row for one concept to coexist. This file pins the
+is, and the model needs a personal and a library row for one concept to coexist. This file pins the
 four behaviors that split has to produce, because the constraint that produces them is subtle: one
 unique index is not enough, and the reason is a NULL-comparison rule that is easy to get wrong twice.
 
@@ -24,7 +24,7 @@ def test_columns_added_with_the_right_shape(kitchen):
     assert cols["concept"]["dflt_value"] == "''"      # the SQLite artifact, see the migration
 
     assert cols["owner"]["type"] == "INTEGER"
-    assert cols["owner"]["notnull"] == 0               # NULL is the shared marker, not a missing value
+    assert cols["owner"]["notnull"] == 0               # NULL marks a library row, not a missing value
 
 
 def test_owner_is_a_foreign_key_to_users_matching_recipes_owner(kitchen):
@@ -36,8 +36,8 @@ def test_owner_is_a_foreign_key_to_users_matching_recipes_owner(kitchen):
     assert ing[0]["on_delete"] == rec[0]["on_delete"]          # same policy as the precedent
 
 
-def test_every_existing_row_is_backfilled_to_concept_equals_id_and_shared(kitchen):
-    """All 36 are shared today and their ids are already name slugs, so concept = id, owner = NULL."""
+def test_every_existing_row_is_backfilled_to_concept_equals_id_and_library(kitchen):
+    """All 36 are library rows today and their ids are already name slugs, so concept = id, owner = NULL."""
     with kitchen.conn() as c:
         rows = c.execute("SELECT id, concept, owner FROM ingredients").fetchall()
     assert len(rows) == 36
@@ -83,21 +83,21 @@ def _ins(kitchen, iid, concept, owner):
                   (iid, concept, concept, owner))
 
 
-def test_1_two_shared_rows_for_one_concept_are_REJECTED(kitchen):
+def test_1_two_library_rows_for_one_concept_are_REJECTED(kitchen):
     """⚠️ THE CASE THAT NEEDS THE PARTIAL INDEX. UNIQUE(owner, concept) alone does NOT catch this,
     because SQLite treats NULLs as distinct in a unique index, so (NULL,'x') and (NULL,'x') do not
     collide. Measured before the migration was written. The partial index on concept WHERE owner IS
-    NULL is what makes one-shared-per-concept true."""
+    NULL is what makes one-library-row-per-concept true."""
     _ins(kitchen, "gochujang", "gochujang", None)
     with pytest.raises(sqlite3.IntegrityError):
         _ins(kitchen, "gochujang_2", "gochujang", None)
     assert kitchen.count("ingredients", "concept = 'gochujang'") == 1
 
 
-def test_2_a_shared_and_a_personal_row_for_one_concept_COEXIST(kitchen, two_users):
+def test_2_a_library_and_a_personal_row_for_one_concept_COEXIST(kitchen, two_users):
     """The whole point of Option D. Under the old global-slug key this was impossible."""
     a, _b = two_users
-    _ins(kitchen, "gochujang", "gochujang", None)          # shared
+    _ins(kitchen, "gochujang", "gochujang", None)          # the library row
     _ins(kitchen, f"gochujang__u{a}", "gochujang", a)      # user a's personal
     assert kitchen.count("ingredients", "concept = 'gochujang'") == 2
     with kitchen.conn() as c:
@@ -107,7 +107,7 @@ def test_2_a_shared_and_a_personal_row_for_one_concept_COEXIST(kitchen, two_user
 
 
 def test_3_two_personal_rows_for_ONE_user_are_REJECTED(kitchen, two_users):
-    """Rule 1: an ingredient is shared or personal, and a user holds one row per concept."""
+    """Rule 1: an ingredient is a library row or personal, and a user holds one row per concept."""
     a, _b = two_users
     _ins(kitchen, f"gochujang__u{a}", "gochujang", a)
     with pytest.raises(sqlite3.IntegrityError):
@@ -172,7 +172,7 @@ def test_owner_is_read_ONLY_by_the_detail_route(kitchen):
 
 
 def test_both_new_columns_are_still_additive_in_the_drawer(kitchen):
-    """The whole-row select means the panel payload grew by two keys. Unchanged by stage 2a: a shared
+    """The whole-row select means the panel payload grew by two keys. Unchanged by stage 2a: a library
     row still serves, and still carries them."""
     body = kitchen.client.get("/api/ingredients/garlic").get_json()
     assert body["concept"] == "garlic" and body["owner"] is None
