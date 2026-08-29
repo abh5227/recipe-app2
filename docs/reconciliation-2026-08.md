@@ -87,6 +87,24 @@ claimed more than exists, and only about the model. Everything else claims less:
 
 # 2. The consolidated change-list
 
+## ⚠️ Status, annotated as entries land
+
+**Everything below this block is as written at `08857c9`, annotated in place.** No entry has been
+deleted or reworded.
+
+| pass | commit | entries closed |
+| --- | --- | --- |
+| Phase 4, the authoritative model doc | `bf80ee4` | A10, A11 |
+| D1, the seed-rebuild claim | `7ae120b` | D1 |
+| the mechanical nine | this commit | C1, C2, C4, C9, C11, E2, E3, E4, E7 |
+
+⚠️ **Two entries turned out to be unactionable as written**, and are marked below rather than removed.
+**E6 is WITHDRAWN as a false finding.** **C10's quoted phrase is not findable anywhere in the repo.**
+
+⚠️ **Every `docs/panel-design.md` line number in this document is now off by 31.** The supersede header
+added by `bf80ee4` sits at the top of that file, so F6's `:547` reads `:578` today. F7's citations point
+into `app.py` and `build_db.py` and are unaffected.
+
 ## A. The phantom "shared tier"
 
 The corrected word throughout is **library**. `owner IS NULL` = a library row. `owner` set = one
@@ -103,8 +121,8 @@ user's private row.
 | A7 | 5 test names: `test_every_existing_row_is_backfilled_to_concept_equals_id_and_shared`, `test_1_two_shared_rows_for_one_concept_are_REJECTED`, `test_2_a_shared_and_a_personal_row_for_one_concept_COEXIST` (`test_ingredient_identity.py:39,86,97`), `test_all_36_shared_rows_still_serve_to_the_harness_user`, `test_a_shared_row_serves_to_a_DIFFERENT_user_too` (`test_ingredient_privacy.py:41,55`) | rename | test rename |
 | A8 | `migrations/031_ingredient_identity.sql` header, 7 hits, including line 4's rationale "a user's personal gochujang and **the shared gochujang**" | applied history | ⚠️ do NOT edit an applied migration. Correct it in the doc that explains it |
 | A9 | `alembic/versions/f2a3b4c5d6e7_…py`, 4 hits | applied history | ⚠️ same |
-| A10 | **`idx_ingredients_shared_concept`**, a schema object, named in `migrations/031:44`, `alembic/…:37,43`, `models.py:96`, `tests/pg_harness.py:106`, `tests/test_ingredient_identity.py:137`, `tests/test_pg_integration.py:97`, `docs/panel-design.md:505` | ⚠️ **NEEDS A MIGRATION** on both dialects. The cheapest correct answer may be to leave the name and document it |
-| A11 | `docs/panel-design.md`, 45 hits | ⚠️ **NEEDS A DECISION**, not an edit. The document's structure is built on the tier. Phase 4 should decide whether it is rewritten or superseded |
+| A10 | ✅ **DONE (`bf80ee4`)**, leave-and-document, explained in `docs/ingredient-model.md` section 3. **`idx_ingredients_shared_concept`**, a schema object, named in `migrations/031:44`, `alembic/…:37,43`, `models.py:96`, `tests/pg_harness.py:106`, `tests/test_ingredient_identity.py:137`, `tests/test_pg_integration.py:97`, `docs/panel-design.md:505` | ⚠️ **NEEDS A MIGRATION** on both dialects. The cheapest correct answer may be to leave the name and document it |
+| A11 | ✅ **DONE (`bf80ee4`)**, SUPERSEDED by `docs/ingredient-model.md`, body untouched. `docs/panel-design.md`, 45 hits | ⚠️ **NEEDS A DECISION**, not an edit. The document's structure is built on the tier. Phase 4 should decide whether it is rewritten or superseded |
 
 ## B. Docs under-claiming shipped work
 
@@ -124,23 +142,23 @@ load-bearing.
 
 | # | file:line | says | reality | risk |
 | --- | --- | --- | --- | --- |
-| C1 | `snapshot_diff.py:3` | "Nothing consumes it yet" | consumed at `app.py:619` | code comment |
-| C2 | `snapshot_headsync.py:5` | "nothing calls it yet" | called on **every save**, `app.py:591-592` via `:888`, and `assert_content_safe` aborts the save | code comment |
+| C1 | ✅ **DONE.** `snapshot_diff.py:3` | "Nothing consumes it yet" | consumed at `app.py:619` | code comment |
+| C2 | ✅ **DONE.** `snapshot_headsync.py:5` | "nothing calls it yet" | called on **every save**, `app.py:591-592` via `:888`, and `assert_content_safe` aborts the save | code comment |
 | C3 | `app.py:525,527` | "reason ('cook' \| 'manual')" and "Nothing reads snapshots yet" | live reasons are `cook` and `original`, `manual` does not exist, and annotations read them | code comment |
-| C4 | `models.py:397` | "INERT: nothing reads this table" (`library_names`) | 2 readers: `app.py:314`, `app.py:1266-1268` | code comment |
+| C4 | ✅ **DONE.** `models.py:397` | "INERT: nothing reads this table" (`library_names`) | 2 readers: `app.py:314`, `app.py:1266-1268` | code comment |
 | C5 | `models.py:74` | `library_id`, "Nothing on a page reads it" | the whole-row drawer select serves it, and `search_library` reads it | code comment |
 | C6 | `models.py:75` | "Both columns are inert until stage 5" | stage 5 shipped | code comment |
 | C7 | `models.py:68` | "stage 5 **will** also create rows" | it does | code comment |
 | C8 | `static/step-editor.js:1-5` | "Stage 1a… **PLAIN TEXT ONLY**… NO link chips, NO `[[key\|label]]` parsing" | `IngredientLink` at `:30`, `renderHTML` at `:39`, `step-adapter.js` imported | code comment |
-| C9 | `docs/design-decisions.md:1419` heading | "shipped; pure engine, **nothing consumes it yet**" | superseded 154 lines later by O-c-1 at `:1573`. ⚠️ The risk is the **heading**, which a table-of-contents reader trusts | doc edit |
-| C10 | `docs/migration-plan.md` schema note | `invites.expires_at` "present now, unused until a later stage" | `signup` checks it, `auth.py:120-121` | doc edit |
-| C11 | `auth.py:9-10` | "NO *existing* app route is gated yet (that's auth-3b)" | auth-3b shipped, and every route is gated by `_require_login` | code comment |
+| C9 | ✅ **DONE.** `docs/design-decisions.md:1419` heading | "shipped; pure engine, **nothing consumes it yet**" | superseded 154 lines later by O-c-1 at `:1573`. ⚠️ The risk is the **heading**, which a table-of-contents reader trusts | doc edit |
+| C10 | ⚠️ **UNLOCATABLE, cannot be actioned as written.** `docs/migration-plan.md` holds ZERO occurrences of "invite", and the quoted phrase appears nowhere in the repo except this row. `docs/migration-plan.md` schema note | `invites.expires_at` "present now, unused until a later stage" | `signup` checks it, `auth.py:120-121` | doc edit |
+| C11 | ✅ **DONE.** `auth.py:9-10` | "NO *existing* app route is gated yet (that's auth-3b)" | auth-3b shipped, and every route is gated by `_require_login` | code comment |
 
 ## D. Doc-versus-doc contradictions
 
 | # | contradiction | risk |
 | --- | --- | --- |
-| **D1** | ⚠️ **HIGHEST PRIORITY.** `CLAUDE.md:349` says the 36-row library is "*still* seed-rebuilt on every `build_db` (**intended**, the seed 'bones' stay)". `docs/panel-design.md`'s corpus decision says the rebuild must stop and the 36 become durable rows. **`CLAUDE.md` is the file every session reads first.** | ⚠️ needs a decision, then a doc edit |
+| **D1** | ✅ **DONE (`7ae120b`)**, both sides corrected. The direction is settled, the mechanism is still open. ⚠️ **WAS HIGHEST PRIORITY.** `CLAUDE.md:349` says the 36-row library is "*still* seed-rebuilt on every `build_db` (**intended**, the seed 'bones' stay)". `docs/panel-design.md`'s corpus decision says the rebuild must stop and the 36 become durable rows. **`CLAUDE.md` is the file every session reads first.** | ⚠️ needs a decision, then a doc edit |
 | D2 | Cook-gating. `CLAUDE.md:13` and `ROADMAP.md:689` say "cook-gated star ratings". `app.py:1449` says `# NOT cook-gated: rating an uncooked recipe is allowed`. `docs/single-user-assumptions.md:156` already records the correction. The gate is client-side only (`static/app.js:185,221`) | doc edit |
 | D3 | **Four vocabularies for the same 36 rows**: "the owner's corpus" (`panel-design`), "the seed 'bones'" (`CLAUDE:349`), "the 36 library descriptions" (`CLAUDE:103`), "a shared ingredient field guide" (`OVERVIEW:12`, `README:46`, `models.py:67`) | needs a decision |
 | D4 | Moderation. `docs/product-vision.md:71` says "**No moderation/review.**" `docs/panel-design.md:279` rule 8 says "It **must** have a review UI" | needs a decision |
@@ -154,14 +172,14 @@ load-bearing.
 | # | file:line | says | measured | risk |
 | --- | --- | --- | --- | --- |
 | E1 | `docs/ingredient-linkage-state.md:78` | ASCII folding "erases **56** of the 10,527" | **39** | doc edit |
-| E2 | `OVERVIEW.md:72` | "50 of **3,384** ingredient lines" | **3,332** non-heading (3,555 rows all told) | doc edit |
-| E3 | `OVERVIEW.md:73` | "**125 of 304** recipes have one" | **298** recipes, and 120 have a real image path | doc edit |
-| E4 | `OVERVIEW.md:26` | `seed.py` holds "the ingredient library **and the people**" | `PEOPLE` no longer exists (migration 020) | doc edit |
+| E2 | ✅ **DONE.** `OVERVIEW.md:72` | "50 of **3,384** ingredient lines" | **3,332** non-heading (3,555 rows all told) | doc edit |
+| E3 | ✅ **DONE.** `OVERVIEW.md:73` | "**125 of 304** recipes have one" | **298** recipes, and 120 have a real image path. ⚠️ **Fixing this caught an UNCATALOGUED sibling three lines up**, `OVERVIEW.md:70` carried the same wrong **304** for the baseline count. Measured 298 recipes and 298 `recipe_snapshots`, all `reason='original'`. Fixed in the same pass | doc edit |
+| E4 | ✅ **DONE.** `OVERVIEW.md:26` | `seed.py` holds "the ingredient library **and the people**" | `PEOPLE` no longer exists (migration 020) | doc edit |
 | E5 | `docs/migration-plan.md:31,52` | "SQLite suite (**288 + 6 skipped**) AND the PG integration suite (**6**)" | **1,238 + 22 skipped**, and **21** PG | doc edit |
-| E6 | `CLAUDE.md` setup block | "7 packages" | `requirements.txt` has **6** uncommented lines, and names seven | doc edit |
-| E7 | `docs/design-decisions.md:575` | "the real **3,385**-row corpus in `recipe_ingredients`" | **3,555** | doc edit |
+| E6 | ~~`CLAUDE.md` setup block~~ | ~~"7 packages"~~ | 🛑 **WITHDRAWN, THIS ENTRY WAS WRONG.** `CLAUDE.md`'s "7 packages" is CORRECT. Re-measured: `requirements.txt` has **7** uncommented lines (flask, flask-login, SQLAlchemy, alembic, psycopg, pillow, pillow-heif). The "6" was a miscount. **Acting on this would have introduced an error.** | 🛑 do not fix |
+| E7 | ✅ **DONE.** `docs/design-decisions.md:575` | "the real **3,385**-row corpus in `recipe_ingredients`" | **3,555** | doc edit |
 | E8 | `previews/current-coverage.csv` | 11,217 rows / 10,387 kept / 183,651 keys | **11,357 / 10,527 / 184,891** at this HEAD. ⚠️ The artifact labels its own HEAD, and is gitignored | regenerate |
-| E9 | `ingredient_cuts.py:29`, `build_library.py:2239` | "the 11,153-row list" | 11,357. The reasoning around them is unaffected | code comment |
+| E9 | `ingredient_cuts.py:25` and `build_library.py:21, 580, 866, 2027, 2235, 2245`. ⚠️ **Re-measured: SEVEN sites across two files, not the two cited here, and both line numbers in the original row had drifted** | "the 11,153-row list" | 11,357. The reasoning around them is unaffected | code comment |
 | E10 | The linkage denominator. `3,332` (all non-heading, the seg0-core denominator) versus `2,997` (with a label, `LINK.py`'s input). **Both are correct over their own set, and no document says so.** 2,771/3,332 = 83.2%, 2,214/2,997 = 73.9% | doc addition |
 
 ## F. Stale line references
@@ -173,7 +191,7 @@ load-bearing.
 | F3 | `ROADMAP.md:1482` cites `app.py:79` for the dev `SECRET_KEY` fallback | **`app.py:84`** |
 | F4 | `docs/import-damage-survey-2026-08.md:285` cites `app.py:298-311` | same as F1 |
 | F5 | `docs/import-damage-survey-2026-08.md:332` cites `app.py:373`, `:906`, `:985`, `:1022` | cook snapshots are at **`app.py:1351`, `:1430`** |
-| F6 | `docs/panel-design.md:547` cites `ROADMAP.md` line 1040 for the ephemeral-filesystem flag | the item is at **`ROADMAP.md:1049`** |
+| F6 | `docs/panel-design.md:547` cites `ROADMAP.md` line 1040 for the ephemeral-filesystem flag. ⚠️ **This citation has itself drifted to `:578` since, and we caused it**, see the status block | the item is at **`ROADMAP.md:1049`** |
 | F7 | `docs/panel-design.md` cites `app.py:1062, 1071, 1096, 1103, 1135, 1169` and `build_db.py:152-154` | **all still correct**, and all fragile |
 
 ⚠️ **The principle, stated once.** Every document that cites `file:line` has drifted, and the ones

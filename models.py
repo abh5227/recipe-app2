@@ -394,9 +394,9 @@ class LibraryName(Base):
     column went with it (624 KB rather than 1,044 KB on the current 10,527-row library).
     library_id is the library row's own id, which is a Wikidata Q-id 61.1% of the time, an Open Food
     Facts id like 'en:egg-pasta' 38.4% of the time, and an authored slug or wiktextract key for the
-    rest, so one Text PK covers every shape. INERT: nothing reads this table, the loader is stage 3,
-    and it stays EMPTY on a fresh clone, in CI, and on Postgres, which is what keeps the later save
-    gate dormant. Queried with explicit select(), no relationship() (house style)."""
+    rest, so one Text PK covers every shape. READ by _promote_library_row, the save path's promote
+    step, and by search_library. It stays EMPTY on a fresh clone, in CI, and on Postgres, which is
+    what keeps the save gate dormant there. Queried with explicit select(), no relationship() (house style)."""
     __tablename__ = "library_names"
     library_id = Column(Text, primary_key=True)   # 'Q1063736', 'en:egg-pasta', 'salt'
     canonical = Column(Text, nullable=False)      # its display name, the later source of ingredients.name

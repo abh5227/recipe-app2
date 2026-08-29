@@ -1,7 +1,8 @@
 """snapshot_diff.py — the change-tracking DIFF (stage 3): compute what changed between two consecutive
 recipe snapshots. PURE + dependency-light (json + difflib only) — two blobs in, a flat list of change
-objects out, no DB / no side effects / deterministic. Nothing consumes it yet; stage 4 materializes its
-OUTPUT (recipe_changes) and the Journal renders it.
+objects out, no DB / no side effects / deterministic. CONSUMED by app.py's `_recipe_annotations`,
+which returns the raw entries for the recipe page to render. Stage 4 materializes its OUTPUT
+(recipe_changes) and the Journal renders it.
 
 Consumes the STAGE-1 blob format verbatim (serialize_recipe_content): {"recipe": {<11 content fields>},
 "ingredients": [<rows>], "steps": [<rows>]}. Keep this in sync with that serializer — it's the contract.

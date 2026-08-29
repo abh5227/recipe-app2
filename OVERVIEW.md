@@ -23,7 +23,7 @@ The data flows one way and rebuilds safely:
 seed.py ──► build_db.py (migrate + load) ──► recipes.db ──► app.py (SQLAlchemy → JSON) ──► dist/ (Vite ◄── static/app.js)
 ```
 
-- **`seed.py`** holds the seed content — today the **ingredient library and the people**; its
+- **`seed.py`** holds the seed content — today the **ingredient library** alone (`PEOPLE` went in migration 020); its
   `RECIPES` list is deliberately **empty** (the 5 original examples became ordinary app recipes in
   migration 016, so the DB is their source of truth). **`build_db.py`** applies migrations then loads
   seed content; **`app.py`** is the Flask backend, whose serve path queries **entirely through
@@ -67,10 +67,10 @@ paprika_native_reader.py ──► import_cleanup.py ──► import_write.py  
 - **In progress:** the **annotation layer + inline editor** (O-c) — a recipe page shows what you
   changed against its birth baseline, in a handwritten layer, and the recipe is editable in place.
   Snapshots are the stored truth (`recipe_snapshots`); the changes are **derived** by diffing them,
-  never stored as edits. **304 recipes each carry a `reason='original'` baseline**; 298 are still
+  never stored as edits. **298 recipes each carry a `reason='original'` baseline**; 298 are still
   byte-equal to it. Also in progress: the "used cookbook" design pass.
-- **Not yet:** library linkage is barely started (**50 of 3,384 ingredient lines** carry an
-  `ingredient_id`); full image storage (`image` is primary-only — 125 of 304 recipes have one);
+- **Not yet:** library linkage is barely started (**50 of 3,332 ingredient lines** carry an
+  `ingredient_id`); full image storage (`image` is primary-only — 120 of 298 recipes have one);
   *using* the harvested gram in display; and importer hardening.
 - **Tests:** **520 pytest + 88 JS**, CI green on every push (pytest w/ coverage on SQLite **and**
   Postgres, the JS suite, and a SonarQube scan).

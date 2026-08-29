@@ -2,7 +2,9 @@
 headings. PURE + dependency-light (json only, plus the two sibling snapshot modules) — old blob +
 current rows in, a new blob string out, no DB / no session / no side effects / deterministic.
 Named to match its siblings: snapshot_serialize (the FORMAT), snapshot_diff (the DIFF), this (a
-baseline TRANSFORM). Stage 1 ships the transform + its postcondition ONLY; nothing calls it yet.
+baseline TRANSFORM). Stage 1 shipped the transform + its postcondition, and both are LIVE now.
+app.py's sync_original_heading_layout calls them on every save, reached from update_recipe, and
+assert_content_safe raising there aborts the whole save.
 
 WHY THIS EXISTS. A removed row's `section` is the text of the heading that preceded it IN THE
 BASELINE (snapshot_diff._section_lookup), so once a heading moves, the strike renders in a section

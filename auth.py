@@ -7,8 +7,8 @@ list view (GET /api/invites). Flask-Login itself (the LoginManager, user_loader,
 unauthorized handler) is wired in app.py — see its "authentication" block.
 
 The signup/login/logout/me endpoints are PUBLIC; the /api/invites endpoints are ADMIN-gated (login +
-is_admin, default-deny per docs/SECURITY.md). NO *existing* app route is gated yet (that's auth-3b) —
-auth-3a only ADDS the new admin endpoints; it does not touch list_recipes/create_recipe/etc.
+is_admin, default-deny per docs/SECURITY.md). auth-3b has SINCE gated the existing app routes.
+app.py's _require_login fails closed, so every endpoint outside PUBLIC_ENDPOINTS needs a session.
 
 The endpoints reuse app.orm_session()/app.now_utc() via a call-time `import app` (inside the views) —
 a deferred import so this module doesn't import app at load time (app.py imports auth to register the

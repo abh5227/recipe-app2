@@ -572,7 +572,7 @@ is live and the title now reads "Drag to reorder" on both lists.*
   track carrying `min-width: 0`, and an `auto` tail whose min-content is set by its controls. So the
   name absorbs **100%** of any shortfall — it degrades by getting **narrower**, never taller. Reading
   mode never truncates because it uses **two** tracks and `white-space: normal`; the obvious move is
-  to adopt that here. Diagnosed and **deferred**, on measurements across the real 3,385-row corpus in
+  to adopt that here. Diagnosed and **deferred**, on measurements across the real 3,555-row corpus in
   the real font:
 
   | viewport | rows truncated at rest | would become 2 lines |
@@ -1416,7 +1416,7 @@ tracking **starts fresh**).
 later **DROPPED**: versioning is **cook-only**. The `reason` column stays, `'cook'`-only for now, keeping the
 schema general in case a non-cook trigger returns.)
 
-### Change-tracking stage 3 — the snapshot diff (shipped; pure engine, nothing consumes it yet)
+### Change-tracking stage 3 — the snapshot diff (shipped; pure engine, consumed by the annotation render, O-c-1 below)
 
 `snapshot_diff.py` → **`diff_snapshots(old_blob, new_blob)`**: a **pure**, dependency-light (`json` + `difflib`
 only) function that computes "what changed between two consecutive cook snapshots" — two stage-1 blobs in
