@@ -332,8 +332,15 @@ def _promote_library_row(s, library_id, known):
 
     # 4. Genuinely new. source='app' so the delete path may remove it and so it is distinguishable
     # from the hand-authored 36 (migration 030). descr and pairs stay NULL.
+    # ⚠️ concept MUST BE SUPPLIED, NOT LEFT TO THE COLUMN DEFAULT (migration 031). The default is ''
+    # and the partial unique index permits exactly ONE shared row at any concept, so omitting it here
+    # creates the first promoted ingredient and then fails on the second. concept == slug today
+    # because this path mints the id FROM the canonical, so the two are the same string by
+    # construction. owner stays NULL, which is the shared marker and is what add-on-save has always
+    # created. ⚠️ THAT IS WHAT THE PANEL'S STAGE 3 CHANGES, and this line is where it changes.
     s.execute(insert(Ingredient.__table__).values(
-        id=slug, name=canonical, source="app", library_id=library_id, created_at=now_utc()))
+        id=slug, name=canonical, concept=slug, source="app", library_id=library_id,
+        created_at=now_utc()))
     known.add(slug)                            # a second line naming it in the same payload links
     return slug, canonical, None
 

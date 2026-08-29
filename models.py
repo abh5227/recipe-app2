@@ -81,6 +81,21 @@ class Ingredient(Base):
     created_at = Column(Text)
     source = Column(Text, nullable=False, server_default=text("'seed'"))   # 'seed' | 'app', as recipes.source
     library_id = Column(Text)                                              # provenance, may dangle, no FK
+    # The Panel stage 1 (Option D, migration 031): identity splits into a ROW key and a CONCEPT key.
+    # `id` above stays the row key, so the 50 stored links and the 30 [[key]]s in recipe prose keep
+    # resolving. `concept` is the plain slug and is NOT unique on its own. `owner` NULL means shared.
+    # ⚠️ concept's server_default of '' is a SQLite necessity, not a design choice: a NOT NULL column
+    # cannot be added to a populated table without one, and the table-rebuild escape is unavailable
+    # because three tables FK into ingredients. The migration overwrites it immediately and a test
+    # asserts no row ever holds ''. Uniqueness needs BOTH indexes below, because SQLite treats NULLs as
+    # distinct, so UNIQUE(owner, concept) alone would permit two shared rows for one concept.
+    concept = Column(Text, nullable=False, server_default=text("''"))      # the plain slug, not unique
+    owner = Column(Integer, ForeignKey("users.id"))                        # NULL = shared, else the owner
+    __table_args__ = (
+        Index("idx_ingredients_owner_concept", "owner", "concept", unique=True),
+        Index("idx_ingredients_shared_concept", "concept", unique=True,
+              sqlite_where=text("owner IS NULL"), postgresql_where=text("owner IS NULL")),
+    )
 
 
 class Rating(Base):

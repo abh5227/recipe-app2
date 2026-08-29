@@ -127,9 +127,13 @@ def test_provenance_wins_over_a_slug_collision(kitchen):
     library_id but sits under a different id than the canonical would mint."""
     _lib(kitchen, ("Q1063736", "penne"))
     with kitchen.conn() as c:
-        c.execute("INSERT INTO ingredients (id, name, source, library_id) "
-                  "VALUES ('penne_2','penne','app','Q1063736')")
-        c.execute("INSERT INTO ingredients (id, name, source) VALUES ('penne','Penne','app')")
+        # Migration 031: every row carries its own concept, and two SHARED rows may not share one, so
+        # each hand-inserted row gets its own. The scenario is unchanged: one row holds the provenance,
+        # a different row occupies the id the canonical would mint.
+        c.execute("INSERT INTO ingredients (id, name, concept, source, library_id) "
+                  "VALUES ('penne_2','penne','penne_2','app','Q1063736')")
+        c.execute("INSERT INTO ingredients (id, name, concept, source) "
+                  "VALUES ('penne','Penne','penne','app')")
     (row,) = _search(kitchen, "penne")["results"]
     assert row["ingredient_id"] == "penne_2"
     assert row["matched_by"] == "library_id"
