@@ -228,7 +228,9 @@ in `app.py`**. ✅ queried and grepped.
 ## The model, in outline
 
 - **SHARED.** Ingredients every user can use. Today's 36 rows are effectively this, since the
-  table has no owner column at all. ✅
+  table has no owner column at all. ✅ ⚠️ **Accurate about the schema, and since revised as
+  intent.** See "The seed tier, the corpus, and how a fresh clone starts" below: the 36 are the
+  owner's corpus, not a shared starter set.
 - **PERSONAL.** A user's own ingredients, server-stored per-user data rather than device-local,
   private to them, usable in their own recipes. 🟢 Andy's confirmed shape.
 - ⚠️ **The structural gap is real and verified:** `ingredients` has no owner column, so *nothing*
@@ -353,6 +355,152 @@ Option D change**, alongside `concept` and the unique constraint.
 5. **Submission.** Decision A.
 6. **Review UI.** Decisions B and C.
 7. **Adopt a shared version.** Rule 6, late by Andy's own framing.
+
+## The seed tier, the corpus, and how a fresh clone starts
+
+**✅ DECIDED this session. ⚠️ The BUILD of it is NOT scoped, and this section does not plan it.**
+
+⚠️ **How this was reached, stated plainly, because it affects how much weight to put on it.** The
+question started as "design a standalone browse and manage surface for ingredients" and worked
+outward through several layers in one long session. Mapping the existing ingredient UI led to the
+create and edit gaps, which led to a read-only diagnostic of everything depending on `source='seed'`,
+which surfaced a bootstrap problem, which turned out to be a framing error rather than a problem.
+The decision below is a real architectural clarification and it resolves a confusion that has come
+back repeatedly. **It is not a plan, and the work it implies is entangled with a piece of code that
+has no committed home.** Both halves of that are load-bearing.
+
+### ✅ DECIDED: the 36 curated ingredients are the owner's corpus
+
+They are **not** a shared starter set that every installation receives.
+
+Today they live in `seed.py` and `build_db.py` re-seeds all 36 into the database on every run. ✅
+That arrangement is **historical**. It predates the reference library and the promotion system,
+which are now the real way an ingredient enters the app.
+
+**Decided.** The 36 should become durable database rows, app-tier at first and personal later if the
+model calls for it, **migrated in as part of the owner's corpus rather than re-seeded from `seed.py`**.
+Once migrated they are ordinary durable rows, indistinguishable in kind from any promoted ingredient.
+
+**Why.** Every other ingredient in the system already works this way. The 10,527 reference-library
+rows live in a lookup table and are never re-seeded. Any promoted or personal row is a durable
+`ingredients` row. **The 36 are the anomaly, not the pattern.** Treating them like the rest is what
+stops them being special, and "stops being special" is the whole content of the decision.
+
+⚠️ This revises the SHARED bullet under "The model, in outline", which reads the 36 as effectively
+shared because the table had no owner column. That was accurate about the schema and wrong about the
+intent.
+
+### ✅ DECIDED: a fresh clone starts with an empty ingredients table plus the reference library
+
+A new user does not need the owner's 36. They need the **software**. That means the reference library
+(`library_names`, 10,527 rows), the picker, and the matcher, so their own recipes link to ingredients
+as soon as they upload them.
+
+So a fresh clone ships with:
+
+- an **empty** `ingredients` table, no starter ingredients at all
+- the **reference library** available
+
+Ingredients then accumulate as the user creates and promotes them, which is exactly how the library
+rows already behave.
+
+⚠️ **This dissolves the bootstrap problem rather than solving it, and the distinction matters.** The
+seed-tier diagnostic flagged that shipping 247 rows of content to a fresh clone had no precedent in
+this repo. ✅ Measured: the only three migrations containing `INSERT INTO` (005, 019, 026) are
+table-rebuild copies, not content. **That concern is resolved by scoping, not by finding a technique.**
+There is no shared starter set, so there is nothing to ship. There is the owner's corpus, which gets
+migrated, and the library, which is already the starter.
+
+### ⚠️ THE ENTANGLEMENT: "migrate my ingredients in" IS the matcher work
+
+**This is why the build is not scoped here.**
+
+✅ The owner has 298 recipes whose ingredient lines need to point at ingredient rows. ✅ Today 50 of
+3,332 ingredient lines carry a stored link. He is not hand-adding the rest. So his ingredients, the
+36 and whatever else the corpus turns out to need, come in **in bulk with their links resolved**, and
+resolving those links is the matcher.
+
+✅ The matcher has no committed home. `docs/ingredient-linkage-state.md` records it living only in a
+session scratch directory as `LINK.py`, `GAPS.py`, `FEED.py` and about forty other files, none of
+which exists in the repo, and calls it **the binding constraint on actually linking anything**.
+
+So three things that were being treated as separate are one piece of work:
+
+- retiring the seed tier
+- migrating the owner's corpus into durable rows
+- the matcher
+
+They share a single sentence. **Get the owner's ingredients, and the links from his recipes to them,
+into the database durably.** ⚠️ That is a substantial matcher-bound project. **It is not scoped in
+this document and no part of it is planned.**
+
+### ✅ MEASURED: what the seed-tier diagnostic found
+
+A read-only diagnostic at `88aeb72`. Two experiments ran in throwaway copies of the tracked tree,
+never against `recipes.db`. Recorded here because they inform the build whenever it is planned.
+
+- **`source='seed'` protects exactly ONE thing, the delete refusal.** `DELETABLE_INGREDIENT_SOURCES
+  = ("app",)` at `app.py:1135`, read once at `app.py:1169`. That comparison is the **only** runtime
+  read of `Ingredient.source` anywhere in the app. It enables nothing else. No route, no serializer,
+  no rendering, no ordering. **The client never reads an ingredient's `source` at all**, though the
+  detail route returns it.
+- **The unit is 247 rows, not 36.** `ingredients` 36, `ingredient_seasons` 65, `ingredient_regions`
+  102, `regions` 44. Ingredients are upserted and never deleted. ⚠️ The other three are **wholesale
+  deleted and rebuilt every run** (`build_db.py:152` to `154`). Retirement has to give all four
+  durable storage, and three of them currently have a writer that opens with `DELETE FROM`.
+- **The delete-protection gap is real and was proven, not argued.** With the 36 stamped `source='app'`
+  in a scratch copy, one unlink and `DELETE /api/ingredients/allspice` returned **200** with the row
+  and its hand-written description gone. In the live database **28 of the 36 are linked by exactly
+  one recipe and 6 more by two**, so 34 of 36 are one or two unlinks from deletable. ⚠️ On a fresh
+  clone there are no recipes, so the foreign key guards nothing and all 36 are immediately deletable.
+- **Bootstrap, as it stands today.** `build_db.seed_content` re-seeds the 36 and their children on
+  every run, and that is how a fresh clone, CI, and Postgres get a working field guide. ⚠️ It never
+  sets `source` at all. The `'seed'` value comes from **migration 030's column default**, not from an
+  assignment. A fresh clone at this HEAD measures 0 recipes, 36 ingredients, 65 seasons, 102
+  ingredient-region rows, 44 regions, 129 weights.
+- **`validate()` and the test harness assume the 36 are in `seed.py`, totally.** `make_kitchen`
+  rebinds `build_db.RECIPES = TEST_RECIPES` (`tests/harness.py:133`), so `validate()` is inert in
+  production and very much alive in tests. ✅ The 5 fixture recipes reference **all 36** ingredient
+  keys with none unreferenced. ⚠️ The comment one line above the rebind states the assumption in as
+  many words, "INGREDIENTS/PEOPLE still come from seed.py (they aren't being emptied)".
+- **Test cost, from two separate experiments rather than one total.** Flipping the tier while still
+  building all 36 rows: **9 tests fail**, across `test_ingredient_delete`, `test_ingredient_provenance`,
+  `test_library_search` and `test_save_gate`. Emptying `INGREDIENTS` from `seed.py`: **465 errors**,
+  because `validate()` rejects every fixture recipe and `build()` exits before `make_kitchen` returns.
+  Nine test files hard-code the count 36.
+- **Identity interaction: NONE.** Measured after the flip, `concept = id` for all 36 and `owner IS
+  NULL` for all 36, with a clean `foreign_key_check`. `source` appears in neither
+  `idx_ingredients_owner_concept` nor `idx_ingredients_shared_concept`, so it cannot interact with
+  either.
+
+### ⚠️ OPEN, raised by the decision and not answered by it
+
+- **How the owner's corpus actually gets migrated in**, including the 36 and their 211 season and
+  region child rows. Bound up with the matcher. Unscoped.
+- **What replaces the delete protection once `source='seed'` is gone.** A new notion of a protected
+  ingredient is needed, and `library_id IS NULL` is not it. That column is provenance, and a future
+  hand-authored row would carry NULL too. One line of code, one real decision.
+- **How CI and the tests get ingredient fixtures** once the 36 leave production `seed.py`. The
+  harness can seed its own test ingredients without them living in `seed.py`, the same way
+  `fixtures.TEST_RECIPES` already decoupled the 5 recipes. That work has not been done.
+- **How the reference library reaches a fresh clone at all.** ⚠️ This one is load-bearing for the
+  decision above, and it is currently unsolved. `library_names.csv` is gitignored
+  (`.gitignore:88`), is not present on this machine, and the live `recipes.db` does not yet have the
+  table. "A new user has the library" depends entirely on answering this, and it is its own open item.
+
+### Two tracks, and they should not be conflated
+
+**The build order above and this section are separate work.**
+
+The build order (Option D schema, effective-library read, create path, picker, submission, review,
+adopt) is about the **shared and personal model**. It is about who may see and own a row.
+
+Seed retirement, the corpus migration, and the matcher are about **getting the owner's existing data
+into the database durably**. Different question, different constraint, different binding dependency.
+
+⚠️ **The browse and manage surface does not depend on this track.** It reads whatever is in the
+`ingredients` table and does not care how a row got there. So it can be built against 36 seed rows,
+against a migrated corpus, or against an empty table on a fresh clone, without changing.
 
 ## 🔵 What survives, and what does not
 
