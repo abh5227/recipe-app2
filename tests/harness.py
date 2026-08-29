@@ -14,7 +14,8 @@ for _p in (str(REPO), str(HERE)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
-from fixtures import TEST_RECIPES   # test-owned recipe set (fixtures.py) — seeded instead of seed.py RECIPES
+from fixtures import TEST_RECIPES, TEST_INGREDIENTS   # test-owned content (fixtures.py) — seeded
+                                                      # instead of seed.py's RECIPES / INGREDIENTS
 
 
 class Kitchen:
@@ -126,11 +127,17 @@ def make_kitchen(tmp_path, login=True):
     import images
     images.IMAGES_DIR = Path(tmp_path) / "images"   # isolate upload disk-writes to the temp dir (never the real static/images/)
 
-    # Seed the test DB from the test-owned fixtures, NOT production seed.py's RECIPES: override the
-    # module global that build_db.build() (validate + seed_content) reads — the same rebinding pattern
-    # as build_db.DB above. This is what lets production seed.py RECIPES be emptied later without
-    # breaking the suite. INGREDIENTS/PEOPLE still come from seed.py (they aren't being emptied).
+    # Seed the test DB from the test-owned fixtures, NOT production seed.py: override the module
+    # globals that build_db.build() (validate + seed_content) reads — the same rebinding pattern as
+    # build_db.DB above. Both functions look the bare names up through build_db.__dict__ at CALL
+    # time, which is what makes rebinding them here redirect the seed.
+    #
+    # This is what lets production seed.py be emptied later without breaking the suite. RECIPES was
+    # decoupled first and is already empty in seed.py. INGREDIENTS is the seed project's stage A and
+    # is a VERBATIM copy of the same 36, so the suite builds identical fixture databases and only the
+    # SOURCE of the fixtures moved.
     build_db.RECIPES = TEST_RECIPES
+    build_db.INGREDIENTS = TEST_INGREDIENTS
 
     # The library-name lookup loads from a SERVER-SIDE file that the repo deliberately does not
     # contain, so a fixture build must not pick up whatever happens to sit in the working copy. With

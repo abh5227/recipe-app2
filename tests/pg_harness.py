@@ -28,7 +28,12 @@ from models import (
     Ingredient, IngredientSeason, Region, IngredientRegion,
     Recipe, RecipeIngredient, RecipeStep, ingredient_weights,
 )
-from seed import INGREDIENTS
+# ⚠️ INGREDIENTS COMES FROM THE FIXTURES, NOT FROM seed.py (seed project, stage A). This module
+# does `from X import Y`, which binds a name in THIS module, so make_kitchen's rebind of
+# build_db.INGREDIENTS cannot reach it. Importing the fixture directly is what keeps the PG
+# seed and the SQLite seed on the same data once seed.py is emptied. Aliased so the seed_all
+# body below reads unchanged.
+from fixtures import TEST_INGREDIENTS as INGREDIENTS
 from fixtures import TEST_RECIPES
 from build_db import WEIGHT_CONVERT_EXCLUDE, WEIGHTS_CSV
 from weights import normalize, parse_reference_volume
