@@ -345,11 +345,15 @@ shipped in migration 016 (a later session):** the tests were first decoupled to 
 (`fixtures.TEST_RECIPES`), then the 5 (`aloo-gobhi`, `bulgogi-bowls`, `gai-yang`, `mussakhan`,
 `no-knead-bread`) were flipped to `source='app'` and their `seed.py` defs removed (`RECIPES` is now
 `[]`). They are ordinary owned app recipes that **no longer lag from build_db's seed-rebuild** — a
-rebuild leaves them intact (0 seed duplicates). This is DONE, not a pending follow-up. **NB:** the
-ingredient **library** (~36 rows) is *still* seed-rebuilt on every `build_db` (intended — the seed
-'bones' stay); any remaining 'stale linked-ingredient' symptom, if real, lives in the library
-records/labels, **not** the recipe source-tier, and is diagnosed separately — not re-fixed via a
-`source` flip.
+rebuild leaves them intact (0 seed duplicates). This is DONE, not a pending follow-up. **NB:** the 36
+hand-authored **ingredient** rows are *still* seed-rebuilt on every `build_db`
+(`build_db.seed_content` upserts them `ON CONFLICT(id) DO UPDATE`, and deletes no ingredient row, only
+the three child tables). ⚠️ **That is current behavior, not an intended permanent state.** The 36 are
+the owner's corpus, early hand-curated library entries carrying hand-written `descr` and `pairs`, and
+retiring the rebuild is slated work whose stage A shipped in `36f5868`.
+**[docs/ingredient-model.md](docs/ingredient-model.md)** is the source of record for the model. Any
+remaining 'stale linked-ingredient' symptom, if real, lives in those records/labels, **not** the
+recipe source-tier, and is diagnosed separately rather than re-fixed via a `source` flip.
 
 *Why the fourth exists (the Stage-1b CI miss):* the converted ORM read routes used `models.SessionLocal`
 (frozen at import to the default `recipes.db`). `make_kitchen` redirects `app.DB`/`build_db.DB`/`migrate.DB`

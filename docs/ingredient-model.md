@@ -124,10 +124,16 @@ from `seed.py` on every run, keyed `ON CONFLICT(id) DO UPDATE`, and separately d
 three child tables (`ingredient_seasons`, `ingredient_regions`, `regions`). The ingredient rows
 themselves are never deleted, and the comment says why, to protect recipe references.
 
-⚠️ **Two documents disagree about whether that should change**, and the disagreement is open.
-`CLAUDE.md:349` calls the seed rebuild intended. `panel-design.md`'s corpus decision says the 36
-should become durable rows migrated in once. That is change-list **D1**, it is flagged there as the
-highest-priority contradiction, and **this document does not settle it.**
+✅ **DECIDED, and the contradiction that stood here is closed.** The rebuild is **current behavior,
+not an intended permanent state.** The 36 are the owner's corpus, the seed-rebuild is slated to be
+retired, and once retired they are ordinary durable rows, indistinguishable in kind from any promoted
+ingredient. **Stage A shipped in `36f5868`**, which decoupled the test fixtures from `seed.py`'s
+`INGREDIENTS`. Nothing after it is scoped.
+
+This was change-list **D1**, its highest-priority contradiction. `CLAUDE.md`'s seed-to-app-miss
+paragraph, under Working conventions, called the rebuild intended, and now states the corrected model
+and points here. ⚠️ **The mechanism is still undecided**, meaning how the 36 become durable rows and
+what becomes of their `seed.py` definitions. That question is entangled with the backfill below.
 
 ## The two linking surfaces, and neither is built
 
@@ -348,7 +354,9 @@ eight are correct and a cleanup pass that touches them breaks meaning:
 | [panel-design.md](panel-design.md) | how the panel was designed, and how the phantom tier took hold | ⚠️ **SUPERSEDED by this document** |
 
 **What is deliberately not here.** This document does not plan the panel, the submission flow, the
-review queue, the browse surface, the backfill or the import linking. It does not settle change-list
-D1, the seed-rebuild contradiction in `CLAUDE.md`. It does not correct the comments and test names in
-change-list section A. Those are separate pieces of work with their own decisions, and the change-list
-is where they are enumerated.
+review queue, the browse surface, the backfill or the import linking. It does not correct the
+comments and test names in change-list section A. Those are separate pieces of work with their own
+decisions, and the change-list is where they are enumerated.
+
+**Change-list D1 is settled** and its answer is stated above, under "The 36 curated rows are the
+owner's corpus". What stays open there is the mechanism, not the direction.
