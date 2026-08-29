@@ -1069,9 +1069,37 @@ def list_ingredients():
 
 @app.route("/api/ingredients/<iid>")
 def get_ingredient(iid):
+    """One ingredient's field-guide panel. Login-gated by the before_request allowlist (NOT in
+    PUBLIC_ENDPOINTS), like every route that isn't the SPA shell or auth.
+
+    ⚠️ OWNERSHIP IS PART OF THE LOOKUP, NOT A CHECK AFTER IT. The Panel's stage 1 (migration 031)
+    gave this table an `owner`: NULL means shared and anyone may read it, anything else means the row
+    belongs to one person. Folding that into the WHERE means a row you may not read is never fetched,
+    and it leaves exactly ONE refusal branch, so "no such ingredient" and "not yours" cannot drift
+    apart later. The season / region / used-in queries below run only on a row that passed, so a
+    hidden row leaks nothing through its children either.
+
+    ⚠️ 404 FOR BOTH, WHICH IS THE APP'S CONVENTION AND NOT A DEPARTURE FROM IT. The six
+    recipes.owner gates answer 403 "not your recipe", and every one of them is a WRITE on a recipe the
+    requester can already see, since GET /api/recipes returns all recipes to every user
+    (docs/SECURITY.md). A 403 conceals nothing there. create_share answers a uniform 404 instead, for
+    the case where existence is NOT already public, which docs/SECURITY.md calls the social layer's
+    non-leaking uniform 404s. A personal ingredient is that second case. Its existence IS the private
+    fact, and ids here are slugified NAMES, the most guessable id space in the app, so 403 on
+    /api/ingredients/gochujang would tell a guesser that somebody keeps a private gochujang.
+
+    Inert on today's data. Every row is owner NULL, so this hides nothing from anyone. It lands before
+    the Panel's stage 3 creates the first personal row, so there is no window in which one exists and
+    this route will still hand it to a stranger."""
     with orm_session() as s:
-        ing = s.execute(select(Ingredient.__table__).where(Ingredient.id == iid)).first()
-        if ing is None:
+        ing = s.execute(
+            select(Ingredient.__table__).where(
+                Ingredient.id == iid,
+                or_(Ingredient.owner.is_(None),                  # shared, readable by everyone
+                    Ingredient.owner == current_user.id),        # or this reader's own personal row
+            )
+        ).first()
+        if ing is None:                                          # not there, or not yours: same answer
             return jsonify({"error": "ingredient not found"}), 404
 
         season = list(s.scalars(

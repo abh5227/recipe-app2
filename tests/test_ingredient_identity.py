@@ -139,20 +139,43 @@ def test_one_index_alone_would_not_be_enough(kitchen):
 
 # ---- inert ------------------------------------------------------------------------------------------
 
-def test_nothing_reads_the_new_columns_yet(kitchen):
-    """Stage 1 is shape only. The effective-library read is stage 2 and the create path is stage 3."""
+def _ingredient_column_readers(column):
+    """Every function in app.py that names Ingredient.<column>, by function name."""
     import ast
     from pathlib import Path
     import app
-    src = Path(app.__file__).read_text(encoding="utf-8")
-    tree = ast.parse(src)
-    reads = [n for n in ast.walk(tree)
-             if isinstance(n, ast.Attribute) and n.attr in ("concept", "owner")
-             and isinstance(n.value, ast.Name) and n.value.id == "Ingredient"]
-    assert reads == [], "app.py reads Ingredient.concept/owner, but stage 1 is schema-only"
+    tree = ast.parse(Path(app.__file__).read_text(encoding="utf-8"))
+    out = []
+    for fn in ast.walk(tree):
+        if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for n in ast.walk(fn):
+            if (isinstance(n, ast.Attribute) and n.attr == column
+                    and isinstance(n.value, ast.Name) and n.value.id == "Ingredient"):
+                out.append(fn.name)
+    return out
 
+
+def test_concept_still_has_no_readers(kitchen):
+    """concept is shape only until the Panel's stage 3, which is where the create path stamps it and
+    the picker resolves against it. Nothing should be reading it before then."""
+    assert _ingredient_column_readers("concept") == [], \
+        "app.py reads Ingredient.concept, but the create path is stage 3"
+
+
+def test_owner_is_read_ONLY_by_the_detail_route(kitchen):
+    """⚠️ THIS GUARD MOVED WITH STAGE 2a AND DID NOT GO AWAY. It used to say owner had no readers.
+    The privacy fix gave it exactly two, both inside get_ingredient, so the assertion tightened from
+    "none" to "these and no others" — a third reader appearing somewhere else still trips it. That is
+    the whole point of pinning the call sites rather than the count."""
+    assert _ingredient_column_readers("owner") == ["get_ingredient", "get_ingredient"]
+
+
+def test_both_new_columns_are_still_additive_in_the_drawer(kitchen):
+    """The whole-row select means the panel payload grew by two keys. Unchanged by stage 2a: a shared
+    row still serves, and still carries them."""
     body = kitchen.client.get("/api/ingredients/garlic").get_json()
-    assert body["concept"] == "garlic" and body["owner"] is None   # additive in the whole-row drawer
+    assert body["concept"] == "garlic" and body["owner"] is None
 
 
 def test_owner_must_be_a_real_user(kitchen):
