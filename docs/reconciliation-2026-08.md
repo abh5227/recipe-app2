@@ -96,7 +96,28 @@ deleted or reworded.
 | --- | --- | --- |
 | Phase 4, the authoritative model doc | `bf80ee4` | A10, A11 |
 | D1, the seed-rebuild claim | `7ae120b` | D1 |
-| the mechanical nine | this commit | C1, C2, C4, C9, C11, E2, E3, E4, E7 |
+| the mechanical nine | `f09fbff` | C1, C2, C4, C9, C11, E2, E3, E4, E7 |
+| the A+B safe batch, plus the coupled models.py block | `f0f01e4` | A1, A2, A3, A4, A5, A6, A7, C5, C6, C7, B1, B2, B3, B4 |
+| substitutions: drop "manual", symbolize the living refs | this commit | C3, F1, F2, F3 |
+
+## The F policy, decided
+
+**Symbolize `file:line` refs in LIVING docs. Leave them in DATED or SUPERSEDED docs**, where the date or
+the supersede header is already the disclaimer. F1, F2 and F3 are converted to symbol references. F4 and
+F5 sit in a dated survey and F6 and F7 sit in a superseded document, so all four are **WONTFIX**.
+
+⚠️ **F7 is the evidence for the policy, and we produced it ourselves.** The change-list recorded F7's six
+`app.py` citations as "all still correct". The one-line comment edit in `f0f01e4` shifted every one of them
+by one. `app.py:1169` is the worst of them, because it still lands on a plausible 404 return, so a reader
+would not notice it is the wrong one. **A line number went stale inside the very pass that was cataloguing
+stale line numbers.**
+
+## What the NEXT commit covers
+
+The new-descriptive-text half, which this pass deliberately leaves alone: **C8** (the step-editor header's
+shipped scope), **`tests/test_ingredient_identity.py:8`** ("Nothing reads either column yet", now half
+wrong since `owner` gained a reader), **B5** (ROADMAP's change-tracking entry) and **B6** (the linkage
+constraint).
 
 ⚠️ **Two entries turned out to be unactionable as written**, and are marked below rather than removed.
 **E6 is WITHDRAWN as a false finding.** **C10's quoted phrase is not findable anywhere in the repo.**
@@ -119,8 +140,8 @@ user's private row.
 | A5 | `build_db.py:135,138` | same two phrases | code comment |
 | A6 | `tests/pg_harness.py:109` | "the shared marker" | code comment |
 | A7 | 5 test names: `test_every_existing_row_is_backfilled_to_concept_equals_id_and_shared`, `test_1_two_shared_rows_for_one_concept_are_REJECTED`, `test_2_a_shared_and_a_personal_row_for_one_concept_COEXIST` (`test_ingredient_identity.py:39,86,97`), `test_all_36_shared_rows_still_serve_to_the_harness_user`, `test_a_shared_row_serves_to_a_DIFFERENT_user_too` (`test_ingredient_privacy.py:41,55`) | rename | test rename |
-| A8 | `migrations/031_ingredient_identity.sql` header, 7 hits, including line 4's rationale "a user's personal gochujang and **the shared gochujang**" | applied history | ⚠️ do NOT edit an applied migration. Correct it in the doc that explains it |
-| A9 | `alembic/versions/f2a3b4c5d6e7_…py`, 4 hits | applied history | ⚠️ same |
+| A8 | 🛑 **WONTFIX.** Migrations are historical artifacts and the corrected model lives in `docs/ingredient-model.md`. Editing comments in an applied or soon-applied migration rests on an unenforced convention anyway (`migrate.py` records `filename` only, with no checksum), so they are left exactly as written. `migrations/031_ingredient_identity.sql` header, 7 hits, including line 4's rationale "a user's personal gochujang and **the shared gochujang**" | applied history | ⚠️ do NOT edit an applied migration. Correct it in the doc that explains it |
+| A9 | 🛑 **WONTFIX**, same reason as A8. `alembic/versions/f2a3b4c5d6e7_…py`, 4 hits | applied history | ⚠️ same |
 | A10 | ✅ **DONE (`bf80ee4`)**, leave-and-document, explained in `docs/ingredient-model.md` section 3. **`idx_ingredients_shared_concept`**, a schema object, named in `migrations/031:44`, `alembic/…:37,43`, `models.py:96`, `tests/pg_harness.py:106`, `tests/test_ingredient_identity.py:137`, `tests/test_pg_integration.py:97`, `docs/panel-design.md:505` | ⚠️ **NEEDS A MIGRATION** on both dialects. The cheapest correct answer may be to leave the name and document it |
 | A11 | ✅ **DONE (`bf80ee4`)**, SUPERSEDED by `docs/ingredient-model.md`, body untouched. `docs/panel-design.md`, 45 hits | ⚠️ **NEEDS A DECISION**, not an edit. The document's structure is built on the tier. Phase 4 should decide whether it is rewritten or superseded |
 
@@ -144,7 +165,7 @@ load-bearing.
 | --- | --- | --- | --- | --- |
 | C1 | ✅ **DONE.** `snapshot_diff.py:3` | "Nothing consumes it yet" | consumed at `app.py:619` | code comment |
 | C2 | ✅ **DONE.** `snapshot_headsync.py:5` | "nothing calls it yet" | called on **every save**, `app.py:591-592` via `:888`, and `assert_content_safe` aborts the save | code comment |
-| C3 | `app.py:525,527` | "reason ('cook' \| 'manual')" and "Nothing reads snapshots yet" | live reasons are `cook` and `original`, `manual` does not exist, and annotations read them | code comment |
+| C3 | ✅ **DONE (this commit).** Six sites: `app.py`'s `snapshot_recipe` docstring and four in `models.py`'s `RecipeSnapshot`. Measured reasons are `original` and `cook`, four call sites, and `manual` exists nowhere in code or data. `app.py:525,527` | "reason ('cook' \| 'manual')" and "Nothing reads snapshots yet" | live reasons are `cook` and `original`, `manual` does not exist, and annotations read them | code comment |
 | C4 | ✅ **DONE.** `models.py:397` | "INERT: nothing reads this table" (`library_names`) | 2 readers: `app.py:314`, `app.py:1266-1268` | code comment |
 | C5 | `models.py:74` | `library_id`, "Nothing on a page reads it" | the whole-row drawer select serves it, and `search_library` reads it | code comment |
 | C6 | `models.py:75` | "Both columns are inert until stage 5" | stage 5 shipped | code comment |
@@ -186,13 +207,13 @@ load-bearing.
 
 | # | citation | points at now |
 | --- | --- | --- |
-| F1 | `CODE_WALKTHROUGH.md:322` cites `app.py:298-311` for `write_recipe_rows` | `_promote_library_row`'s docstring. The function is at **`app.py:446`** |
-| F2 | `ROADMAP.md:1480` cites `app.py:49` for the `Flask()` constructor | **`app.py:55`** |
-| F3 | `ROADMAP.md:1482` cites `app.py:79` for the dev `SECRET_KEY` fallback | **`app.py:84`** |
-| F4 | `docs/import-damage-survey-2026-08.md:285` cites `app.py:298-311` | same as F1 |
-| F5 | `docs/import-damage-survey-2026-08.md:332` cites `app.py:373`, `:906`, `:985`, `:1022` | cook snapshots are at **`app.py:1351`, `:1430`** |
-| F6 | `docs/panel-design.md:547` cites `ROADMAP.md` line 1040 for the ephemeral-filesystem flag. ⚠️ **This citation has itself drifted to `:578` since, and we caused it**, see the status block | the item is at **`ROADMAP.md:1049`** |
-| F7 | `docs/panel-design.md` cites `app.py:1062, 1071, 1096, 1103, 1135, 1169` and `build_db.py:152-154` | **all still correct**, and all fragile |
+| F1 | ✅ **DONE (this commit)**, symbolized to `app.py::write_recipe_rows`. `CODE_WALKTHROUGH.md:322` cites `app.py:298-311` for `write_recipe_rows` | `_promote_library_row`'s docstring. The function is at **`app.py:446`** |
+| F2 | ✅ **DONE (this commit)**, symbolized to app.py's `Flask()` constructor. `ROADMAP.md:1480` cites `app.py:49` for the `Flask()` constructor | **`app.py:55`** |
+| F3 | ✅ **DONE (this commit)**, symbolized to app.py's `_secret_key` dev fallback. `ROADMAP.md:1482` cites `app.py:79` for the dev `SECRET_KEY` fallback | **`app.py:84`** |
+| F4 | 🛑 **WONTFIX.** The host doc is a DATED point-in-time survey, not living documentation, and the date is the disclaimer. Refs not maintained. `docs/import-damage-survey-2026-08.md:285` cites `app.py:298-311` | same as F1 |
+| F5 | 🛑 **WONTFIX**, same dated-survey reason as F4. `docs/import-damage-survey-2026-08.md:332` cites `app.py:373`, `:906`, `:985`, `:1022` | cook snapshots are at **`app.py:1351`, `:1430`** |
+| F6 | 🛑 **WONTFIX.** The host doc is SUPERSEDED (`bf80ee4`) and its header freezes its citations in as many words. Editing them would contradict the freeze. `docs/panel-design.md:547` cites `ROADMAP.md` line 1040 for the ephemeral-filesystem flag. ⚠️ **This citation has itself drifted to `:577` since, and we caused it**, see the status block | the item is at **`ROADMAP.md:1049`** |
+| F7 | 🛑 **WONTFIX**, same superseded-doc reason as F6. ⚠️ **AND THE 'all still correct' BELOW IS NO LONGER TRUE.** `f0f01e4`'s one-line comment edit shifted all six `app.py` citations by one: 1062→1063, 1071→1072, 1096→1099, 1103→1104, 1135→1136, 1169→1170. Only `build_db.py:152-154` still holds. `docs/panel-design.md` cites `app.py:1062, 1071, 1096, 1103, 1135, 1169` and `build_db.py:152-154` | ~~**all still correct**~~, and all fragile |
 
 ⚠️ **The principle, stated once.** Every document that cites `file:line` has drifted, and the ones
 that cite function and symbol names have not. `docs/design-decisions.md` makes exactly **one** code

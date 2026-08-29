@@ -1479,9 +1479,9 @@ worth knowing before they bite. None of the *data* limitations occur in the curr
   `new_security_rating` (4/D), `new_reliability_rating` (3/C), and `new_coverage` (51.8 vs 80).
 
   The five open issues driving the two rating conditions are **understood, not unexamined**:
-  - `python:S4502` (CRITICAL, `app.py:49`) fires on the `Flask()` constructor for *any* app without a
+  - `python:S4502` (CRITICAL, on app.py's `Flask()` constructor) fires for *any* app without a
     CSRF extension — it is not a finding about our routes. No GET route writes, so there is no exposure.
-  - `python:S2068` (MAJOR, `app.py:79`) is the dev-only `SECRET_KEY` fallback, fenced by a
+  - `python:S2068` (MAJOR, on app.py's `_secret_key` dev fallback) is the dev-only `SECRET_KEY` value, fenced by a
     `RuntimeError` that fires the moment `DATABASE_URL` points at Postgres.
   - The two accessibility findings are simply wrong about this code: `static/index.html:69` is told to
     add a keyboard handler it already has (`static/app.js:2982` — Enter/Space on the `role="button"`

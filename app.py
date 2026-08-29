@@ -523,9 +523,12 @@ def serialize_recipe_content(s, rid):
 def snapshot_recipe(s, rid, cook_log_id, reason):
     """Capture the recipe's current content as a versioned snapshot (change-tracking stage 1). Writes one
     recipe_snapshots row on the caller's session (before their commit): the JSON-blob content, the trigger
-    reason ('cook' | 'manual'), the cook it belongs to (cook_log_id; NULL for manual), the actor
-    (current_user), and a real UTC timestamp. Stage 1 wires it into every cook-log INSERT with reason='cook'
-    (manual is stage 2). Nothing reads snapshots yet."""
+    reason ('original' | 'cook'), the cook it belongs to (cook_log_id; NULL on an 'original' baseline), the
+    actor (current_user), and a real UTC timestamp. Two reasons exist and no others. snapshot_original writes
+    'original'. log_cook, redo_cook and log_cook_and_rate each write 'cook'. A third reason, 'manual', was
+    designed and then DROPPED (docs/design-decisions.md, change-tracking). Snapshots ARE READ.
+    _recipe_annotations diffs the 'original' baseline against current to build the recipe page's
+    annotations."""
     s.execute(insert(RecipeSnapshot.__table__).values(
         recipe_id=rid, cook_log_id=cook_log_id, user_id=current_user.id,
         reason=reason, content=serialize_recipe_content(s, rid), created_at=now_utc(),

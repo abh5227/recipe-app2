@@ -319,7 +319,7 @@ rules** — each one was learned by breaking it, and each is cheap to re-break.
 > **`_ing_name`** (= `label or raw_text`), and **`note`**.
 >
 > This is *why* a save can NULL `label` and rewrite `raw_text` on **100%** of ingredient rows
-> (`app.py:298-311`) and still diff to **zero**. The representation churn is absorbed on purpose.
+> (`app.py::write_recipe_rows`) and still diff to **zero**. The representation churn is absorbed on purpose.
 >
 > **Widening the compared field set turns every save into a corpus-wide wall of phantom
 > annotations.** That is not hypothetical — it is the identical failure class that already shipped
