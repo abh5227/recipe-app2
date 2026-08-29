@@ -97,9 +97,16 @@ def seed_all(conn):
     5 TEST_RECIPES (source='seed') with lines+steps, and the weights chart."""
     now = _now()
     # ingredient library
+    # ⚠️ concept MUST BE SUPPLIED, exactly as build_db.seed_content supplies it (migration 031). The
+    # column defaults to '' and idx_ingredients_shared_concept is UNIQUE(concept) WHERE owner IS NULL,
+    # so leaving it to the default seeds the first ingredient and then fails on the second with
+    # "duplicate key value violates unique constraint". A seed key IS its concept. owner stays NULL,
+    # the shared marker. This harness is the THIRD writer to `ingredients` and the only one that runs
+    # on Postgres alone, which is why it survived a green SQLite suite.
     for key, ing in INGREDIENTS.items():
         conn.execute(insert(Ingredient.__table__).values(
-            id=key, name=ing["name"], descr=ing.get("descr"), pairs=ing.get("pairs"), created_at=now))
+            id=key, name=ing["name"], descr=ing.get("descr"), pairs=ing.get("pairs"),
+            created_at=now, concept=key))
     # seasons (derived from the library)
     for key, ing in INGREDIENTS.items():
         for month in ing.get("season", []):

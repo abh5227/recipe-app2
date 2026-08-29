@@ -90,6 +90,23 @@ def test_list_ordering_is_pg_collation(pg):
     assert ings == db_ings and len(ings) == 36
 
 
+def test_the_pg_seed_gives_every_ingredient_its_own_concept(pg):
+    """⚠️ THE REGRESSION THIS FILE EXISTS TO CATCH, and it escaped once. pg_harness.seed_all is the
+    THIRD writer to `ingredients` and the only one that runs on Postgres alone, so when migration 031
+    made `concept` mandatory it was missed while the SQLite suite stayed green. The partial index
+    idx_ingredients_shared_concept is UNIQUE(concept) WHERE owner IS NULL, so a seeder that leaves
+    concept to its '' default writes ONE row and then fails on the second.
+
+    Asserted on the data rather than on the seeder, so any future writer that forgets is caught here
+    too. Mirrors test_ingredient_identity.py::test_no_row_holds_the_empty_concept, which does the
+    same job on SQLite."""
+    assert _count(pg.engine, "SELECT COUNT(*) FROM ingredients") == 36
+    assert _count(pg.engine, "SELECT COUNT(*) FROM ingredients WHERE concept = ''") == 0
+    assert _count(pg.engine, "SELECT COUNT(*) FROM ingredients WHERE concept IS NULL") == 0
+    assert _count(pg.engine, "SELECT COUNT(*) FROM ingredients WHERE concept = id") == 36
+    assert _count(pg.engine, "SELECT COUNT(*) FROM ingredients WHERE owner IS NULL") == 36
+
+
 # ---- 3. recipe_stats AGGREGATIONS (correlated subqueries / MAX over text dates) ------------------
 
 def test_recipe_stats_aggregations(pg):
