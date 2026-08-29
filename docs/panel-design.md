@@ -1,5 +1,36 @@
 # The Panel: personal and shared ingredients, with submission
 
+> ## ⚠️ SUPERSEDED by [ingredient-model.md](ingredient-model.md)
+>
+> **The live model is stated there. Read that first, and read this only for history.**
+>
+> ⚠️ **This document's central framing is a misreading.** It describes the `ingredients` table as
+> having a **SHARED tier** opposed to a personal tier. **That tier does not exist and never did.** The
+> word came from [product-vision.md](product-vision.md), where "the ingredient library stays SHARED /
+> app-global" is correct and contrasts with **boxed**, the recipe-box model's word for per-user
+> ownership. This document gave the same word a second meaning, a tier inside a table, and its
+> structure is built on that second meaning. The corrected reading is one substitution: `owner IS
+> NULL` means **a library row**, not "shared".
+>
+> **It is kept, unedited below, because how the phantom took hold is worth being able to read.** One
+> document borrowed one correct word, three sessions of planning inherited the shape, and nothing in
+> the schema, the routes, the import pipeline, the library builder, the matcher or the client ever
+> implemented it. The full measurement is in
+> [reconciliation-2026-08.md](reconciliation-2026-08.md).
+>
+> **What survived the correction, because the tier was never load-bearing on it:**
+>
+> - **Option D**, the row-key and concept-key split, shipped in `eeadb79` and migration 031. It was
+>   answering a real question, which is how a personal and a library row for one concept coexist while
+>   `id` stays stable.
+> - **The detail-route privacy gate**, shipped in `88aeb72`. The predicate is `owner IS NULL`, and it
+>   is correct as written under the corrected reading.
+> - **The eight rules and the submit-and-approve design**, which are the owner's confirmed intent.
+>   They are restated in corrected terms in the superseding document.
+>
+> ⚠️ **Everything below is unedited.** Its counts, its `file:line` citations and its "shared tier"
+> language are left exactly as they were written. Do not act on them.
+
 **Status: DESIGN DRAFT, and it is not one thing.** It mixes three kinds of claim at three very
 different confidence levels, and they are labelled rather than blended:
 
