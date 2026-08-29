@@ -390,26 +390,35 @@ stops them being special, and "stops being special" is the whole content of the 
 shared because the table had no owner column. That was accurate about the schema and wrong about the
 intent.
 
-### ✅ DECIDED: a fresh clone starts with an empty ingredients table plus the reference library
+### ✅ DECIDED: a fresh clone starts empty, and the library is server-side infrastructure
 
-A new user does not need the owner's 36. They need the **software**. That means the reference library
-(`library_names`, 10,527 rows), the picker, and the matcher, so their own recipes link to ingredients
-as soon as they upload them.
+A new user does not need the owner's 36. They need the **software**, which means the reference library
+(`library_names`, 10,527 rows), the picker, and the matcher, so their recipes link to ingredients as
+soon as they upload them.
 
-So a fresh clone ships with:
+⚠️ **An earlier draft of this heading read "a fresh clone starts with an empty ingredients table plus
+the reference library", and the second half of that was a SELF-HOSTED mental model.** Chef's Choice is
+a **hosted service**, decided this session. Nobody clones it to use it. There is one server, the
+owner's, and a user reaches the library by using the service.
 
-- an **empty** `ingredients` table, no starter ingredients at all
-- the **reference library** available
+The two halves are different kinds of thing and separate cleanly.
 
-Ingredients then accumulate as the user creates and promotes them, which is exactly how the library
+- **A fresh clone is a developer checkout.** It starts with an **empty** `ingredients` table and no
+  starter ingredients. That half is correct and unchanged.
+- **The reference library is private production infrastructure.** It lives on the production
+  database. ⚠️ **A checkout does not have it and never will**, and it does not ship to a user at all.
+  ✅ `library_names.csv` is gitignored and derives from two vocabulary databases totaling 6.07 GB
+  that are gitignored too.
+
+Ingredients then accumulate as a user creates and promotes them, which is exactly how the library
 rows already behave.
 
 ⚠️ **This dissolves the bootstrap problem rather than solving it, and the distinction matters.** The
 seed-tier diagnostic flagged that shipping 247 rows of content to a fresh clone had no precedent in
 this repo. ✅ Measured: the only three migrations containing `INSERT INTO` (005, 019, 026) are
 table-rebuild copies, not content. **That concern is resolved by scoping, not by finding a technique.**
-There is no shared starter set, so there is nothing to ship. There is the owner's corpus, which gets
-migrated, and the library, which is already the starter.
+There is no shared starter set, so there is nothing to ship to anyone. There is the owner's corpus,
+which gets migrated, and the library, which sits on the server.
 
 ### ⚠️ THE ENTANGLEMENT: "migrate my ingredients in" IS the matcher work
 
@@ -483,10 +492,40 @@ never against `recipes.db`. Recorded here because they inform the build whenever
 - **How CI and the tests get ingredient fixtures** once the 36 leave production `seed.py`. The
   harness can seed its own test ingredients without them living in `seed.py`, the same way
   `fixtures.TEST_RECIPES` already decoupled the 5 recipes. That work has not been done.
-- **How the reference library reaches a fresh clone at all.** ⚠️ This one is load-bearing for the
-  decision above, and it is currently unsolved. `library_names.csv` is gitignored
-  (`.gitignore:88`), is not present on this machine, and the live `recipes.db` does not yet have the
-  table. "A new user has the library" depends entirely on answering this, and it is its own open item.
+- **How the private library gets onto the PRODUCTION database. ⏸️ DEFERRED to the deploy stage, and
+  no longer load-bearing.** An earlier draft of this list called it unsolved and load-bearing, reading
+  it as "a fresh clone needs the library". The hosted framing above removes that reading, and what is
+  left is narrower. ⚠️ **It cannot be designed now, and the blocker is not a missing technique. There
+  is no production.** ✅ Measured by a read-only deployment diagnostic at `3ac4799`: no Dockerfile, no
+  deploy workflow, no WSGI server in `requirements.txt`, no environment template. The two GitHub
+  Actions workflows test and never deploy. One `ROADMAP.md` line names Render as a future candidate.
+  ✅ Production is DEFINED as a Postgres `DATABASE_URL` (`_IS_PRODUCTION`, `app.py:75`) and the
+  default is SQLite. The right mechanism turns on the host's filesystem persistence and secret
+  handling, and there is no host to evaluate. Two sub-pieces are host-independent and are recorded
+  below.
+
+### ⏸️ DEFERRED: what the deploy stage inherits
+
+Two pieces the deployment diagnostic found. Neither turns on which host is chosen, so both can be
+settled before there is one.
+
+**(a) The Postgres loader gap, and it is structural rather than a missing branch.** ✅ `build_db.py`
+takes a raw `sqlite3` connection (`sqlite3.connect` at lines 420 and 433) and never touches SQLAlchemy
+or `DATABASE_URL`. So `seed_library_names` cannot run against Postgres **at all**. It is not a
+function missing a dialect case, it is a program that only speaks SQLite. On Postgres the Alembic
+revision creates `library_names` and nothing fills it, which self-disables the feature exactly as an
+absent file does. ✅ Outside tests, the only writers to that table are two SQLite statements in
+`build_db.py`. **A dialect-neutral loader is needed under EVERY hosting option and decided by none of
+them**, so it is worth building before the deploy stage rather than during it. It is not urgent, since
+there is no Postgres production to load into. Already an open item in
+`docs/ingredient-linkage-state.md`, recorded here with the structural detail.
+
+**(b) Library persistence is the same question as image persistence.** ✅ `ROADMAP.md` line 1040
+already flags that on an ephemeral-filesystem host, uploaded images vanish on redeploy and there is no
+object storage. A hand-placed server-side library file has that problem too. So whatever answers image
+persistence probably decides how the library file lives on the server. ⚠️ **These are ONE
+deploy-stage question, not two.** Recorded so the deploy stage inherits them together instead of
+solving one and rediscovering the other.
 
 ### Two tracks, and they should not be conflated
 

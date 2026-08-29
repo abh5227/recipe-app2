@@ -246,8 +246,10 @@ def seed_library_names(conn):
     rebuilt wholesale each run, the same as the weights chart above. Rows missing either column are
     skipped. If the file is missing, the table is left empty.
 
-    ⚠️ THE FILE IS SERVER-SIDE AND GITIGNORED, AND THAT IS THE FEATURE RATHER THAN A GAP. It is
-    ~624 KB derived from join.db (894 MB) and sources.db (5.18 GB), neither of which is ever committed
+    ⚠️ THE FILE IS SERVER-SIDE AND GITIGNORED, AND THAT IS THE FEATURE RATHER THAN A GAP. The FILE
+    is ~330 KB. (This line used to say ~624 KB, which is the size of the TABLE it loads into, a
+    different figure quoted here by mistake. README.md had it right.) It derives from join.db (894 MB)
+    and sources.db (5.18 GB), neither of which is ever committed
     or present on a server, so it is placed by hand on a machine that has generated it. A fresh clone
     and CI therefore get an EMPTY table, and the add-on-save gate (stage 5) can only match a row that
     is present. With no rows it never fires and the save path keeps behaving exactly as it does today.
@@ -271,8 +273,10 @@ def seed_library_names(conn):
 
     Format: a two-column CSV, `library_id,canonical`, with `#` comment lines allowed. Two columns
     because step-link promotion is dropped and nothing needs the reverse slug lookup (migration 029).
-    ⚠️ NOTHING IN THIS REPO GENERATES THE FILE YET. It is produced from build_library's kept rowset,
-    and that generator is not part of this commit.
+    ⚠️ THE GENERATOR IS build_library.write_library_names, shipped in 5aa257a. It writes this file
+    from build_library's kept rowset. (This line used to say nothing in the repo generated the file,
+    which was true when written.) Running it needs join.db and sources.db, so the file is produced on
+    a machine that has them and placed here by hand, and it stays gitignored and private.
     """
     if not LIBRARY_NAMES_CSV.exists():
         print(f"Note: {LIBRARY_NAMES_CSV.name} not found — library-name lookup left empty.")
