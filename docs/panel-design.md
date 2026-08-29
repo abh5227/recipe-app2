@@ -9,20 +9,25 @@ different confidence levels, and they are labelled rather than blended:
 | **🟢 CONFIRMED INTENT** | rules Andy gave in conversation and has since **reviewed and confirmed**. Settled as intent. How to build them is a separate question. | nobody, they are agreed |
 | **🔵 PROPOSED** | an assistant's inference or suggestion. Open to revision, decided by nobody. | Andy |
 
-**Not a build plan.** Nothing here is scheduled and no stage is approved.
+**Not a build plan, with two exceptions that have shipped.** The identity schema (step 1,
+`eeadb79`, migration 031) and the detail-route privacy gate (step 2a, `88aeb72`) were approved
+and are on `main`. Nothing further here is scheduled or approved.
 
-## ✅ BLOCKERS: the identity ones are RESOLVED, the privacy one is now a build task
+## ✅ BLOCKERS: all three are RESOLVED, and the privacy one is SHIPPED
 
-**The identity blockers are answered and the build can proceed.** ⚠️ **The privacy hole is not a
-design question and was never resolved by answering one.** It is a missing ownership check on the
-detail route, and it stays on the build list. See blocker 2 below, which is kept open on purpose.
+**All three are closed, and they closed in two different ways that are worth keeping apart.**
+Blockers 1 and 3 were answered by a DECISION (Q1), which is settled intent rather than working code.
+✅ **Blocker 2 was closed by CODE**, shipped in `88aeb72` and CI-green on `main`. It was never a
+design question, so no decision could have closed it.
 
 A ground-readiness inspection at `f994daf` found the schema could not represent the confirmed model.
 A follow-up diagnostic mapped the identity options, and Q1, Q2 and the `[[key]]` semantics are now
 decided. **The decisions are recorded below with the problems they solve**, because the problems are the reason the answers look the way they
 do, and a later reader who only sees the answer will be tempted to simplify it.
 
-⚠️ **Decided is not built.** Nothing here is staged and no code has moved.
+⚠️ **Decided is still not built, for nearly all of this document.** Two pieces have shipped since
+it was written and are marked where they appear: the Option D schema (`eeadb79`, migration 031) and
+the detail-route ownership gate (`88aeb72`). Everything else here is unstaged.
 
 ### 🛑 1. The primary key could not express the model  →  ✅ SOLVED BY Q1 BELOW
 
@@ -53,20 +58,36 @@ scheme has to change first (a surrogate key with `UNIQUE(owner, slug)`, a compos
 per-owner slugs), because `ingredients.id` is what `recipe_ingredients.ingredient_id` points at,
 and that is the durable link target the entire shipped architecture rests on.
 
-### 🛑 2. Personal rows are readable by everyone  →  ⚠️ STILL OPEN, and it is a code fix
+### 🛑 2. Personal rows were readable by everyone  →  ✅ RESOLVED, shipped in `88aeb72`
 
-⚠️ **Nothing in Q1, Q2 or the `[[key]]` decision closes this.** The per-reader `[[key]]` rule means
-a step link never reaches another user's row, which removes one route to the leak. **The detail
-route is still wide open**, and it needs an explicit ownership check whenever ownership ships.
+⚠️ **Closed by CODE rather than by a decision, which is what set it apart from blockers 1 and 3.**
+Nothing in Q1, Q2 or the `[[key]]` decision touched it. The per-reader `[[key]]` rule removed one
+route to the leak, and the detail route still needed its own fix.
 
-Rule 3 says personal is "private to them". `get_ingredient(iid)` at `app.py:1066` is a bare primary
-key lookup with **no ownership check**, so any logged-in user can GET any ingredient by id. The ids
-are **guessable by construction**, because they are slugified names.
+**What the hole was**, kept because the reasoning is the reason the fix looks the way it does. Rule
+3 says personal is "private to them". `get_ingredient(iid)` was a bare primary key lookup with **no
+ownership check**, so any logged-in user could GET any ingredient by id, and the ids are **guessable
+by construction** because they are slugified names. **Proven by probe at the time:** user B fetched
+user A's personal ingredient and got `200 OK`.
 
-**Proven by probe:** user 2 fetched user B's personal ingredient and got `200 OK`.
+**What shipped.** ✅ `get_ingredient` (`app.py:1071`) folds ownership into the lookup instead of
+checking after it, at `app.py:1096` to `1100`:
 
-Privacy is not only a stage-2 filter on the list route. **The detail route needs an ownership check
-too.**
+```python
+or_(Ingredient.owner.is_(None),                  # shared, readable by everyone
+    Ingredient.owner == current_user.id),        # or this reader's own personal row
+```
+
+A row the reader may not see is never fetched, so its season, region and used-in children cannot
+leak through it either, and there is exactly one refusal branch rather than two that could drift
+apart. ✅ The refusal is **404, not 403** (`app.py:1103`), byte-identical to the does-not-exist
+answer, so a slug-guesser cannot learn that somebody keeps a private row for a concept. A 403 would
+answer precisely that question.
+
+⚠️ **THE LIST ROUTE IS A SEPARATE LEAK AND IS STILL OPEN.** ✅ `list_ingredients` (`app.py:1062`)
+returns every row's `{id, name}` with **no owner filter**, so a personal row's NAME would be public
+the moment the create path makes one. That belongs to step 2 of the build order below. **The detail
+route is done. The list route is not.**
 
 ### ⚠️ 3. "Same concept" had no key, and it was blocker 1 wearing a second hat  →  ✅ SOLVED BY Q1
 
@@ -341,8 +362,10 @@ Option D change**, alongside `concept` and the unique constraint.
    exactly as `source` and `library_id` did.
 2. **The effective-library read, and per-reader resolution.** Rule 4 as a query: group by `concept`,
    prefer `owner = current_user`. `/api/ingredients` becomes user-scoped, and `[[key]]` resolution
-   uses the same rule. ⚠️ **The privacy fix belongs here**, since the detail route needs its
-   ownership check the moment personal rows can exist.
+   uses the same rule. ✅ **The DETAIL-route half of the privacy fix already shipped, out of order**
+   (`88aeb72`), deliberately landed before the create path could make a personal row to leak.
+   ⚠️ **What is left in this step is the LIST-route leak**, since `list_ingredients` still returns
+   every row's name with no owner filter.
 3. **The create path: stamp ownership AND build free-text creation.** ⚠️ **Q2 answered free-text,
    so this is a NEW CREATE PATH, not a condition.** ✅ The gate can reach `current_user` without
    plumbing, so the ownership stamp itself is cheap. But the shipped gate's only insert requires a
