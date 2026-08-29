@@ -86,3 +86,19 @@ join-*.db-shm
 # A clone without it builds a working app with an EMPTY lookup, which self-disables the add-on-save
 # create path rather than breaking anything.
 library_names.csv
+
+# The linkage matcher's regenerable output (study/matcher/). The SOURCE and the hand-judged
+# sets are committed. Everything below is recomputed by rerunning, and the checkpoints alone
+# were 244 MB in the scratch tree they were rescued from.
+study/matcher/*.pkl
+study/matcher/*.xlsx
+study/matcher/*.out
+study/matcher/*.csv
+study/matcher/*.html
+
+# ⚠️ previews/agree-sample.csv is TRACKED despite previews/ above, and it is force-added rather
+# than un-ignored. A negation cannot reach it: git never descends into a directory excluded by a
+# trailing-slash rule, so `!previews/agree-sample.csv` would be inert. It is tracked because
+# AJ60.py's 60 verdicts are keyed by SAMPLE INDEX and the AGREE block moves between HEADs, so
+# that file IS the judgment record rather than a regenerable report. Once tracked it stays
+# tracked, and .gitignore does not apply to tracked files.
