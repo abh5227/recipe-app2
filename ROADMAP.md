@@ -688,36 +688,44 @@ out. Optionally record how long it **actually** took (feeds time calibration, Ph
   **"used cookbook" thesis made into a feature** — the accumulated personal layer made explicit.
   **Composes several existing layers:** the cook-photo **album** (P4 / Stage 4), the **cook-gated ratings**,
   and (once built) the **change-tracking layer** below.
-  - **⚠️ CORRECTION — change-tracking is NOT built (a diagnostic this session):** an earlier version of this
-    entry linked notes into "the existing edit-tracking layer (`recipe_line_changes` / `recipe_additions`)."
-    Those tables were **dropped in migration `020_drop_change_layer.sql`** — a per-person overlay on read-only
-    SEED recipes (`source='seed'`, 0 in prod), **always empty**, made redundant by the box model (recipes
-    owned + directly editable, copy = duplicate). Editing today is a **destructive rewrite**
-    (`write_recipe_rows` replaces the ingredient/step rows in place) — **no before/after, no timestamp, no
-    per-change identity.** So there is **no change-tracking today**; the Journal's real prerequisite is to
-    **build one from scratch** — NOT to adopt a rich-text editor framework (that's **DONE** — TipTap + the
-    Vite build + the `[[key|label]]` step adapter are shipped; see `docs/design-decisions.md`).
-  - **The change-tracking prerequisite — LOCKED design (this session):**
-    - **HYBRID (snapshot + derived diff):** **snapshots** (full recipe VERSIONS) are the stored truth; the
-      "specific changes" are **DERIVED by diffing consecutive snapshots** — one source of truth + a diff
-      function (no separately-tracked per-line change rows).
-    - **TRIGGER:** snapshot **on COOK** (capture recipe-state when a cook is logged) **+ a manual "save a
-      version"** — BOTH from the start. A snapshot carries a **REASON** (`cook` | `manual`), so the trigger
-      is a **parameter**, not baked into the cook path (keeps the model general).
-    - **"The Journal IS the history":** no separate diff/history-view feature; the **Journal is the surface**
-      that shows recipe evolution — a cook-entry shows the **version-cooked-from** AND the **diff-from-
-      previous-snapshot** ("what I changed since last time").
+  - **CORRECTION, itself now superseded by what shipped.** An earlier version of this entry linked notes
+    into "the existing edit-tracking layer (`recipe_line_changes` / `recipe_additions`)." Those tables were
+    **dropped in migration `020_drop_change_layer.sql`**, a per-person overlay on read-only SEED recipes
+    (`source='seed'`, 0 in prod), **always empty**, made redundant by the box model (recipes owned +
+    directly editable, copy = duplicate). A diagnostic then recorded that there was **no change-tracking at
+    all**, and that the Journal's prerequisite was to build one from scratch rather than adopt a rich-text
+    editor framework (that part was already **DONE**: TipTap, the Vite build and the `[[key|label]]` step
+    adapter are shipped, see `docs/design-decisions.md`). **That build has since LANDED**, so the
+    "not built" reading is history rather than status.
+  - **WHAT SHIPPED, measured.** `recipe_snapshots` holds **298 rows**, one birth baseline per recipe.
+    `snapshot_diff.diff_snapshots` derives the changes, `_recipe_annotations` consumes it, `get_recipe`
+    returns an `annotations` array, and the recipe page renders it (O-c-1). Editing is still a destructive
+    rewrite (`write_recipe_rows` replaces the ingredient/step rows in place), and that is fine. The
+    **baseline snapshot** carries the before-state, not the rows.
+  - **The change-tracking design, LOCKED and then SHIPPED:**
+    - **HYBRID (snapshot + derived diff):** **snapshots** (full recipe VERSIONS) are the stored truth, the
+      "specific changes" are **DERIVED by diffing consecutive snapshots**, one source of truth plus a diff
+      function, with no separately-tracked per-line change rows. Shipped as designed.
+    - **TRIGGER, and the vocabulary changed on the way to shipping.** The design said `cook` plus a manual
+      "save a version", both from the start. ⚠️ **`manual` was DROPPED and never built.** The two live
+      reasons are **`original`**, a birth baseline written by `snapshot_original`, and **`cook`**, written by
+      `log_cook`, `redo_cook` and `log_cook_and_rate`. Measured: 298 rows, all `original`, zero `cook`, since
+      nothing has been cooked after the baseline pass. The trigger stayed a **parameter** rather than being
+      baked into the cook path, which is what let `original` be added later without touching it.
+    - **"The Journal IS the history":** no separate diff/history-view feature, the **Journal is the surface**
+      that shows recipe evolution. **Still to build.** The derived diff renders on the RECIPE page today,
+      not in a Journal.
     - **Notes link to changes:** a journal note can reference a **specific change from the derived diff** (the
-      "improvements associated with changes" core).
+      "improvements associated with changes" core). **Still to build**, and it is what a materialized
+      `recipe_changes` would exist for.
   - **SEQUENCING:** the change-tracking layer is the Journal's **prerequisite** — build it, **THEN** the
     Journal. The album's last stage (**3e — anchor-photo-to-method-step**) is itself deferred **behind both**
     (order: change-tracking → Journal → 3e).
-  - **Build the tracking layer needs its OWN diagnostic FIRST** (flagged, not assumed): where the snapshot is
-    captured in the **cook-log** + **manual-save** paths; **WHAT** a snapshot stores (full recipe rows? a
-    serialized blob?) + its size/shape; how the **diff** computes over the stored form; how a **note attaches
-    to a change** (a change's referenceable identity **from the diff**); how it composes with
-    `write_recipe_rows`' destructive rewrite + the box-model ownership. The next session on this **opens with
-    that read-only diagnostic → then scope the build.**
+  - **The diagnostic this entry demanded has been done**, and the tracking layer was built on it. A snapshot
+    stores a serialized content blob (`snapshot_serialize`), the diff computes over that blob
+    (`snapshot_diff`), and it composes with `write_recipe_rows`' destructive rewrite because the baseline is
+    what holds the before-state. What remains is the **Journal surface** and **note-to-change linkage**, not
+    the tracking.
   - **Deferred design decisions (settle at its own design pass):** *page-vs-drawer* (a separate route/page
     vs. a panel over the recipe); and the *journal-vs-album relationship* (do cook-photos live INSIDE
     journal entries, or does the recipe-page album coexist?). **Preview-first** (a whole new surface).

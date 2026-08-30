@@ -5,11 +5,12 @@ from the repo, from `recipes.db` read-only, or from the `previews/` CSVs. Where 
 figure was quoted from memory and disagreed with the measurement, the measurement won and
 the difference is noted in place.
 
-**The one-line state.** The library is built, the matcher works, and there is now somewhere
-for a link to go. **Still nothing links.** 50 of 3,332 ingredient lines carry a stored
-`ingredient_id`, exactly as before, because the half that would raise that to about 3,300
-is the matcher, and the matcher still has no committed home. What changed is the other
-half: decision 4 is answered and its backend is shipped, so a link now has a destination.
+**The one-line state.** The library is built, the matcher is **FINISHED**, and there is
+somewhere for a link to go. **Still nothing links.** 50 of 3,332 ingredient lines carry a
+stored `ingredient_id`, exactly as before. ⚠️ **The matcher is no longer the constraint.** It
+lives at `study/matcher/`, committed in `b42dd14`, runs in about ten seconds, and resolves
+2,214 of the 2,997 labelled lines. Five other things stand between that result and a stored
+link, and they are listed under "The matcher" below.
 
 ⚠️ **Do not read the shipped backend as "linking is done".** It is plumbing with nothing
 flowing through it. No UI reaches it, `library_names.csv` exists on no machine, and the
@@ -120,11 +121,37 @@ route using `LIKE`, which folds ASCII case on SQLite and nothing at all on Postg
 
 ## The matcher
 
-**It has no committed home.** It lives only in the session scratch directory as
-`LINK.py`, `GAPS.py`, `FEED.py` and about forty other files. None of those paths exists in
-the repo. Confirmed at the time of writing by looking for them. **If the scratch directory
-is lost, the matcher is lost** and only the `previews/` CSVs survive as a record of what it
-produced. Giving it a home is one of the things gated on the decision below.
+✅ **It has a committed home and it is FINISHED.** `study/matcher/` holds 23 source files
+and a README, committed in `b42dd14`. Re-run at `86671ee` against the live `recipes.db`,
+which it opens read-only: **9.0 seconds**, and **2,214 of 2,997 labelled lines resolve,
+73.9%**, against the 50 stored today.
+
+⚠️ **Matching is not what blocks linking. Five other things are**, and none of them is the
+matcher.
+
+**1. Nobody has read what it found.** 3,038 lines, **91.2%**, have never been individually
+read, and 2,410 of those sit in the AGREE block where two matchers landed on the same row and
+neither was checked. The confidence bands are **computed** from n-gram length and coverage in
+`AGREE.py`, so HIGH means the algorithm is confident, not that a person agreed. **Reading is
+the remaining work.**
+
+**2. There is no write path.** No code anywhere writes a matcher result into
+`recipe_ingredients.ingredient_id`. Measured by searching every `.py` in the repo. The only
+code that sets that column is `write_recipe_rows`, from a save payload, one recipe at a time.
+
+**3. The library file is absent.** A write has to route through the materialization boundary,
+`_promote_library_row`, whose first step reads `library_names`. That table is loaded from
+`library_names.csv`, which is gitignored and **is not on this machine**.
+[ingredient-model.md](ingredient-model.md) is the source of record for why the boundary
+exists.
+
+**4. Everything downstream assumes 36 ingredient rows.** Materializing the matches takes
+`ingredients` from 36 into the hundreds. **25 assertions across 10 test files** are written
+against exactly 36, as is every documented count.
+
+**5. ⚠️ 299 of the 2,214 links are AMBIGUOUS**, 13.5%, meaning the name sits on two or more
+library rows and the matcher reports all of them. **There is no tiebreak rule, and choosing
+one is its own decision** that has to be made before any of this is built.
 
 ### The banked configuration
 
@@ -322,9 +349,10 @@ display name only, in the small `library_names` lookup. The bulk-load that made 
 look expensive never happens: the corpus reaches 467 distinct library rows, so the realistic
 ceiling is about 500 rows rather than 10,527.
 
-**Three of the four things behind this gate are now unblocked**, though none is built: the
-merge tool, the mixes panel, and the autochecker. The fourth, the matcher having a committed
-home, is unchanged and is now the binding constraint on actually linking anything.
+**All four things behind this gate are now unblocked**, though none is built: the merge
+tool, the mixes panel, the autochecker, and the matcher, which has had a committed home since
+`b42dd14`. ⚠️ **What binds now is not the matcher.** It is the five blockers listed under
+"The matcher" above, of which reading the 3,038 unjudged lines is by far the largest.
 
 ### ✅ Promoted-row capitalization, DECIDED: accept the canonical's casing
 

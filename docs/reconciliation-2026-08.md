@@ -98,7 +98,8 @@ deleted or reworded.
 | D1, the seed-rebuild claim | `7ae120b` | D1 |
 | the mechanical nine | `f09fbff` | C1, C2, C4, C9, C11, E2, E3, E4, E7 |
 | the A+B safe batch, plus the coupled models.py block | `f0f01e4` | A1, A2, A3, A4, A5, A6, A7, C5, C6, C7, B1, B2, B3, B4 |
-| substitutions: drop "manual", symbolize the living refs | this commit | C3, F1, F2, F3 |
+| substitutions: drop "manual", symbolize the living refs | `86671ee` | C3, F1, F2, F3 |
+| the descriptive-text half, LAST cleanup pass | this commit | B5, B6, C8, and the identity test's module docstring |
 
 ## The F policy, decided
 
@@ -112,12 +113,24 @@ by one. `app.py:1169` is the worst of them, because it still lands on a plausibl
 would not notice it is the wrong one. **A line number went stale inside the very pass that was cataloguing
 stale line numbers.**
 
-## What the NEXT commit covers
+## ✅ The cleanup is COMPLETE
 
-The new-descriptive-text half, which this pass deliberately leaves alone: **C8** (the step-editor header's
-shipped scope), **`tests/test_ingredient_identity.py:8`** ("Nothing reads either column yet", now half
-wrong since `owner` gained a reader), **B5** (ROADMAP's change-tracking entry) and **B6** (the linkage
-constraint).
+**Every actionable entry is DONE, WONTFIX-with-a-reason, or OPEN-with-a-stated-reason.** Counted at this
+commit over all 63 numbered entries:
+
+| state | n | |
+| --- | --- | --- |
+| ✅ **DONE** | 36 | fixed and tagged with the commit that did it |
+| 🛑 **WONTFIX** | 7 | A8, A9, C10, F4, F5, F6, F7, each with the reason on its row |
+| 🛑 **WITHDRAWN** | 1 | E6, a false finding |
+| ⏸️ **OPEN** | 9 | D2, D3, D4, D5, E1, E5, E8, E9, E10, each carrying why |
+| not actionable | 10 | all of **G**, data-shape anomalies rather than doc defects, and all of **H**, which says in as many words "do not act on these" |
+
+**Nothing is silently unaddressed.** The nine OPEN entries fall into three kinds. **D2** is the one live
+wording call, cook-gating across `CLAUDE.md:13` and `ROADMAP.md:689`. **D3, D4 and D5** are largely moot,
+since `panel-design.md` is superseded and `ingredient-model.md` settles the vocabulary. **E1, E5, E8, E9
+and E10** each need something a doc pass cannot supply: the gitignored library, a live suite run, the real
+generator, a seven-site comment sweep, or a decision about where new prose belongs.
 
 ⚠️ **Two entries turned out to be unactionable as written**, and are marked below rather than removed.
 **E6 is WITHDRAWN as a false finding.** **C10's quoted phrase is not findable anywhere in the repo.**
@@ -133,13 +146,13 @@ user's private row.
 
 | # | file:line | what it says | risk |
 | --- | --- | --- | --- |
-| A1 | `models.py:93` | `# NULL = shared, else the owner` | code comment |
-| A2 | `models.py:86` | "`owner` NULL means shared" | code comment |
-| A3 | `app.py:1098` | `# shared, readable by everyone` | code comment |
-| A4 | `app.py:336,339` | "ONE shared row at any concept", "the shared marker" | code comment |
-| A5 | `build_db.py:135,138` | same two phrases | code comment |
-| A6 | `tests/pg_harness.py:109` | "the shared marker" | code comment |
-| A7 | 5 test names: `test_every_existing_row_is_backfilled_to_concept_equals_id_and_shared`, `test_1_two_shared_rows_for_one_concept_are_REJECTED`, `test_2_a_shared_and_a_personal_row_for_one_concept_COEXIST` (`test_ingredient_identity.py:39,86,97`), `test_all_36_shared_rows_still_serve_to_the_harness_user`, `test_a_shared_row_serves_to_a_DIFFERENT_user_too` (`test_ingredient_privacy.py:41,55`) | rename | test rename |
+| A1 | ✅ **DONE (`f0f01e4`).** `models.py:93` | `# NULL = shared, else the owner` | code comment |
+| A2 | ✅ **DONE (`f0f01e4`).** `models.py:86` | "`owner` NULL means shared" | code comment |
+| A3 | ✅ **DONE (`f0f01e4`).** ⚠️ TWO sites, not one: the gate comment AND `get_ingredient`'s docstring at `:1076`. `app.py:1098` | `# shared, readable by everyone` | code comment |
+| A4 | ✅ **DONE (`f0f01e4`).** `app.py:336,339` | "ONE shared row at any concept", "the shared marker" | code comment |
+| A5 | ✅ **DONE (`f0f01e4`).** `build_db.py:135,138` | same two phrases | code comment |
+| A6 | ✅ **DONE (`f0f01e4`).** `:106`'s index name deliberately left. `tests/pg_harness.py:109` | "the shared marker" | code comment |
+| A7 | ✅ **DONE (`f0f01e4`).** Five renamed, plus 7 further tier-sense comments and docstrings inside the two files. Zero tier-sense hits remain there. 5 test names: `test_every_existing_row_is_backfilled_to_concept_equals_id_and_shared`, `test_1_two_shared_rows_for_one_concept_are_REJECTED`, `test_2_a_shared_and_a_personal_row_for_one_concept_COEXIST` (`test_ingredient_identity.py:39,86,97`), `test_all_36_shared_rows_still_serve_to_the_harness_user`, `test_a_shared_row_serves_to_a_DIFFERENT_user_too` (`test_ingredient_privacy.py:41,55`) | rename | test rename |
 | A8 | 🛑 **WONTFIX.** Migrations are historical artifacts and the corrected model lives in `docs/ingredient-model.md`. Editing comments in an applied or soon-applied migration rests on an unenforced convention anyway (`migrate.py` records `filename` only, with no checksum), so they are left exactly as written. `migrations/031_ingredient_identity.sql` header, 7 hits, including line 4's rationale "a user's personal gochujang and **the shared gochujang**" | applied history | ⚠️ do NOT edit an applied migration. Correct it in the doc that explains it |
 | A9 | 🛑 **WONTFIX**, same reason as A8. `alembic/versions/f2a3b4c5d6e7_…py`, 4 hits | applied history | ⚠️ same |
 | A10 | ✅ **DONE (`bf80ee4`)**, leave-and-document, explained in `docs/ingredient-model.md` section 3. **`idx_ingredients_shared_concept`**, a schema object, named in `migrations/031:44`, `alembic/…:37,43`, `models.py:96`, `tests/pg_harness.py:106`, `tests/test_ingredient_identity.py:137`, `tests/test_pg_integration.py:97`, `docs/panel-design.md:505` | ⚠️ **NEEDS A MIGRATION** on both dialects. The cheapest correct answer may be to leave the name and document it |
@@ -149,12 +162,12 @@ user's private row.
 
 | # | file:line | claims | reality | risk |
 | --- | --- | --- | --- | --- |
-| B1 | `docs/SECURITY.md:65-69` | `PUT`/`DELETE /api/recipes` "do **not** check `owner`". The image route is "the **one exception**… the single genuine write-ownership gap" | 7 owner gates: `app.py:848, 940, 964, 1529, 1596, 1638, 1896` | doc edit |
-| B2 | `docs/design-decisions.md:807-809` | the same gap, "recorded here as a follow-up, **not fixed in this stage**" | same. **Contradiction J: one closed follow-up recorded as open in two documents** | doc edit |
-| B3 | `ROADMAP.md:1049` | images served off local disk "with **no upload endpoint**" | 6 photo routes: `app.py:951, 1499, 1564, 1583, 1604, 1624` | doc edit |
-| B4 | `docs/migration-plan.md:91` | "an upload path (**none today**)" | same | doc edit |
-| B5 | `ROADMAP.md:691` | "**change-tracking is NOT built**… no before/after, no timestamp, no per-change identity" | 298 `recipe_snapshots`, `snapshot_diff` consumed at `app.py:619`, `get_recipe` returns `annotations` | doc edit |
-| B6 | `docs/ingredient-linkage-state.md:11,123-125,327` | the matcher "has no committed home", "if the scratch directory is lost, the matcher is lost", "**the binding constraint**" | committed in `b42dd14` to `study/matcher/`, runs from there in 9.5 seconds. ⚠️ The constraint is now verification effort and a write path, not the matcher | doc edit |
+| B1 | ✅ **DONE (`f0f01e4`).** `docs/SECURITY.md:65-69` | `PUT`/`DELETE /api/recipes` "do **not** check `owner`". The image route is "the **one exception**… the single genuine write-ownership gap" | 7 owner gates: `app.py:848, 940, 964, 1529, 1596, 1638, 1896` | doc edit |
+| B2 | ✅ **DONE (`f0f01e4`).** `docs/design-decisions.md:807-809` | the same gap, "recorded here as a follow-up, **not fixed in this stage**" | same. **Contradiction J: one closed follow-up recorded as open in two documents** | doc edit |
+| B3 | ✅ **DONE (`f0f01e4`).** `ROADMAP.md:1049` | images served off local disk "with **no upload endpoint**" | 6 photo routes: `app.py:951, 1499, 1564, 1583, 1604, 1624` | doc edit |
+| B4 | ✅ **DONE (`f0f01e4`).** `docs/migration-plan.md:91` | "an upload path (**none today**)" | same | doc edit |
+| B5 | ✅ **DONE (this commit).** Rewritten to say the locked design SHIPPED, absorbing the `manual` mentions at `:704`, `:705` and `:716` into one correct statement of the `original` / `cook` vocabulary. `docs/design-decisions.md:1417`'s stale "`'cook'`-only for now" was fixed in the same pass. `ROADMAP.md:691` | "**change-tracking is NOT built**… no before/after, no timestamp, no per-change identity" | 298 `recipe_snapshots`, `snapshot_diff` consumed at `app.py:619`, `get_recipe` returns `annotations` | doc edit |
+| B6 | ✅ **DONE (this commit).** All three sites replaced with the five measured blockers: 91.2% unread, no write path, the absent library CSV, the 36-row scale assumption, and 299 ambiguous links needing a tiebreak rule. The matcher is recorded as FINISHED, re-run at 9.0 seconds. `docs/ingredient-linkage-state.md:11,123-125,327` | the matcher "has no committed home", "if the scratch directory is lost, the matcher is lost", "**the binding constraint**" | committed in `b42dd14` to `study/matcher/`, runs from there in 9.5 seconds. ⚠️ The constraint is now verification effort and a write path, not the matcher | doc edit |
 
 ## C. Stale docstrings claiming live code is inert
 
@@ -167,12 +180,12 @@ load-bearing.
 | C2 | ✅ **DONE.** `snapshot_headsync.py:5` | "nothing calls it yet" | called on **every save**, `app.py:591-592` via `:888`, and `assert_content_safe` aborts the save | code comment |
 | C3 | ✅ **DONE (this commit).** Six sites: `app.py`'s `snapshot_recipe` docstring and four in `models.py`'s `RecipeSnapshot`. Measured reasons are `original` and `cook`, four call sites, and `manual` exists nowhere in code or data. `app.py:525,527` | "reason ('cook' \| 'manual')" and "Nothing reads snapshots yet" | live reasons are `cook` and `original`, `manual` does not exist, and annotations read them | code comment |
 | C4 | ✅ **DONE.** `models.py:397` | "INERT: nothing reads this table" (`library_names`) | 2 readers: `app.py:314`, `app.py:1266-1268` | code comment |
-| C5 | `models.py:74` | `library_id`, "Nothing on a page reads it" | the whole-row drawer select serves it, and `search_library` reads it | code comment |
-| C6 | `models.py:75` | "Both columns are inert until stage 5" | stage 5 shipped | code comment |
-| C7 | `models.py:68` | "stage 5 **will** also create rows" | it does | code comment |
-| C8 | `static/step-editor.js:1-5` | "Stage 1a… **PLAIN TEXT ONLY**… NO link chips, NO `[[key\|label]]` parsing" | `IngredientLink` at `:30`, `renderHTML` at `:39`, `step-adapter.js` imported | code comment |
+| C5 | ✅ **DONE (`f0f01e4`).** `models.py:74` | `library_id`, "Nothing on a page reads it" | the whole-row drawer select serves it, and `search_library` reads it | code comment |
+| C6 | ✅ **DONE (`f0f01e4`).** `models.py:75` | "Both columns are inert until stage 5" | stage 5 shipped | code comment |
+| C7 | ✅ **DONE (`f0f01e4`).** `models.py:68` | "stage 5 **will** also create rows" | it does | code comment |
+| C8 | ✅ **DONE (this commit).** The header names the shipped capability, TipTap steps with `[[key\|label]]` chips, rather than a stage label nothing defines. `{{...}}` and autocomplete are still correctly listed as not handled. `static/step-editor.js:1-5` | "Stage 1a… **PLAIN TEXT ONLY**… NO link chips, NO `[[key\|label]]` parsing" | `IngredientLink` at `:30`, `renderHTML` at `:39`, `step-adapter.js` imported | code comment |
 | C9 | ✅ **DONE.** `docs/design-decisions.md:1419` heading | "shipped; pure engine, **nothing consumes it yet**" | superseded 154 lines later by O-c-1 at `:1573`. ⚠️ The risk is the **heading**, which a table-of-contents reader trusts | doc edit |
-| C10 | ⚠️ **UNLOCATABLE, cannot be actioned as written.** `docs/migration-plan.md` holds ZERO occurrences of "invite", and the quoted phrase appears nowhere in the repo except this row. `docs/migration-plan.md` schema note | `invites.expires_at` "present now, unused until a later stage" | `signup` checks it, `auth.py:120-121` | doc edit |
+| C10 | 🛑 **WONTFIX, UNLOCATABLE.** Cannot be actioned as written. `docs/migration-plan.md` holds ZERO occurrences of "invite", and the quoted phrase appears nowhere in the repo except this row. `docs/migration-plan.md` schema note | `invites.expires_at` "present now, unused until a later stage" | `signup` checks it, `auth.py:120-121` | doc edit |
 | C11 | ✅ **DONE.** `auth.py:9-10` | "NO *existing* app route is gated yet (that's auth-3b)" | auth-3b shipped, and every route is gated by `_require_login` | code comment |
 
 ## D. Doc-versus-doc contradictions
@@ -180,28 +193,28 @@ load-bearing.
 | # | contradiction | risk |
 | --- | --- | --- |
 | **D1** | ✅ **DONE (`7ae120b`)**, both sides corrected. The direction is settled, the mechanism is still open. ⚠️ **WAS HIGHEST PRIORITY.** `CLAUDE.md:349` says the 36-row library is "*still* seed-rebuilt on every `build_db` (**intended**, the seed 'bones' stay)". `docs/panel-design.md`'s corpus decision says the rebuild must stop and the 36 become durable rows. **`CLAUDE.md` is the file every session reads first.** | ⚠️ needs a decision, then a doc edit |
-| D2 | Cook-gating. `CLAUDE.md:13` and `ROADMAP.md:689` say "cook-gated star ratings". `app.py:1449` says `# NOT cook-gated: rating an uncooked recipe is allowed`. `docs/single-user-assumptions.md:156` already records the correction. The gate is client-side only (`static/app.js:185,221`) | doc edit |
-| D3 | **Four vocabularies for the same 36 rows**: "the owner's corpus" (`panel-design`), "the seed 'bones'" (`CLAUDE:349`), "the 36 library descriptions" (`CLAUDE:103`), "a shared ingredient field guide" (`OVERVIEW:12`, `README:46`, `models.py:67`) | needs a decision |
-| D4 | Moderation. `docs/product-vision.md:71` says "**No moderation/review.**" `docs/panel-design.md:279` rule 8 says "It **must** have a review UI" | needs a decision |
-| D5 | The per-line change layer. `docs/product-vision.md:55` lists "per-line edits/additions" as the personal layer. `recipe_line_changes` and `recipe_additions` were dropped in migration 020 and neither table exists | doc edit |
-| D6 | Change-tracking, B5 above, is also a doc-versus-doc: `ROADMAP:691` versus `design-decisions:1392,1573` | doc edit |
-| D7 | The two security under-claims, B1 and B2, are the same claim in two documents | doc edit |
-| D8 | The two upload under-claims, B3 and B4 | doc edit |
+| D2 | ⏸️ **OPEN, the one live entry left.** Needs a wording call across BOTH `CLAUDE.md:13` and `ROADMAP.md:689`, and `single-user-assumptions.md` says the design intent is real, so it may want rephrasing rather than deletion. Cook-gating. `CLAUDE.md:13` and `ROADMAP.md:689` say "cook-gated star ratings". `app.py:1449` says `# NOT cook-gated: rating an uncooked recipe is allowed`. `docs/single-user-assumptions.md:156` already records the correction. The gate is client-side only (`static/app.js:185,221`) | doc edit |
+| D3 | ⏸️ **OPEN but largely moot.** `docs/ingredient-model.md` settles the vocabulary ("the owner's corpus") and `CLAUDE.md:349` was corrected in `7ae120b`. What remains is propagating the term. **Four vocabularies for the same 36 rows**: "the owner's corpus" (`panel-design`), "the seed 'bones'" (`CLAUDE:349`), "the 36 library descriptions" (`CLAUDE:103`), "a shared ingredient field guide" (`OVERVIEW:12`, `README:46`, `models.py:67`) | needs a decision |
+| D4 | ⏸️ **OPEN but largely moot.** `panel-design.md` is SUPERSEDED, so its rule 8 is no longer a live claim against `product-vision.md`. Moderation. `docs/product-vision.md:71` says "**No moderation/review.**" `docs/panel-design.md:279` rule 8 says "It **must** have a review UI" | needs a decision |
+| D5 | ⏸️ **OPEN**, a one-line `product-vision.md` correction nobody has scoped. The per-line change layer. `docs/product-vision.md:55` lists "per-line edits/additions" as the personal layer. `recipe_line_changes` and `recipe_additions` were dropped in migration 020 and neither table exists | doc edit |
+| D6 | ✅ **DONE (this commit)**, resolved by B5. Change-tracking, B5 above, is also a doc-versus-doc: `ROADMAP:691` versus `design-decisions:1392,1573` | doc edit |
+| D7 | ✅ **DONE (`f0f01e4`)**, both sides corrected together. The two security under-claims, B1 and B2, are the same claim in two documents | doc edit |
+| D8 | ✅ **DONE (`f0f01e4`)**, both sides corrected together. The two upload under-claims, B3 and B4 | doc edit |
 
 ## E. Stale numbers, correct when written
 
 | # | file:line | says | measured | risk |
 | --- | --- | --- | --- | --- |
-| E1 | `docs/ingredient-linkage-state.md:78` | ASCII folding "erases **56** of the 10,527" | **39** | doc edit |
+| E1 | ⏸️ **OPEN.** The corrected number needs the gitignored library to re-derive and cannot be checked from a clean tree. `docs/ingredient-linkage-state.md:78` | ASCII folding "erases **56** of the 10,527" | **39** | doc edit |
 | E2 | ✅ **DONE.** `OVERVIEW.md:72` | "50 of **3,384** ingredient lines" | **3,332** non-heading (3,555 rows all told) | doc edit |
 | E3 | ✅ **DONE.** `OVERVIEW.md:73` | "**125 of 304** recipes have one" | **298** recipes, and 120 have a real image path. ⚠️ **Fixing this caught an UNCATALOGUED sibling three lines up**, `OVERVIEW.md:70` carried the same wrong **304** for the baseline count. Measured 298 recipes and 298 `recipe_snapshots`, all `reason='original'`. Fixed in the same pass | doc edit |
 | E4 | ✅ **DONE.** `OVERVIEW.md:26` | `seed.py` holds "the ingredient library **and the people**" | `PEOPLE` no longer exists (migration 020) | doc edit |
-| E5 | `docs/migration-plan.md:31,52` | "SQLite suite (**288 + 6 skipped**) AND the PG integration suite (**6**)" | **1,238 + 22 skipped**, and **21** PG | doc edit |
+| E5 | ⏸️ **OPEN.** A moving target: the counts must be measured by a live suite run at the moment of the edit. `docs/migration-plan.md:31,52` | "SQLite suite (**288 + 6 skipped**) AND the PG integration suite (**6**)" | **1,238 + 22 skipped**, and **21** PG | doc edit |
 | E6 | ~~`CLAUDE.md` setup block~~ | ~~"7 packages"~~ | 🛑 **WITHDRAWN, THIS ENTRY WAS WRONG.** `CLAUDE.md`'s "7 packages" is CORRECT. Re-measured: `requirements.txt` has **7** uncommented lines (flask, flask-login, SQLAlchemy, alembic, psycopg, pillow, pillow-heif). The "6" was a miscount. **Acting on this would have introduced an error.** | 🛑 do not fix |
 | E7 | ✅ **DONE.** `docs/design-decisions.md:575` | "the real **3,385**-row corpus in `recipe_ingredients`" | **3,555** | doc edit |
-| E8 | `previews/current-coverage.csv` | 11,217 rows / 10,387 kept / 183,651 keys | **11,357 / 10,527 / 184,891** at this HEAD. ⚠️ The artifact labels its own HEAD, and is gitignored | regenerate |
-| E9 | `ingredient_cuts.py:25` and `build_library.py:21, 580, 866, 2027, 2235, 2245`. ⚠️ **Re-measured: SEVEN sites across two files, not the two cited here, and both line numbers in the original row had drifted** | "the 11,153-row list" | 11,357. The reasoning around them is unaffected | code comment |
-| E10 | The linkage denominator. `3,332` (all non-heading, the seg0-core denominator) versus `2,997` (with a label, `LINK.py`'s input). **Both are correct over their own set, and no document says so.** 2,771/3,332 = 83.2%, 2,214/2,997 = 73.9% | doc addition |
+| E8 | ⏸️ **OPEN.** The artifact is gitignored and regenerating it means running the real generator against `join.db` / `sources.db`. `previews/current-coverage.csv` | 11,217 rows / 10,387 kept / 183,651 keys | **11,357 / 10,527 / 184,891** at this HEAD. ⚠️ The artifact labels its own HEAD, and is gitignored | regenerate |
+| E9 | ⏸️ **OPEN**, a deferred comment sweep over seven sites. `ingredient_cuts.py:25` and `build_library.py:21, 580, 866, 2027, 2235, 2245`. ⚠️ **Re-measured: SEVEN sites across two files, not the two cited here, and both line numbers in the original row had drifted** | "the 11,153-row list" | 11,357. The reasoning around them is unaffected | code comment |
+| E10 | ⏸️ **OPEN.** A doc ADDITION rather than a correction, and where it belongs is a choice. ⚠️ Partly satisfied already: the matcher README states it, and B6 now states it too. The linkage denominator. `3,332` (all non-heading, the seg0-core denominator) versus `2,997` (with a label, `LINK.py`'s input). **Both are correct over their own set, and no document says so.** 2,771/3,332 = 83.2%, 2,214/2,997 = 73.9% | doc addition |
 
 ## F. Stale line references
 
@@ -272,7 +285,7 @@ So writing the backfill requires, in order:
 3. only then `UPDATE recipe_ingredients SET ingredient_id = …`
 
 ⚠️ **Scale consequence nobody has costed.** 2,771 matches would materialize up to 2,771 `ingredients`
-rows against **36** today. **23 test assertions and every documented count are written against 36.**
+rows against **36** today. **25 test assertions across 10 files, and every documented count, are written against 36.** ⚠️ This row said **23** when written. Re-measured at `86671ee`: **25**. Same class of internal error as E6 and E9.
 
 ⚠️ **And 3,038 lines (91.2%) have never been individually read**, 2,410 of them in an AGREE block
 where two matchers concurred and neither was checked. The confidence bands are **computed** from

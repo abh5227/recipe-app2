@@ -1,9 +1,11 @@
-// step-editor.js — Stage 1a: per-step TipTap editors for the method, PLAIN TEXT ONLY.
+// step-editor.js — per-step TipTap editors for the method, with [[key|label]] ingredient chips.
 //
-// Scope (1a): one minimal TipTap Editor per NON-heading step, plain schema (document/paragraph/
-// text/history). NO link chips, NO [[key|label]] parsing, NO {{...}} handling, NO autocomplete —
-// those are 1b/1c/1d. Raw markup shows as LITERAL text here (expected); it round-trips byte-faithful
-// because a plain schema neither interprets nor rewrites it.
+// Scope: one Editor per NON-heading step on a compact schema (document/paragraph/text/history) plus
+// IngredientLink, the inline atom node defined below. A [[key|label]] in the step text becomes a chip the
+// caret treats as one unit, rendered as the SAME <button class="ingredient"> markup reading-mode linkify
+// emits, and step-adapter.js serializes it back to [[key|label]]. Still NOT handled, and deliberately:
+// {{...}} scaling markup and autocomplete. Those stay LITERAL text and round-trip byte-faithful, because
+// a schema that does not interpret them cannot rewrite them.
 //
 // ISLAND INVARIANT: these instances live inside the DOM that app.js's paintRecipe() replaces via
 // `app.innerHTML = …`. paintRecipe fires ONLY at initial load / enterEditMode / exitEditMode — never

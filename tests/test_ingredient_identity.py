@@ -5,7 +5,9 @@ is, and the model needs a personal and a library row for one concept to coexist.
 four behaviors that split has to produce, because the constraint that produces them is subtle: one
 unique index is not enough, and the reason is a NULL-comparison rule that is easy to get wrong twice.
 
-Nothing reads either column yet. Stage 1 is shape only.
+`owner` now has exactly ONE reader, the ownership gate in get_ingredient (88aeb72). `concept` still has
+zero and stays shape-only until the create path exists. Both facts are pinned below, by
+test_owner_is_read_ONLY_by_the_detail_route and test_concept_still_has_no_readers.
 """
 import sqlite3
 

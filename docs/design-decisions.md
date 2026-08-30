@@ -1413,9 +1413,11 @@ tracking **starts fresh**).
   the FK (no explicit handling — same as `cook_photos`). ⚠️ **Stage-4 revisit:** once notes reference derived
   changes, cascading a snapshot could orphan a note — revisit then (no notes yet).
 
-**Snapshots are WRITTEN, not yet read** — invisible foundation. (Stage 2 — a manual "save a version" — was
-later **DROPPED**: versioning is **cook-only**. The `reason` column stays, `'cook'`-only for now, keeping the
-schema general in case a non-cook trigger returns.)
+**Snapshots are WRITTEN, and since O-c-1 they are READ.** `_recipe_annotations` diffs the baseline against
+current and `get_recipe` serves the result. (Stage 2, a manual "save a version", was later **DROPPED**. The
+`reason` column kept its generality and then used it. Two reasons are live: `'cook'` from the three cook
+paths, and `'original'`, the birth baseline `snapshot_original` writes, which was added after this line was
+first written. `'manual'` exists in no code path and no row.)
 
 ### Change-tracking stage 3 — the snapshot diff (shipped; pure engine, consumed by the annotation render, O-c-1 below)
 
