@@ -166,32 +166,69 @@ a:hover { color: var(--berry-lift); }
 }
 .back:hover { color: var(--berry); }
 
-/* ---------- Home: masthead ---------- */
-.site-head { border-bottom: 2px solid var(--ink); padding-bottom: 18px; margin-bottom: 30px; }
+/* .site-title is NO LONGER a home selector — the browse masthead is the wordmark lockup below.
+   The rule stays because the FEED masthead reuses it: .feed-mast .site-title (near the foot of
+   this file) overrides only size/leading/tracking/colour and inherits family, weight and margin
+   from here. Deleting this rule breaks the feed. */
 .site-title {
   font-family: var(--font-title); font-weight: 600;
   font-size: clamp(34px, 7vw, 54px); line-height: 1.0;
   letter-spacing: -0.01em; margin: 0;
 }
-.site-sub { font-family: var(--display); font-style: italic; color: var(--ink-soft); margin: 8px 0 0; }
 
-/* In-season rail */
-.season-rail {
-  background: var(--card); border: 1px solid var(--line);
-  border-radius: 12px; padding: 18px 20px; margin-bottom: 38px;
+/* ---------- Home: the browse header (Round 2, stage a) ----------
+   No container. The logo and the nav rest on the page: no card, no ruled paper, no outline.
+   Everything here is scoped to .home-view (set by renderHome, previously an unused hook) so it
+   cannot reach the recipe view, the feed or the forms. */
+
+/* Browse is a scan-and-compare page, so it runs wider than the 920px .page default: fluid to a
+   generous cap, which fills a laptop and stops short of edge-to-edge on an ultrawide. Written as
+   .page.home-view (0,2,0) rather than .home-view (0,1,0) so it beats .page on specificity instead
+   of on source order, matching how .page.recipe-view already does it. Scoped, so it CANNOT move
+   the recipe column (760px via --page-measure) or the feed (full-bleed desk, 1360px inner board). */
+.page.home-view { max-width: 1400px; }
+
+.home-view .browse-head {
+  position: relative; display: flex; align-items: center; gap: 24px; margin: 0 0 46px;
 }
-.season-rail h2 {
-  font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase;
-  color: var(--amber); font-weight: 600; margin: 0 0 12px;
+/* The toque rises 0.61em above the wordmark's box — (0.952 - 0.046) + 0.917 * 43/56 - 1 — so the
+   box alone is not the logo's real height. Padding the top by exactly that makes the element's
+   box equal the INK, which is what lets align-items:center actually centre it against the nav.
+   This one font-size scales the whole lockup, mark and perch included. */
+.home-view .bh-brand { margin: 0; padding: 0.61em 0 0; font-size: 58px; line-height: 1; font-weight: 400; }
+/* At the wider browse max all five items fit on one row (1128 inside 1312), so the nav is a single
+   flushed-right row. It still WRAPS: a narrower window drops below what the row needs, and wrapping
+   is the graceful answer there rather than an overflow. */
+.home-view .bh-nav { margin-left: auto; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; justify-content: flex-end; }
+/* The orange accent rule under the header: --hand at 2px, the same weight and colour the browse
+   mocks gave it. It spans the content box, flush with the logo's left edge, and touches nothing —
+   there is no vertical margin rule in the app for it to meet, so it reads as an accent, not a box. */
+.home-view .browse-head::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: -16px;
+  height: 2px; background: var(--hand); pointer-events: none;
 }
-.season-chips { display: flex; flex-wrap: wrap; gap: 9px; }
-.chip {
-  font: inherit; font-size: 14px; cursor: pointer;
-  padding: 6px 13px; border-radius: 999px;
-  border: 1px solid var(--line); background: var(--paper); color: var(--ink);
+/* bolder colour: the primary action carries the olive rather than the default dark brown */
+.home-view .bh-nav .new-recipe { background: var(--green); border-color: var(--green); }
+.home-view .bh-nav .new-recipe:hover { background: var(--green-lift); border-color: var(--green-lift); }
+
+/* ---- the wordmark lockup ----
+   FONT GOTCHA: the family is the LITERAL stack, never var(--font-hand). The mark is positioned in
+   em against the wordmark, so if the family ever resolved to something else the mark would drift
+   off the C. Kalam is the bundled face already declared at the top of this file — do NOT add a
+   second @font-face for it, a duplicate face for the same family+weight is what caused the drift
+   this placement was rebuilt to fix. The lockup's two coloured capitals use .wm-cap, renamed off
+   the caption .cap (12 uses in app.js) so the two can never be confused; they are inline-styled and
+   deliberately get no rule here. */
+.wm { font-family: "Kalam", "Caveat", cursive; line-height: 1; display: inline-block;
+      letter-spacing: -0.018em; word-spacing: -0.20em; transform: rotate(-1.4deg); white-space: nowrap; }
+.wm .ch { position: relative; display: inline-block; }
+.wm .mk { position: absolute; line-height: 0; transform-origin: 50% 100%; }
+
+@media (max-width: 760px) {
+  .home-view .browse-head { flex-wrap: wrap; gap: 14px; margin-bottom: 38px; }
+  .home-view .bh-brand { font-size: 34px; }
+  .home-view .bh-nav { margin-left: 0; justify-content: flex-start; width: 100%; }
 }
-.chip:hover { border-color: var(--amber); color: var(--berry); }
-.chip:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; }
 
 /* Recipe cards */
 .recipe-grid { display: grid; grid-template-columns: 1fr; gap: 2px; }
@@ -1476,7 +1513,6 @@ a:hover { color: var(--berry-lift); }
 .month.in .bar { background: var(--amber); }
 .month .m { font-size: 10px; color: var(--ink-soft); margin-top: 5px; font-variant: small-caps; }
 .month.in .m { color: var(--ink); font-weight: 600; }
-.season-none { color: var(--ink-soft); font-size: 15px; margin: 0; }
 
 .tags { display: flex; flex-wrap: wrap; gap: 8px; }
 .tag {
@@ -1512,9 +1548,8 @@ a:hover { color: var(--berry-lift); }
    Authoring: New-recipe button, owner actions, change overlay, form
    =================================================================== */
 
-/* Masthead now holds the "+ New recipe" button on the right */
-.site-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; }
-.site-head-actions { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+/* .site-head / .site-head-actions retired with the old browse masthead (Round 2 stage a).
+   .new-recipe is still emitted, by the new header's action row. */
 .new-recipe { white-space: nowrap; }
 
 /* ---- Test-recipe tier (scratch recipes; a removable bridge feature) ----

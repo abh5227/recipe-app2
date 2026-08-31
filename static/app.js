@@ -529,6 +529,18 @@ async function route() {
 }
 
 /* ---------- home view ---------- */
+// The finalised wordmark, lifted VERBATIM from the approved logo (preview/LOGO-FINAL.html,
+// sha f9a9cff6927c4668) — the three-lobe toque perched on the "Chef's" C at the locked em
+// placement. It is one lockup: .bh-brand's font-size scales the mark, the wordmark AND the
+// perch together, because the mark is positioned in em against the wordmark. Do not resize
+// the mark or the wordmark separately, and do not edit the em values.
+// FONT: the .wm rule uses the LITERAL "Kalam","Caveat",cursive, never var(--font-hand) — an
+// em-positioned mark drifts if the family resolves differently. See styles.css.
+// The only edit to the approved markup is the class token .cap -> .wm-cap, renamed off a
+// collision with the Polaroid/album caption .cap. Nothing load-bearing: no font, no colour,
+// no placement value changed.
+const BRAND_LOCKUP = `<span class="wm" style="color:#7a4718"><span class="ch"><span class="wm-cap" style="color:#4E4B24">C</span><span class="mk" style="bottom:calc(0.952em + -0.046em);left:calc(50% + 0.176em);width:0.917em;transform:translateX(-50%) rotate(-9deg)"><svg viewBox="4 12 56 43" style="width:100%;height:auto;display:block" aria-hidden="true"><path d="M 26.8 19.3 A 11 11 0 1 0 26.8 36.7" fill="none" stroke="#4E4B24" stroke-width="6" stroke-linecap="round"/><path d="M 21.5 30 A 11.5 11.5 0 0 1 42.5 30" fill="none" stroke="#4E4B24" stroke-width="6" stroke-linecap="round"/><path d="M 50.8 19.3 A 11 11 0 1 0 50.8 36.7" fill="none" stroke="#9C4A2E" stroke-width="6" stroke-linecap="round"/><rect x="16" y="42" width="32" height="13" rx="3.5" fill="#4E4B24"/></svg></span></span>hef&rsquo;s <span class="wm-cap" style="color:#9C4A2E">C</span>hoice</span>`;
+
 // Renders a photo if the file loads, otherwise a tidy labeled placeholder.
 // The <img> sits on top of the placeholder; if it 404s, onerror removes it,
 // revealing the placeholder beneath. So "no photo yet" still looks intentional.
@@ -543,18 +555,7 @@ function photo(r, kind) {
 async function renderHome() {
   view = null;
   app.className = "page home-view";
-  const [recipes, season] = await Promise.all([
-    api("/api/recipes"),
-    api("/api/in-season"),
-  ]);
-
-  const monthName = new Date(2000, season.month - 1, 1).toLocaleString("en", { month: "long" });
-
-  const chips = season.ingredients.length
-    ? season.ingredients
-        .map((i) => `<button class="chip" data-item="${esc(i.id)}">${esc(i.name)}</button>`)
-        .join("")
-    : `<p class="season-none">Nothing in the library is flagged for ${esc(monthName)} yet.</p>`;
+  const recipes = await api("/api/recipes");
 
   // Test (scratch) recipes sink to the bottom; real recipes keep their normal order. A stable sort
   // (partition by is-test) preserves the API's existing name order within each group.
@@ -592,20 +593,18 @@ async function renderHome() {
     ? `<span id="test-bulk"><button class="btn danger-soft sm" data-delete-test>Delete ${testCount} test recipe${testCount > 1 ? "s" : ""}</button></span>`
     : "";
 
+  // Browse runs wider than the 920px .page default (see .page.home-view), so all five nav items sit
+  // on ONE row beside the 58px lockup: 311 + 408 + 200 + 165 = 1128 inside a 1312px content box.
+  // The row still wraps, because a narrower viewport (a 1000px window gives 912px) cannot hold it.
+  // Order is the old masthead's: bulk-delete, the three actions, then who. Every delegated hook is
+  // preserved verbatim — [data-delete-test], [data-import-url], [data-logout].
   app.innerHTML = `
-    <div class="site-head">
-      <div>
-        <h1 class="site-title">Chef's Choice</h1>
-        <p class="site-sub">Field notes from the kitchen — recipes, and what goes in them.</p>
-      </div>
-      <div class="site-head-actions">${bulkTest}<a class="btn ghost" href="#/feed">Cooking</a><button type="button" class="btn ghost" data-import-url>Import from URL</button><a class="btn new-recipe" href="#/new">+ New recipe</a>${
+    <header class="browse-head">
+      <h1 class="bh-brand">${BRAND_LOCKUP}</h1>
+      <nav class="bh-nav">${bulkTest}<a class="btn ghost" href="#/feed">What&rsquo;s cooking?</a><button type="button" class="btn ghost" data-import-url>Import from URL</button><a class="btn new-recipe" href="#/new">+ New recipe</a>${
         CURRENT_USER ? `<span class="site-user">${esc(CURRENT_USER.display_name || CURRENT_USER.email)}<button type="button" data-logout>Sign out</button></span>` : ""
-      }</div>
-    </div>
-    <div class="season-rail">
-      <h2>In season now — ${esc(monthName)}</h2>
-      <div class="season-chips">${chips}</div>
-    </div>
+      }</nav>
+    </header>
     <div class="recipe-grid">${cards}</div>`;
 }
 
