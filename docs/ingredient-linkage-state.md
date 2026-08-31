@@ -76,7 +76,7 @@ populates the table at all.
   two source databases it is derived from. Placed by hand on a machine that generated it.
   This is precisely why the feature self-disables without it.
 - **`ingredient_slug()` is the shared minting rule.** Unicode-preserving (ASCII-folding
-  erases 56 of the 10,527 canonicals outright), underscores rather than `slugify()`'s
+  erases 56 of the 10,515 canonicals outright), underscores rather than `slugify()`'s
   hyphens. The search route and the save gate both call it. Two copies would make the
   route's `matched_by: "slug"` answer a lie.
 - **Tiers.** `'seed'` is the hand-authored 36 and is protected. `'app'` is promoted and
@@ -202,7 +202,7 @@ never took effect. Not chased, because both lose.
 
 ### Current coverage, at `460cae5`
 
-Library rebuilt fresh from `join.db` plus `sources.db`: 11,357 rows, 10,527 kept, 184,891
+Library rebuilt fresh from `join.db` plus `sources.db`: 11,357 rows, 10,515 kept, 184,891
 index keys.
 
 **Two numbers, and they are different questions.**
@@ -218,7 +218,7 @@ WHAT seg0-core WOULD LINK           MATCHED 2,777   83.3%
                                     reach a row 3,300 = 99.0%
 ```
 
-The 10,527-row library lives in `join.db` and reaches no recipe row at all.
+The 10,515-row library lives in `join.db` and reaches no recipe row at all.
 `import_write.py` sets `ingredient_id` to `None` at line 128 and says so, twice.
 
 ## Confidence, and what has actually been read
@@ -347,7 +347,7 @@ time either.
 target and it grows one row at a time as links are made. `recipes.db` gains identity plus
 display name only, in the small `library_names` lookup. The bulk-load that made option 2
 look expensive never happens: the corpus reaches 467 distinct library rows, so the realistic
-ceiling is about 500 rows rather than 10,527.
+ceiling is about 500 rows rather than 10,515.
 
 **All four things behind this gate are now unblocked**, though none is built: the merge
 tool, the mixes panel, the autochecker, and the matcher, which has had a committed home since
@@ -367,10 +367,10 @@ the curation tool when there is one.**
   sorting or index keys and none touches a stored canonical. `penne` is lowercase because
   Wikidata's label is. "Stop lowercasing upstream" is not an available fix, since nothing
   lowercases.
-- **Only two thirds of canonicals are lowercase.** Measured over all 10,527: 66.3% all
+- **Only two thirds of canonicals are lowercase.** Measured over all 10,515: 66.3% all
   lowercase, 13.6% Title Case, 11.0% Sentence case, 8.4% mixed, 0.6% non-Latin, 6 ALL CAPS.
   The other third carry casing that means something.
-- ⚠️ **A blind `.title()` changes 9,079 of 10,527 names and DESTROYS casing in 1,339.**
+- ⚠️ **A blind `.title()` changes 9,079 of 10,515 names and DESTROYS casing in 1,339.**
   938 promote a lowercase particle, 290 flatten interior caps, 111 mangle an apostrophe.
   Real examples: `XO sauce` to `Xo Sauce`, `Elliott's blueberry` to `Elliott'S Blueberry`,
   `half-and-half` to `Half-And-Half`, `leite de castanha` to `Leite De Castanha`.
@@ -378,11 +378,11 @@ the curation tool when there is one.**
   with each other, let alone with the 36. `Dijon mustard` sits beside `honey dijon
   dressing`. `Brie de Meaux` sits beside `brie`.
 - **The only safe transform buys the wrong thing.** Uppercasing the first character only
-  destroys nothing (verified: 0 of 10,527), but yields sentence case, so `Egg pasta` still
+  destroys nothing (verified: 0 of 10,515), but yields sentence case, so `Egg pasta` still
   sits beside `Soy Sauce`. Different, not consistent.
 
 **It affects zero rows today** and cannot until the picker ships. Evidence:
-`previews/canonical-casing.csv`, all 10,527 rows with casing bucket, trap flags and both
+`previews/canonical-casing.csv`, all 10,515 rows with casing bucket, trap flags and both
 transforms.
 
 ### The merge job, no longer gated

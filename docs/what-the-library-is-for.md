@@ -94,10 +94,28 @@ The only things that leave are:
 
 Stated so that a rule written from the section above does not get read as more decisive than it is.
 
-**There is no merge operation.** `apply_renames` refuses a rename whose target is another kept row's
-canonical, and says so in the refusal text. `resolve_borrowed` moves a name and never a row.
-`hand_removals.csv` removes a name from a row. `ingredient_cuts.py` cuts a row and keeps nothing.
-Folding row A's names onto row B and retiring A is machinery that does not exist yet.
+**There is a fold operation, and it is the only thing that merges two rows.** This paragraph used to
+say no such machinery existed. It does now. `build_library.apply_folds` moves a duplicate row's names
+onto the row that should answer for them, records what moved, then cuts the duplicate. It is written
+as a `fold` action in `hand_removals.csv`, which names the surviving row by id in an `into` column and
+by name in an `into_canonical` column that the build checks rather than trusts. The survivor keeps its
+own identity and gains `folded_from` and `absorbed`. The duplicate leaves through `folded_into`, which
+`apply_cuts` re-derives on every pass.
+
+Twelve rows have been folded this way, all of them a Latin binomial standing beside the common-name row
+it names. Allium sativum went onto garlic, Coriandrum sativum onto cilantro, Spinacia oleracea onto
+spinach. A plain removal would have lost 1,894 names between them, which are the names this document
+keeps so that a Latin import still resolves.
+
+**The other three still do what they always did.** `apply_renames` refuses a rename whose target is
+another kept row's canonical, and says so in the refusal text. `resolve_borrowed` moves a name and never
+a row. `ingredient_cuts.py` cuts a row and keeps nothing.
+
+**⚠️ What the fold still does not decide is which row survives.** The operation carries out a judgement
+rather than making one. Where a Latin name sits beside a common name this document settles it, because
+the common name wins the canonical. Where two everyday English names sit beside each other it does not,
+and the fold refuses to guess: a self-fold, a chain of folds, a missing target and a target that is
+itself cut are all reported rather than resolved.
 
 **The US-English default picks a display name. It does not decide what counts as one ingredient.**
 The default settles which name to show when an ingredient has several (US English, "cilantro" over

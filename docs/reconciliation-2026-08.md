@@ -252,7 +252,7 @@ Not documentation problems. Actual data, recorded so a later change does not tri
 
 | # | previously logged | actual |
 | --- | --- | --- |
-| H1 | "`.season-none` at `styles.css:1479` is dead CSS, trivial future cleanup" | ⚠️ **It is LIVE.** `static/app.js:557` uses it for the home season rail's empty state. Stage 7 removed the **drawer's** year-round line by making `buildSeason` return `""`. The home rail is a different, live use |
+| H1 | "`.season-none` at `styles.css:1479` is dead CSS, trivial future cleanup" | ⚠️ **It was LIVE when this was written**, used by `static/app.js` for the home season rail's empty state. Stage 7 removed the **drawer's** year-round line by making `buildSeason` return `""`, and the home rail was a different, live use. ✅ **CLOSED by the browse port (`dd89a05`), which dropped the season rail entirely.** `season-none`, `season-rail` and `season-chips` now appear 0 times in `app.js` and `styles.css`. The original "dead CSS" reading became true, by removal rather than by being right |
 | H2 | "`library_names.csv` exists on no machine" | It is absent from the **repo root**, where `build_db` looks. A copy exists in the session scratch directory |
 | H3 | "the matcher is 328 untracked files, one reset from gone" | True when written. Committed in `b42dd14`. 24 files, 172 KB of source and hand judgment |
 | H4 | "`ingredients` has exactly two writers and both were fixed" | **Three.** `tests/pg_harness.py` was the third and only ran under Postgres. Fixed in `3ac4799` |
@@ -406,3 +406,7 @@ These are load-bearing and right. **Do not "fix" them.**
 
 It corrects nothing. It records what a complete read found, so that Phase 4's authoritative document
 and the eventual fixes start from measurement rather than from memory.
+
+It is also a **dated snapshot** and stays one. Queues opened since this read are tracked in
+[open-library-queues.md](open-library-queues.md), which is a living register rather than a record of
+one afternoon.

@@ -206,7 +206,7 @@ def ingredient_slug(name):
     column in a different shape and would never match the ones already there.
 
     ⚠️ \w IS UNICODE-AWARE AND THAT IS THE POINT. Folding to ASCII first, which import_write's
-    _base_slug does for recipe titles, erases 56 of the 10,527 library canonicals outright: 丸糯米,
+    _base_slug does for recipe titles, erases 56 of the 10,515 library canonicals outright: 丸糯米,
     オーロラソース, لحم مقدد, клёцки all reduce to the empty string. This keeps them.
 
     ⚠️ THE SEARCH ROUTE AND THE FUTURE SAVE PATH MUST BOTH CALL THIS ONE FUNCTION. The route reports

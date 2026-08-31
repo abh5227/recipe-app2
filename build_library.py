@@ -2200,11 +2200,12 @@ def mark_commonality(rows, king_arthur):
 
 
 def write_library_names(rows, path):
-    """Write the two-column id -> canonical lookup that build_db's seed_library_names loads.
+    """Write the id -> canonical lookup that build_db's seed_library_names loads.
 
-    THE OTHER HALF OF A CONTRACT, and the contract is exactly two column names. The loader reads
-    this file with a csv.DictReader over `library_id` and `canonical`, filtering `#` lines first, so
-    those two headers and that comment tolerance are the whole agreement between the modules.
+    THE OTHER HALF OF A CONTRACT, and the contract is two column NAMES rather than a column count.
+    The loader reads this file with a csv.DictReader over `library_id` and `canonical`, filtering `#`
+    lines first, so those two headers and that comment tolerance are the whole agreement between the
+    modules. The file carries a third column, `commonality`, which the loader ignores.
     tests/test_library_names_generator.py round-trips a file written here straight through
     seed_library_names, which is what keeps the two from drifting apart.
 
@@ -2212,7 +2213,7 @@ def write_library_names(rows, path):
     sheet, so the lookup and the review sheet always describe the same list. Sorted by canonical so a
     regenerated file diffs readably against the last one rather than reshuffling.
 
-    ⚠️ IDS ARE WRITTEN AS-IS AND NOTHING HERE PARSES THEM. Measured over the 10,527 kept rows: 61.1%
+    ⚠️ IDS ARE WRITTEN AS-IS AND NOTHING HERE PARSES THEM. Measured over the 10,515 kept rows: 61.1%
     are Wikidata Q-ids, 38.4% are Open Food Facts ids shaped 'en:egg-pasta', 0.5% are authored slugs
     and 4 are wiktextract keys. They are opaque strings to both this writer and the loader, and any
     rule that read shape out of one would break on the other three.

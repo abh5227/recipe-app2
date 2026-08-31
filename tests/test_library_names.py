@@ -2,7 +2,7 @@
 
 Stage 1 adds the table and the model and nothing else, so what is worth pinning is the SHAPE and the
 round trip. The shape matters because the missing third column is a decision, not an oversight: a
-`slug` column plus its index was measured (1,044 KB against 624 KB on the 10,527-row library) and
+`slug` column plus its index was measured (1,044 KB against 624 KB on the 10,515-row library) and
 dropped along with step-link promotion, so a later session re-adding it should have to change a test
 that says why. The table is also deliberately EMPTY after a build, since the loader arrives in a later
 stage and reads a gitignored server-side file that CI will not have.

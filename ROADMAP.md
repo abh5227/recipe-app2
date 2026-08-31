@@ -505,8 +505,14 @@ direction — palette, type, the R1/R2 boundary, the punch-list — in
   C (ledger + formatting) → D (controls/rating) → E (reserve R2 hooks); per-stage commits, suite
   green at each. **Recipe page only.**
 - **Round 2 (deferred — needs real accruing data):** the handwritten **edit/note layer** (earthy hand color),
-  the **wear/patina** deepening with cook count, the populated compare/version display, and the
-  **list/browse page redesign** (the scale/browsing review, after the ~295 import).
+  the **wear/patina** deepening with cook count, and the populated compare/version display.
+- **List/browse page redesign — ✅ SHIPPED** in `dd89a05`, `1253206`, `fe8f7d1`. The header is the
+  finalized logo on a clean uncontained masthead with a `--hand` accent rule, browse runs to 1400px
+  rather than the global 920px, the flat list became a card grid with the photo off the text and the
+  category tab reusing `TAG_CATEGORY`, and search plus four sorts are wired client-side over the loaded
+  payload. ⚠️ **Still deferred:** the tag/cooked/rating **filter panel**, and which tag earns the card's
+  category tab (it takes the first stored tag today, and the promoted course/type mapping is a later
+  tag pass).
 - **Method step check-off (R2 use-layer).** Each step's number becomes a **checkbox**; checking it
   **crosses out** that step and marks it done — a live cooking aid. **Session-only** (ephemeral
   front-end state, clears on refresh; no persistence/backend — a "where am I now" aid, not stale
@@ -590,8 +596,11 @@ Small recipe-metadata features that later filtering/discovery depend on.
 
 Builds on Phases 8–9.
 
-- **10a — Search ranking & sort.** Rank matches (name > ingredient > notes); sort by
-  rating, cook count, recency, cuisine, time, tag. Sets the home list's default order.
+- **10a — Search ranking & sort. Partly shipped** in `fe8f7d1`. Browse now searches name, author and
+  the visible tags as a case-insensitive substring, and sorts by Name (the default), Rating, Times
+  cooked and Last cooked, with the last-cooked date appearing on the cards in that mode only. The pure
+  logic is `static/browse.js`, unit-tested. ⚠️ **Still to do:** ranking matches by field (name above
+  ingredient above notes), and sorting by cuisine, time or tag.
 - **10b — Filters.** Cuisine/region, tags, dietary, equipment, difficulty, time, favorites.
 - **10c — In-season recipe filter.** Recipes whose linked ingredients are in season now
   (global or local season — see 10g; linked lines only).

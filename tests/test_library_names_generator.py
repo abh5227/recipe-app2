@@ -22,7 +22,7 @@ def _row(ident, canonical, cut_by="", commonality="obscure"):
 
 
 # Every id shape the real library actually uses, plus the two characters that break hand-formatted
-# CSV. Measured over the 10,527 kept rows: Q-ids 61.1%, OFF ids 38.4%, authored slugs 0.5%.
+# CSV. Measured over the 10,515 kept rows: Q-ids 61.1%, OFF ids 38.4%, authored slugs 0.5%.
 ROWS = [
     _row("Q1063736", "penne"),                                  # Wikidata
     _row("en:egg-pasta", "egg pasta"),                          # Open Food Facts

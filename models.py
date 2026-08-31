@@ -395,7 +395,7 @@ class LibraryName(Base):
     opening join.db (894 MB) or sources.db (5.18 GB), neither of which is ever present on a server.
     TWO COLUMNS: an earlier draft carried a `slug` column and an index for the reverse
     slug -> library_id lookup that step-link promotion needed, step-link promotion is dropped, and the
-    column went with it (624 KB rather than 1,044 KB on the current 10,527-row library).
+    column went with it (624 KB rather than 1,044 KB on the current 10,515-row library).
     library_id is the library row's own id, which is a Wikidata Q-id 61.1% of the time, an Open Food
     Facts id like 'en:egg-pasta' 38.4% of the time, and an authored slug or wiktextract key for the
     rest, so one Text PK covers every shape. READ by _promote_library_row, the save path's promote

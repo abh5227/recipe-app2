@@ -435,7 +435,7 @@ which are now the real way an ingredient enters the app.
 model calls for it, **migrated in as part of the owner's corpus rather than re-seeded from `seed.py`**.
 Once migrated they are ordinary durable rows, indistinguishable in kind from any promoted ingredient.
 
-**Why.** Every other ingredient in the system already works this way. The 10,527 reference-library
+**Why.** Every other ingredient in the system already works this way. The 10,515 reference-library
 rows live in a lookup table and are never re-seeded. Any promoted or personal row is a durable
 `ingredients` row. **The 36 are the anomaly, not the pattern.** Treating them like the rest is what
 stops them being special, and "stops being special" is the whole content of the decision.
@@ -447,7 +447,7 @@ intent.
 ### ✅ DECIDED: a fresh clone starts empty, and the library is server-side infrastructure
 
 A new user does not need the owner's 36. They need the **software**, which means the reference library
-(`library_names`, 10,527 rows), the picker, and the matcher, so their recipes link to ingredients as
+(`library_names`, 10,515 rows), the picker, and the matcher, so their recipes link to ingredients as
 soon as they upload them.
 
 ⚠️ **An earlier draft of this heading read "a fresh clone starts with an empty ingredients table plus

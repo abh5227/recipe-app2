@@ -271,8 +271,15 @@ def seed_library_names(conn):
     the feature exactly as an absent file does, so PG keeps today's behavior rather than
     half-enabling. A dialect-neutral loader is a separate decision.
 
-    Format: a two-column CSV, `library_id,canonical`, with `#` comment lines allowed. Two columns
-    because step-link promotion is dropped and nothing needs the reverse slug lookup (migration 029).
+    Format: a CSV with `#` comment lines allowed, read by NAME over `library_id` and `canonical`.
+    Those two are the contract. There is no slug column because step-link promotion is dropped and
+    nothing needs the reverse lookup (migration 029).
+
+    ⚠️ THE FILE CARRIES A THIRD COLUMN, `commonality`, AND THIS LOADER IGNORES IT. The tier is written
+    by build_library.mark_commonality and rides in the file so it is available without a rebuild. The
+    library_names TABLE is still two columns, so the app cannot query the tier yet. Putting it there is
+    a dual-dialect schema change (a numbered migration plus an Alembic revision, and build_db never
+    runs against Postgres) and is deferred. Reading by name is what lets the two states coexist.
     ⚠️ THE GENERATOR IS build_library.write_library_names, shipped in 5aa257a. It writes this file
     from build_library's kept rowset. (This line used to say nothing in the repo generated the file,
     which was true when written.) Running it needs join.db and sources.db, so the file is produced on

@@ -195,7 +195,9 @@ only.**
 - The handwritten **edit/note layer** (in the reserved earthy hand color).
 - The **wear / patina deepening** with cook count.
 - The **populated compare / version display**.
-- The **list / browse page redesign** (the "scale / browsing review" — after the ~295 import).
+- ~~The **list / browse page redesign** (the "scale / browsing review" — after the ~295 import).~~
+  **✅ Shipped** (`dd89a05`, `1253206`, `fe8f7d1`): clean header with the finalized logo, a card grid,
+  and search plus sort. The **filter panel** and the card's promoted category tab remain deferred.
 
 ### Reserve-not-build (R1 architects for R2 so it isn't a retrofit)
 

@@ -38,7 +38,7 @@ which name wins the display slot are settled in
 [what-the-library-is-for.md](what-the-library-is-for.md). That document remains the library's
 admission charter and this one does not restate it.
 
-Size: **10,527 rows** carrying **184,891 variation keys** (change-list E8). The rows are built in
+Size: **10,515 rows** carrying **184,891 variation keys** (change-list E8). The rows are built in
 `join.db` and `sources.db`, about 6.07 GB of gitignored input, and reach the app through one
 generated file, `library_names.csv`, roughly 330 KB of `library_id` to `canonical` pairs
 (`build_db.py`'s loader docstring, corrected in `e3d899b`).
@@ -145,7 +145,7 @@ times that linkage is a separate later pass. The import pipeline imports nothing
 that is correct rather than an omission.
 
 ⚠️ The constraint is not plumbing. A server holds `library_names` and nothing else, which is
-**10,527 canonical names**. The matcher indexes **184,891 variation keys** over the same rows
+**10,515 canonical names**. The matcher indexes **184,891 variation keys** over the same rows
 (change-list). Import-time linking against canonicals alone would be a far weaker matcher, and the
 variation index **has no server-side representation at all**. A second constraint sits beside it:
 `plan_recipe` is pure by contract and takes no connection, which is what makes the import dry-run
