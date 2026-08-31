@@ -92,6 +92,7 @@ except ImportError:                                   # the verdicts are optiona
 HAND_REMOVALS = os.environ.get("HAND_REMOVALS", "hand_removals.csv")
 AUTHORED_ROWS = os.environ.get("AUTHORED_ROWS", "authored_rows.csv")
 HAND_RENAMES = os.environ.get("HAND_RENAMES", "hand_renames.csv")
+KING_ARTHUR = os.environ.get("KING_ARTHUR_CSV", "king-arthur-staples-v2.csv")
 JOIN_DB = os.environ.get("JOIN_DB", "join.db")
 SOURCES_DB = os.environ.get("SOURCES_DB", "sources.db")
 VOCAB = os.environ.get("VOCAB_DIR", "vocab")
@@ -2074,12 +2075,128 @@ COLUMNS = [
  ("Same thing at another strength", "strength_b", 40),
  ("Member names to read for extraction", "members", 46),
  (">>> JUDGEMENTS BELOW >>>", "__div1", 4),
- ("Confidence", "confidence", 11), ("What I was unsure about", "flags", 60),
+ ("Confidence", "confidence", 11), ("How common", "commonality", 12),
+ ("What I was unsure about", "flags", 60),
  ("Checks that fired", "n_flags", 9), ("Things that subclass it", "subclasses", 11),
  ("Why it is in the list", "why", 42), ("How the name was chosen", "how", 30),
  (">>> YOUR CALL BELOW >>>", "__div2", 4), ("My call", "__blank", 16),
  ("My note", "__blank2", 36),
 ]
+
+
+# ─────────────────────────────────────────────────────────────────────────────────────
+# Commonality: how ordinary an ingredient is, so the app can lead with salt and tuck
+# epazote behind a filter.
+#
+# ⚠️ THIS ORDERS, IT NEVER CUTS. what-the-library-is-for.md is explicit that coverage is
+#    the point and that a zero-line row is evidence about the corpus, never about the row.
+#    An unused kombu is valid coverage and keeps its place in the list. Commonality only
+#    decides what a person sees first.
+#
+# ⚠️ IT IS INTRINSIC AND RECIPE-INDEPENDENT. Nothing here reads recipes.db. Recipe usage is
+#    a separate overlay and mixing the two would collapse the library onto one kitchen,
+#    which is the corpus-as-target error docs/parent-child-gap.md exists to name.
+#
+# THE SIGNAL. n_variations, the number of names the sources carry for a row, is the only
+# field that separates. Measured against the 298-recipe corpus purely as a CHECK, never as
+# an input: rows with 0 to 2 variations are used 0.7% of the time, rows with 100 or more
+# 36.1%, and the gradient is monotonic across every band between. n_sources does not work,
+# it saturates at 5 and its median is 1: garlic and galangal both carry 5.
+#
+# ⚠️ AND THE SIGNAL INVERTS ON THE MOST COMMON THINGS THERE ARE. salt, sugar, water, egg,
+#    oil and pepper are AUTHORED rows, added by hand precisely because no source carried
+#    them as a clean entry, so they hold 0 to 1 variations and the raw gradient files them
+#    with the most obscure rows in the catalog. Of the 50 most-used rows in the corpus, 9
+#    score 9 or fewer variations. That is why two floors exist below.
+#
+# ⚠️ THE KNOWN LIMIT, WHICH IS NOT FIXED HERE ON PURPOSE. A specific form of a common thing
+#    scores low: 'light brown sugar' holds 0 variations, 'Shaoxing wine' 0, 'light soy
+#    sauce' 9, while their parents hold hundreds. King Arthur catches the volume-measured
+#    ones ('all-purpose flour' is charted) and the rest stay mis-tiered. Fixing it properly
+#    means parent-child inheritance, which is the unbuilt gap in docs/parent-child-gap.md,
+#    and inventing a shallow version here would be worse than the miss. The recipe-usage
+#    overlay, kept separate, is what catches these for sourcing priority.
+# ─────────────────────────────────────────────────────────────────────────────────────
+
+COMMONALITY_TIERS = ("staple", "common", "everyday", "speciality", "obscure")
+
+# ⚠️ THE UNIVERSAL BASICS, STATED RATHER THAN DERIVED. No signal in the rowset can tell
+#    'salt' from 'teuk trey': both are authored rows holding one name. Which things are in
+#    every kitchen is a claim about the world, so it is written down where it can be read
+#    and argued with, the same way authored_rows.csv states its rows.
+# ⚠️ NORMALISED AT DEFINITION, and the reason is a bug this caught. The lookup runs
+#    norm_name(canonical), which folds a hyphen to a space, so a literal 'all-purpose flour'
+#    written here would normalise to 'all purpose flour' at lookup time and NEVER match its
+#    own entry. The literals stay readable and norm_name is applied to both sides.
+STAPLE_BASICS = frozenset(norm_name(n) for n in {
+    "water", "salt", "sugar", "flour", "egg", "oil", "butter", "milk", "pepper",
+    "black pepper", "olive oil", "all-purpose flour", "granulated sugar", "baking powder",
+    "baking soda", "vanilla extract", "honey", "rice", "onion", "garlic", "vinegar",
+    "heavy cream", "brown sugar", "yeast",
+})
+
+# ⚠️ WHAT n_variations AND KING ARTHUR BOTH MISS. King Arthur charts what a cook measures by
+#    volume, which is not the same as what a cook has. You count eggs rather than cupping
+#    them, so 'egg' is absent from the chart, and so are generic 'oil', 'pepper' and 'heavy
+#    cream'. Four rows, listed because four is cheaper to maintain than a rule that would
+#    have to model measurement practice.
+HAND_FLOOR = frozenset(norm_name(n) for n in {"egg", "oil", "pepper", "heavy cream"})
+
+
+def load_king_arthur(path=KING_ARTHUR):
+    """The King Arthur weight chart's ingredient names, normalised for matching.
+
+    ⚠️ THIS FILE IS A VOLUME-TO-WEIGHT TABLE, NOT A COMMONALITY LIST, and its membership rule
+    is 'measured by volume in an American kitchen'. That is why it carries water, salt and
+    diced onions but not eggs, chicken or rice. Read as a commonality signal it is a partial
+    floor with knowable gaps, so it may RAISE a tier and never lower one.
+
+    Measured over the current chart: 129 rows, 120 of which match a catalog row once the
+    qualifier is stripped ('Garlic (minced)' -> garlic) and the plural folded ('Onions' ->
+    onion). 109 distinct rows, of which 88 were already everyday or better on n_variations
+    alone, so the chart's real contribution is the other 21: water, salt, sugar, the flours,
+    baking soda, cocoa and the rest of the low-variation baking shelf."""
+    if not os.path.exists(path):
+        return frozenset()
+    names = set()
+    with open(path, encoding="utf-8") as fh:
+        for row in csv.DictReader(ln for ln in fh if not ln.lstrip().startswith("#")):
+            raw = (row.get("ingredient") or "").strip()
+            if not raw:
+                continue
+            bare = norm_name(re.sub(r"\([^)]*\)", "", raw))
+            if bare:
+                names.add(bare)
+                if bare.endswith("s"):
+                    names.add(bare[:-1])                    # Onions -> onion
+    return frozenset(names)
+
+
+def mark_commonality(rows, king_arthur):
+    """Give every kept row one of COMMONALITY_TIERS.
+
+    The gradient comes from n_variations, then two floors raise what it gets wrong. A floor
+    can only move a row UP: a King Arthur ingredient that already reads common stays common.
+
+    ⚠️ CALLED AFTER THE LAST annotate, because annotate is what finalises n_variations, and a
+    tier computed before it would describe a row the build no longer has."""
+    counts = collections.Counter()
+    for row in rows:
+        if row["cut_by"]:
+            row["commonality"] = ""                          # a cut row is not in the list
+            continue
+        n = row["n_variations"]
+        tier = ("common" if n >= 100 else "everyday" if n >= 40
+                else "speciality" if n >= 10 else "obscure")
+        name = norm_name(row["canonical"])
+        floored = name in king_arthur or name in HAND_FLOOR
+        if floored and COMMONALITY_TIERS.index(tier) > COMMONALITY_TIERS.index("everyday"):
+            tier = "everyday"                                # raise only, never lower
+        if name in STAPLE_BASICS:
+            tier = "staple"
+        row["commonality"] = tier
+        counts[tier] += 1
+    return counts
 
 
 def write_library_names(rows, path):
@@ -2104,6 +2221,13 @@ def write_library_names(rows, path):
     primary key, so the loader would raise on a duplicate, and raising in build_db is a worse place
     to find out. Refusing to WRITE a file that cannot be loaded is the cheaper failure.
 
+    ⚠️ THREE COLUMNS NOW, AND THE THIRD IS ADDITIVE ON PURPOSE. `commonality` rides alongside the
+    two the loader reads. build_db.seed_library_names pulls its fields by NAME through a DictReader
+    (`row.get("library_id")`, `row.get("canonical")`), so an unknown column is ignored rather than
+    breaking it, and a machine holding an older file keeps loading. Getting the tier into the DATABASE
+    needs a column on library_names, which is a dual-dialect schema change (a numbered migration plus
+    an Alembic revision) and is deliberately NOT part of this. The file carries it first.
+
     csv.writer does the quoting. Canonicals contain commas and apostrophes, and hand-formatting the
     line is how a name with a comma in it silently becomes two columns.
     """
@@ -2121,9 +2245,9 @@ def write_library_names(rows, path):
         f.write("# Generated by build_library.write_library_names from the kept rowset. Loaded by\n")
         f.write("# build_db.seed_library_names. Server-side and gitignored, never committed.\n")
         out = csv.writer(f)
-        out.writerow(["library_id", "canonical"])
+        out.writerow(["library_id", "canonical", "commonality"])
         for row in kept:
-            out.writerow([row["id"], row["canonical"]])
+            out.writerow([row["id"], row["canonical"], row.get("commonality", "")])
     return len(kept)
 
 
@@ -2439,6 +2563,14 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, names_out=NAMES_OUT, 
             say(f"    dangling fold  {rule.get('id')}: {why}")
     strength_a, strength_b = mark_strength(rows)
     rows = annotate(rows, superclasses, off_parents)
+    # ⚠️ AFTER THE LAST annotate, which is what finalises n_variations. A tier computed before it
+    #    would describe a row the build no longer has. Nothing here reads recipes.db: commonality is
+    #    intrinsic, and recipe usage is a separate overlay.
+    king_arthur = load_king_arthur()
+    commonality = mark_commonality(rows, king_arthur)
+    say(f"\n  commonality, over the kept rows ({len(king_arthur)} King Arthur names loaded)")
+    for tier in COMMONALITY_TIERS:
+        say(f"    {tier:<12} {commonality[tier]:6,d}")
 
     say(f"\nentries: {len(rows):,}")
     for reason, n in dropped.most_common():
