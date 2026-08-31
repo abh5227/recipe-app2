@@ -838,6 +838,13 @@ def apply_removals(rows, removals):
         for rule in removals.get(key, ()):
             seen.add(key)
             action, reason = rule["action"], rule["reason"].strip()
+            # ⚠️ fold is handled by apply_folds, LATER in the pipeline, and is skipped here
+            #    explicitly. The chain below is if/elif with no else, so an unhandled action is a
+            #    silent no-op, and a fold quietly doing nothing is exactly the failure that would
+            #    look like a successful build.
+            if action == "fold":
+                seen.add(key)
+                continue
             if action == "drop":
                 row["hand_reasons"].append(reason)
             elif action == "drop_variation":
@@ -858,6 +865,112 @@ def apply_removals(rows, removals):
         row["n_variations"] = len(row["variations"]) - 1
     dangling = [r for key, rules in removals.items() if key not in seen for r in rules]
     return rows, dangling
+
+
+def apply_folds(rows, removals, superclasses, off_parents):
+    """Move a duplicate row's names onto the row that should answer for them, then cut it.
+
+    ⚠️ THE OPERATION THE BUILD DID NOT HAVE. what-the-library-is-for.md says a Latin or
+    other-language name for an ingredient that already has a common-name row is an ALIAS on
+    that row, not a second row, and that "folding row A's names onto row B and retiring A is
+    machinery that does not exist yet". This is that machinery. Measured over the 12 pairs it
+    was written for: 1,894 names would be lost if the duplicate were simply dropped, because
+    apply_removals transfers nothing. Those are exactly the names the charter keeps so a Latin
+    import still resolves.
+
+    ⚠️ WHERE THIS RUNS IS LOAD-BEARING, AND IT IS NOT BESIDE apply_removals. Three of the rules
+    between them key on the row's OWN identity: strip_as_food reads row["anchor"],
+    drop_initialism_expansions and drop_agrovoc_symbols read by_entry. Fold before those and the
+    dying row's names are processed under the SURVIVOR's identity, so they misfire silently. Fold
+    runs after them and before resolve_borrowed, so the moved names are fully assembled, have been
+    through every identity-bound rule, and still get name-resolution on their new row.
+
+    ⚠️ THE DYING ROW IS MARKED THROUGH folded_into, NEVER cut_by. cut_by is assigned in exactly
+    one place, annotate, as apply_cuts(...), and annotate runs twice after this. Writing cut_by
+    here would be silently erased. Setting folded_into makes apply_cuts re-derive the mark on
+    every pass, and it also drops the dying row out of resolve_borrowed's canonical-owner index
+    (built `if not cut[i]`), so the name just moved onto the survivor is not pulled straight back
+    off it. hand_reasons carries the human sentence for the cut sheet; apply_removals resets that
+    field but runs earlier, so this append survives.
+
+    NOTHING IS COPIED EXCEPT NAMES. variations move, with their tag sets unioned on collision, and
+    annotate recomputes languages, english, n_variations, members, sources, flags and confidence
+    from the merged result. Identity stays put: id, canonical, anchor, why, how, kinds, authored,
+    seeded, subclasses, rule2 and drink are the survivor's own.
+
+    FIVE REFUSALS, each reported rather than silently skipped, mirroring apply_renames."""
+    fold_rules = [(key, rule) for key, rules in removals.items() for rule in rules
+                  if (rule.get("action") or "").strip() == "fold"]
+    by_key = {(row["anchor"], str(row["id"])): row for row in rows}
+    by_id = collections.defaultdict(list)
+    for row in rows:
+        by_id[str(row["id"])].append(row)
+    dying_ids = {key[1] for key, _ in fold_rules}
+    cut_now = {id(row): bool(apply_cuts(row, superclasses, off_parents)) for row in rows}
+
+    done, refused, dangling = [], [], []
+    for key, rule in fold_rules:
+        row = by_key.get(key)
+        if row is None:
+            dangling.append((rule, "no row carries that (anchor, id)"))
+            continue
+        target_id = (rule.get("into") or "").strip()
+        stated = (rule.get("into_canonical") or "").strip()
+        if not target_id:
+            refused.append((rule, "fold names no target: the 'into' column is empty"))
+            continue
+        if target_id == str(row["id"]):
+            refused.append((rule, "a row cannot fold into itself"))
+            continue
+        if target_id in dying_ids:
+            refused.append((rule, f"'{target_id}' is itself being folded, and a chain of folds "
+                                  "needs a person to say where the names end up"))
+            continue
+        targets = by_id.get(target_id, [])
+        if not targets:
+            refused.append((rule, f"no row carries id '{target_id}'"))
+            continue
+        if len(targets) > 1:
+            refused.append((rule, f"id '{target_id}' is carried by {len(targets)} rows, so the "
+                                  "target is ambiguous"))
+            continue
+        target = targets[0]
+        if cut_now[id(target)]:
+            refused.append((rule, f"'{target['canonical']}' is itself cut, so it cannot answer "
+                                  "for the folded names"))
+            continue
+        # ⚠️ into_canonical IS CHECKED, NEVER TRUSTED. The ids are opaque Q-numbers and OFF slugs
+        #    and a typo in one is invisible on the page. The name column is what makes the file
+        #    readable by a person, so the build proves the two agree instead of taking the name's
+        #    word for it.
+        if stated and norm_name(stated) != norm_name(target["canonical"]):
+            refused.append((rule, f"'into_canonical' says {stated!r} but {target_id} is "
+                                  f"{target['canonical']!r}"))
+            continue
+
+        seen = {norm_name(t) for t in target["variations"]}
+        added = []
+        for text, tags in row["variations"].items():
+            k = norm_name(text)
+            if k in seen:
+                match = next((t for t in target["variations"] if norm_name(t) == k), None)
+                if match is not None:
+                    target["variations"][match] |= set(tags)   # union, never overwrite
+                continue
+            target["variations"][text] = set(tags)
+            seen.add(k)
+            added.append(text)
+        reason = (rule.get("reason") or "").strip()
+        target.setdefault("folded_from", []).append(
+            (str(row["id"]), row["canonical"], len(added), reason))
+        target.setdefault("absorbed", []).extend(added)
+        target["absorbed"] = sorted(set(target["absorbed"]))
+        target["n_variations"] = len(target["variations"]) - 1
+        row["folded_into"] = (str(target["id"]), target["canonical"])
+        row["hand_reasons"].append(
+            f"folded into {target['canonical']} ({target['id']}): {reason}")
+        done.append((row, target, len(added)))
+    return done, refused, dangling
 
 
 # ─────────────────────────────────────────────────────────────────────────────────────
@@ -1544,6 +1657,12 @@ def apply_cuts(row, superclasses, off_parents):
     marks = []
     if row.get("hand_reasons"):
         marks.append("hand")                          # ⚠️ Andy's call outranks every rule
+    # ⚠️ RECOMPUTED, NOT STORED, AND THAT IS WHY FOLD SETS folded_into RATHER THAN cut_by.
+    #    annotate assigns row["cut_by"] = apply_cuts(...) and runs TWICE after the fold, so a
+    #    fold that wrote cut_by directly would be erased on the next pass. folded_into persists
+    #    on the row, so the mark is re-derived identically every time this runs.
+    if row.get("folded_into"):
+        marks.append("folded")
     if (row["anchor"] == "wikidata"
             and set(superclasses.get(row["id"], [])) & set(CUTS.CULTIVAR_CLASSES)
             and len(row["sources"]) == 1 and row["n_variations"] == 0):
@@ -1819,6 +1938,7 @@ def annotate(rows, superclasses, off_parents):
 # ─────────────────────────────────────────────────────────────────────────────────────
 CUT_RULE_TEXT = {
     "hand": "hand: removed by Andy, reason in 'What I was unsure about'",
+    "folded": "folded: its names moved onto another row, which now answers for it",
     "cultivar_register": "cultivar register name: subclasses a Wikidata cultivar class, "
                          "one source, no variations",
     "off_flavouring": "OFF flavouring: parent is en:natural-flavouring or en:flavouring",
@@ -2298,10 +2418,25 @@ def build(join_db=JOIN_DB, sources_db=SOURCES_DB, out=OUT, names_out=NAMES_OUT, 
     dead = load_dead_languages()
     dead_gone = drop_dead_language_names(rows, dead)
     symbols = drop_agrovoc_symbols(rows, by_entry)
+    # ⚠️ FOLD RUNS HERE, and the slot is the design rather than convenience. After every
+    #    identity-bound rule (strip_as_food reads anchor, the two drop_* read by_entry), so the
+    #    moved names have already been judged under the row that owned them. Before
+    #    resolve_borrowed, so they still get name-resolution on the row they land on. Before both
+    #    annotate calls, so n_variations, flags and confidence are recomputed from the merger.
+    folded, fold_refused, fold_dangling = apply_folds(rows, removals, superclasses, off_parents)
     moved = resolve_borrowed(rows, superclasses, off_parents)
     # ⚠️ AFTER RESOLUTION, because a strength word that leaves a row should not be counted
     #    against it. See mark_strength.
     rows = annotate(rows, superclasses, off_parents)
+    if folded or fold_refused or fold_dangling:
+        say(f"\n  folded {len(folded)} duplicate row(s) into the row that answers for them")
+        for row, target, n in sorted(folded, key=lambda t: -t[2]):
+            say(f"    {row['canonical']} ({row['id']})  ->  {target['canonical']} "
+                f"({target['id']})  +{n} name(s)")
+        for rule, why in fold_refused:
+            say(f"    ⚠️  REFUSED  {rule.get('id')} -> {rule.get('into')}: {why}")
+        for rule, why in fold_dangling:
+            say(f"    dangling fold  {rule.get('id')}: {why}")
     strength_a, strength_b = mark_strength(rows)
     rows = annotate(rows, superclasses, off_parents)
 
