@@ -22,7 +22,9 @@ finding, and you have not reached it yet.
 
 Facts are promoted on evidence and **never demoted silently.** A demotion is recorded with its reason.
 
-Allergen, food-safety and storage-safety claims require CITED or stay blank, and fail closed.
+Allergen, food-safety and storage-safety claims split two ways. Asserting that something is absent
+requires CITED and fails closed. Flagging that something may be present fails toward the warning and
+ships at any tier. The asymmetry is the whole rule and it has its own section below.
 
 ## The gates decide the tier
 
@@ -89,7 +91,8 @@ loudly in someone's kitchen and the second never fails at all.
 strong and narrow at once, which CITED alone conflates.
 
 **n.** Sample size where it means anything. Five labels is a sample. One blog is an assertion. Without
-`n` the model cannot tell them apart.
+`n` the model cannot tell them apart. ⚠️ Scope settles before `n` counts for anything. See **Scope
+before sample size**.
 
 **CANNOT_ASSESS.** An explicit list, **because silence reads as a pass.** The recurring entries:
 
@@ -116,6 +119,65 @@ source.** Under this rule the oregano survives as unresolved, which is the hones
 Two agreeing sources are evidence that two sources agree. Treating that as evidence about the world
 requires knowing they sampled different places. Both xawaash primaries were English-language and
 Western-facing, so agreement may be one tradition described twice.
+
+## Allergens: absence is an assertion, presence is a warning
+
+⚠️ **THIS RULE REPLACES ONE THAT SUPPRESSED THE WARNING IT EXISTED TO PRODUCE.** The earlier rule read
+"allergen, food-safety and storage-safety claims require CITED or stay blank, and fail closed."
+Applied to asafoetida it did this. Sources said wheat-flour compounding can reach gluten levels unsafe
+for people with celiac disease. Every source was a blog or a retailer, so nothing could reach CITED,
+so the whole thing was withheld. A celiac reader got nothing at all, which is the outcome the rule was
+written to prevent.
+
+Two different objects were being handled by one rule.
+
+**A claim of ABSENCE is an assertion.** "Contains no gluten" is prose a reader acts on. It requires
+CITED and it fails closed. Nothing about that changes.
+
+**A flag of POSSIBLE PRESENCE is a warning.** "Usually cut with wheat flour, check the packet" is not
+an assertion about a particular jar. It surfaces at any tier and it says what it rests on.
+⚠️ **Uncertainty is the reason to raise a flag, not a reason to suppress one.** A flag saying this is
+common, we have not confirmed it, read the label, is more use to a celiac reader than silence.
+
+**The flag stays out of the description.** A description is prose a reader takes as fact, and a
+thin-sourced gluten claim does not belong in one. The flag is a separate object with its own tier, its
+own sources and its own place on the page.
+
+**⚠️ A CLAIM GETS WRITTEN WHEN A FACT TURNS UP. A FLAG HAS TO BE ASKED FOR.** Allergen exposure was
+recorded for the one ingredient where somebody happened to research it and missed on two where nobody
+did. Soy sauce is brewed with wheat and doubanjiang is usually made with wheat flour, and neither
+carried a flag when the sweep ran. Both carry one now. Treating allergens as claims means they appear
+by accident, so every entry gets the allergen question put to it, and `not checked` is a state the
+page can show.
+
+In the entry format the flag is a `[[safety_flags]]` block rather than a `[[claims]]` block, with
+`kind` set to `possible_presence` or `certain_presence`, and it carries its own tier and its own
+chain.
+
+## Scope before sample size
+
+A claim that will not resolve is usually read as thin data. Sometimes it is evidence that the **entry**
+is wrong.
+
+Light soy sauce was recorded as unresolved with one measurer and no sample size, and the recommended
+fix was to read five bottles. That fix would have made things worse. Japanese usukuchi, Chinese light
+soy and Korean guk-ganjang are three different products that all translate to "light soy sauce" in
+English, and they differ in sodium. The sources were not in conflict. Each described a different thing
+and each was right about the thing it described. Five bottles off one shelf would have averaged three
+products into a figure describing none of them, and the average would have carried an `n` of 5 and
+looked like a resolution.
+
+**The tell is a measured value where the sources disagree and neither is wrong.** Ordinary thin data
+produces one weak source, or two sources that contradict each other on the same object. A scoping
+error produces several confident sources that cannot be reconciled, because they are not talking about
+the same object.
+
+⚠️ **The rule. Before raising `n` on a contested measurement, check that every source measured the same
+product.** Sampling is only meaningful once scope is settled. Raising `n` on a wrongly scoped entry
+converts a visible disagreement into an invisible average, which is worse than the disagreement.
+
+Four entries carry several products under one name. Salt was known. Light soy, sesame oil and
+peppercorns were found by reading, not by any detector.
 
 ## Three source states, not two
 
@@ -177,6 +239,34 @@ CITED and the wording got more precise.
 and nutmeg. That is Dutch **speculaas**. Wikipedia states that modern Belgian **speculoos** omits the
 traditional spices in favor of caramelized sugar. The entry had the two backwards, and the source that
 let the error survive had softened "omits the spices" into "lower cinnamon."
+
+## The defects cluster in the opening sentence
+
+Ten entries were swept for facts that read as a warning to a reader who does not know the ingredient.
+A sensory or appearance fact overlaps with how spoilage presents, the reader is left asking whether the
+jar has gone off, and nothing in the sentence answers.
+
+**All three confirmed cases sat in the opening sentence**, where the ingredient is being identified.
+Asafoetida's "cut with flour" reads as being sold filler. Doubanjiang's darkening reads as oxidation.
+Black pepper's "unripe" reads as picked wrong. Each states a fact that is the specification for the
+product, and each left the reader to work out whether it was a fault.
+
+That is not a coincidence. The opening sentence is where a novice has the least context and where the
+entry is most compressed, so **the opening sentence gets checked on its own** rather than the
+description being scanned evenly.
+
+**Ground beef is the model to match.** "Beef put through a grinder, which moves everything that was on
+the surface into the middle." The alarming fact and the reason it matters are one clause apart, and the
+temperature that follows from it lands in the next sentence.
+
+⚠️ **The sharper form, and black pepper supplies it.** Garbled is a grading word meaning cleaned and
+sieve-graded. It sounds like damage. The entry glosses it correctly, and that gloss sits in a chain
+note. It is safe today only because it has never reached a reader. **A word that sounds like damage is
+safe while it stays in the apparatus, and it has to carry its gloss the moment it reaches prose.**
+
+This is the mechanism rule rather than an exception to the rule against explaining a fun fact. The test
+is which question the sentence leaves behind. A fact that leaves "but why?" or "is that bad?" earns its
+consequence. A fact that already implies its own instruction does not.
 
 ## The rule this produces
 
