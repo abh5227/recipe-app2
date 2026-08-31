@@ -562,28 +562,47 @@ async function renderHome() {
   const ordered = [...recipes].sort((a, b) => (a.source === "test") - (b.source === "test"));
   const cards = ordered
     .map((r) => {
-      const bits = [r.author, r.category, r.servings ? `Serves ${r.servings}` : null]
-        .filter(Boolean)
-        .map(esc)
-        .join('<span class="dot">·</span>');
-      const stars = r.rating ? "★".repeat(r.rating) + "☆".repeat(5 - r.rating) : "";
-      const count = r.cook_count ? `<span class="ct">cooked ${r.cook_count}×</span>` : "";
-      const statsLine = stars || count
-        ? `<p class="rc-stats">${stars}${stars && count ? '<span class="dot">·</span>' : ""}${count}</p>`
+      const tags = cardTags(r);
+      // The tab takes the first remaining tag. WHICH tag deserves the tab (a promoted course/type)
+      // is a later tag pass — this keeps the existing order rather than inventing a mapping now.
+      // 6 of 298 recipes have no tag once "Made" is removed, and those cards simply get no tab.
+      const lead = tags[0];
+      const tab = lead ? `<span class="rc-tab cat-${tagCategory(lead)}">${esc(lead)}</span>` : "";
+      // Fit as many of the remaining tags as a card width takes, then count the rest. Colour comes
+      // from the SHIPPED .cat-tag.cat-* rules (same class names the recipe page uses), not a copy.
+      let used = 0;
+      const shown = [];
+      for (const t of tags.slice(1)) {
+        if (shown.length && used + t.length > 34) break;
+        shown.push(t);
+        used += t.length + 2;
+      }
+      const over = tags.length - 1 - shown.length;
+      const tagRow = tags.length > 1
+        ? `<span class="rc-tags">${shown.map((t) => `<span class="cat-tag cat-${tagCategory(t)}">${esc(t)}</span>`).join("")}${
+            over > 0 ? `<span class="rc-more">+${over} more</span>` : ""}</span>`
         : "";
-      // Derived "to make" mark (client-only): an owned, never-cooked recipe fills the otherwise-empty
-      // .rc-stats slot with a quiet "Uncooked" whisper. Gated on is_mine via isToMake() — NOT on count
-      // alone — so another user's uncooked recipe gets no mark. Never both a stats line and the mark
-      // (it fills only the empty slot); never a category tag (see static/tomake.js).
-      const uncooked = (!statsLine && isToMake(r)) ? `<span class="rc-uncooked">Uncooked</span>` : "";
+      // The footer is the reader's own marks, in the annotation hand. Rating on the left, cooked
+      // state on the right. The last-cooked date belongs here too but only makes sense once the
+      // list can be sorted by it, so it lands with sort in stage (c).
+      const stars = r.rating
+        ? `<span class="rc-hwstars">${"★".repeat(r.rating)}${"☆".repeat(5 - r.rating)}</span>`
+        : `<span class="rc-hw dim">not rated</span>`;
+      // Cooked state reads cook_count. The "Uncooked" mark stays gated on isToMake() — is_mine AND
+      // never cooked — so another user's uncooked recipe gets no mark (static/tomake.js, unit-tested).
+      const state = r.cook_count
+        ? `<span class="rc-hw">cooked <span class="rc-hwnum">${r.cook_count}×</span></span>`
+        : (isToMake(r) ? `<span class="rc-uncooked">Uncooked</span>`
+                       : `<span class="rc-hw dim">not cooked yet</span>`);
       const isTest = r.source === "test";
       return `<a class="recipe-card${isTest ? " is-test" : ""}" href="#/recipe/${encodeURIComponent(r.id)}">
-                ${photo(r, "thumb")}
-                <div class="rc-body">
-                  <p class="rc-name">${esc(r.name)}${isTest ? ` <span class="test-badge">Test</span>` : ""}</p>
-                  <p class="rc-meta">${bits}</p>
-                  ${statsLine}${uncooked}
-                </div>
+                ${tab}${photo(r, "rc-img")}
+                <span class="rc-body">
+                  <span class="rc-name">${esc(r.name)}${isTest ? ` <span class="test-badge">Test</span>` : ""}</span>
+                  <span class="rc-by">${esc(r.author || "—")}</span>
+                  ${tagRow}
+                  <span class="rc-foot">${stars}${state}</span>
+                </span>
               </a>`;
     })
     .join("");
@@ -1015,13 +1034,23 @@ const TAG_CATEGORY = {
   // neutral: "vegetarian" and anything unlisted
 };
 
+// One lookup, shared by the recipe page's tagsHTML and the browse card, so the two can never drift
+// onto different colour vocabularies.
+const tagCategory = (t) => TAG_CATEGORY[String(t).toLowerCase()] || "neutral";
+
+// The card's tag list. "Made" is EXCLUDED on purpose: 150 of 298 recipes carry it, and cooked state
+// is read from cook_count, never from a tag (a tag-based cooked flag is the free-type footgun that
+// static/tomake.js exists to avoid). Everything else survives in stored order.
+const cardTags = (r) => String(r.category || "").split("\u00b7")
+  .map((t) => t.trim()).filter((t) => t && t.toLowerCase() !== "made");
+
 // Category -> discreet mono "filing" labels, tinted by category. Non-clickable for now
 // (tag-click-to-filter is the R2 browse redesign). neutral = plain; status = the quiet treatment.
 function tagsHTML(r) {
   const tags = String(r.category || "").split("·").map((s) => s.trim()).filter(Boolean);
   if (!tags.length) return "";
   const html = tags.map((t) => {
-    const cat = TAG_CATEGORY[t.toLowerCase()] || "neutral";
+    const cat = tagCategory(t);
     const cls = cat === "neutral" ? "cat-tag"
               : cat === "status"  ? "cat-tag status"
               : `cat-tag cat-${cat}`;
