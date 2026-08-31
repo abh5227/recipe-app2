@@ -10,6 +10,7 @@ import { removedInsertIndex } from "./annotation-place.js";
 import { wordDiffParts } from "./word-diff.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
+import { browseList, cardTags, monthYear } from "./browse.js";
 import { panelBlocks } from "./panel-blocks.js";
 import { uploadErrorHTML } from "./upload-status.js";
 import { makeBackdateSubmit, isStageableImage } from "./backdate-submit.js";
@@ -557,11 +558,64 @@ async function renderHome() {
   app.className = "page home-view";
   const recipes = await api("/api/recipes");
 
-  // Test (scratch) recipes sink to the bottom; real recipes keep their normal order. A stable sort
-  // (partition by is-test) preserves the API's existing name order within each group.
-  const ordered = [...recipes].sort((a, b) => (a.source === "test") - (b.source === "test"));
-  const cards = ordered
-    .map((r) => {
+  const testCount = recipes.filter((r) => r.source === "test").length;
+  const bulkTest = testCount
+    ? `<span id="test-bulk"><button class="btn danger-soft sm" data-delete-test>Delete ${testCount} test recipe${testCount > 1 ? "s" : ""}</button></span>`
+    : "";
+
+  // Browse runs wider than the 920px .page default (see .page.home-view), so all five nav items sit
+  // on ONE row beside the 58px lockup: 311 + 408 + 200 + 165 = 1128 inside a 1312px content box.
+  // The row still wraps, because a narrower viewport (a 1000px window gives 912px) cannot hold it.
+  // Order is the old masthead's: bulk-delete, the three actions, then who. Every delegated hook is
+  // preserved verbatim — [data-delete-test], [data-import-url], [data-logout].
+  app.innerHTML = `
+    <header class="browse-head">
+      <h1 class="bh-brand">${BRAND_LOCKUP}</h1>
+      <nav class="bh-nav">${bulkTest}<a class="btn ghost" href="#/feed">What&rsquo;s cooking?</a><button type="button" class="btn ghost" data-import-url>Import from URL</button><a class="btn new-recipe" href="#/new">+ New recipe</a>${
+        CURRENT_USER ? `<span class="site-user">${esc(CURRENT_USER.display_name || CURRENT_USER.email)}<button type="button" data-logout>Sign out</button></span>` : ""
+      }</nav>
+    </header>
+    <div class="browse-tools">
+      <span class="bt-field"><input id="browse-q" type="search" autocomplete="off" spellcheck="false"
+        placeholder="Search recipes, sources and tags" aria-label="Search recipes, sources and tags"></span>
+      <span class="bt-sort"><label class="bt-label" for="browse-sort">Sort</label>
+        <select id="browse-sort">
+          <option value="name" selected>Name</option>
+          <option value="rating">Rating</option>
+          <option value="cooks">Times cooked</option>
+          <option value="last">Last cooked</option>
+        </select></span>
+    </div>
+    <div class="recipe-grid" id="browse-grid"></div>`;
+
+  // All 298 recipes are already in memory, so search and sort are pure array work — no endpoint, no
+  // round-trip, nothing to debounce. The two controls live OUTSIDE #browse-grid and only the grid's
+  // innerHTML is rewritten, which is what keeps the caret, the typed value and the sort selection
+  // intact across a repaint rather than needing to be restored afterwards.
+  const gridEl = app.querySelector("#browse-grid");
+  const qEl = app.querySelector("#browse-q");
+  const sortEl = app.querySelector("#browse-sort");
+  let query = "";
+  let mode = "name";                                   // Name is the default sort
+
+  const paint = () => {
+    // Test (scratch) recipes still sink to the bottom. Array#sort is stable, so partitioning on
+    // is-test AFTER browseList preserves the chosen order within each group.
+    const shown = browseList(recipes, query, mode)
+      .sort((a, b) => (a.source === "test") - (b.source === "test"));
+    gridEl.innerHTML = shown.length
+      ? shown.map((r) => browseCard(r, mode === "last")).join("")
+      : `<p class="browse-empty">nothing matches &ldquo;${esc(query.trim())}&rdquo;, try fewer words</p>`;
+  };
+
+  qEl.addEventListener("input", (e) => { query = e.target.value; paint(); });
+  sortEl.addEventListener("change", (e) => { mode = e.target.value; paint(); });
+  paint();
+}
+
+// One card. showDate is true ONLY in "Last cooked" sort, where the date is what the reader is
+// scanning by; in the other three modes it would be noise, so the footer omits it.
+function browseCard(r, showDate) {
       const tags = cardTags(r);
       // The tab takes the first remaining tag. WHICH tag deserves the tab (a promoted course/type)
       // is a later tag pass — this keeps the existing order rather than inventing a mapping now.
@@ -590,8 +644,9 @@ async function renderHome() {
         : `<span class="rc-hw dim">not rated</span>`;
       // Cooked state reads cook_count. The "Uncooked" mark stays gated on isToMake() — is_mine AND
       // never cooked — so another user's uncooked recipe gets no mark (static/tomake.js, unit-tested).
+      const when = (showDate && r.last_cooked) ? ` <span class="rc-hwdate">· last ${monthYear(r.last_cooked)}</span>` : "";
       const state = r.cook_count
-        ? `<span class="rc-hw">cooked <span class="rc-hwnum">${r.cook_count}×</span></span>`
+        ? `<span class="rc-hw">cooked <span class="rc-hwnum">${r.cook_count}×</span>${when}</span>`
         : (isToMake(r) ? `<span class="rc-uncooked">Uncooked</span>`
                        : `<span class="rc-hw dim">not cooked yet</span>`);
       const isTest = r.source === "test";
@@ -604,27 +659,6 @@ async function renderHome() {
                   <span class="rc-foot">${stars}${state}</span>
                 </span>
               </a>`;
-    })
-    .join("");
-
-  const testCount = recipes.filter((r) => r.source === "test").length;
-  const bulkTest = testCount
-    ? `<span id="test-bulk"><button class="btn danger-soft sm" data-delete-test>Delete ${testCount} test recipe${testCount > 1 ? "s" : ""}</button></span>`
-    : "";
-
-  // Browse runs wider than the 920px .page default (see .page.home-view), so all five nav items sit
-  // on ONE row beside the 58px lockup: 311 + 408 + 200 + 165 = 1128 inside a 1312px content box.
-  // The row still wraps, because a narrower viewport (a 1000px window gives 912px) cannot hold it.
-  // Order is the old masthead's: bulk-delete, the three actions, then who. Every delegated hook is
-  // preserved verbatim — [data-delete-test], [data-import-url], [data-logout].
-  app.innerHTML = `
-    <header class="browse-head">
-      <h1 class="bh-brand">${BRAND_LOCKUP}</h1>
-      <nav class="bh-nav">${bulkTest}<a class="btn ghost" href="#/feed">What&rsquo;s cooking?</a><button type="button" class="btn ghost" data-import-url>Import from URL</button><a class="btn new-recipe" href="#/new">+ New recipe</a>${
-        CURRENT_USER ? `<span class="site-user">${esc(CURRENT_USER.display_name || CURRENT_USER.email)}<button type="button" data-logout>Sign out</button></span>` : ""
-      }</nav>
-    </header>
-    <div class="recipe-grid">${cards}</div>`;
 }
 
 /* ---------- recipe view ---------- */
@@ -1038,11 +1072,8 @@ const TAG_CATEGORY = {
 // onto different colour vocabularies.
 const tagCategory = (t) => TAG_CATEGORY[String(t).toLowerCase()] || "neutral";
 
-// The card's tag list. "Made" is EXCLUDED on purpose: 150 of 298 recipes carry it, and cooked state
-// is read from cook_count, never from a tag (a tag-based cooked flag is the free-type footgun that
-// static/tomake.js exists to avoid). Everything else survives in stored order.
-const cardTags = (r) => String(r.category || "").split("\u00b7")
-  .map((t) => t.trim()).filter((t) => t && t.toLowerCase() !== "made");
+// cardTags now lives in static/browse.js, because the SEARCH reads the same list the card shows:
+// a tag hidden from the card ("Made") must not quietly match a query either.
 
 // Category -> discreet mono "filing" labels, tinted by category. Non-clickable for now
 // (tag-click-to-filter is the R2 browse redesign). neutral = plain; status = the quiet treatment.

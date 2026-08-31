@@ -230,6 +230,43 @@ a:hover { color: var(--berry-lift); }
   .home-view .bh-nav { margin-left: 0; justify-content: flex-start; width: 100%; }
 }
 
+/* ---------- Home: search + sort (Round 2, stage c) ----------
+   Both controls sit OUTSIDE #browse-grid on purpose: only the grid's innerHTML is rewritten on a
+   keystroke, so the caret, the typed value and the sort selection survive a repaint without having
+   to be saved and restored. There is deliberately NO hint line explaining the last-cooked date —
+   the date on the card says it itself. */
+.home-view .browse-tools { display: flex; align-items: center; gap: 18px; margin: 0 0 26px; flex-wrap: wrap; }
+.home-view .bt-field { position: relative; flex: 0 1 420px; min-width: 200px; }
+.home-view .bt-field::before {
+  content: "\2315"; position: absolute; left: 11px; top: 50%; transform: translateY(-52%);
+  color: var(--ink-soft); font-size: 16px; pointer-events: none;
+}
+.home-view .bt-field input {
+  font: inherit; font-family: var(--font-sans); font-size: 14.5px; width: 100%; box-sizing: border-box;
+  background: var(--paper); color: var(--ink);
+  border: 1px solid var(--rule); border-radius: 7px; padding: 8px 12px 8px 31px; outline: none;
+  -webkit-appearance: none; appearance: none;
+}
+.home-view .bt-field input:focus { border-color: var(--border-defined); }
+.home-view .bt-field input::placeholder { color: var(--ink-soft); opacity: .55; font-style: italic; }
+.home-view .bt-sort { margin-left: auto; display: flex; align-items: center; gap: 9px; }
+.home-view .bt-label {
+  font-family: var(--font-sans); font-size: 10px; font-weight: 600; letter-spacing: 0.17em;
+  text-transform: uppercase; color: var(--green);
+}
+.home-view .bt-sort select {
+  font-family: var(--font-sans); font-size: 12.5px; color: var(--ink);
+  background: var(--paper); border: 1px solid var(--rule); border-radius: 7px;
+  padding: 8px 11px; cursor: pointer;
+}
+.home-view .bt-sort select:focus { border-color: var(--border-defined); outline: none; }
+
+/* the search came back empty: name the absence and the next move, nothing else */
+.home-view .browse-empty {
+  grid-column: 1 / -1; margin: 8px 0 0;
+  font-family: var(--font-sans); font-size: 14px; color: var(--ink-soft);
+}
+
 /* ---------- Home: the browse grid (Round 2, stage b) ----------
    Cards, not a flat list. Everything is scoped to .home-view so none of it reaches the recipe
    view, the feed or the forms. The card is an <a>, so the hash router handles the click and no
@@ -315,9 +352,14 @@ a:hover { color: var(--berry-lift); }
   letter-spacing: 1.5px; display: inline-block; transform: rotate(-0.7deg);
 }
 .home-view .rc-hwnum { font-family: "Kalam", "Caveat", cursive; font-size: 17px; }
+/* the last-cooked date, shown ONLY in "Last cooked" sort. Same hand, stepped back a little so the
+   count still leads. */
+.home-view .rc-hwdate { font-family: "Kalam", "Caveat", cursive; font-size: 15px; opacity: .72; }
 
 @media (max-width: 760px) {
   .home-view .recipe-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 28px 16px; }
+  .home-view .browse-tools { gap: 12px; }
+  .home-view .bt-sort { margin-left: 0; }
 }
 
 /* ---------- Recipe detail ---------- */
