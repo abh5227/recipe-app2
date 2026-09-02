@@ -89,14 +89,41 @@ Recorded so they are not re-discovered as bugs.
   at all. The duplicate scan therefore keys on the defect (two rows, one ingredient) rather than on
   either test.
 
-## 5. Standards decisions pending
+## 5. The pilot batch needs a citation re-check
+
+**The nine pilot entries were verified before the source-routing discipline existed.** The routing card
+and the rule that a citation must point at a page someone actually opened both came later, so the pilot
+was judged against a weaker bar.
+
+**Two instances found, both fixed.** `all-purpose-flour` and `milk` each cited the FDA major-allergen
+page at `read_depth = "full"`. That page is bot-blocked and returned 404 to the fetcher on two separate
+attempts, so nobody in the loop had opened either one. **Both are re-routed to the statute itself at
+Cornell LII**, under one shared slug, so they now agree with the `flour` entry sourced later. **Zero
+chain URLs across the 23 sourced drafts point at fda.gov.**
+
+⚠️ **Both swaps lost something, and both losses are recorded rather than hidden.** The old `taken` on
+`all-purpose-flour` said the FDA page defines gluten. The statute does not, so the gluten half of that
+flag is now uncited. The old `taken` on `milk` said foods containing it must declare it. That duty lives
+in 21 USC 343(w), not in the section cited. Neither flag's shipping text depends on the lost half, and
+both are flagged in their discussions for a reviewer.
+
+**The other seven pilot entries have NOT been swept**, and the two found were found by scanning for one
+domain. They should be checked for citations pointing at bot-blocked or otherwise unopenable pages, by
+resolving every URL rather than by pattern-matching a host. **Not yet done.**
+
+⚠️ **The general shape is worth naming, because it will recur.** A batch verified under an older
+standard is not re-verified when the standard tightens. Nothing in the pipeline re-opens finished work,
+so each tightening leaves a layer of entries judged against the old bar. **This is the first such
+layer.**
+
+## 6. Standards decisions pending
 
 Two cases where **two conventions are on disk and one of them is wrong**, so every sourcing batch
 re-litigates the question and the answer comes out differently depending on who drafted. Both were
 flagged rather than guessed each time, which is correct handling that does not converge. Until the rule
 is written once, every batch pays the same cost.
 
-### 5a. The `n` convention
+### 6a. The `n` convention
 
 [sourcing-tiers.md](sourcing-tiers.md) defines it in one line: "**n.** Sample size where it means
 anything. Five labels is a sample. One blog is an assertion."
@@ -122,7 +149,7 @@ absent or measured-and-none, since a field with no meaning arguably should not b
 **Once decided**, four claims need correcting to match, and any batch drafted before the decision
 carries the old reading.
 
-### 5b. The prose-tier convention
+### 6b. The prose-tier convention
 
 Flagged in `preview/categories-v1/_FORMAT-NOTES.md` and never settled. Two entries
 (`entries-v2/gochugaru.toml`, `entries-v3/besan.toml`) tier prose `curated` over `generated` claims,
@@ -141,7 +168,7 @@ weakest tier among its claims. Weakest is more conservative and matches how tier
 ⚠️ **If the standard's reading wins, the fix-pass changes were corrections in the wrong direction** and
 need reverting.
 
-## 6. Parent-child linking, starting with the flour family
+## 7. Parent-child linking, starting with the flour family
 
 **A plan and a dependency. NOT a blocker on sourcing.**
 

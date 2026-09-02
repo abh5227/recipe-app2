@@ -41,6 +41,41 @@ found the two **contradicted**: coriander seed stated the soap-genetics flat, re
 overstatement that the cilantro pass had deliberately removed. **The defect was findable only because
 the chat reported the limit instead of papering over it.**
 
+## The standing batch-return procedure
+
+**When a sourcing batch comes back, this is what happens. It is not re-specified per batch.**
+
+**1. Output lands in `Library/`.** Always. The folder a browser download creates is arbitrary and its
+name means nothing.
+
+**2. Self-locate the batch.** The new work is **the entries in `Library/` that are not yet in
+`Library/sourced/`.** The delta is the batch. **No folder needs naming**, which matters because
+download folders collide and get reused.
+
+**3. Run THE PROCESS.**
+
+```
+inventory   entries present, parse, ASCII, claims closed, flags wired,
+            capture fields present
+verify      citations against the handoff fetch log as a work-map, cross-entry
+            against the REAL sourced drafts, capture-field curation
+fix         mechanical directly, content edits shown for approval first
+file        TOMLs to Library/sourced/, findings and handoffs to Library/reports/,
+            archives to Library/_archive/. Nothing left loose.
+record      the verdict to previews/verifications/
+track       update sourcing-progress.md
+```
+
+**THE PROCESS owns the tracker update.** A batch proposes, and only this step marks anything done.
+
+⚠️ **Cross-entry work reconciles against the real sourced drafts in `Library/sourced/`, never against
+a stub or a mirror.** That is the whole reason the step exists, and reading the wrong copy has produced
+a defect at least once.
+
+**4. Batches arrive on current specs**, because the brief and the tracker are synced to the Project
+before sourcing starts rather than after. A batch drafted against a stale brief has to be backfilled,
+and one of those backfills was only possible because the ids were still alive.
+
 ## The status vocabulary
 
 ```
