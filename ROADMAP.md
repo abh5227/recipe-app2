@@ -242,9 +242,14 @@ adding a source never touches the hard logic.
   preserved as-is). Distinct from AI generation below.
 - **Field-guide AI baseline (separate pass, NOT during import).** A separate pass generates a
   first-pass field guide per ingredient — seasons, regions, pairings, general culinary info — so
-  the library ships useful, not as empty stubs. **Bounded:** AI does NOT generate food-safety,
-  allergen, or storage-safety claims (sourced-or-blank only — a wrong claim there has real
-  stakes a disclaimer doesn't cover). Every AI field carries provenance ("AI-generated,
+  the library ships useful, not as empty stubs. **Bounded, and the bound is asymmetric.** AI does
+  NOT assert that a food-safety, allergen or storage-safety risk is ABSENT. An absence assertion is
+  something a reader acts on, so it requires CITED and fails closed. **A flag that a risk may be
+  PRESENT is a warning, and it ships at any tier saying what it rests on**, because uncertainty is
+  the reason to raise a flag rather than a reason to suppress one. The earlier "sourced-or-blank
+  only" wording applied one rule to both and withheld the warning it existed to produce. See the
+  allergen section of **[docs/sourcing-tiers.md](docs/sourcing-tiers.md)**. Every AI field carries
+  provenance ("AI-generated,
   baseline") + a needs-sourcing flag (tracker), via the per-field provenance model — the three tiers
   (GENERATED / CURATED / CITED) and the worked example of why CITED means *traced* rather than
   *linked* are in **[docs/sourcing-tiers.md](docs/sourcing-tiers.md)**. Marking is
@@ -1163,8 +1168,10 @@ this app as-is.
 A capable LLM (via API) generates **novel** recipes through RAG — grounded in our structured
 corpus plus the outcome / pairing / cuisine data — rather than free-associating like a generic
 model. Every generated recipe is marked **AI-generated + untested**, and **bounded away from
-trusted food-safety-critical claims** (cook temperatures, preservation/canning, allergen safety):
-those stay sourced-or-blank, and validation is *actually cooking it*. Depends on the full dataset,
+trusted food-safety-critical claims** (cook temperatures, preservation/canning, allergen safety).
+**The bound is asymmetric.** Asserting a risk is absent requires CITED and fails closed. Flagging
+that one may be present ships at any tier and fails toward the warning, per the allergen rule in
+[docs/sourcing-tiers.md](docs/sourcing-tiers.md). Validation is *actually cooking it*. Depends on the full dataset,
 library linkage, and the Tier-3 data-asset features being in place.
 
 - **Strategic arc:** multi-user (P17) → more outcome data → better grounding + ranking — a

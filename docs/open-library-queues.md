@@ -53,6 +53,15 @@ Detail: `previews/library-duplicate-scan.xlsx`, four tabs, gitignored.
 
 ## 3. Sourcing has barely started
 
+⚠️ **UPDATED 2026-09-02. The paragraph below describes the STUBS, and it is still accurate about them.
+What changed is that sourcing has now started.** Twenty entries across five batches are drafted,
+harsh-verified citation by citation, and have had their recorded fixes applied. They carry real
+resolvable URLs, which is the thing this section says does not exist.
+
+**They are NOT in `preview/entries-v3/` yet.** They live outside the repo in `Library/sourced/`, and
+integration is a separate step that has not run. So every count below still holds for the stubs on
+disk. The architecture that produced them is in [sourcing-pipeline.md](sourcing-pipeline.md).
+
 The 142 entries in `preview/entries-v3/` carry **220 claims**, of which **185 are GENERATED** stubs with
 `source_class = inference`, **32 CURATED** and **3 CITED**. **102 claims are `unresolved`.**
 

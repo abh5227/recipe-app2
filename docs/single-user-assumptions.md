@@ -133,8 +133,14 @@ preference within it is the user's" **does not exist in this repo.** What exists
 narrower things: the never-scale guard in Phase 1d, where any number adjacent to a temperature is
 blocked from scaling *above* the heuristic rather than by it ("a missed quantity is a visible, harmless
 inconvenience; a wrongly-scaled temperature is a silent hazard"); and the bound on AI generation, where
-food-safety, allergen and storage-safety claims stay **sourced-or-blank** because "a wrong claim there
-has real stakes a disclaimer doesn't cover."
+the model does not **assert the absence** of a food-safety, allergen or storage-safety risk, because "a
+wrong claim there has real stakes a disclaimer doesn't cover."
+
+⚠️ **The AI bound is asymmetric, and an earlier version of this line got it wrong.** It read that those
+claims "stay sourced-or-blank", which is the rule [sourcing-tiers.md](sourcing-tiers.md) retired for
+suppressing the warning it existed to produce. **Absence and presence are different objects.** Asserting
+a risk is absent requires CITED and fails closed. **Flagging that one may be present ships at any tier**,
+saying what it rests on, and fails toward the warning.
 
 Those two share the shape the brief was reaching for, and it is worth naming: **where the stakes are
 real, the app carries the source and refuses to supply the judgement itself.** It does not invent a
