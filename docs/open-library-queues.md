@@ -79,3 +79,87 @@ Recorded so they are not re-discovered as bugs.
   low precision, the tag finds 121 and is right about them, and `Tamarindus indica` carries no Latin tag
   at all. The duplicate scan therefore keys on the defect (two rows, one ingredient) rather than on
   either test.
+
+## 5. Standards decisions pending
+
+Two cases where **two conventions are on disk and one of them is wrong**, so every sourcing batch
+re-litigates the question and the answer comes out differently depending on who drafted. Both were
+flagged rather than guessed each time, which is correct handling that does not converge. Until the rule
+is written once, every batch pays the same cost.
+
+### 5a. The `n` convention
+
+[sourcing-tiers.md](sourcing-tiers.md) defines it in one line: "**n.** Sample size where it means
+anything. Five labels is a sample. One blog is an assertion."
+
+**The corpus does not follow it.** Measured across the sourced drafts, four different meanings are in
+use:
+
+```
+coriander-seed.toasting_moves_the_aroma   n = 19   19 commercial oils. A real sample size.
+cilantro.soap_is_genetic                  n = 1    Eriksson 2012, 14,604 participants. A study count.
+coriander-seed.not_the_leaf               n = 2    The same Eriksson study PLUS 19 and 28 oils.
+ginger.acid_sets_protein_and_slows_...    n = 0    Three mechanisms, no common sample.
+oyster-sauce.reduction_not_extract        n = 2    Two sources. A source count.
+```
+
+⚠️ **The sharpest case is one study counted two ways.** Eriksson et al. 2012 is `n = 1` in cilantro and
+part of `n = 2` in coriander seed. Same paper, same URL, same slug, two numbers.
+
+**What needs deciding.** Sample size of what, the study's participants or the number of sources. How a
+claim resting on several sources that each measure a different mechanism counts. Whether `0` means
+absent or measured-and-none, since a field with no meaning arguably should not be present.
+
+**Once decided**, four claims need correcting to match, and any batch drafted before the decision
+carries the old reading.
+
+### 5b. The prose-tier convention
+
+Flagged in `preview/categories-v1/_FORMAT-NOTES.md` and never settled. Two entries
+(`entries-v2/gochugaru.toml`, `entries-v3/besan.toml`) tier prose `curated` over `generated` claims,
+while the five category entries tier prose `generated`, which is what the standard says.
+
+**The two rules.** Prose follows the claims in its `derived_from` list, which is what the sourced drafts
+do and what two fix passes enforced on `cumin`, `white-pepper` and `cumin-seeds`. Or prose is
+`generated` unless separately traced, which is what the standard says.
+
+**They disagree on the same file.** Prose derived from one `curated` and one `generated` claim is
+`curated` under the first rule and `generated` under the second.
+
+**What needs deciding.** Which rule holds, and if it is the first, whether prose takes the best or the
+weakest tier among its claims. Weakest is more conservative and matches how tiers cap elsewhere.
+
+⚠️ **If the standard's reading wins, the fix-pass changes were corrections in the wrong direction** and
+need reverting.
+
+## 6. Parent-child linking, starting with the flour family
+
+**A plan and a dependency. NOT a blocker on sourcing.**
+
+The general `flour` row (`Q36465`) holds the name "all purpose flour" and **37 recipe lines** that
+belong to its child `all-purpose flour` (`Q95388739`). Its own row diagnostic states it: "The general
+term wins the lookup and then answers with the wrong specific."
+
+**Sourcing flour is not blocked by this.** Flour's description is valid whatever the lookup does. What
+flour is, how protein grades work, why a bag rarely states it, none of that changes. **The routing
+defect is a separate problem with a separate fix**, and holding the content hostage to it buys nothing.
+
+**The plan.** Source the family's content as ordinary batches, all-purpose flour being done already.
+Then link parent to children. Then fix the routing so a line naming a specific grade reaches that grade.
+
+⚠️ **DEPENDENCY: the mechanism does not exist.** The closest operation is the **fold**, and a fold
+merges **duplicates**, two rows that are one ingredient. That is the wrong operation here. **Flour and
+all-purpose flour are two different ingredients**, both correct and both wanted, and folding them would
+destroy one. See [parent-child-gap.md](parent-child-gap.md), whose own first surfacing is this shape.
+
+**So the linking is deferred until that mechanism exists.** Sourcing the content is not deferred.
+
+**What is already moving toward it.** The `possible_parent` marker, a one-line observation a sourcing
+chat drops when its ingredient looks like a specific form of a broader one, with verification curating a
+**proposed** structure from the accumulated markers. That accumulates the evidence without building any
+of it. See [sourcing-pipeline.md](sourcing-pipeline.md).
+
+⚠️ **This is probably not only flour.** Do not enumerate the other families now. Derive them against the
+catalog when the mechanism is built. Two are already known: Wikidata says **kosher salt** is a kind of
+**table salt**, where the cook's parent is the authored `salt` row that no automatic edge can reach, and
+**black pepper and white pepper** both carry `peppercorn` as a superclass.
