@@ -116,14 +116,49 @@ standard is not re-verified when the standard tightens. Nothing in the pipeline 
 so each tightening leaves a layer of entries judged against the old bar. **This is the first such
 layer.**
 
-## 6. Standards decisions pending
+## 6. PROPOSED RULE: prose-claim consistency
+
+**An entry's prose may not assert a mechanism that no claim carries.** Every mechanism stated in the
+description should have a backing claim, with that claim's tier and chain.
+
+**This has recurred across batches**, which is why it is here rather than in a single verification
+record.
+
+- **lemon juice.** The prose said bottled juice has "none of the smell". The claim said the same and was
+  false, and **fixing only the claim would have left the false version in the text a reader actually
+  sees.** The verification record for that batch flagged it in capitals for exactly that reason.
+- **buttermilk, onion powder and za'atar**, all three entries in one batch. Buttermilk's prose asserted
+  baking-soda leavening and tenderizing with no claim behind either. Onion powder's asserted a fact
+  about onion salt. Za'atar's asserted that sesame makes the mix cling and that sumac makes it sour,
+  where the entry's own discussion admitted the chain did not support those mechanisms.
+
+**Two of those four are now fixed by sourcing the mechanism rather than cutting the sentence**, which is
+the better outcome where a source exists. **The pattern is what needs a decision, not the instances.**
+
+**Why it matters more than it looks.** The claims carry the tiers and the citations, and the prose is
+what ships to a reader. **A mechanism that lives only in prose has no tier, no source and no falsifier,
+and nothing in the pipeline checks it.** It reads exactly like the sourced sentences beside it.
+
+**Options.**
+
+- **(a)** Make it a verification check, run every batch.
+- **(b)** Put it in the operator brief so sourcing chats self-check before handing over.
+- **(c)** Both.
+
+⚠️ **(b) alone is weak.** A chat writing prose from its own claims is the party least likely to notice
+it drifted, which is the same reason the draft-and-verify split exists at all. **(c) is the safe
+answer, and (a) is the one that actually catches things.** Andy decides.
+
+**Not yet decided, and not yet enforced anywhere.**
+
+## 7. Standards decisions pending
 
 Two cases where **two conventions are on disk and one of them is wrong**, so every sourcing batch
 re-litigates the question and the answer comes out differently depending on who drafted. Both were
 flagged rather than guessed each time, which is correct handling that does not converge. Until the rule
 is written once, every batch pays the same cost.
 
-### 6a. The `n` convention
+### 7a. The `n` convention
 
 [sourcing-tiers.md](sourcing-tiers.md) defines it in one line: "**n.** Sample size where it means
 anything. Five labels is a sample. One blog is an assertion."
@@ -149,7 +184,7 @@ absent or measured-and-none, since a field with no meaning arguably should not b
 **Once decided**, four claims need correcting to match, and any batch drafted before the decision
 carries the old reading.
 
-### 6b. The prose-tier convention
+### 7b. The prose-tier convention
 
 Flagged in `preview/categories-v1/_FORMAT-NOTES.md` and never settled. Two entries
 (`entries-v2/gochugaru.toml`, `entries-v3/besan.toml`) tier prose `curated` over `generated` claims,
@@ -168,7 +203,7 @@ weakest tier among its claims. Weakest is more conservative and matches how tier
 ⚠️ **If the standard's reading wins, the fix-pass changes were corrections in the wrong direction** and
 need reverting.
 
-## 7. Parent-child linking, starting with the flour family
+## 8. Parent-child linking, starting with the flour family
 
 **A plan and a dependency. NOT a blocker on sourcing.**
 
