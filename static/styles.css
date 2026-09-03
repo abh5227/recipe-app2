@@ -270,16 +270,22 @@ a:hover { color: var(--berry-lift); }
 }
 .home-view .bt-field { position: relative; flex: 0 1 420px; min-width: 200px; }
 .home-view .bt-field::before {
-  content: "\2315"; position: absolute; left: 11px; top: 50%; transform: translateY(-52%);
-  color: var(--ink-soft); font-size: 16px; pointer-events: none;
+  content: "\2315"; position: absolute; left: 13px; top: 50%; transform: translateY(-52%);
+  color: var(--hand); font-size: 16px; pointer-events: none;
 }
+/* ONE CONTROL FAMILY (col-D). The search and sort were 7px rectangles sitting beside 999px pill
+   buttons, which is two shape languages in one row. They are now the same pill, outlined in --hand
+   at half strength with a 3 percent tint in the fill, so the five controls read as one family.
+   GREEN IS DELIBERATELY LEFT ALONE: it stays on "+ New recipe" as the single primary action, which
+   is what the terracotta outlines make legible. Do not paint these green. */
 .home-view .bt-field input {
   font: inherit; font-family: var(--font-sans); font-size: 14.5px; width: 100%; box-sizing: border-box;
-  background: var(--paper); color: var(--ink);
-  border: 1px solid var(--rule); border-radius: 7px; padding: 8px 12px 8px 31px; outline: none;
+  background: color-mix(in srgb, var(--hand) 3%, var(--paper)); color: var(--ink);
+  border: 1px solid color-mix(in srgb, var(--hand) 50%, transparent);
+  border-radius: 999px; padding: 8px 12px 8px 34px; outline: none;
   -webkit-appearance: none; appearance: none;
 }
-.home-view .bt-field input:focus { border-color: var(--border-defined); }
+.home-view .bt-field input:focus { border-color: var(--hand); }
 .home-view .bt-field input::placeholder { color: var(--ink-soft); opacity: .55; font-style: italic; }
 .home-view .bt-sort { margin-left: auto; display: flex; align-items: center; gap: 9px; }
 .home-view .bt-label {
@@ -288,10 +294,11 @@ a:hover { color: var(--berry-lift); }
 }
 .home-view .bt-sort select {
   font-family: var(--font-sans); font-size: 12.5px; color: var(--ink);
-  background: var(--paper); border: 1px solid var(--rule); border-radius: 7px;
+  background: color-mix(in srgb, var(--hand) 3%, var(--paper));
+  border: 1px solid color-mix(in srgb, var(--hand) 50%, transparent); border-radius: 999px;
   padding: 8px 11px; cursor: pointer;
 }
-.home-view .bt-sort select:focus { border-color: var(--border-defined); outline: none; }
+.home-view .bt-sort select:focus { border-color: var(--hand); outline: none; }
 
 /* the search came back empty: name the absence and the next move, nothing else */
 .home-view .browse-empty {
