@@ -243,3 +243,80 @@ of it. See [sourcing-pipeline.md](sourcing-pipeline.md).
 catalog when the mechanism is built. Two are already known: Wikidata says **kosher salt** is a kind of
 **table salt**, where the cook's parent is the authored `salt` row that no automatic edge can reach, and
 **black pepper and white pepper** both carry `peppercorn` as a superclass.
+
+---
+
+## 9. Wheat, gluten and the allergen statute
+
+**Three items, all surfaced by verification of batch 11 on 2026-09-03, all deferred rather than fixed.**
+They share one cause: **21 USC 321 is the corpus's single allergen source and it does less than the
+corpus assumes.** The routing card was updated to v3 to stop the pattern spreading. **These three are
+the existing instances, and none is fixed.**
+
+### 9a. Five source slugs for one URL
+
+`https://www.law.cornell.edu/uscode/text/21/321` is cited by **twelve safety flags across ten entries**
+and carries **five different `source` slugs**:
+
+```
+5 x  us-fdca-21usc321-major-allergen     all-purpose-flour, buttermilk, flour, milk, zaatar
+2 x  usc-21-321-qq-allergens             ice-cream (both flags)
+2 x  cornell-21usc321                    oyster-sauce (both flags)
+2 x  fda-major-allergen-21usc321         semolina, whole-wheat-flour  -> FIXED, see below
+1 x  cornell-lii-21usc321                cumin
+```
+
+**Every batch names it fresh, because no chat can see its siblings.** This is the concrete instance of
+the general no-registry problem in section 3, and it is worth recording separately because it needs no
+registry to fix. One URL, one agreed name.
+
+**Decided and applied:** the corpus form is **`us-fdca-21usc321-major-allergen`**, the plurality at five
+uses, and it names the Act rather than the agency. **Batch 11's two entries were corrected to it**, and
+the routing card v3 now names it so chats stop inventing variants.
+
+⚠️ **Five flags in three entries are still off-slug**, in `ice-cream`, `oyster-sauce` and `cumin`.
+**Deliberately not fixed.** They are outside batch 11's blast radius, they are mechanical, and a
+normalization pass over the whole corpus is the right shape rather than a drive-by edit during an
+unrelated verification.
+
+### 9b. The gluten clause is uncited on three entries
+
+**Verified by reading the statute in full.** The word **gluten** does not appear in 21 USC 321. Neither
+does celiac disease. It names wheat among the nine major allergens and stops.
+
+| entry | flag text says gluten | chain establishes it |
+| --- | --- | --- |
+| `flour` (rank 71) | yes | **no, and nothing says so** |
+| `semolina` (rank 124) | yes | no, **caveat now recorded** |
+| `whole-wheat-flour` (rank 127) | yes | no, **caveat now recorded** |
+| `all-purpose-flour` (rank 8) | yes | no, **caveat recorded 2026-08-31** |
+
+**Nothing here is false.** Wheat flour contains gluten. **The chain does not carry it**, and gluten is
+the half a celiac reader is reading for.
+
+`all-purpose-flour` found this itself and wrote the warning into its own `taken`, with the instruction
+to "either trace it or scope the flag text to wheat". **That knowledge went nowhere**, and three more
+entries have since made the same statement. Batch 11's two now carry the same caveat, following that
+precedent.
+
+⚠️ **`flour.toml` (rank 71) is the remaining untreated instance.** From batch 6, outside batch 11's
+blast radius. **Not fixed.**
+
+**What still needs deciding, once, for all four.** Either a source is traced that establishes gluten in
+wheat, which would let every wheat flag state it properly, or the flag texts scope to wheat and gluten
+moves to prose where it carries no citation weight. **Four entries currently ship a true sentence their
+chains do not support.**
+
+### 9c. Is `also = "gluten"` the convention?
+
+**One entry uses it.** `all-purpose-flour` carries `also = "gluten"` on its flag alongside
+`allergen = "wheat"`. **No other entry in the corpus has an `also` field at all**, including the three
+other wheat entries that name gluten in their text.
+
+**So the same fact is represented two ways**, in a structured field on one entry and in prose only on
+three others. **Neither is wrong and they are not the same thing**, which is the reason to decide rather
+than let it drift.
+
+**What needs deciding.** Whether `also` is a real field in the schema, and if it is, whether it takes
+non-allergens like gluten at all, given that the `allergen` field is defined against the statutory list
+of nine and gluten is not on it. **Blocked on nothing except a decision.**
