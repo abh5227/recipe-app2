@@ -116,13 +116,16 @@ standard is not re-verified when the standard tightens. Nothing in the pipeline 
 so each tightening leaves a layer of entries judged against the old bar. **This is the first such
 layer.**
 
-## 6. PROPOSED RULE: prose-claim consistency
+## 6. ADOPTED: prose-claim consistency
+
+⚠️ **ADOPTED 2026-09-02, as option (c), both.** It is a chat self-check in **operator brief v1.14**
+section 6, and a verification step in `previews/verifications/README.md`. **No longer open.**
 
 **An entry's prose may not assert a mechanism that no claim carries.** Every mechanism stated in the
-description should have a backing claim, with that claim's tier and chain.
+description must have a backing claim, with that claim's tier and chain.
 
-**This has recurred across batches**, which is why it is here rather than in a single verification
-record.
+**This recurred across batches**, which is why it reached this register rather than staying in a single
+verification record.
 
 - **lemon juice.** The prose said bottled juice has "none of the smell". The claim said the same and was
   false, and **fixing only the claim would have left the false version in the text a reader actually
@@ -139,17 +142,23 @@ the better outcome where a source exists. **The pattern is what needs a decision
 what ships to a reader. **A mechanism that lives only in prose has no tier, no source and no falsifier,
 and nothing in the pipeline checks it.** It reads exactly like the sourced sentences beside it.
 
-**Options.**
+**What settled it.** A batch run on a deliberately bare prompt, with no inline steering at all, carried
+**nine of ten** loads on the strength of the brief, tracker and card alone. Safety routing around a
+blocked host, the corpus check, named give-ups, a cuisine escalation and a self-caught contradiction all
+fired unprompted.
 
-- **(a)** Make it a verification check, run every batch.
-- **(b)** Put it in the operator brief so sourcing chats self-check before handing over.
-- **(c)** Both.
+⚠️ **The single load it dropped was this one, in 2 of 3 entries.** It was also the only rule on that
+list **not written in the brief.** Every rule that was written was followed. The one that was not was
+broken. **That is the argument, and it is why the fix was a rule rather than a prompt.**
 
-⚠️ **(b) alone is weak.** A chat writing prose from its own claims is the party least likely to notice
-it drifted, which is the same reason the draft-and-verify split exists at all. **(c) is the safe
-answer, and (a) is the one that actually catches things.** Andy decides.
+**Adopted as (c), both**, because **(b) alone is weak**: a chat writing prose from its own claims is the
+party least likely to notice it drifted, which is the same reason the draft-and-verify split exists.
+The self-check catches the obvious cases and the verifier catches the rest.
 
-**Not yet decided, and not yet enforced anywhere.**
+⚠️ **One form of it is worth naming separately.** In that batch the prose stated a finding from a paper
+the batch had itself listed as a blocked host it never opened. **Citation by osmosis.** The tell is
+prose that is stronger than the chain beneath it, and both the brief rule and the verification step
+call it out by name.
 
 ## 7. Standards decisions pending
 
