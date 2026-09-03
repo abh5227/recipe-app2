@@ -186,7 +186,28 @@ a:hover { color: var(--berry-lift); }
    .page.home-view (0,2,0) rather than .home-view (0,1,0) so it beats .page on specificity instead
    of on source order, matching how .page.recipe-view already does it. Scoped, so it CANNOT move
    the recipe column (760px via --page-measure) or the feed (full-bleed desk, 1360px inner board). */
-.page.home-view { max-width: 1400px; }
+.page.home-view {
+  max-width: 1400px;
+  /* An extra strip of left padding, beyond .page's own, so the left accent rule has somewhere to
+     live OUTSIDE the content rather than on top of it. Everything (header, its horizontal rule, the
+     tools row, the grid) shifts right together, so their shared left edge stays a single line. */
+  --browse-gutter: 30px;
+  padding-left: calc(clamp(20px, 5vw, 44px) + var(--browse-gutter));
+}
+
+/* THE LEFT ACCENT RULE — the vertical twin of the header's horizontal one: same --hand, same 2px,
+   same solid fill, turned 90 degrees. It hangs off .browse-body (everything below the header) and is
+   held off the horizontal rule in BOTH axes so the two read as a pair of accents, never as two sides
+   of a box:
+     across  28px   the rule sits one gutter left of content, less its own 2px
+     down    30px   .browse-body starts 46px under the header, the horizontal rule only 16px under it
+   The vertical gap is not a magic number, it is what those two existing values already leave. */
+.home-view .browse-body { position: relative; }
+.home-view .browse-body::before {
+  content: ""; position: absolute;
+  left: calc(-1 * var(--browse-gutter)); top: 0; bottom: 0;
+  width: 2px; background: var(--hand); pointer-events: none;
+}
 
 .home-view .browse-head {
   position: relative; display: flex; align-items: center; gap: 24px; margin: 0 0 46px;
@@ -235,7 +256,18 @@ a:hover { color: var(--berry-lift); }
    keystroke, so the caret, the typed value and the sort selection survive a repaint without having
    to be saved and restored. There is deliberately NO hint line explaining the last-cooked date —
    the date on the card says it itself. */
-.home-view .browse-tools { display: flex; align-items: center; gap: 18px; margin: 0 0 26px; flex-wrap: wrap; }
+/* The divider under the search row. Same --hand family as the two accent rules, so it belongs to
+   them, but deliberately quieter on BOTH axes: 1px against their 2px, and mixed to 50% so it settles
+   toward the paper instead of holding full strength. At 2px full --hand it read as a third accent
+   competing with the two rules rather than as the divider it is. The mix does composite against the
+   warm ground and shift the hue a little, which is the accepted trade for the lighter presence.
+   (Restored here; it was dropped during the stage-c port because it lived in the mock's colour block
+   rather than its layout rule.) */
+.home-view .browse-tools {
+  display: flex; align-items: center; gap: 18px; margin: 0 0 26px; flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: 1px solid color-mix(in srgb, var(--hand) 50%, transparent);
+}
 .home-view .bt-field { position: relative; flex: 0 1 420px; min-width: 200px; }
 .home-view .bt-field::before {
   content: "\2315"; position: absolute; left: 11px; top: 50%; transform: translateY(-52%);
@@ -360,6 +392,7 @@ a:hover { color: var(--berry-lift); }
   .home-view .recipe-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 28px 16px; }
   .home-view .browse-tools { gap: 12px; }
   .home-view .bt-sort { margin-left: 0; }
+  .page.home-view { --browse-gutter: 14px; }   /* the rule stays, closer in, on a narrow screen */
 }
 
 /* ---------- Recipe detail ---------- */

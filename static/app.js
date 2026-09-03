@@ -575,18 +575,23 @@ async function renderHome() {
         CURRENT_USER ? `<span class="site-user">${esc(CURRENT_USER.display_name || CURRENT_USER.email)}<button type="button" data-logout>Sign out</button></span>` : ""
       }</nav>
     </header>
-    <div class="browse-tools">
-      <span class="bt-field"><input id="browse-q" type="search" autocomplete="off" spellcheck="false"
-        placeholder="Search recipes, sources and tags" aria-label="Search recipes, sources and tags"></span>
-      <span class="bt-sort"><label class="bt-label" for="browse-sort">Sort</label>
-        <select id="browse-sort">
-          <option value="name" selected>Name</option>
-          <option value="rating">Rating</option>
-          <option value="cooks">Times cooked</option>
-          <option value="last">Last cooked</option>
-        </select></span>
-    </div>
-    <div class="recipe-grid" id="browse-grid"></div>`;
+    <!-- .browse-body wraps everything BELOW the header so the left accent rule can hang off it: its
+         top edge already sits 30px under the header's horizontal rule (the header's 46px margin less
+         the rule's 16px drop), which is what keeps the two lines from closing a corner. -->
+    <div class="browse-body">
+      <div class="browse-tools">
+        <span class="bt-field"><input id="browse-q" type="search" autocomplete="off" spellcheck="false"
+          placeholder="Search recipes, sources and tags" aria-label="Search recipes, sources and tags"></span>
+        <span class="bt-sort"><label class="bt-label" for="browse-sort">Sort</label>
+          <select id="browse-sort">
+            <option value="name" selected>Name</option>
+            <option value="rating">Rating</option>
+            <option value="cooks">Times cooked</option>
+            <option value="last">Last cooked</option>
+          </select></span>
+      </div>
+      <div class="recipe-grid" id="browse-grid"></div>
+    </div>`;
 
   // All 298 recipes are already in memory, so search and sort are pure array work — no endpoint, no
   // round-trip, nothing to debounce. The two controls live OUTSIDE #browse-grid and only the grid's
