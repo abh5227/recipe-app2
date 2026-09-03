@@ -120,6 +120,67 @@ were already rejected so it does not re-fetch them.
 **A verification that lives only in a conversation did not happen**, as far as the next person is
 concerned. That is why the records are files.
 
+## What is reproducible, measured by sourcing the same rows twice
+
+**A natural experiment ran on 2026-09-03.** Two sourcing chats independently drafted the same three
+entries, ranks 130, 132 and 135, from the same brief, tracker and routing card, with no contact between
+them. The second took the batch from the tracker after its inline prompt named different ranks, which
+is the tracker-authority rule working rather than a batch going astray. **Two full drafts of the same
+rows is the only direct measurement of reproducibility this pipeline has.**
+
+### The search half reproduces. The judgement half does not.
+
+| layer | result across the two runs |
+| --- | --- |
+| capture fields | **identical on 3 of 3 entries**, including three `cuisine` declines and one deliberate blank `form` |
+| sources reached | **4 of 4 load-bearing URLs shared**, one matching to the full path, plus the same content farm rejected for the same reason |
+| named-not-opened | **the same two unreachable primaries identified independently**, an FDA advisory and a 2004 Pediatrics case series |
+| judgement dependency | **both correct.** Both declined to pin star anise's botanical family per `j-fennel-relatedness`, and one re-derived the same source disagreement the judgement records |
+| claim count | **diverged**, 10 against 6 |
+| tier calls | **diverged, and two were wrong** |
+
+**Two chats with no contact reached the same establishing bodies and made the same capture and
+judgement calls.** Finding sources is not path-dependent. **What differs is the layer above it.**
+
+### Tier errors come from claim granularity
+
+**The run that bundled facts produced two wrong CITED tiers. The run that split the same facts produced
+none.** One `source_class` and one tier per claim is a lossy container, and the loss appears whenever a
+claim holds facts of unequal evidential strength. The bundled claim inherits the stronger tier and the
+weaker half ships uncited.
+
+**The rule is in the operator brief from v1.16.** It earned a written line rather than being left to
+verification, because three drafters hit it from the same structure rather than one drafter losing
+attention.
+
+### WARNING: hazard completeness is NOT reproducible, and this is the load-bearing finding
+
+**Both runs found both hazards. Only one found the worst part of one of them.**
+
+On star anise both flagged the toxic look-alike, at the same `kind` and the same tier. **One run sourced
+its flag to a peer-reviewed differentiation study and stopped. The other found a botanical-identity
+compendium recording infant poisonings across four countries, and carried the resulting instruction into
+the flag text.** Do not give star anise tea to infants.
+
+**The first run's flag was not wrong. It was incomplete, and the missing part was the most actionable
+warning on the ingredient.** Nothing in the entry marked the absence. A flag that is present, correctly
+tiered and correctly wired reads as finished.
+
+⚠️ **So a single sourcing run cannot be trusted to have found the whole of a hazard, and no internal
+signal reveals the gap.** Tier errors are catchable by reading a claim against its chain. **A missing
+hazard is only catchable by going and looking for hazards independently.**
+
+**That is the argument for verification hunting hazards rather than only checking the ones it is
+handed.** It is also the argument for treating a second pass over a safety flag as ordinary work rather
+than as duplicated effort.
+
+### What this does not establish
+
+**Two runs is n equals 2, on three entries, one of which carried a real hazard.** The convergence
+figures are exact for these entries and are not a rate. **The hazard-completeness finding rests on a
+single instance**, which is enough to justify the verification step and not enough to quantify how often
+a run under-harvests a flag.
+
 ## The four capture fields
 
 All four are **observations, not claims.** They carry no tier, no chain and no source, and they sit at
