@@ -320,3 +320,31 @@ than let it drift.
 **What needs deciding.** Whether `also` is a real field in the schema, and if it is, whether it takes
 non-allergens like gluten at all, given that the `allergen` field is defined against the statutory list
 of nine and gluten is not on it. **Blocked on nothing except a decision.**
+
+---
+
+## 10. Verified does not mean permanently immune
+
+**Recorded 2026-09-06, after the same thing happened in two consecutive bulk passes.**
+
+| newer entry | exposed a defect in | what it was |
+| --- | --- | --- |
+| `wheat-tortilla` | `flour`, `all-purpose-flour`, `semolina`, `whole-wheat-flour` | those four state gluten on a chain that is only 21 USC 321, which does not contain the word. The tortilla scopes its flag to wheat and never claims gluten. See section 9b |
+| `pepperoni` | `bacon` | bacon bundled the IARC processed-meat finding with nitrosamine formation under one key and a `hazard` field naming only the second, with `n = 1` against two attached chains. Pepperoni filed the IARC finding alone under `hazard = "processed_meat"` |
+
+**In both cases a later entry did the same job more cleanly, and the comparison is what made the older
+defect visible.** Neither was found by re-reading the old entry, and neither would have been found
+without a newer one to hold it against.
+
+⚠️ **A VERIFIED stamp means checked once, against what was known then and against what existed
+then.** It does not mean the entry is finished. As the corpus grows, later entries cover ground earlier
+ones already covered, **and every one of those overlaps is a free re-audit of the older entry.**
+
+**This does not argue for re-verifying the corpus on a schedule**, which would cost more than it
+returns. **It argues that the cross-entry reconciliation step has a second purpose that is worth as
+much as its first.** The usual reason for it is stopping a new entry contradicting an old one. **The
+second reason is that the new entry audits the old one, and that only happens if the reconciliation
+reads both rather than checking the new work on its own terms.**
+
+**Both defects above are fixed.** The four gluten entries in 9b are not, and they are the standing
+instance of this shape.
