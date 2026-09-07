@@ -147,6 +147,28 @@ body.recipe-bg::before {
   background-size: 200px 200px; opacity: .13; mix-blend-mode: multiply;   /* feed .13 linen, verbatim */
 }
 body.recipe-bg > #app { position: relative; z-index: 1; }   /* lift ONLY the reading card above the desk ::before — NOT the body-level fixed overlays (.scrim/.panel/.backdate-modal keep their own position:fixed + z-index; 3654de7's `> *` clobbered them) */
+
+/* BROWSE DESK — the same surface as the feed and recipe desks, route-scoped via body.browse-bg
+   (set/removed by the router beside recipe-bg) so it reaches home ONLY and never bleeds onto the
+   create/edit forms, which keep the taupe body fill above.
+   Two deliberate differences from the feed:
+     tone    IDENTICAL. #B9B191 -> #A7A07E, ported verbatim, so the three desks are one surface.
+     linen   .34 rather than the feed's .13. Chosen by eye against the real cards over three
+             preview rounds; .13 read as no change on this page and .34 is where the weave
+             actually carries. The filter itself is the feed's, unchanged.
+   WARNING: the darker ground drops contrast for every dark-ink element sitting ON it (measured:
+   ghost nav text 4.11 -> 2.81, the SORT label 5.47 -> 3.74, the --hand accent rules 3.75 -> 2.56).
+   Deliberately NOT retuned here — this changes the ground only, so it can be judged on its own. */
+body.browse-bg {
+  position: relative; min-height: 100vh;
+  background: linear-gradient(180deg, #B9B191, #A7A07E);   /* feed desk tones, ported verbatim */
+}
+body.browse-bg::before {
+  content: ""; position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='l'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012 0.5' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23l)'/%3E%3C/svg%3E");
+  background-size: 200px 200px; opacity: .34; mix-blend-mode: multiply;   /* feed's linen, bolder */
+}
+body.browse-bg > #app { position: relative; z-index: 1; }   /* lift ONLY the page, not the fixed overlays */
 /* Stage 4: EDIT mode widens the page to ~1000px so the two-field ingredient row (quantity + unit +
    name + controls) isn't pinched — the extra width goes to the name column. Reading stays 760px.
    (No max-width transition yet — feeling the raw toggle jump before deciding whether to ease it.) */

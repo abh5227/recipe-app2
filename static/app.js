@@ -512,6 +512,12 @@ async function route() {
     // Recipe-page desk (the feed's surface texture) is route-scoped: paint it behind the recipe card
     // only, and strip it on every other route so it never bleeds onto home / the create/edit forms.
     document.body.classList.toggle("recipe-bg", !!mRecipe);
+    // Browse desk, same surface at a bolder linen. Scoped the same way and for the same reason: the
+    // background lives on <body> (the page itself is capped at 1400px and would leave the old taupe
+    // showing at the edges), so home gets a body class rather than a rule the forms would inherit.
+    // The condition is the router's own else-branch, spelled out: whatever falls through to renderHome.
+    const isHome = !mRecipe && !mEdit && hash !== "#/new" && hash !== "#/feed";
+    document.body.classList.toggle("browse-bg", isHome);
     if (hash === "#/new") {
       await renderForm("create");
     } else if (hash === "#/feed") {
