@@ -193,24 +193,37 @@ absent or measured-and-none, since a field with no meaning arguably should not b
 **Once decided**, four claims need correcting to match, and any batch drafted before the decision
 carries the old reading.
 
-### 7b. The prose-tier convention
+### 7b. RESOLVED and IMPLEMENTED: the prose-tier convention
 
-Flagged in `preview/categories-v1/_FORMAT-NOTES.md` and never settled. Two entries
-(`entries-v2/gochugaru.toml`, `entries-v3/besan.toml`) tier prose `curated` over `generated` claims,
-while the five category entries tier prose `generated`, which is what the standard says.
+**Decided 2026-09-04. The block-level tier is gone and prose is tiered PER PIECE.**
 
-**The two rules.** Prose follows the claims in its `derived_from` list, which is what the sourced drafts
-do and what two fix passes enforced on `cumin`, `white-pepper` and `cumin-seeds`. Or prose is
-`generated` unless separately traced, which is what the standard says.
+The question was which of two rules held. Prose follows the claims in its `derived_from` list, or
+prose is `generated` unless separately traced. They disagreed on any sentence drawn from one `curated`
+and one `generated` claim.
 
-**They disagree on the same file.** Prose derived from one `curated` and one `generated` claim is
-`curated` under the first rule and `generated` under the second.
+**The answer is the first rule, and the tier is the WEAKEST of the claims a piece names.** Weakest is
+the conservative direction and it matches how tiers cap everywhere else in the pipeline.
 
-**What needs deciding.** Which rule holds, and if it is the first, whether prose takes the best or the
-weakest tier among its claims. Weakest is more conservative and matches how tiers cap elsewhere.
+**The block-level `tier` and `body` fields are DELETED.** A description is now a list of
+`[[prose.piece]]` entries, each carrying its own `text` and its own `derived_from`. The tier is not
+written down at all, it is derived: an empty `derived_from` makes the piece `generated`, one key makes
+it that claim's tier, several make it the weakest of them.
 
-⚠️ **If the standard's reading wins, the fix-pass changes were corrections in the wrong direction** and
-need reverting.
+**The measurement that settled it.** Over the 213 sentences in the corpus at the time, **80, or 38
+percent, carried the wrong tier under the block model.** 41 sold higher than their evidence and 39
+sold lower. That is not a rounding problem, and it is invisible while a paragraph shares one number.
+
+**Where it is now implemented, so this is not a paper decision:**
+
+- All 56 sourced entries are converted. 230 pieces, none on the old shape.
+- `migrations/032_library_entries.sql` gives `library_prose_pieces` a `derived_tier` column.
+- `library_loader.py::derive_tier()` computes it on load and refuses a `derived_from` that names
+  nothing in the entry.
+- The operator brief documents the shape in section 6, as of v1.18.
+
+**The earlier warning here, that the fix-pass changes on `cumin`, `white-pepper` and `cumin-seeds`
+might need reverting, is withdrawn.** Those passes applied the rule that won, so they were corrections
+in the right direction and they stand.
 
 ## 8. Parent-child linking, starting with the flour family
 
