@@ -102,3 +102,8 @@ study/matcher/*.html
 # AJ60.py's 60 verdicts are keyed by SAMPLE INDEX and the AGREE block moves between HEADs, so
 # that file IS the judgment record rather than a regenerable report. Once tracked it stays
 # tracked, and .gitignore does not apply to tracked files.
+
+# Design mockups for the library viewer (mockups/*.html). Throwaway design scratch, treated exactly
+# like previews/ above. The locked treatment lives in library_viewer.py's own CSS, so these five
+# files record rounds already superseded rather than anything the tool reads.
+mockups/
