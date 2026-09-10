@@ -1,0 +1,88 @@
+# hand_repoints.csv - the link decisions the matcher cannot reach on its own.
+#
+# ⚠️ THE MATCHER REPRODUCES 2,746 OF THE 2,778 LINKS. The rows below are the rest, and they are
+# judgements about what a cook means rather than anything a rule can derive. Held here so a
+# rebuild replays them instead of losing them with the database.
+#
+# Two actions.
+#
+#   repoint   send the line at a different catalog row than the matcher would choose. Plain flour
+#             reaches the generic flour row on its own, and a cook means all-purpose flour.
+#
+#   suppress  refuse a match the matcher WOULD make. White miso is not the generic miso row and
+#             self-rising flour is not plain flour, so the link is withheld on purpose. Without
+#             these three lines a rebuild writes 2,781 links where the library holds 2,778.
+#
+#   relabel   keep the matcher's target and restore the rule string a hand pass wrote.
+#             Phase C released 25 lines from AMBIGUOUS, and 'phasec_release:' on the rule
+#             is how that is visible afterwards. Without these the links are right and
+#             the provenance is silently gone.
+#
+# ⚠️ KEYED ON (recipe_id, position), unique over all 3,555 lines. The id column is a rowid that
+# build_db regenerates, so it would survive nothing. line_check carries the text as it read when
+# the decision was made, and a line that no longer matches stops the run rather than repointing
+# something unrelated.
+#
+# ⚠️ APPLIED AFTER THE MATCHER, always. Every row here overrides what the matcher just wrote.
+#
+action,recipe_id,position,catalog_id,link_confidence,link_rule,link_matched,line_check
+repoint,brioche-cinnamon-rolls,13,en:icing-sugar,repoint,repoint:confectioners-icing-sugar,powdered sugar,confectioners sugar
+repoint,cinnamon-scones,11,en:icing-sugar,repoint,repoint:confectioners-icing-sugar,powdered sugar,powdered / icing sugar
+repoint,cinnamon-sugar-speculoos-squares,13,en:icing-sugar,repoint,repoint:confectioners-icing-sugar,powdered sugar,"confectioners' sugar, plus more as needed"
+repoint,earl-grey-tea-cake,3,en:icing-sugar,repoint,repoint:confectioners-icing-sugar,powdered sugar,confectioners’ sugar
+repoint,earthquake-cookies,10,en:icing-sugar,repoint,repoint:confectioners-icing-sugar,powdered sugar,confectioners' sugar
+repoint,matcha-amaretti-cookies,7,en:icing-sugar,repoint,repoint:confectioners-icing-sugar,powdered sugar,confectioners' sugar
+repoint,morning-buns-with-orange-blossom-glaze,11,en:icing-sugar,repoint,repoint:confectioners-icing-sugar,powdered sugar,confectioners' sugar
+repoint,pumpkin-spice-sandwich-cookies-with-brown-butter-cream-cheese-frosting,15,en:icing-sugar,repoint,repoint:confectioners-icing-sugar,powdered sugar,confectioners' sugar
+repoint,snickerdoodle-shortbread,4,en:icing-sugar,repoint,repoint:confectioners-icing-sugar,powdered sugar,confectioners' sugar
+repoint,spiced-pumpkin-olive-oil-and-orange-cake,16,en:icing-sugar,repoint,repoint:confectioners-icing-sugar,powdered sugar,confectioners' sugar
+repoint,sweet-pumpkin-fritters,9,en:icing-sugar,repoint,repoint:confectioners-icing-sugar,powdered sugar,confectioners' sugar
+repoint,tahini-shortbread-cookies,1,en:icing-sugar,repoint,repoint:confectioners-icing-sugar,powdered sugar,confectioners' sugar
+repoint,kfc-spicy-chicken-rice-bowl,11,Q10716334,repoint,repoint:granulated-garlic,garlic powder,"granulated garlic, or garlic powder"
+repoint,korean-scallion-pancake,0,Q774278,repoint,repoint:green-onions,scallion,"green onions, cut into 1 inch long"
+repoint,pan-fried-cabbage-with-bacon-and-green-onions,2,Q774278,repoint,repoint:green-onions,scallion,"green onions, thinly sliced, divided into whites and greens"
+repoint,smashed-cucumber-salad,3,Q774278,repoint,repoint:green-onions,scallion,"green onions, sliced"
+repoint,warm-buttered-hummus,12,Q774278,repoint,repoint:green-onions,scallion,"green onions, mostly the white part, finely chopped"
+repoint,baked-cauliflower-with-red-onions-feta-and-dill-firinda-karnabahar-mucveri,11,Q95388739,repoint,repoint:plain-flour,all-purpose flour,plain flour
+repoint,khaliat-nahal-honeycomb-bread,2,Q95388739,repoint,repoint:plain-flour,all-purpose flour,plain flour
+repoint,milky-tea-tres-leches,5,Q95388739,repoint,repoint:plain-flour,all-purpose flour,plain flour
+repoint,panang-curry,21,en:roasted-peanut,repoint,repoint:roasted-unsalted-peanuts,roasted peanut,"unsalted peanuts , finely chopped"
+repoint,peanut-chutney,0,en:roasted-peanut,repoint,repoint:roasted-unsalted-peanuts,roasted peanut,roasted unsalted peanuts
+repoint,red-pepper-potato-and-peanut-sabzi,7,en:roasted-peanut,repoint,repoint:roasted-unsalted-peanuts,roasted peanut,"roasted unsalted peanuts, crushed"
+repoint,agedashi-tofu,11,Q774278,repoint,repoint:spring-onions,scallion,spring onions (finely sliced)
+repoint,baked-cauliflower-with-red-onions-feta-and-dill-firinda-karnabahar-mucveri,3,Q774278,repoint,repoint:spring-onions,scallion,spring onions (finely chopped)
+repoint,spiced-filipino-adobo-with-chicken-and-pork,8,Q774278,repoint,repoint:spring-onions,scallion,"spring onions, chopped"
+repoint,glazed-pumpkin-scones,9,Q57312618,repoint,repoint:unsalted-cold-butter,unsalted butter,unsalted cold butter
+repoint,gai-yang,2,Q744814,repoint,repoint:white-peppercorns,white pepper,white peppercorns
+repoint,fish-with-white-wine-sauce,11,Q4409456,repoint,repoint:white-sugar,granulated sugar,white sugar
+repoint,panang-curry,14,Q4409456,repoint,repoint:white-sugar,granulated sugar,white sugar
+repoint,pork-stir-fry-with-green-beans,9,Q4409456,repoint,repoint:white-sugar,granulated sugar,white sugar
+repoint,raspberry-pie-6-year-anniversary-pie,2,Q4409456,repoint,repoint:white-sugar,granulated sugar,white sugar
+suppress,kfc-spicy-chicken-rice-bowl,23,,,form_strip:chopped,,"chopped cilantro, mint and/or green onions"
+suppress,okinawan-glazed-greens,2,,,form_strip:white,,white miso
+suppress,osmanthus-cake,8,,,form_strip:self rising,,self-rising flour (plus extra for dusting)
+relabel,acqua-pazza,3,Q622350,exact,phasec_release:exact,red onion,"red onion, sliced 1cm / 1/3″ thick"
+relabel,baked-cauliflower-with-red-onions-feta-and-dill-firinda-karnabahar-mucveri,1,Q622350,exact,phasec_release:exact,red onion,red onion (finely chopped)
+relabel,baked-rosemary-chickpeas,3,Q622350,exact,phasec_release:plural,red onion,"red onions, thinly sliced"
+relabel,blueberry-muffin-sugar-cookies,1,Q13178,form_strip,phasec_release:form_strip:fresh medium,blueberry,pint fresh medium blueberries (not frozen)
+relabel,breakfast-burrito,1,Q11106,exact,phasec_release:exact,bacon,bacon or sausage
+relabel,burgers,0,Q10990,form_strip,phasec_release:form_strip:ground,meat,Ground meat / ground turkey
+relabel,cheesy-congee,3,Q11106,exact,phasec_release:exact,bacon,"bacon, cut into ½-inch pieces"
+relabel,chicken-shawarma,16,Q622350,exact,phasec_release:exact,red onion,"Red onion, finely sliced"
+relabel,chips-and-salsa,5,Q622350,exact,phasec_release:plural,red onion,red onions
+relabel,coconut-curried-golden-lentils,4,Q216235,exact,phasec_release:exact,coconut oil,coconut oil (or water)
+relabel,egg-paratha-wrap,8,Q622350,exact,phasec_release:exact,red onion,Red onion
+relabel,herbed-focaccia,8,Q622350,exact,phasec_release:exact,red onion,"red onion, finely sliced"
+relabel,kfc-spicy-chicken-rice-bowl,22,Q622350,exact,phasec_release:exact,red onion,"red onion, short juliennes"
+relabel,korean-scallion-pancake,5,Q37937,exact,phasec_release:exact,sweet potato,sweet potato
+relabel,matcha-amaretti-cookies,1,Q822331,form_strip,phasec_release:form_strip:powder,matcha,matcha powder
+relabel,mussakhan,9,Q622350,exact,phasec_release:plural,red onion,"red onions, finely sliced into half-moons"
+relabel,pan-fried-cabbage-with-bacon-and-green-onions,1,Q11106,exact,phasec_release:exact,bacon,"bacon, cut crosswise into /-inch pieces"
+relabel,panang-curry,13,Q1139302,exact,phasec_release:exact,coconut cream,"coconut cream , full-fat"
+relabel,pasta-with-parsnips-and-bacon,4,Q11106,exact,phasec_release:exact,bacon,"bacon, diced"
+relabel,southwest-tofu-scramble,3,Q622350,exact,phasec_release:exact,red onion,red onion (thinly sliced)
+relabel,spiced-filipino-adobo-with-chicken-and-pork,7,Q216235,exact,phasec_release:exact,coconut oil,coconut oil or vegetable oil
+relabel,strawberry-banana-smoothie,0,Q14458220,form_strip,phasec_release:form_strip:frozen,strawberry,frozen strawberries
+relabel,sweet-potato-and-onion-hash,0,Q37937,form_strip,phasec_release:form_strip:white,sweet potato,"white sweet potatoes, peeled and cut into medium dice"
+relabel,thai-tea-ice-cream-chatramues-thai-tea,9,Q216235,exact,phasec_release:exact,coconut oil,"coconut oil, optional"
+relabel,warm-squash-chickpea-salad-with-tahini,6,Q622350,exact,phasec_release:exact,red onion,"red onion, finely chopped"
