@@ -103,6 +103,33 @@ def test_known_marks_are_caught_in_every_surface_form_seen():
         assert brand_guard.is_brand(form), f"{form!r} is a mark and was not caught"
 
 
+def test_a_catalog_canonical_is_food_unless_its_exact_form_is_listed():
+    """⚠️ THE LIBRARY DECIDES WHAT IS FOOD.
+
+    An interior word span used to be enough to call a name a brand, and it cut three real rows.
+    "Tabasco pepper" is Capsicum frutescens, the variety, where the mark covers the sauce.
+    "Castagna del Monte Amiata PGI" and "Pecorino del Monte Poro" are a chestnut and a cheese,
+    and "del Monte" is Italian for "of the mountain". No listed surface form is itself a catalog
+    canonical, so deferring to the library lets nothing real through.
+    """
+    import sqlite3 as _s
+    from pathlib import Path as _P
+    live = _P(__file__).resolve().parent.parent / "recipes.db"
+    if not live.exists():
+        pytest.skip("no live catalog here, the rule is exercised by the unit cases below")
+    conn = _s.connect(f"file:{live}?mode=ro", uri=True)
+    chk = brand_guard.catalog_name_check(conn)
+    blocked = [n for (n,) in conn.execute("SELECT canonical FROM library_names")
+               if brand_guard.is_brand(n, is_catalog_name=chk)]
+    conn.close()
+    assert blocked == [], f"real catalog rows classified as brands: {blocked}"
+
+
+def test_a_listed_mark_is_still_blocked_inside_a_longer_name():
+    for n in ("velveeta cheese spread", "crisco shortening", "strawberry jello mix"):
+        assert brand_guard.is_brand(n, is_catalog_name=lambda _s: False), f"{n!r} slipped through"
+
+
 def test_generic_foods_are_never_blocked():
     """⚠️ DEFAULT IS KEEP, and these two are why the rule exists.
 

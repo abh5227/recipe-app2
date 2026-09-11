@@ -62,11 +62,14 @@ POSSESSIVE = re.compile(r"\b[a-z]{3,}\s+s\b")        # NER strips apostrophes: "
 TRADE_WORDS = {"brand"}                               # "style" flagged `cream style corn`
 
 
-def classify(name, brands=None, known_word=None):
+def classify(name, brands=None, known_word=None, is_catalog_name=None):
     """Return (verdict, detail). verdict is 'brand', 'suspect' or 'clear'.
 
     known_word is accepted and unused. It is kept in the signature because the obvious wide
     heuristic wants it, and the comment above records why that heuristic is not here.
+
+    is_catalog_name(name) -> bool says whether the library already holds this exact canonical.
+    Pass it and the library wins, which is what the rule below is about.
     """
     b = BRANDS if brands is None else brands
     n = _norm(name)
@@ -74,6 +77,15 @@ def classify(name, brands=None, known_word=None):
         return "clear", ""
     if n in b:
         return "brand", b[n]
+    # ⚠️ THE LIBRARY DECIDES WHAT IS FOOD. An interior word span used to be enough to call a name
+    #    a brand, and that cut three real catalog rows. "Tabasco pepper" is Capsicum frutescens,
+    #    the variety, where the mark covers the sauce. "Castagna del Monte Amiata PGI" and
+    #    "Pecorino del Monte Poro" are a chestnut and a cheese, and "del Monte" is Italian for
+    #    "of the mountain", not the canner. A row the library already carries as a canonical is
+    #    food, unless its EXACT form is on the list. Measured: this clears exactly those three,
+    #    no listed surface form is itself a catalog canonical, so nothing real is let through.
+    if is_catalog_name is not None and is_catalog_name(name):
+        return "clear", "the library carries this as a canonical"
     # a mark inside a longer name: "velveeta cheese" when the list holds "velveeta"
     words = n.split()
     for size in range(len(words), 0, -1):
@@ -88,6 +100,12 @@ def classify(name, brands=None, known_word=None):
     return "clear", ""
 
 
-def is_brand(name, brands=None):
+def is_brand(name, brands=None, is_catalog_name=None):
     """The one question the enforcement test asks. Only a listed mark answers yes."""
-    return classify(name, brands)[0] == "brand"
+    return classify(name, brands, is_catalog_name=is_catalog_name)[0] == "brand"
+
+
+def catalog_name_check(conn):
+    """Build is_catalog_name from a live connection. One query, then a set lookup."""
+    names = {_norm(r[0]) for r in conn.execute("SELECT canonical FROM library_names")}
+    return lambda s: _norm(s) in names
