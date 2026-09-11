@@ -37,7 +37,13 @@ _RANGE = r"(?:to|[-–—])"
 # no-amount line ("Sea Salt") simply doesn't match.
 _LEAD_RE = re.compile(
     r"^\s*(?P<amount>" + _NUM + r"(?:\s*" + _RANGE + r"\s*" + _NUM + r")?)"
-    r"(?:\s*(?P<unit>" + _SCALE_UNIT + r")\b)?"
+    # ⚠️ THE PERIOD AFTER AN ABBREVIATED UNIT BELONGS TO THE UNIT, NOT THE NAME. Without the
+    #    optional "\.?" the \b matched between "oz" and ".", the period fell to the name, and
+    #    "8 oz. ground pork" was stored with the label ". ground pork". A cook saw the period.
+    #    It also blocked _SECONDARY_MEASURE below, which needs the name to START with "/", so
+    #    "16 oz./500g spinach" kept its dual measure too. recipe_line_parser.py has done the
+    #    same strip(".") on its own unit check since it was written.
+    r"(?:\s*(?P<unit>" + _SCALE_UNIT + r")\b\.?)?"
     r"\s*(?P<name>.*)$",
     re.IGNORECASE,
 )
