@@ -270,7 +270,49 @@ DATASETS = [
     },
 ]
 
-# ── MEASURED AND REJECTED. Kept in the catalogue with status='declined' so the decision
+# ── DERIVE ONLY. NOT A SOFTER DECLINE, A DIFFERENT QUESTION. The original entries declined
+#    these on license before coverage, per the license-first rule, and that reading of the
+#    license has not changed: nothing from either corpus may be redistributed. What the decline
+#    conflated was redistribution with derivation. A count across 2.2 million recipes is a fact
+#    about the corpus rather than a copy of any part of it, so the two are now separated.
+#    ⚠ THE BOUNDARY IS TIGHTER HERE THAN IT WAS UNDER `declined`, not looser: a declined source
+#    was merely unused, while a derive_only source is machine-checked to hold no text anywhere
+#    (test_mined_tables_hold_no_corpus_text). The reasoning lives in docs/mining-decision.md and
+#    that document is a SCAFFOLD until its legal section is written and signed off by the owner.
+DERIVE_ONLY = [
+    {
+        "source": "recipenlg", "dataset": "corpus",
+        "url": "https://recipenlg.cs.put.poznan.pl/",
+        "license": "NOT ESTABLISHED, NOT REDISTRIBUTABLE",
+        "attribution": "RecipeNLG, Poznan University of Technology.",
+        "probe_score": "not measured",
+        "decision_reason": "DERIVE ONLY, per docs/mining-decision.md. No license statement was "
+                           "reachable on the project site and it is built on Recipe1M+, which is "
+                           "scraped from copyrighted recipe websites, so nothing here may ship. "
+                           "Aggregate facts derived across the corpus may be kept, because a count "
+                           "over 2.2 million recipes is not a reproduction of any of them. Chosen "
+                           "over recipe1m because it is a direct download rather than a list of "
+                           "URLs to crawl. ⚠ COVERAGE IS STILL UNMEASURED. Probe a sample against "
+                           "the catalog and record the score before any full ingest.",
+        "notes": "~2.2 million recipes with named food entities. Read for the 10 fact types in "
+                 "docs/mining-decision.md. No recipe text is stored, ever.",
+    },
+    {
+        "source": "recipe1m", "dataset": "corpus",
+        "url": "http://pic2recipe.csail.mit.edu/",
+        "license": "NOT REDISTRIBUTABLE",
+        "attribution": "Recipe1M+, MIT CSAIL.",
+        "probe_score": "not measured",
+        "decision_reason": "DERIVE ONLY in principle, NOT USED in practice. The dataset is not "
+                           "provided publicly and the authors publish image URLs to be scraped, "
+                           "which would make the crawl this project's own act rather than a "
+                           "download. recipenlg reaches the same material without that step and is "
+                           "the corpus actually read. Kept here so the distinction is recorded.",
+        "notes": "Coverage never tested. Superseded by recipenlg for this purpose.",
+    },
+]
+
+# ── MEASURED AND REJECTED. Kept in source_catalogue with status='declined' so the decision
 #    is legible and the probe is not repeated. Each carries its score and its reason.
 DECLINED = [
     {
@@ -311,31 +353,7 @@ DECLINED = [
                         "License is also mixed per file rather than uniform.",
         "notes": "Category NAMES were the target, not the media.",
     },
-    {
-        "source": "recipenlg", "dataset": "corpus",
-        "url": "https://recipenlg.cs.put.poznan.pl/",
-        "license": "NOT ESTABLISHED",
-        "attribution": "unavailable",
-        "probe_score": "not measured",
-        "decision_reason": "⚠ DECLINED ON LICENSE, BEFORE COVERAGE, per the license-first rule. No "
-                           "license statement was reachable on the project site. It is built on "
-                           "Recipe1M+, which is scraped from copyrighted recipe websites, so the "
-                           "underlying rights are not the authors' to grant. A source that cannot "
-                           "ship is not worth measuring.",
-        "notes": "~2.2 million recipes with named food entities. Coverage never tested.",
-    },
-    {
-        "source": "recipe1m", "dataset": "corpus",
-        "url": "http://pic2recipe.csail.mit.edu/",
-        "license": "NOT REDISTRIBUTABLE",
-        "attribution": "unavailable",
-        "probe_score": "not measured",
-        "decision_reason": "⚠ DECLINED ON LICENSE, BEFORE COVERAGE. The dataset is not provided "
-                           "publicly; the authors publish image URLs to be scraped, which puts "
-                           "the rights with the original recipe sites rather than the dataset.",
-        "notes": "Coverage never tested.",
-    },
-    {
+            {
         "source": "gs1", "dataset": "gpc",
         "url": "https://gpc-browser.gs1.org/",
         "license": "GS1 member license only",
@@ -389,8 +407,14 @@ CREATE TABLE source_catalogue (
     -- ⚠ DECLINES ARE CATALOGUED TOO. A source that was measured and rejected is a
     --   decision worth keeping. Without this, the next pass re-derives the same probe
     --   and may reach a different answer for no reason.
+    -- ⚠ `derive_only` IS NOT A SOFTER `declined`. It answers a different question. `declined`
+    --   means the data may not be redistributed AND is not worth measuring. `derive_only` means
+    --   the data may not be redistributed EITHER, and statistics derived from it may still be
+    --   kept, because a count over a corpus is not the corpus. Nothing from a derive_only source
+    --   ever lands in an _entry or _label table, and no table may hold its text.
+    --   See docs/mining-decision.md.
     status          TEXT NOT NULL DEFAULT 'ingest'
-                    CHECK (status IN ('ingest','declined')),
+                    CHECK (status IN ('ingest','declined','derive_only')),
     probe_score     TEXT,                 -- score on the ten collapse terms
     decision_reason TEXT,                 -- why it is in or out, in one place
     probe_caveat    TEXT,                 -- how much the measurement can bear
@@ -542,12 +566,13 @@ def build(db_path=None):
                                d.get("notes"), "ingest",
                                d.get("probe_score"), d.get("decision_reason"),
                                d.get("probe_caveat")))
-        for d in DECLINED:
-            conn.execute(ins, (d["source"], d["dataset"], d["url"], d.get("query_text"),
-                               d["license"], d["attribution"], d.get("share_alike", 0),
-                               d.get("notes"), "declined",
-                               d.get("probe_score"), d.get("decision_reason"),
-                               d.get("probe_caveat")))
+        for rows, st in ((DECLINED, "declined"), (DERIVE_ONLY, "derive_only")):
+            for d in rows:
+                conn.execute(ins, (d["source"], d["dataset"], d["url"], d.get("query_text"),
+                                   d["license"], d["attribution"], d.get("share_alike", 0),
+                                   d.get("notes"), st,
+                                   d.get("probe_score"), d.get("decision_reason"),
+                                   d.get("probe_caveat")))
         conn.commit()
     finally:
         conn.close()
@@ -568,9 +593,11 @@ def print_manifest(db_path=None):
     ).fetchone()[0]
     conn.close()
     n_in = sum(1 for r in rows if r["status"] == "ingest")
-    n_out = len(rows) - n_in
-    print(f"{path.name}: {n_tab} tables, {n_in} datasets to ingest, {n_out} declined and recorded\n")
-    for st in ("ingest", "declined"):
+    n_der = sum(1 for r in rows if r["status"] == "derive_only")
+    n_out = len(rows) - n_in - n_der
+    print(f"{path.name}: {n_tab} tables, {n_in} datasets to ingest, {n_out} declined and recorded, "
+          f"{n_der} derive-only\n")
+    for st in ("ingest", "declined", "derive_only"):
         sel = [r for r in rows if r["status"] == st]
         print(f"  -- {st} ({len(sel)})")
         for r in sel:

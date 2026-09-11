@@ -80,10 +80,14 @@ def test_every_ingest_source_has_tables_and_no_declined_one_does(db):
         pass
     ingest = {r[0] for r in db.execute(
         "SELECT DISTINCT source FROM source_catalogue WHERE status='ingest'")}
-    declined_only = {r[0] for r in db.execute(
-        "SELECT DISTINCT source FROM source_catalogue WHERE status='declined'")} - ingest
-    for src in declined_only:
-        assert f"{src}_entry" not in have, f"{src} is declined but still has tables"
+    # ⚠ derive_only BELONGS IN THIS SET. It was 'declined' until docs/mining-decision.md split
+    #   the status, and a set built on 'declined' alone would have quietly stopped checking the
+    #   two recipe corpora the day they moved. Neither status ingests rows.
+    not_ingested = {r[0] for r in db.execute(
+        "SELECT DISTINCT source FROM source_catalogue "
+        "WHERE status IN ('declined','derive_only')")} - ingest
+    for src in not_ingested:
+        assert f"{src}_entry" not in have, f"{src} is not ingested but still has tables"
 
 
 def test_no_shared_entry_table_with_a_source_column(db):

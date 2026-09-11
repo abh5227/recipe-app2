@@ -550,7 +550,7 @@ def test_redirects_never_write_into_wikidata_tables(conn):
 
 def test_declines_are_catalogued_with_reason_and_score(conn):
     rows = conn.execute("SELECT * FROM source_catalogue WHERE status='declined'").fetchall()
-    assert len(rows) == 7
+    assert len(rows) == 5, "7 before recipenlg and recipe1m became derive_only"
     for r in rows:
         assert r["decision_reason"], f"{r['source']}/{r['dataset']} declined without a reason"
         assert r["probe_score"], f"{r['source']}/{r['dataset']} declined without a score"
@@ -570,11 +570,78 @@ def test_commons_decline_carries_its_caveat(conn):
     assert "re-probe" in r["probe_caveat"].lower()
 
 
-def test_license_declines_were_not_measured(conn):
-    for src in ("recipenlg", "recipe1m", "gs1"):
-        r = conn.execute("SELECT * FROM source_catalogue WHERE source=?", (src,)).fetchone()
-        assert r["probe_score"] == "not measured", "license comes before coverage"
-        assert "LICENSE" in r["decision_reason"].upper()
+def test_license_decline_still_comes_before_coverage(conn):
+    """The license-first rule, on the source it still applies to outright.
+
+    ⚠ THIS TEST USED TO COVER recipenlg AND recipe1m TOO, and it conflated two questions:
+    whether a source may be REDISTRIBUTED and whether statistics may be DERIVED from it. gs1
+    is closed to both. The two recipe corpora are closed to the first and open to the second,
+    which is what `derive_only` records. See docs/mining-decision.md. The boundary did not get
+    weaker in the split. It moved from an assertion here to a machine check below.
+    """
+    r = conn.execute("SELECT * FROM source_catalogue WHERE source='gs1'").fetchone()
+    assert r["status"] == "declined"
+    assert r["probe_score"] == "not measured", "license comes before coverage"
+    assert "LICENSE" in r["decision_reason"].upper()
+
+
+def test_derive_only_sources_may_be_probed_but_never_redistributed(conn):
+    """A derive_only source is readable for facts and unshippable as data."""
+    rows = conn.execute(
+        "SELECT * FROM source_catalogue WHERE status='derive_only'").fetchall()
+    assert {r["source"] for r in rows} == {"recipenlg", "recipe1m"}
+    for r in rows:
+        assert "NOT REDISTRIBUTABLE" in r["license"].upper(), (
+            f"{r['source']} is derive_only, which does not make its data shippable")
+        assert r["decision_reason"], "a status change without a recorded reason is not a decision"
+        assert "DERIVE ONLY" in r["decision_reason"].upper()
+        # coverage MAY now be measured, and has not been yet. The probe is the next phase, so
+        # this pins the current state rather than forbidding the measurement.
+        assert r["probe_score"] == "not measured"
+
+
+def test_derive_only_sources_have_no_tables(conn):
+    """Nothing from a derive_only corpus is ingested as rows. Only derived facts may exist."""
+    have = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    for src in ("recipenlg", "recipe1m"):
+        for suffix in ("_entry", "_label", "_recipe", "_text"):
+            assert f"{src}{suffix}" not in have, (
+                f"{src}{suffix} exists. A derive_only source is read, never stored.")
+
+
+# ⚠ THE BOUNDARY, MACHINE-CHECKED. Written BEFORE the first ingest rather than after, because a
+#   boundary retrofitted to a schema that already broke it is not a boundary. It passes vacuously
+#   today, when no mined table exists, and bites the moment one is added with a text column.
+#   Boundary (b), (d) and (f) of docs/mining-decision.md all rest on this single test.
+MINED_PREFIX = "mined_"
+ALLOWED_MINED_TEXT_COLS = {"source_slug", "source_url", "library_id", "a_id", "b_id",
+                           "from_id", "to_id", "dish_type", "method", "role", "cuisine",
+                           "technique", "course", "fact_kind"}
+
+
+def test_mined_tables_hold_no_corpus_text(conn):
+    """No mined table may carry free text read from the corpus.
+
+    The allowed TEXT columns are identifiers, provenance and closed vocabularies, all of which
+    are facts or pointers. A recipe title, an ingredient line, a method sentence or a note can
+    only enter through a column outside that set, so the set is the check. Widening it is a
+    decision about the boundary and belongs in docs/mining-decision.md, not in a patch here.
+    """
+    mined = [r[0] for r in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE ?",
+        (MINED_PREFIX + "%",))]
+    for t in mined:
+        for col in conn.execute(f"PRAGMA table_info({t})"):
+            name, decl = col[1], (col[2] or "").upper()
+            if "CHAR" in decl or "TEXT" in decl or "CLOB" in decl:
+                assert name in ALLOWED_MINED_TEXT_COLS, (
+                    f"{t}.{name} is a free-text column on a mined table. Facts leave the "
+                    f"extractor as tuples and the sentence is never retained. "
+                    f"See docs/mining-decision.md boundary (b) and (f).")
+        cols = {c[1] for c in conn.execute(f"PRAGMA table_info({t})")}
+        assert "n" in cols, (
+            f"{t} has no `n` column. Boundary (c): only aggregates across recipes are stored, "
+            f"and a row that cannot say how many recipes it came from is not an aggregate.")
 
 
 def test_share_alike_sources_are_flagged(conn):
