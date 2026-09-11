@@ -94,6 +94,18 @@ CSS = """
   --rail:#1B2A33; --rail-2:#263A45; --rail-text:#A9BFC9;
   --s0:11px; --s1:12.5px; --s2:13.5px; --s3:15px; --s4:20px; --s5:30px; --s6:56px;
   --pad:clamp(18px,3.2vw,34px);
+  /* ⚠️ THE GUTTER between a divider and the text after it. Every columned block was written as
+     padding-right plus a border-right, which leaves padding-left at 0, so the first column sat
+     correctly against the page edge and every column after it sat flush against the divider of
+     the one before. The container is pulled left by the same amount, so the first column keeps
+     its alignment with the prose above while every column gains the gutter. */
+  --gut:20px;
+  /* ⚠️ THE MEASURE FOR ANYTHING THAT IS NOT A TABLE. Charts and the header count sat in an
+     unbounded column, so a bar drawn at 1800px stretched to 1,508px and the count landed
+     1,299px from its own title. A table stops at its content width. A bar has no content
+     width, so it needs one stated. The count shares it, which puts it on the right edge of
+     the bar it summarises instead of the right edge of the monitor. */
+  --chart:920px;
 }
 *{box-sizing:border-box;min-width:0}
 html{-webkit-text-size-adjust:100%}
@@ -178,33 +190,80 @@ section + section{border-top:1px solid var(--rule)}
 .track{display:flex;height:30px;border:1px solid var(--rule)}
 .track i{display:block;height:100%}
 .track i + i{border-left:1px solid rgba(255,255,255,.55)}
+/* ⚠️ EVERY SEGMENT IS A DOOR. The bar showed the shape and the legend underneath held the only
+   links, so the thing you were looking at was not the thing you could click. */
+.track a{display:block;height:100%;min-width:0}
+.track a + a{border-left:1px solid rgba(255,255,255,.55)}
+.track a:hover{filter:brightness(1.12)}
+.track a:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+
+/* the same gauge, sized for the top of an inner page */
+.pgauge{margin:0 0 clamp(18px,2.6vw,24px);max-width:var(--chart)}
+.pgauge .gcap{margin:0 0 7px;font-family:"IBM Plex Mono",monospace;font-size:var(--s0);
+  color:var(--steel-dim)}
+/* the dashboard coverage chart is four siblings, not one wrapper, so they share the cap */
+.chart{max-width:var(--chart)}
+.pgauge .track{height:26px}
+/* ⚠️ NOTHING HERE IS PLACED BY SEGMENT WIDTH. Drawing a percentage on its own segment, or
+   centred above it, fails on the small ones, and the failure was measured rather than guessed:
+   1.2% needs 18px of type and its block is 11.5px, 0.7% needs 16px and has 7.3px, and the
+   made-from 0.0% needs 13px and has 1.4px. Above the bar the same two labels overlap, their
+   centres 8.5px apart. One key per line with the figure in a fixed column makes 0.0% exactly as
+   legible as 77.0%. Tabular mono, right-aligned, stacks the decimal points so the column reads
+   as one scale. No rule between rows. The leader already carries the eye across. */
+.pgauge .keys{margin-top:11px}
+.pgauge .keys a{display:flex;align-items:baseline;padding:6px 0;font-size:var(--s1);
+  color:var(--steel)}
+.pgauge .keys a:hover{color:var(--teal)}
+.pgauge .keys em{width:10px;height:10px;flex:none;display:block;border:1px solid rgba(0,0,0,.06);
+  transform:translateY(1px);margin-right:9px}
+.pgauge .keys .lab{white-space:nowrap;min-width:0}
+.pgauge .keys b{font-family:"IBM Plex Mono",monospace;font-weight:500;color:var(--ink);
+  font-variant-numeric:tabular-nums;margin-left:15px}
+.pgauge .keys a:hover b{color:var(--teal)}
+.pgauge .keys .lead{flex:1 1 auto;min-width:24px;margin:0 14px;
+  border-bottom:1px dotted var(--rule);transform:translateY(-.3em)}
+/* named off `sub`: that class is the page standfirst paragraph and carried a bottom margin of
+   up to 34px into every key row. */
+.pgauge .keys .pc{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  color:var(--steel);width:7ch;text-align:right;flex:none}
+.pgauge .keys a:hover .pc{color:var(--teal)}
+@media(max-width:640px){.pgauge .keys .lab{white-space:normal;overflow-wrap:anywhere}
+  .pgauge .keys .lead{min-width:12px;margin:0 9px}}
 .ruler{position:relative;height:26px}
 .ruler .t{position:absolute;top:0;width:1px;height:6px;background:var(--rule)}
 .ruler .t.maj{height:9px;background:var(--steel-dim)}
 .ruler .lab{position:absolute;top:11px;font-family:"IBM Plex Mono",monospace;font-size:var(--s0);
   color:var(--steel);transform:translateX(-50%);white-space:nowrap}
 .ruler .lab.first{transform:none} .ruler .lab.last{transform:translateX(-100%)}
-.legend{display:grid;grid-template-columns:repeat(3,1fr);margin-top:clamp(16px,2.4vw,22px);
-  border-top:1px solid var(--hair)}
-@media(max-width:760px){.legend{grid-template-columns:1fr}}
-.legend a{display:block;padding:14px 20px 15px 0;border-right:1px solid var(--hair)}
-.legend a:last-child{border-right:none}
-@media(max-width:760px){.legend a{border-right:none;border-bottom:1px solid var(--hair);padding:12px 0}
-  .legend a:last-child{border-bottom:none}}
+/* the same one-key-per-line reading as the gauge legends, plus the gloss each key carries.
+   Three columns split by rules put the figure of one key beside the label of the next. */
+.legend{margin-top:clamp(14px,2.2vw,20px)}
+.legend a{display:block;padding:10px 10px 11px 8px;margin-left:-8px}
 .legend a:hover{background:var(--teal-wash)}
-.legend .led{margin-bottom:4px}
 .legend .led em{width:11px;height:11px;flex:none;display:block;border:1px solid rgba(0,0,0,.06);
   margin-right:9px;transform:translateY(-1px)}
 .legend .led .fig{font-size:var(--s4);line-height:1.1}
+.legend .led .pc{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  color:var(--steel);width:8ch;text-align:right;flex:none;margin-left:20px;font-size:var(--s2)}
 .legend a:hover .lab{color:var(--teal);text-decoration:underline;text-underline-offset:2px}
-.legend .g{display:block;font-size:var(--s1);color:var(--steel);margin-top:3px;line-height:1.5;
-  max-width:34ch}
+.legend a:hover .pc{color:var(--teal)}
+.legend .g{display:block;font-size:var(--s1);color:var(--steel);margin-top:2px;line-height:1.5;
+  max-width:62ch;padding-left:20px}
 .legend .bound .fig{color:var(--teal)} .legend .un .fig{color:var(--amber)}
+
+/* a source you can follow. The slug reads as the citation, the href goes to the source. */
+a.src{color:var(--teal);border-bottom:1px solid var(--teal-pale);font-size:var(--s1)}
+a.src:hover{border-bottom-color:var(--teal);background:var(--teal-wash)}
+a.src + a.src{margin-left:8px}
+span.src{font-size:var(--s1)}
+.meta a.src{margin-left:2px}
 
 /* ── registers ────────────────────────────────────────────────────────── */
 .reg{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--hair)}
 @media(max-width:860px){.reg{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:520px){.reg{grid-template-columns:1fr}}
+.reg a:not(:nth-child(3n+1)){padding-left:var(--gut)}
 .reg a{display:block;padding:15px 20px 16px 0;border-right:1px solid var(--hair);
   border-bottom:1px solid var(--hair)}
 .reg a:nth-child(3n){border-right:none;padding-right:0}
@@ -213,9 +272,12 @@ section + section{border-top:1px solid var(--rule)}
   .reg a{padding-right:20px}
   .reg a:nth-child(3n){border-right:1px solid var(--hair);padding-right:20px}
   .reg a:nth-child(2n){border-right:none;padding-right:0}
+  .reg a:not(:nth-child(2n+1)){padding-left:var(--gut)}
+  .reg a:nth-child(2n+1){padding-left:0}
   .reg a:nth-last-child(-n+3){border-bottom:1px solid var(--hair)}
   .reg a:nth-last-child(-n+2){border-bottom:none}}
 @media(max-width:520px){
+  .reg a{padding-left:0}
   .reg a,.reg a:nth-child(3n),.reg a:nth-child(2n){border-right:none;padding-right:0;
     border-bottom:1px solid var(--hair)}
   .reg a:last-child{border-bottom:none}}
@@ -223,6 +285,7 @@ section + section{border-top:1px solid var(--rule)}
 .reg .led .fig{font-size:var(--s5);letter-spacing:-.03em;line-height:1.05}
 .reg a:hover .fig{color:var(--teal)}
 .reg a:hover .lab{color:var(--teal);text-decoration:underline;text-underline-offset:2px}
+.reg .fig .unit{display:block;font-family:"IBM Plex Sans",system-ui,sans-serif;font-size:var(--s0);font-weight:400;color:var(--steel-dim);letter-spacing:0;margin-top:2px;text-align:right}
 .reg .d{display:block;font-size:var(--s1);color:var(--steel);margin-top:5px;line-height:1.45;
   max-width:34ch}
 
@@ -245,6 +308,7 @@ section + section{border-top:1px solid var(--rule)}
 .dist{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid var(--hair)}
 @media(max-width:900px){.dist{grid-template-columns:1fr}}
 .dist > div{padding:16px 22px 4px 0;border-right:1px solid var(--hair);display:flex;flex-direction:column}
+.dist > div:not(:nth-child(3n+1)){padding-left:var(--gut)}
 .dist > div:last-child{border-right:none;padding-right:0}
 @media(max-width:900px){.dist > div{border-right:none;border-bottom:1px solid var(--hair);
   padding:16px 0 8px} .dist > div:last-child{border-bottom:none}}
@@ -261,6 +325,9 @@ a.bar:hover .r span.k{color:var(--teal);text-decoration:underline;text-underline
 a.bar .r b{font-family:"IBM Plex Mono",monospace;font-weight:500;font-variant-numeric:tabular-nums;
   color:var(--steel);text-align:right;min-width:5.4ch}
 a.bar:hover .r b{color:var(--teal)}
+/* the bar answers the pointer too, so the row reads as a single door */
+a.bar:hover .t i{background:var(--teal)}
+a.bar:hover .t{background:var(--teal-pale)}
 a.bar .t{display:block;height:4px;background:var(--hair)}
 a.bar .t i{display:block;height:100%;background:var(--steel-dim)}
 a.bar.lead .r span.k{font-weight:500}
@@ -268,31 +335,53 @@ a.bar.lead .r b{color:var(--teal)}
 a.bar.lead .t i{background:var(--teal)}
 
 /* ── tables, the list pages ───────────────────────────────────────────── */
-.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
-table{border-collapse:collapse;width:100%;font-size:var(--s2)}
-/* below the breakpoint the table sizes to its content and scrolls inside .scroll, so the page
-   body never scrolls sideways and no column becomes unreachable. */
-@media(max-width:760px){.scroll > table{width:max-content;min-width:100%}
-  .scroll{margin-right:calc(var(--pad) * -1);padding-right:var(--pad)}}
+/* ⚠️ THE SCROLL CONTAINER IS OFF ABOVE THE BREAKPOINT, and that is what lets the header stick.
+   An element with overflow-x:auto becomes a scroll container on BOTH axes, because CSS turns a
+   visible overflow-y into auto the moment the other axis is not visible. A sticky header inside
+   it then pins to that box rather than to the viewport, and the box is exactly as tall as the
+   table, so it never appears to stick at all. Above 760px the table already fits, so the
+   container is not needed and the header sticks to the page. Below it the horizontal scroll
+   comes back and sticky is given up, which is the honest trade. */
+.scroll{overflow:visible}
+table{border-collapse:collapse;width:auto;max-width:100%;font-size:var(--s2)}
+@media(max-width:760px){
+  .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;
+    margin-right:calc(var(--pad) * -1);padding-right:var(--pad)}
+  .scroll > table{width:max-content;min-width:100%}
+  thead th{position:static !important}}
 thead th{text-align:left;padding:7px 12px 7px 0;color:var(--steel);font-weight:600;font-size:var(--s0);
   border-bottom:1px solid var(--rule);white-space:nowrap;font-variant:normal}
 tbody td{padding:9px 12px 9px 0;border-bottom:1px solid var(--hair);vertical-align:top}
 tbody tr:last-child td{border-bottom:none}
 tbody tr:hover{background:var(--teal-wash)}
+/* ══ THE COLUMN VOCABULARY. Four classes, used identically on every page. ═══
+   nm    the row's own name. The widest thing in the table and the primary door.
+   num   a figure. Right-aligned and tabular so a column of them lines up on the
+         last digit, and shrunk to its content so it never leaves a gap.
+   wrap  prose. Capped so a long note cannot stretch the whole table.
+   (bare) a secondary value, left-aligned. */
+/* ⚠️ no percentage width here. width:1% is the usual shrink-a-column trick, and it only works
+   on a table that is already width:100%. On an auto-width table any percentage makes the table
+   resolve against its container instead of its content, which is what was stretching it to the
+   full viewport with the last column absorbing the slack. nowrap does the shrinking on its own. */
 th.num,td.num{text-align:right;font-family:"IBM Plex Mono",monospace;
   font-variant-numeric:tabular-nums;white-space:nowrap}
+td.nm{min-width:13ch}
+th.nm,td.nm{padding-right:22px}
 /* ⚠️ ONLY THE LAST COLUMN loses its right padding. Every cell already has padding-left:0, so a
    .num sitting mid-table with padding-right:0 had no gutter on either side and ran straight into
    its neighbour. 'lines' + 'library_id' rendered as one column reading 86Q4116639, and 'parents'
    + 'children' turned 1 and 2 into 12. Five tables were affected, not just the catalog. */
-th.num:last-child,td.num:last-child{padding-right:0}
+/* ⚠️ the last numeric column keeps its trailing space too. This used to be zeroed so a figure sat
+   flush with the right edge of a full-width table. The table is content-width now, so there is no
+   edge to sit against and the zero only made the last column read tighter than every other. */
 
 /* ══ THE EXPLAINED PAGE ════════════════════════════════════════════════════
    Every page says what it is, how many, and what table it reads. Every column
    says what it holds in plain words and which stored column that is. The labels
    stay accurate and the explanation does the work. */
-.phead{margin-bottom:clamp(16px,2.4vw,22px)}
-.phead .row{display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap}
+.phead{margin-bottom:clamp(16px,2.4vw,22px);padding-top:clamp(6px,1vw,12px)}
+.phead .row{display:flex;align-items:flex-end;gap:26px;flex-wrap:wrap;max-width:var(--chart)}
 .phead h1{margin:0;flex:none}
 .phead .tally{margin-left:auto;display:flex;align-items:baseline;gap:9px;padding-bottom:2px}
 .phead .tally .v{font-family:"IBM Plex Mono",monospace;font-size:var(--s5);font-weight:500;
@@ -309,21 +398,42 @@ th.num:last-child,td.num:last-child{padding-right:0}
 /* ⚠️ the whole header reads left to right, numeric columns included. A right-aligned gloss
    wraps into a ragged block and the column names stop sharing a baseline. Only the DATA in a
    numeric column stays right-aligned. */
-thead th{vertical-align:top;padding-bottom:10px;text-align:left;position:relative}
-thead th.num{text-align:left;font-family:"IBM Plex Sans",system-ui,sans-serif}
+/* ⚠️ sticky, and still the containing block for the hover gloss. position:sticky establishes one
+   the same way relative does, so the tooltip keeps positioning against its own header cell. */
+thead th{vertical-align:top;padding-bottom:10px;text-align:left;position:sticky;top:0;z-index:5;
+  background:var(--surface)}
+thead th::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:1px;
+  background:var(--rule)}
+/* a numeric header sits over its figures. This was left-aligned while the plain-English gloss
+   printed under it and wrapped into a ragged block. The gloss moved to hover, so the header is
+   two short lines again and can align with the column it labels. */
+thead th.num{text-align:right;font-family:"IBM Plex Sans",system-ui,sans-serif}
+thead th.num .db{text-align:right;max-width:none}
+thead th.num .gl{left:auto;right:0;text-align:left}
 /* the column NAME and the stored column stay on the page. The sentence explaining the column is
    one hover or one tab away, so the header stays two quiet lines instead of four. */
 thead th .hd{border-bottom:1px dotted var(--rule);cursor:help}
 thead th .hd:hover,thead th .hd:focus-visible{color:var(--teal);border-bottom-color:var(--teal);
   outline:none}
-thead th .db{display:block;font-family:"IBM Plex Mono",monospace;font-size:10px;line-height:1.35;
+/* ⚠️ wraps at spaces, never inside a word. With overflow-wrap:anywhere a shrink-to-content
+   numeric column broke 'kind_of, made_from' into 'kind_o f, made_f rom'. A stored column name
+   split mid-token is worse than a wide column, since the point of the line is to be copyable. */
+thead th .db{display:block;font-family:"IBM Plex Mono",monospace;font-size:10px;line-height:1.4;
   color:var(--steel-dim);font-weight:400;margin-top:4px;letter-spacing:0;white-space:normal;
-  max-width:24ch;text-align:left;overflow-wrap:anywhere}
-thead th .gl{position:absolute;left:0;top:calc(100% - 2px);z-index:9;width:max-content;
+  max-width:24ch;text-align:left;overflow-wrap:normal;word-break:normal}
+/* ⚠️ IT SITS OVER THE FIRST ROW AND HAS TO LOOK LIKE IT. The header is sticky at the top of the
+   viewport, so there is no room to place the sentence above it, and a tooltip that drops into the
+   data with no edge reads as text printed onto the row rather than a layer over it. The shadow
+   and the hairline are what separate the two. Narrower than before so it stays near the column it
+   belongs to instead of spanning three of them. */
+thead th .gl{position:absolute;left:0;top:calc(100% + 2px);z-index:30;width:max-content;
   font-family:"IBM Plex Sans",system-ui,sans-serif;
-  max-width:270px;font-size:11px;line-height:1.5;font-weight:400;color:var(--surface);
-  background:var(--ink);padding:7px 10px;text-align:left;white-space:normal;letter-spacing:0;
+  max-width:230px;font-size:11px;line-height:1.5;font-weight:400;color:var(--surface);
+  background:var(--ink);padding:8px 11px;text-align:left;white-space:normal;letter-spacing:0;
+  border:1px solid rgba(255,255,255,.14);box-shadow:0 6px 20px rgba(11,20,26,.30);
   opacity:0;pointer-events:none;transition:opacity .1s ease}
+/* the last two columns open leftward so the sentence cannot run off the edge of the page */
+thead th:nth-last-child(-n+2) .gl{left:auto;right:0}
 thead th .hd:hover ~ .gl,thead th .hd:focus-visible ~ .gl{opacity:1}
 @media(prefers-reduced-motion:reduce){thead th .gl{transition:none}}
 
@@ -361,6 +471,47 @@ td.num a:hover{color:var(--teal);border-bottom-color:var(--teal-pale)}
   font-family:inherit;color:var(--ink)}
 .filters input:focus{outline:2px solid var(--teal);outline-offset:1px}
 .filters .lbl{font-size:var(--s1);color:var(--steel);margin-right:2px}
+
+/* ── per-column refine, and the bar saying what is on ─────────────────────
+   The controls sit above the table rather than inside the header row. A control in a sticky
+   header would fight the gloss tooltip for the same few pixels, and a select inside a th
+   cannot be reached at all once the header sticks. */
+.refine{margin:0 0 14px;max-width:var(--chart)}
+.rf{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:flex-end;margin-bottom:8px}
+.rf:last-child{margin-bottom:0}
+.rf label{display:flex;flex-direction:column;gap:3px}
+.rf label > span{font-size:var(--s0);color:var(--steel)}
+.rf input,.rf select{padding:4px 9px;border:1px solid var(--hair);font-size:var(--s1);
+  font-family:inherit;color:var(--ink);background:var(--surface)}
+.rf input{width:200px}
+.rf input:focus,.rf select:focus{outline:2px solid var(--teal);outline-offset:1px}
+.rf button{padding:5px 15px;border:1px solid var(--ink);background:var(--ink);color:#fff;
+  font-family:inherit;font-size:var(--s1);cursor:pointer}
+.rf button:hover{background:var(--teal);border-color:var(--teal)}
+
+.active{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin:0 0 14px;
+  padding:9px 0;border-top:1px solid var(--hair);border-bottom:1px solid var(--hair)}
+.active .lbl{font-size:var(--s1);color:var(--steel)}
+.active .chip{display:inline-flex;align-items:baseline;gap:6px;padding:3px 9px;
+  border:1px solid var(--teal);color:var(--teal);font-size:var(--s1);background:var(--teal-wash)}
+.active .chip b{font-weight:400;color:var(--steel)}
+.active .chip i{font-style:normal;color:var(--steel-dim);font-size:var(--s2)}
+.active .chip:hover{background:var(--teal);color:#fff;border-color:var(--teal)}
+.active .chip:hover b,.active .chip:hover i{color:#fff}
+.active .clr{font-size:var(--s1);color:var(--steel);text-decoration:underline;
+  text-underline-offset:2px}
+.active .clr:hover{color:var(--amber)}
+.active .res{margin-left:auto;font-family:"IBM Plex Mono",monospace;font-size:var(--s1);
+  color:var(--steel);font-variant-numeric:tabular-nums}
+
+/* the sort affordance on a column header */
+thead th a.hd{color:inherit;display:inline-flex;align-items:baseline;gap:5px}
+thead th a.hd:hover{color:var(--teal);text-decoration:underline;text-underline-offset:3px}
+thead th a.hd .ar{font-style:normal;font-size:var(--s0);color:var(--steel-dim);
+  width:7px;display:inline-block}
+thead th a.hd.sorted{color:var(--teal)}
+thead th a.hd.sorted .ar{color:var(--teal)}
+thead th.num a.hd{flex-direction:row-reverse}
 
 .pager{display:flex;gap:6px;align-items:center;margin:18px 0 0;font-size:var(--s1);flex-wrap:wrap}
 .pager a,.pager span{padding:4px 10px;border:1px solid var(--hair)}
@@ -458,9 +609,14 @@ def page(title, body, active="/", crumbs=(), head="", n=None):
 
 # ── components ──────────────────────────────────────────────────────────────
 
-def led(label, figure, href=None, cls="", gloss=""):
+def led(label, figure, href=None, cls="", gloss="", unit=""):
+    """⚠️ THE UNIT RIDES WITH THE FIGURE. Six registers rendered identically put 10,474 next to
+    10,192 and invited a comparison that means nothing: one counts names, the other counts edges
+    between names. A catalog could double its names without gaining a single edge. The unit is
+    the fix, not a chart, because there is no relationship to chart."""
+    u = f'<span class=unit>{escape(unit)}</span>' if unit else ""
     inner = (f'<span class=led><span class=lab>{label}</span><span class=lead></span>'
-             f'<span class=fig>{figure}</span></span>')
+             f'<span class=fig>{figure}{u}</span></span>')
     if gloss:
         inner += f'<span class=d>{gloss}</span>'
     return f'<a class="{cls}" href="{href}">{inner}</a>' if href else f'<div class="{cls}">{inner}</div>'
@@ -551,6 +707,70 @@ def cnt(n, href=None):
     return f'<a href="{href}">{fmt(n)}</a>' if href else fmt(n)
 
 
+SEG = ["var(--teal)", "var(--teal-mid)", "var(--steel-dim)", "var(--rule)", "#C8D6DA", "#E1E8EA"]
+
+
+def gauge(parts, total, whole_label=""):
+    """A segmented bar where every segment is a door. parts: [(label, value, href)].
+
+    ⚠️ THE PARTS MUST SUM TO THE TOTAL. A gauge whose segments do not partition is a false claim
+    about the data, and the map that produced these found two candidates that failed exactly that
+    test: catalog bare/used/written double-counts because a row can be both, and rows-by-hierarchy
+    misses `bread`, the one row that is only ever an in-category parent. This refuses to draw
+    rather than manufacture a relationship, so a later breakdown cannot quietly slip through.
+    """
+    got = sum(v for _, v, _ in parts)
+    if got != total:
+        raise AssertionError(f"gauge parts sum to {got}, not {total}. It does not partition, "
+                             f"so it must not be charted.")
+    bars, keys = "", ""
+    for i, (label, value, href) in enumerate(parts):
+        bg = SEG[i % len(SEG)]
+        # ⚠️ flex is the raw count. A segment of 4 against 10,192 renders as a hairline, and that
+        #    sliver is the honest picture. It is not padded to be visible.
+        bars += (f'<a href="{href}" style="background:{bg};flex:{value}" '
+                 f'aria-label="{escape(label)}, {fmt(value)}"></a>')
+        pct = (value / total * 100) if total else 0
+        keys += (f'<a href="{href}"><em style="background:{bg}"></em>'
+                 f'<span class=lab>{escape(label)}</span><b>{fmt(value)}</b>'
+                 f'<span class=lead></span><span class=pc>{pct:.1f}%</span></a>')
+    aria = ", ".join(f"{escape(l)} {fmt(v)}" for l, v, _ in parts)
+    # the set the bar is drawn over, stated on the bar. A chart sitting above a filtered table
+    # has to say which of the two it describes.
+    cap = f'<p class=gcap>{escape(whole_label)}</p>' if whole_label else ""
+    return (f'<div class=pgauge>{cap}<div class=track role="img" aria-label="{aria}">{bars}</div>'
+            f'<div class=keys>{keys}</div></div>')
+
+
+def entry_sources(c, entry_id):
+    """key -> [(slug, url)] for one entry, in one query.
+
+    ⚠️ A CITATION THAT CANNOT BE FOLLOWED IS NOT A CITATION. 337 of the 402 claims and prose
+    pieces in the library reach a real URL through library_chains, and the page was printing the
+    slug as flat text, so checking one meant querying the database by hand. Sources without a URL
+    stay flat text rather than becoming a dead link: one slug, `repo: weights.py`, is a pointer
+    into this repo and is not a place on the web."""
+    out = {}
+    for r in c.execute(
+            "SELECT ch.key, ch.source_slug, s.url FROM library_chains ch "
+            "LEFT JOIN library_sources s ON s.source_slug=ch.source_slug "
+            "WHERE ch.entry_id=? ORDER BY ch.position", (entry_id,)):
+        out.setdefault(r["key"], []).append((r["source_slug"], r["url"]))
+    return out
+
+
+def srclink(slug, url):
+    """One source. A link when there is somewhere to go, plain text when there is not."""
+    if not url or not str(url).startswith("http"):
+        return f'<span class="src dimc">{escape(slug)}</span>'
+    return (f'<a class=src href="{escape(url)}" target="_blank" rel="noopener noreferrer" '
+            f'title="{escape(url)}">{escape(slug)}</a>')
+
+
+def srcbits(pairs):
+    return " ".join(srclink(sl, u) for sl, u in pairs) if pairs else ""
+
+
 def phead(title, n, unit, table_name, about, said=None, of=None):
     """The head every list page shares. Title, a count scoped to the filters, the table it
     reads, and a paragraph saying what the page is. `about` may hold several <p class=about>."""
@@ -581,16 +801,29 @@ def table(headers, rows, aligns=None, empty="Nothing here."):
     # a header is either a bare string or (name, plain gloss, stored column).
     def head_cell(x, a):
         if isinstance(x, (tuple, list)):
-            nm, gl, db = (list(x) + ["", ""])[:3]
-            if not gl:
-                return (f'<th class="{a}">{escape(nm)}'
-                        + (f'<span class=db>{escape(db)}</span>' if db else "") + '</th>')
-            # tabindex + aria-describedby, so the sentence is reachable without a mouse
+            nm, gl, db, sk = (list(x) + ["", "", None])[:4]
+            # ⚠️ A SORTABLE HEADER IS A LINK, NOT A BUTTON. The whole tool works with the URL as
+            #    the state, so a sort has to survive a copy-paste and a page change like every
+            #    other control here. Clicking the active column flips the direction.
+            cur, cdir = request.args.get("sort") or "", request.args.get("dir") or ""
+            if sk:
+                nxt = "asc" if (cur == sk and cdir == "desc") else ("desc" if cur == sk else "asc")
+                arrow = (f'<i class=ar aria-hidden="true">{"↑" if cdir != "desc" else "↓"}</i>'
+                         if cur == sk else '<i class=ar aria-hidden="true"></i>')
+                on = " sorted" if cur == sk else ""
+                label = (f'<a class="hd{on}" href="{qs(sort=sk, dir=nxt, page=None)}"'
+                         + (f' aria-describedby="g{abs(hash((nm, db, gl))) % 10**8}"' if gl else "")
+                         + f' aria-sort="{"descending" if cdir == "desc" else "ascending"}"'
+                           f'>{escape(nm)}{arrow}</a>')
+            else:
+                label = (f'<span class=hd tabindex="0" '
+                         f'aria-describedby="g{abs(hash((nm, db, gl))) % 10**8}">{escape(nm)}</span>'
+                         if gl else escape(nm))
             gid = f"g{abs(hash((nm, db, gl))) % 10**8}"
-            return (f'<th class="{a}"><span class=hd tabindex="0" aria-describedby="{gid}">'
-                    f'{escape(nm)}</span>'
+            return (f'<th class="{a}">{label}'
                     + (f'<span class=db>{escape(db)}</span>' if db else "")
-                    + f'<span class=gl id="{gid}" role="tooltip">{escape(gl)}</span></th>')
+                    + (f'<span class=gl id="{gid}" role="tooltip">{escape(gl)}</span>' if gl else "")
+                    + '</th>')
         return f'<th class="{a}">{escape(x)}</th>'
     h = "".join(head_cell(x, a) for x, a in zip(headers, aligns))
     b = "".join("<tr>" + "".join(f'<td class="{a}">{cell}</td>' for cell, a in zip(r, aligns))
@@ -837,8 +1070,10 @@ def dashboard():
         out = ""
         for i, r in enumerate(rows):
             cls = "bar lead" if (i == 0 and lead_first) else "bar"
+            # the bar already sits inside the anchor, so the whole row is one door. It only
+            # LOOKED unclickable because nothing under the pointer answered.
             out += (f'<a class="{cls}" href="{base}?{key}={uq(r[0])}">'
-                    f'<span class=r><span class=k>{escape(str(r[0]))}</span>'
+                    f'<span class=r><span class=k>{escape(human(key, str(r[0])))}</span>'
                     f'<span class=lead></span><b>{fmt(r[1])}</b></span>'
                     f'<span class=t><i style="width:{r[1]/top*100:.1f}%"></i></span></a>')
         return out
@@ -849,15 +1084,16 @@ def dashboard():
 <p class=hint>Recipe lines bound to a catalog row, measured against the {fmt(cov['scope'])}
  non-heading lines in scope. The leading segment is the part that reaches written prose, which is
  the figure that decides what a cook is actually shown.</p>
+<div class=chart>
 <div class=head>
   <a class=big href="/links">{fmt(cov['bound'])}</a>
   <span class=of>of <b>{fmt(cov['scope'])}</b> lines in scope</span>
   <a class=pct href="/links"><span class=v>{cov['pct']:.1f}%</span><span class=l>bound</span></a>
 </div>
 <div class=track role="img" aria-label="{cov['entry']} lines reach a written entry, {cov['row']} reach a plain catalog row, {cov['unbound']} remain unbound">
-  <i style="background:var(--teal);flex:{cov['entry']}"></i>
-  <i style="background:var(--teal-mid);flex:{cov['row']}"></i>
-  <i style="flex:{cov['unbound']};background:repeating-linear-gradient(45deg,#DCE6E8 0 4px,#F6F9F9 4px 8px)"></i>
+  <a href="/links?reach=entry" style="background:var(--teal);flex:{cov['entry']}" aria-label="reach a written entry"></a>
+  <a href="/links?reach=row" style="background:var(--teal-mid);flex:{cov['row']}" aria-label="reach a plain catalog row"></a>
+  <a href="/uncovered" style="flex:{cov['unbound']};background:repeating-linear-gradient(45deg,#DCE6E8 0 4px,#F6F9F9 4px 8px)" aria-label="reach nothing"></a>
 </div>
 <div class=ruler aria-hidden="true">
   {"".join(f'<span class="t{" maj" if i%2==0 else ""}" style="left:{i*12.5}%"></span>' for i in range(8))}
@@ -871,32 +1107,34 @@ def dashboard():
 <div class=legend>
   <a class=bound href="/links?reach=entry"><span class=led><em style="background:var(--teal)"></em>
     <span class=lab>reach a written entry</span><span class=lead></span>
-    <span class=fig>{fmt(cov['entry'])}</span></span>
+    <span class=fig>{fmt(cov['entry'])}</span><span class=pc>{seg(cov['entry']):.1f}%</span></span>
     <span class=g>The line can be shown sourced prose, its claims and its safety flags.</span></a>
   <a href="/links?reach=row"><span class=led><em style="background:var(--teal-mid)"></em>
     <span class=lab>reach a plain catalog row</span><span class=lead></span>
-    <span class=fig>{fmt(cov['row'])}</span></span>
+    <span class=fig>{fmt(cov['row'])}</span><span class=pc>{seg(cov['row']):.1f}%</span></span>
     <span class=g>Identified and resolvable, with nothing written about it yet.</span></a>
   <a class=un href="/uncovered"><span class=led>
     <em style="background:repeating-linear-gradient(45deg,#DCE6E8 0 3px,#F6F9F9 3px 6px)"></em>
     <span class=lab>remain unbound</span><span class=lead></span>
-    <span class=fig>{fmt(cov['unbound'])}</span></span>
+    <span class=fig>{fmt(cov['unbound'])}</span><span class=pc>{seg(cov['unbound']):.1f}%</span></span>
     <span class=g>Compounds, constructions and specialist ingredients the catalog does not hold.</span></a>
-</div></section>
+</div></div></section>
 
 <section aria-labelledby=regs><h2 id=regs>Registers</h2>
 <p class=hint>Counted at this reading. Each opens its own list.</p>
 <div class=reg>
-  {led("Catalog rows", fmt(n['catalog']), "/catalog", gloss="Every name the library can resolve")}
+  {led("Catalog rows", fmt(n['catalog']), "/catalog", gloss="Every name the library can resolve", unit="names")}
   {led("Written entries", fmt(n['entries']), "/entries",
-       gloss=f"{with_id} bound to a row, {n['entries']-with_id} without one")}
-  {led("Categories", fmt(n['categories']), "/categories", gloss="The browsable vocabulary")}
+       gloss=f"{with_id} bound to a row, {n['entries']-with_id} without one", unit="records")}
+  {led("Categories", fmt(n['categories']), "/categories", gloss="The browsable vocabulary", unit="records")}
   {led("Relations", fmt(n['relations']), "/relations",
-       gloss=", ".join(f"{fmt(r[1])} {r[0].replace('_','-')}" for r in c.execute(
-           "SELECT kind, COUNT(*) FROM library_relations GROUP BY 1 ORDER BY 2 DESC")))}
+       gloss=", ".join(f"{fmt(r[1])} {human('kind', r[0])}" for r in c.execute(
+           "SELECT kind, COUNT(*) FROM library_relations GROUP BY 1 ORDER BY 2 DESC")),
+       unit="edges between names")}
   {led("Recipe links", fmt(n['links']), "/links",
-       gloss=f"Across {fmt(q('SELECT COUNT(DISTINCT catalog_id) FROM recipe_ingredients WHERE catalog_id IS NOT NULL'))} distinct catalog rows")}
-  {led("Recipes", fmt(n['recipes']), "/recipes", gloss="The corpus those links are drawn from")}
+       gloss=f"Across {fmt(q('SELECT COUNT(DISTINCT catalog_id) FROM recipe_ingredients WHERE catalog_id IS NOT NULL'))} distinct catalog rows",
+       unit="line-to-row bindings")}
+  {led("Recipes", fmt(n['recipes']), "/recipes", gloss="The corpus those links are drawn from", unit="recipes")}
 </div></section>
 
 <section aria-labelledby=cnd><h2 id=cnd>Condition</h2>
@@ -939,37 +1177,199 @@ def dashboard():
 
 CAT_FILTERS = [("", "all"), ("has-entry", "written up"), ("has-category", "in a category"),
                ("has-parent", "has a parent"), ("has-lines", "used in a recipe"), ("bare", "bare")]
+# `attached` is reachable from the chart but is not a chip. It is the exact complement of bare,
+# which the six chips have no single value for.
+CAT_FILTER_LABELS = dict(CAT_FILTERS)
+
+# ⚠️ ONE DEFINITION PER COLUMN, used by SELECT, WHERE and ORDER BY alike. The number you read,
+#    the number you sort on and the number you filter on are then provably the same expression
+#    rather than three that happen to agree today.
+CAT_EXPR = {
+    "lines": "(SELECT COUNT(*) FROM recipe_ingredients ri WHERE ri.catalog_id=ln.library_id)",
+    "par":   "(SELECT COUNT(*) FROM library_relations r WHERE r.child_id=ln.library_id"
+             " AND r.kind<>'in_category')",
+    "kids":  "(SELECT COUNT(*) FROM library_relations r WHERE r.parent_id=ln.library_id"
+             " AND r.kind<>'in_category')",
+    "cat":   "(SELECT lc.category_id FROM library_relations r JOIN library_categories lc"
+             " ON lc.category_id=r.parent_id WHERE r.child_id=ln.library_id"
+             " AND r.kind='in_category' LIMIT 1)",
+    "ent":   "(SELECT e.entry_id FROM library_entries e WHERE e.library_id=ln.library_id)",
+}
+
+# the sort whitelist. A key that is not in here never reaches SQL.
+CAT_SORT = {"ingredient": "ln.canonical COLLATE NOCASE", "category": CAT_EXPR["cat"],
+            "entry": CAT_EXPR["ent"], "parents": CAT_EXPR["par"], "children": CAT_EXPR["kids"],
+            "lines": CAT_EXPR["lines"], "library_id": "ln.library_id COLLATE NOCASE"}
 
 
-@app.route("/catalog")
-def catalog():
-    c = db()
-    qy = (request.args.get("q") or "").strip()
-    f = request.args.get("filter") or ""
-    p = max(1, int(request.args.get("page") or 1))
-    where, args = [], []
-    if qy:
-        where.append("ln.canonical LIKE ? COLLATE NOCASE"); args.append(f"%{qy}%")
+def cat_order(key, direction):
+    """⚠️ EVERY SORT ENDS WITH THE SAME TIEBREAK. 10,065 of the 10,474 rows have lines=0, so an
+    ORDER BY with no deterministic tail lets SQLite return them in any order it likes, and a row
+    can then appear on two pages or on none. canonical is unique, so it settles every tie.
+
+    NULLs go last in both directions. Sorting by category ascending otherwise opens on 4,089
+    rows that have no category, which is the one thing that column is never being asked."""
+    d = "DESC" if direction == "desc" else "ASC"
+    e = CAT_SORT.get(key)
+    if not e:
+        return f"{CAT_EXPR['lines']} DESC, ln.canonical COLLATE NOCASE"
+    nulls = (f"CASE WHEN {e} IS NULL THEN 1 ELSE 0 END, " if key in ("category", "entry") else "")
+    coll = " COLLATE NOCASE" if key in ("category", "entry") else ""
+    return f"{nulls}{e}{coll} {d}, ln.canonical COLLATE NOCASE"
+
+
+# ⚠️ THE OPTIONS COME FROM THE MEASURED SPREAD, NOT FROM A TEMPLATE. parents runs 0 to 2 across
+#    the whole catalog, so a range box would offer bounds that do not exist. lines is zero for
+#    96.1% of rows and children for 98.3%, so presence is the cut that does the work, and a
+#    threshold handles the tail. Value "0" means exactly none, any other N means N or more.
+CAT_NUM = {
+    "nlines": ("lines", "lines", [("0", "none"), ("1", "1 or more"), ("5", "5 or more"),
+                                  ("10", "10 or more"), ("25", "25 or more")]),
+    "npar":   ("par", "parents", [("0", "none"), ("1", "1 or more"), ("2", "2")]),
+    "nkids":  ("kids", "children", [("0", "none"), ("1", "1 or more"), ("5", "5 or more"),
+                                    ("25", "25 or more"), ("100", "100 or more")]),
+}
+CAT_TEXT = {"q": ("ingredient", "name contains"), "cat": ("category", "category contains"),
+            "ent": ("entry", "entry contains")}
+
+
+def cat_where():
+    """Read the request into (where, args, active). Every control lands in one WHERE, so the
+    head count and the rows can never disagree about what is being shown."""
+    where, args, active = [], [], []
+    g = lambda k: (request.args.get(k) or "").strip()
+
+    if g("q"):
+        where.append("ln.canonical LIKE ? COLLATE NOCASE"); args.append(f"%{g('q')}%")
+        active.append(("q", "name contains", g("q")))
+    # ⚠️ 14 rows sit in two categories and the cat column shows only the first of them, so
+    #    matching the DISPLAYED value would quietly drop the second category of those rows.
+    #    EXISTS asks the relation table instead, which is where the truth is.
+    if g("cat"):
+        where.append("EXISTS(SELECT 1 FROM library_relations r WHERE r.child_id=ln.library_id"
+                     " AND r.kind='in_category' AND r.parent_id LIKE ? COLLATE NOCASE)")
+        args.append(f"%{g('cat')}%")
+        active.append(("cat", "category contains", g("cat")))
+    if g("ent"):
+        where.append("EXISTS(SELECT 1 FROM library_entries e WHERE e.library_id=ln.library_id"
+                     " AND e.entry_id LIKE ? COLLATE NOCASE)")
+        args.append(f"%{g('ent')}%")
+        active.append(("ent", "entry contains", g("ent")))
+
+    for param, (col, label, opts) in CAT_NUM.items():
+        v = g(param)
+        if not v.isdigit():
+            continue
+        n = int(v)
+        where.append(f"{CAT_EXPR[col]} {'=' if n == 0 else '>='} ?"); args.append(n)
+        active.append((param, label, dict(opts).get(v, v)))
+
+    # ⚠️ THE CHART GETS ITS OWN PARAMETER, NOT THE CHIP'S. Both segments once wrote `filter`,
+    #    which the six chips also own, so clicking a segment while a chip was on replaced the
+    #    chip instead of narrowing it: the chart read 5 bare of the 53 written up, and the door
+    #    opened on all 4,061 bare rows in the catalog. A separate key ANDs with everything else.
+    #    `attached` is the exact complement of `bare`, which no single chip expresses.
+    ANY_REL = ("EXISTS(SELECT 1 FROM library_relations r WHERE r.child_id=ln.library_id"
+               " OR r.parent_id=ln.library_id)")
+    at = g("attach")
+    if at in ("bare", "attached"):
+        where.append(ANY_REL if at == "attached" else f"NOT {ANY_REL}")
+        active.append(("attach", "attachment",
+                       "attached to something" if at == "attached" else "nothing attached"))
+
     # ⚠️ GOTCHA 1: kind is constrained inside every EXISTS.
     F = {"has-entry": "EXISTS(SELECT 1 FROM library_entries e WHERE e.library_id=ln.library_id)",
          "has-category": "EXISTS(SELECT 1 FROM library_relations r WHERE r.child_id=ln.library_id AND r.kind='in_category')",
          "has-parent": "EXISTS(SELECT 1 FROM library_relations r WHERE r.child_id=ln.library_id AND r.kind<>'in_category')",
          "has-lines": "EXISTS(SELECT 1 FROM recipe_ingredients ri WHERE ri.catalog_id=ln.library_id)",
          "bare": "NOT EXISTS(SELECT 1 FROM library_relations r WHERE r.child_id=ln.library_id OR r.parent_id=ln.library_id)"}
+    f = g("filter")
     if f in F:
         where.append(F[f])
+        active.append(("filter", "show", CAT_FILTER_LABELS.get(f, f)))
+    return where, args, active
+
+
+def cat_gauge(c, w, args, total, n_all, filtered):
+    """⚠️ THE CHART AND THE TABLE DESCRIBE THE SAME SET. Drawn over the whole catalog while the
+    table showed 14 rows, the bar was answering a question nobody asked, and the 38.8% under a
+    filtered table read as a fact about those 14. The split is recomputed inside the same WHERE
+    the rows come from, so the two cannot drift.
+
+    The segments carry the active filter forward rather than replacing it, so clicking `nothing
+    attached` on a filtered chart narrows what is shown instead of resetting to the whole
+    catalog."""
+    if not total:
+        return ""                      # an empty bar states nothing and draws as a broken rule
+    bare = ("NOT EXISTS(SELECT 1 FROM library_relations r WHERE r.child_id=ln.library_id"
+            " OR r.parent_id=ln.library_id)")
+    joiner = " AND " if w else " WHERE "
+    n_bare = c.execute(f"SELECT COUNT(*) FROM library_names ln {w}{joiner}{bare}",
+                       args).fetchone()[0]
+    cap = (f"the {fmt(total)} rows shown" if filtered else f"all {fmt(n_all)} rows")
+    return gauge([("nothing attached", n_bare, f"/catalog{qs(attach='bare', page=None)}"),
+                  ("in a category, under a parent, or both", total - n_bare,
+                   f"/catalog{qs(attach='attached', page=None)}")],
+                 total, whole_label=cap)
+
+
+def refine(cats):
+    """The per-column controls. One row of text boxes, one row of counted-column selects."""
+    keep = "".join(f'<input type=hidden name={k} value="{escape(request.args.get(k, ""))}">'
+                   for k in ("filter", "attach", "sort", "dir") if request.args.get(k))
+    tx = "".join(
+        f'<label><span>{escape(lab)}</span>'
+        f'<input type=search name={k} value="{escape(request.args.get(k, ""))}" '
+        f'placeholder="{escape(ph)}"{" list=cats" if k == "cat" else ""}></label>'
+        for k, (lab, ph) in CAT_TEXT.items())
+    nm = ""
+    for param, (col, label, opts) in CAT_NUM.items():
+        cur = request.args.get(param) or ""
+        o = '<option value="">any</option>' + "".join(
+            f'<option value="{v}"{" selected" if cur == v else ""}>{escape(l)}</option>'
+            for v, l in opts)
+        nm += f'<label><span>{escape(label)}</span><select name={param} ' \
+              f'onchange="this.form.submit()">{o}</select></label>'
+    dl = ('<datalist id=cats>'
+          + "".join(f'<option value="{escape(x)}">' for x in cats) + '</datalist>')
+    return (f'<form class=refine>{keep}{dl}<div class=rf>{tx}</div><div class=rf>{nm}'
+            f'<button type=submit>apply</button></div></form>')
+
+
+def activebar(active, total, n_all):
+    """What is on right now, each one removable, and the count it produced."""
+    if not active:
+        return ""
+    # ⚠️ THE PATH HAS TO BE WRITTEN OUT. qs() returns an empty string once the last parameter is
+    #    dropped, and href="" reloads the URL you are already on, so removing the only active
+    #    filter would silently do nothing.
+    chips = "".join(
+        f'<a class=chip href="/catalog{qs(**{k: None, "page": None})}" '
+        f'title="remove this filter"><b>{escape(lab)}</b> {escape(str(val))}<i>×</i></a>'
+        for k, lab, val in active)
+    return (f'<div class=active><span class=lbl>filtering</span>{chips}'
+            f'<a class=clr href="/catalog">clear all</a>'
+            f'<span class=res>{fmt(total)} of {fmt(n_all)}</span></div>')
+
+
+@app.route("/catalog")
+def catalog():
+    c = db()
+    p = max(1, int(request.args.get("page") or 1))
+    sort = request.args.get("sort") if request.args.get("sort") in CAT_SORT else ""
+    direc = "desc" if (request.args.get("dir") or "") == "desc" else "asc"
+    where, args, active = cat_where()
     w = ("WHERE " + " AND ".join(where)) if where else ""
+    # ⚠️ THE COUNT AND THE ROWS SHARE ONE WHERE. The head figure is the same query as the body.
     total = c.execute(f"SELECT COUNT(*) FROM library_names ln {w}", args).fetchone()[0]
+    order = cat_order(sort, direc) if sort else \
+        f"{CAT_EXPR['lines']} DESC, ln.canonical COLLATE NOCASE"
     rows = []
     for r in c.execute(
-            "SELECT ln.library_id, ln.canonical,"
-            " (SELECT COUNT(*) FROM recipe_ingredients ri WHERE ri.catalog_id=ln.library_id) lines,"
-            " (SELECT COUNT(*) FROM library_relations r WHERE r.child_id=ln.library_id AND r.kind<>'in_category') par,"
-            " (SELECT COUNT(*) FROM library_relations r WHERE r.parent_id=ln.library_id AND r.kind<>'in_category') kids,"
-            " (SELECT lc.category_id FROM library_relations r JOIN library_categories lc"
-            "    ON lc.category_id=r.parent_id WHERE r.child_id=ln.library_id AND r.kind='in_category' LIMIT 1) cat,"
-            " (SELECT e.entry_id FROM library_entries e WHERE e.library_id=ln.library_id) ent"
-            f" FROM library_names ln {w} ORDER BY lines DESC, ln.canonical LIMIT ? OFFSET ?",
+            f"SELECT ln.library_id, ln.canonical, {CAT_EXPR['lines']} lines,"
+            f" {CAT_EXPR['par']} par, {CAT_EXPR['kids']} kids, {CAT_EXPR['cat']} cat,"
+            f" {CAT_EXPR['ent']} ent"
+            f" FROM library_names ln {w} ORDER BY {order} LIMIT ? OFFSET ?",
             args + [PER, (p - 1) * PER]):
         lid = uq(r["library_id"])
         rows.append((
@@ -989,26 +1389,30 @@ def catalog():
     n_used = q1("SELECT COUNT(DISTINCT catalog_id) FROM recipe_ingredients WHERE catalog_id IS NOT NULL")
     n_ent = q1("SELECT COUNT(*) FROM library_entries")
     n_par = q1("SELECT COUNT(DISTINCT parent_id) FROM library_relations WHERE kind<>'in_category'")
+    cats = [x[0] for x in c.execute("SELECT category_id FROM library_categories ORDER BY 1")]
     about = (f'Every name the library can resolve, and mostly that is all it holds. '
              f'<b>{fmt(n_bare)}</b> of the {fmt(n_all)} carry nothing but a name, which is the '
              f'ordinary state of a catalog this size. <b>{fmt(n_used)}</b> have ever been reached '
              f'by a recipe line, and <b>{fmt(n_ent)}</b> have prose written about them. A row '
              f'earns its detail by being cooked with, not by being listed.')
     HEADS = [
-      ("ingredient", "the name as the library spells it", "canonical"),
-      ("category", "the browsable family it was filed under", "in_category parent"),
+      ("ingredient", "the name as the library spells it", "canonical", "ingredient"),
+      ("category", "the browsable family it was filed under", "in_category parent", "category"),
       ("written entry", f"whether prose has been written about it. {fmt(n_ent)} of {fmt(n_all)} have",
-       "library_entries"),
-      ("parents", "broader rows above it", "kind_of, made_from"),
+       "library_entries", "entry"),
+      ("parents", "broader rows above it", "kind_of, made_from", "parents"),
       ("children", f"narrower rows below it. Only {fmt(n_par)} rows parent anything",
-       "kind_of, made_from"),
-      ("lines", "recipe lines that resolved here", "catalog_id"),
-      ("library_id", "the stored id. Everything else points at this", "library_id"),
+       "kind_of, made_from", "children"),
+      ("lines", "recipe lines that resolved here", "catalog_id", "lines"),
+      ("library_id", "the stored id. Everything else points at this", "library_id", "library_id"),
     ]
     body = f"""<section>
-{phead("Catalog", total, "rows" if not (qy or f) else "rows shown", "library_names", about,
-       of=None if not (qy or f) else n_all)}
-<div class=filters>{filters("/catalog","filter",CAT_FILTERS,f,"show")}{searchbox("filter by name",("filter",))}</div>
+{phead("Catalog", total, "rows" if not active else "rows shown", "library_names", about,
+       of=None if not active else n_all)}
+{cat_gauge(c, w, args, total, n_all, bool(active))}
+<div class=filters>{filters("/catalog","filter",CAT_FILTERS,request.args.get("filter") or "","show")}</div>
+{refine(cats)}
+{activebar(active, total, n_all)}
 {table(HEADS, rows, ["nm","","","num","num","num",""], "No catalog row matches.")}
 {pager(p,total,"/catalog")}</section>"""
     c.close()
@@ -1067,8 +1471,13 @@ def entries():
       ("flags", "allergen and hazard warnings", "assertion_kind = safety_flag"),
       ("possible parent", "a broader row someone proposed, not yet an edge", "possible_parent"),
     ]
+    STATE_HREF = {"linked": "linked", "canonical_drift": "canonical_drift",
+                  "no_library_id": "no_library_id"}
+    st_parts = [(human("link_state", k) if k in STATE_HREF else k, v,
+                 f"/entries?state={uq(k)}") for k, v in sorted(computed.items(), key=lambda x: -x[1])]
     body = f"""<section>
 {phead("Written entries", shown, "entries", "library_entries", "", said=about)}
+{gauge(st_parts, sum(computed.values()))}
 <div class=filters>{filters("/entries","state",opts,want,"state")}</div>
 {table(HEADS, rows, ["nm","","","num","num","num",""], "No entry in that state.")}
 <p class=note>{shown} shown. Computed across all: {", ".join(f"{k.replace('_',' ')} {v}" for k,v in sorted(computed.items()))}.</p>
@@ -1205,9 +1614,12 @@ def relations():
       ("source", "where it came from. wikidata and off are bulk imports", "source"),
       ("note", f"a reason, on the {fmt(n_note)} lines that carry one", "note"),
     ]
+    kind_parts = [(human("kind", k), v, f"/relations?kind={uq(k)}") for k, v in c.execute(
+        "SELECT kind, COUNT(*) FROM library_relations GROUP BY 1 ORDER BY 2 DESC")]
     body = f"""<section>
 {phead("Relations", total, "edges", "library_relations", "", said=about,
        of=None if not filtered else n_edges)}
+{gauge(kind_parts, n_edges)}
 <div class=filters>{filters("/relations","kind",opts("kind"),kind,"kind")}</div>
 <div class=filters>{filters("/relations","confidence",opts("confidence"),conf,"confidence")}</div>
 <div class=filters>{filters("/relations","source",opts("source"),src,"source")}{searchbox("filter by name",("kind","confidence","source","child","parent"))}</div>
@@ -1275,8 +1687,11 @@ def prose_list():
       ("sentence", "the sentence as written", "text"),
       ("rests on", "the claim it draws from, where there is one", "library_prose_derived_from.key"),
     ]
+    tier_parts = [(k, v, f"/prose?tier={uq(k)}") for k, v in c.execute(
+        "SELECT derived_tier, COUNT(*) FROM library_prose_pieces GROUP BY 1 ORDER BY 2 DESC")]
     body = f"""<section>
 {phead("Prose", total, "sentences", "library_prose_pieces", "", said=about)}
+{gauge(tier_parts, sum(v for _, v, _ in tier_parts))}
 <div class=filters>{filters("/prose","tier",opts,tier,"tier")}</div>
 {pstrip}
 {table(HEADS, rows, ["nm","","wrap",""])}
@@ -1355,8 +1770,12 @@ def links():
       ("confidence", "how the match was made. exact is the name itself", "link_confidence"),
       ("recipe", "the recipe the line came from", "recipes.name"),
     ]
+    mq = [(human("link_confidence", k), v, f"/links?confidence={uq(k)}") for k, v in c.execute(
+        "SELECT link_confidence, COUNT(*) FROM recipe_ingredients WHERE catalog_id IS NOT NULL "
+        "GROUP BY 1 ORDER BY 2 DESC")]
     body = f"""<section>
 {phead("Recipe links", total, "lines", "recipe_ingredients", "", said=about)}
+{gauge(mq, sum(v for _, v, _ in mq))}
 <div class=filters>{filters("/links","reach",opts,reach,"reach")}{searchbox("filter by line or match",("reach","catalog","recipe","confidence"))}</div>
 {strip}
 {table(HEADS, rows, ["wrap","nm","","",""])}
@@ -1728,14 +2147,27 @@ def entry(entry_id):
         inner = " + ".join(f'<a href="/prose?key={uq(k.strip())}">{escape(k.strip())}</a>'
                            for k in df.split(" + "))
         return f'rests on <code>{inner}</code>'
+    SRC = entry_sources(c, entry_id)
+
+    def _read_from(df):
+        """the sources behind every claim this piece rests on, de-duplicated, order kept"""
+        seen, pairs = set(), []
+        for k in (df or "").split(" + "):
+            for sl, u in SRC.get(k.strip(), []):
+                if sl not in seen:
+                    seen.add(sl); pairs.append((sl, u))
+        return f' read from {srcbits(pairs)}' if pairs else ""
+
     prose_html = "".join(
         f'<p>{escape(r["text"])}</p><div class=meta>'
         + taglink(r["derived_tier"], f'/prose?tier={uq(r["derived_tier"])}',
                   "teal" if r["derived_tier"] == "curated" else "") + ' '
-        + _rests(r["df"]) + '</div>' for r in prose) or '<div class=empty>No prose.</div>'
+        + _rests(r["df"]) + _read_from(r["df"]) + '</div>'
+        for r in prose) or '<div class=empty>No prose.</div>'
 
     claims = [(f'<code><a href="/prose?key={uq(r["key"])}">{escape(r["key"])}</a></code>',
                taglink(r["tier"], f'/prose?tier={uq(r["tier"])}', "teal" if r["tier"]=="curated" else ""),
+               srcbits(SRC.get(r["key"], [])) or '<span class=dimc>none</span>',
                f'<span class=dimc>{escape(r["state"])}</span>',
                f'<span class=wrap>{escape(r["text"])}</span>')
               for r in c.execute("SELECT * FROM library_assertions WHERE entry_id=? "
@@ -1757,9 +2189,11 @@ def entry(entry_id):
             def_j.append((f'<code>{escape(r["judgement_key"] or "")}</code>', escape(r["about"] or ""),
                           f'<span class=dimc>{escape(r["author"] or "")}</span>',
                           f'<span class=wrap>{escape(r["body"] or "")}</span>'))
-    chains = [(f'<code>{escape(r["key"])}</code>', escape(r["source_slug"]), tag(r["mode"]),
+    chains = [(f'<code>{escape(r["key"])}</code>', srclink(r["source_slug"], r["url"]), tag(r["mode"]),
                escape(r["read_depth"]), f'<span class=wrap>{escape((r["taken"] or "")[:340])}</span>')
-              for r in c.execute("SELECT * FROM library_chains WHERE entry_id=? ORDER BY position", (entry_id,))]
+              for r in c.execute("SELECT ch.*, s.url FROM library_chains ch LEFT JOIN "
+                                 "library_sources s ON s.source_slug=ch.source_slug "
+                                 "WHERE ch.entry_id=? ORDER BY ch.position", (entry_id,))]
     disc = [(f'<code>{escape(r["key"])}</code>', f'<span class=dimc>{escape(r["author"])}</span>',
              f'<span class=wrap>{escape(r["body"])}</span>')
             for r in c.execute("SELECT * FROM library_discussions WHERE entry_id=? ORDER BY position", (entry_id,))]
@@ -1796,9 +2230,10 @@ def entry(entry_id):
      'on. Stored beside the safety flags, told apart by <span class=mono>assertion_kind</span>.</p>'
      + table([("key","the handle a sentence cites","key"),
               ("tier","how well grounded. curated, cited or generated","tier"),
+              ("source","where it was read from. Opens the source itself","library_sources.url"),
               ("state","settled, or still open","state"),
               ("text","the claim itself","text")],
-             claims, ["","","","wrap"], "No claims."))}
+             claims, ["","","","","wrap"], "No claims."))}
 {sec("Safety flags", len(flags),
      '<p class=cap>An allergen or a hazard. The same table as the claims above, with '
      '<span class=mono>assertion_kind</span> set to safety_flag instead of claim.</p>'
