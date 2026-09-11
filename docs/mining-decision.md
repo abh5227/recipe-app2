@@ -3,9 +3,17 @@
 The standing decision about reading a large recipe corpus for **facts**, and the boundaries that
 reading stays inside. Read this before writing any code that touches a scraped corpus.
 
-**Status: SCAFFOLD. Not yet in force.** The structure below is written. The legal reasoning is a
-**draft written for the owner to edit and own**, not a position he has settled. Nothing mines
-anything until he has taken that section as his own and changed this line.
+**Status: IN FORCE from September 10, 2026, by the owner's decision.** The boundaries below govern
+any code that reads the corpus. The legal reasoning is the position the owner has adopted. It was
+drafted for him and he has taken it as his own.
+
+**Going in force does not make this legal advice, and it changes nothing in the legal section.** No
+lawyer has reviewed this project. The review-before-ship gate stands, and sections 4 and 6 are the
+two to put in front of counsel first.
+
+**⚠️ Boundary (g), on brand names, still has no test.** That sentence under (g) is now operative
+rather than advisory. Acquiring the corpus and probing coverage are authorized. **Extraction is
+not, until the brand-name test and the list behind it exist.**
 
 ## What this decides
 
@@ -78,9 +86,9 @@ sentence, because that is how this boundary fails.
 *Enforced by:* `test_mined_tables_hold_no_corpus_text`.
 
 **(c) Only aggregates across recipes are stored. Never a per-recipe reproduction.**
-A count over many recipes is stored. One recipe's ingredient list is not, and proportions are the
-sharp case: a ratio averaged over 900 recipes is a fact about the corpus, and one recipe's
-quantities beside its ingredient names is that recipe. Every stored row carries an `n` of how many
+A count over many recipes is stored. One recipe's ingredient list is not. Proportions are the sharp
+case. A ratio averaged over 900 recipes is a fact about the corpus, and one recipe's quantities
+beside its ingredient names is that recipe. Every stored row carries an `n` of how many
 recipes it was derived from, and a row with `n=1` is not an aggregate.
 *Enforced by:* a minimum `n` on every aggregate table, set when the tables are built.
 
@@ -102,12 +110,33 @@ a provenance URL. They hold no free text. This is checked against `sqlite_master
 trusted, and the test is written **before** the first ingest rather than after.
 *Enforced by:* `test_mined_tables_hold_no_corpus_text`.
 
+**(g) A brand name is never stored as a generic ingredient or a generic dish type.**
+Recipe corpora are full of trademarks. Oreo, Cool Whip, Captain Crunch, Jell-O, Bisquick. A
+trademark is not a generic label for a kind of food, and recording one as though it were is the
+error this boundary exists to stop. Where an extracted ingredient or dish type is a brand, **no
+generic fact is recorded from it**. It is not silently mapped to a nearby generic either, because
+"Cool Whip" and "whipped cream" are not the same claim about what a cook used.
+*Enforced by:* `test_mined_facts_carry_no_brand_names`, **which does not exist yet**. By this
+document's own standard, stated at the top of this section, that makes (g) not yet a boundary. It
+is a rule with no enforcement until the test and the brand list behind it are written, and that
+work belongs before the first extraction rather than after.
+
 ## The legal reasoning
 
-**⚠️ A DRAFT, AND NOT LEGAL ADVICE.** This is the owner's working position. It has not been reviewed
-by a lawyer. It records the reasoning he accepts for this bounded, local use, and it is why he judges
-the use defensible rather than a guarantee that it is. Before any of this data ships in a product
-other people use, the position should be read by someone qualified.
+**⚠️ A DRAFT, AND NOT LEGAL ADVICE.** This is the owner's working position. No lawyer has reviewed
+this project. It records the reasoning he accepts for this bounded, local use, and it is why he
+judges the use defensible rather than a guarantee that it is. Before any of this data ships in a
+product other people use, the position should be read by someone qualified.
+
+**What published legal writing was read.** Four IP attorneys answering a near-identical question
+about scraping and republishing recipes. They are not this project's counsel and have never seen
+it. Reading them changed the document in three ways. Sections 1 and 2 got stronger, because the
+fact-against-expression reading is the settled part and they agree on it. Two things the document
+had missed got sections of their own, Terms of Use at 5 and trademark at 6.
+
+**⚠️ TRADEMARK WAS THE GAP.** Section 6 covers a body of law this document did not touch at all
+before, and it does not run on the fact-against-expression reasoning the rest of it rests on. Read
+section 6 before writing any extractor.
 
 ### 1. Facts and functional information are not copyrightable
 
@@ -116,6 +145,12 @@ told. It does not protect facts, and it does not protect functional information.
 
 An ingredient list is a functional statement. It says what goes in and how much. That is generally
 not copyrightable, and the expressive part of a recipe is the writing around it.
+
+**This is the best-footed part of the whole document.** The US Copyright Office says plainly that a
+mere listing of ingredients is not protected. Every one of the four attorneys read said the same
+thing in their own words. A bare ingredient list with short functional directions is fact, and the
+copyright sits in the creative expression around it, meaning the worded instructions, the headnote,
+the story about the author's grandmother, the commentary. Nothing below rests on a novel reading.
 
 What this pipeline takes is on the factual side. Which ingredients appear. How often two appear
 together. That one thing is offered in place of another. The dish type, the cooking method, the
@@ -140,6 +175,11 @@ pattern.
 schema to, and it is stronger than counting rows. Thin cells are the failure case worth watching.
 An aggregate over three recipes with an unusual ingredient can point at those three recipes the way
 a reproduction would.
+
+The attorneys confirm the foundation this rests on rather than the aggregation step itself. They
+say the ingredient list is fact. This section then argues that a count over many such lists is
+further from the source again, not closer. That step is the owner's reasoning and not a quotation
+of anyone's, so it is worth naming as the part of sections 1 and 2 that a reviewer should test.
 
 ### 3. Generic dish types are functional labels, creative titles are expression
 
@@ -171,6 +211,66 @@ first.** Sections 1 to 3 rest on a distinction between fact and expression that 
 This one rests on a judgement about a specific corpus whose own licensing is unstated, and unstated
 is not the same as permissive. A second opinion is worth having before anything derived from it
 leaves this machine.
+
+Reading the attorneys made this section riskier rather than safer, and three points are why.
+
+**Unstated is not permissive**, which was already the wording here and is exactly how they put it.
+Silence is not a grant.
+
+**A recipe can be copyrightable depending on how it is written.** The fact-against-expression line
+is settled, but where any particular recipe falls on it is a judgement about that recipe's text.
+A corpus of 2.2 million of them contains both kinds, and no rule written here sorts them. Only
+someone qualified can draw that line on a given text.
+
+**All four said to consult counsel before operating a recipe site.** Four independent attorneys
+reaching the same recommendation is the strongest signal in anything read. It makes the
+review-before-ship step in the header a real gate rather than a polite formality, and it applies
+the moment this becomes something other people use.
+
+### 5. Terms of use are a different claim from copyright
+
+A website's terms of use can forbid scraping and copying by contract, whatever copyright says about
+the content. Breaching that is a contract claim, and it stands on its own. The attorneys flag it as
+a live risk for anyone crawling recipe sites, and they are right that it does not care whether the
+material is fact.
+
+**This pipeline does not scrape.** It reads a CSV that Poznan University of Technology published for
+download. No recipe site is visited, no terms of use are presented, and nothing is agreed to. The
+risk the attorneys describe attaches to the act of crawling, and this project does not perform that
+act.
+
+That distinction is real and it is worth stating plainly, because it is the clearest point in the
+owner's favor anywhere in this document. It is also narrow. It says nothing about whether the
+dataset's own compilers were entitled to publish what they published, which is section 4 and is
+unchanged by any of this.
+
+### 6. ⚠️ Trademark, and this is the gap
+
+**Everything above this point is about copyright. Trademark is a different body of law and none of
+the reasoning above reaches it.** This document did not cover it at all until now, and it is the
+single largest thing the original scaffold missed.
+
+Recipe corpora are thick with brand names. Oreo, Cool Whip, Captain Crunch, Jell-O, Bisquick, Old
+Bay. They appear in ingredient lists and they appear in dish names. They are marks owned by
+somebody, and the fact-against-expression argument has nothing to say about them, because a
+trademark is not protected as expression in the first place. It is protected as an indicator of who
+made a thing.
+
+Two of the four attorneys raised this without being asked. One raised publicity rights alongside it.
+
+**What it means for this pipeline.** An extractor that treats "Cool Whip" as a generic ingredient is
+recording a mark as though it were a kind of food. A dish type surfaced as "Oreo cheesecake" carries
+someone's mark into this project's own output, where it would sit beside hand-written prose and read
+as this library's word for a thing. Neither is a copyright problem and neither is answered anywhere
+above.
+
+Boundary (g) is the rule that follows. A brand is not stored as a generic, and no generic fact is
+recorded from it rather than mapping it to a near neighbor. **That boundary has no test yet**, which
+by this document's own standard means it is not yet a boundary, only an intention.
+
+**⚠️ This is a question for counsel, and it is a different question from section 4.** Section 4 asks
+whether facts may be derived from this corpus. This asks what may be done with a mark that turns up
+inside those facts. An answer to one is not an answer to the other, so both need putting.
 
 ## The founding-principle line
 
