@@ -11,9 +11,10 @@ drafted for him and he has taken it as his own.
 lawyer has reviewed this project. The review-before-ship gate stands, and sections 4 and 6 are the
 two to put in front of counsel first.
 
-**⚠️ Boundary (g), on brand names, still has no test.** That sentence under (g) is now operative
-rather than advisory. Acquiring the corpus and probing coverage are authorized. **Extraction is
-not, until the brand-name test and the list behind it exist.**
+**Boundary (g) now has its test.** `test_mined_facts_carry_no_brand_names` exists and is proven
+to refuse a mined row holding a mark while passing a generic food in the same column.
+**Extraction is no longer blocked by (g).** Every boundary in this document is now machine
+checked.
 
 ## What this decides
 
@@ -108,7 +109,10 @@ as checkable as a hand-read one.
 The structural backstop under all of the above. Mined tables hold identifiers, integers, floats and
 a provenance URL. They hold no free text. This is checked against `sqlite_master` rather than
 trusted, and the test is written **before** the first ingest rather than after.
-*Enforced by:* `test_mined_tables_hold_no_corpus_text`.
+*Enforced by:* `test_mined_tables_hold_no_corpus_text` in `tests/test_mining_boundaries.py`,
+which runs against **every** database the project owns. It first ran against the sources.db
+fixture alone, which was the wrong one, since mined facts key on `library_id` and would land in
+`recipes.db`. That version would have passed vacuously forever.
 
 **(g) A brand name is never stored as a generic ingredient or a generic dish type.**
 Recipe corpora are full of trademarks. Oreo, Cool Whip, Captain Crunch, Jell-O, Bisquick. A
@@ -116,10 +120,25 @@ trademark is not a generic label for a kind of food, and recording one as though
 error this boundary exists to stop. Where an extracted ingredient or dish type is a brand, **no
 generic fact is recorded from it**. It is not silently mapped to a nearby generic either, because
 "Cool Whip" and "whipped cream" are not the same claim about what a cook used.
-*Enforced by:* `test_mined_facts_carry_no_brand_names`, **which does not exist yet**. By this
-document's own standard, stated at the top of this section, that makes (g) not yet a boundary. It
-is a rule with no enforcement until the test and the brand list behind it are written, and that
-work belongs before the first extraction rather than after.
+*Enforced by:* `test_mined_facts_carry_no_brand_names` in `tests/test_mining_boundaries.py`,
+reading `brands.csv` through `brand_guard.py`. **(g) is now a boundary rather than an intention.**
+
+The list is the authority and the heuristic never excludes. A name is blocked only if it is on
+`brands.csv`. A name that merely looks like a mark is returned as `suspect`, which is a review
+queue, so the default-is-keep rule in `what-the-library-is-for.md` holds. 24 marks across 57
+surface forms, built from what the phase 2 probe actually found rather than from imagination.
+
+⚠️ **Two names the probe called brands are deliberately absent from the list.** `oleo` is short
+for oleomargarine, a generic term for margarine. `graham cracker` is a generic food and the mark
+in that aisle is Honey Maid. Between them they were 9,016 of the 30,114 occurrences the probe's
+heuristic flagged, 29.9% of it. Blocking either would have cut a real food, which is the exact
+failure the default-is-keep rule exists to prevent. A test pins both open.
+
+⚠️ **A wide heuristic was tried, measured and rejected.** "No word in this name is one the catalog
+uses" reads like a brand detector and is a catalog-gap detector. It flagged 81 names whose top
+entries were pecans, hamburger, pimento, cherries, mayo and crabmeat, every one a real food the
+catalog lacks. A review queue that is mostly wrong gets ignored, and the one real mark in it is
+missed with the rest. The narrow rules kept are a possessive shape and a trade word.
 
 ## The legal reasoning
 

@@ -609,39 +609,11 @@ def test_derive_only_sources_have_no_tables(conn):
                 f"{src}{suffix} exists. A derive_only source is read, never stored.")
 
 
-# ⚠ THE BOUNDARY, MACHINE-CHECKED. Written BEFORE the first ingest rather than after, because a
-#   boundary retrofitted to a schema that already broke it is not a boundary. It passes vacuously
-#   today, when no mined table exists, and bites the moment one is added with a text column.
-#   Boundary (b), (d) and (f) of docs/mining-decision.md all rest on this single test.
-MINED_PREFIX = "mined_"
-ALLOWED_MINED_TEXT_COLS = {"source_slug", "source_url", "library_id", "a_id", "b_id",
-                           "from_id", "to_id", "dish_type", "method", "role", "cuisine",
-                           "technique", "course", "fact_kind"}
-
-
-def test_mined_tables_hold_no_corpus_text(conn):
-    """No mined table may carry free text read from the corpus.
-
-    The allowed TEXT columns are identifiers, provenance and closed vocabularies, all of which
-    are facts or pointers. A recipe title, an ingredient line, a method sentence or a note can
-    only enter through a column outside that set, so the set is the check. Widening it is a
-    decision about the boundary and belongs in docs/mining-decision.md, not in a patch here.
-    """
-    mined = [r[0] for r in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE ?",
-        (MINED_PREFIX + "%",))]
-    for t in mined:
-        for col in conn.execute(f"PRAGMA table_info({t})"):
-            name, decl = col[1], (col[2] or "").upper()
-            if "CHAR" in decl or "TEXT" in decl or "CLOB" in decl:
-                assert name in ALLOWED_MINED_TEXT_COLS, (
-                    f"{t}.{name} is a free-text column on a mined table. Facts leave the "
-                    f"extractor as tuples and the sentence is never retained. "
-                    f"See docs/mining-decision.md boundary (b) and (f).")
-        cols = {c[1] for c in conn.execute(f"PRAGMA table_info({t})")}
-        assert "n" in cols, (
-            f"{t} has no `n` column. Boundary (c): only aggregates across recipes are stored, "
-            f"and a row that cannot say how many recipes it came from is not an aggregate.")
+# ⚠ THE MINED-TABLE BOUNDARY MOVED, IT DID NOT GO AWAY. It used to live here and ran only
+#   against the sources.db fixture, which was the wrong database: mined facts key on library_id
+#   and would land in recipes.db, which holds all 13 library_* tables while sources.db holds
+#   none. It would have passed vacuously forever. It now lives in tests/test_mining_boundaries.py
+#   and runs against EVERY database the project owns, alongside boundary (g)'s brand check.
 
 
 def test_share_alike_sources_are_flagged(conn):
