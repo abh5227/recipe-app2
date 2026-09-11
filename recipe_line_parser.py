@@ -76,7 +76,21 @@ UNIT = {"cup","cups","tablespoon","tablespoons","tbsp","teaspoon","teaspoons","t
         # abbreviations and containers the read found parsing as ingredients: 'tbs soy sauce',
         # 'qt chicken', 'tosp white wine', 'pc skin-on'.
         "tbs","tosp","tblsp","qt","qts","pc","pcs","bunches","handfuls","sprigs","cloves",
-        "wedge","wedges","bundle","bundles","glove","gloves","stem","stems","ear","ears","of"}
+        "wedge","wedges","bundle","bundles","glove","gloves","stem","stems","ear","ears","of",
+        # ⚠️ THE AMERICAN HOME-RECIPE ABBREVIATIONS. The machinery already handled these: the
+        #    unit check below strips a trailing period, so 'tbsp. sugar' and 'oz. cream cheese'
+        #    always worked. Only the vocabulary was missing, and it was missing because the
+        #    calibration corpus was a Paprika export that never used them. Measured before
+        #    adding: 0 of the 3,332 local lines change their parse, so the 2,778 links cannot
+        #    move, and not one of these collides with a catalog name. On RecipeNLG's raw
+        #    ingredient column they lift occurrence coverage from 43.5% to 72.6%.
+        #
+        #    ⚠️ `t` IS DELIBERATELY ABSENT. `T.` is tablespoon and `t.` is teaspoon, and this
+        #    check lowercases before looking the word up, so it cannot tell them apart. For a
+        #    NAME that does not matter, both strip. For a QUANTITY it is a threefold error, and
+        #    the raw column is read for quantities. A unit that cannot be read correctly is
+        #    worse than a unit that is not read at all.
+        "c","pkg","pkgs","pt","pts","env","ctn","sq","lg","sm","med","doz","bu","pk"}
 QTY = re.compile(r"^[\d\s./¼½¾⅓⅔⅛⅜⅝⅞\-–—]+")
 MODWORDS = STATE | FORM | UNIT
 
