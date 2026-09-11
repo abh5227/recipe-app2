@@ -1,0 +1,376 @@
+name,n_seen,generic_in_catalog,source_bucket,why
+pecans,11368,,CATALOG GAP,no catalog home under any name
+hamburger,3367,,CATALOG GAP,no catalog home under any name
+salad oil,2330,oil,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+all purpose,1960,,CATALOG GAP,no catalog home under any name
+water chestnuts,1737,,CATALOG GAP,no catalog home under any name
+pimento,1561,,CATALOG GAP,no catalog home under any name
+parsley flakes,1383,,CATALOG GAP,no catalog home under any name
+whole kernel corn,1325,,CATALOG GAP,no catalog home under any name
+american cheese,1286,cheese,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+vanilla wafers,1064,,CATALOG GAP,no catalog home under any name
+almond extract,1062,extract,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+ginger ale,1045,,CATALOG GAP,no catalog home under any name
+dill weed,1030,,CATALOG GAP,no catalog home under any name
+cracker crumbs,963,,CATALOG GAP,no catalog home under any name
+spaghetti sauce,956,sauce,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+yellow cake,939,,CATALOG GAP,no catalog home under any name
+lean ground beef,919,ground beef,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+ground chuck,905,,CATALOG GAP,no catalog home under any name
+pimentos,889,,CATALOG GAP,no catalog home under any name
+cherries,801,,CATALOG GAP,no catalog home under any name
+fresh mushrooms,786,,CATALOG GAP,no catalog home under any name
+flour tortillas,786,,CATALOG GAP,no catalog home under any name
+fruit cocktail,771,,CATALOG GAP,no catalog home under any name
+condensed cream,712,cream,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+vanilla flavoring,701,flavoring,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+egg noodles,701,,CATALOG GAP,no catalog home under any name
+pie shell,698,,CATALOG GAP,no catalog home under any name
+chocolate cake,694,,CATALOG GAP,no catalog home under any name
+elbow macaroni,644,macaroni,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+crab meat,644,meat,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+italian seasoning,643,,CATALOG GAP,no catalog home under any name
+cream style corn,629,,CATALOG GAP,no catalog home under any name
+mixed vegetables,623,,CATALOG GAP,no catalog home under any name
+onion salt,614,salt,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+lasagna noodles,614,,CATALOG GAP,no catalog home under any name
+mayo,607,,CATALOG GAP,no catalog home under any name
+potato chips,591,,CATALOG GAP,no catalog home under any name
+worcestershire,589,,CATALOG GAP,no catalog home under any name
+taco,584,,CATALOG GAP,no catalog home under any name
+lemon rind,570,,CATALOG GAP,no catalog home under any name
+pecan halves,564,,CATALOG GAP,no catalog home under any name
+pretzels,552,,CATALOG GAP,no catalog home under any name
+tortilla chips,548,,CATALOG GAP,no catalog home under any name
+poultry seasoning,541,,CATALOG GAP,no catalog home under any name
+pork sausage,534,sausage,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+cream style,531,,CATALOG GAP,no catalog home under any name
+picante sauce,527,sauce,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+butterscotch chips,522,,CATALOG GAP,no catalog home under any name
+crabmeat,513,,CATALOG GAP,no catalog home under any name
+marshmallow cream,492,cream,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+taco sauce,481,sauce,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+caramels,476,,CATALOG GAP,no catalog home under any name
+pastry shell,430,,CATALOG GAP,no catalog home under any name
+fryer,428,,CATALOG GAP,no catalog home under any name
+orange rind,417,,CATALOG GAP,no catalog home under any name
+candied cherries,404,,CATALOG GAP,no catalog home under any name
+bacon bits,401,,CATALOG GAP,no catalog home under any name
+frozen hash browns,397,,CATALOG GAP,no catalog home under any name
+marshmallow creme,372,,CATALOG GAP,no catalog home under any name
+pecan,369,,CATALOG GAP,no catalog home under any name
+chicken stock,357,stock,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+baking potatoes,351,,CATALOG GAP,no catalog home under any name
+corn muffin,341,,CATALOG GAP,no catalog home under any name
+enchilada sauce,331,sauce,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+regular,325,,CATALOG GAP,no catalog home under any name
+corn chips,324,,CATALOG GAP,no catalog home under any name
+chicken bouillon cubes,321,,CATALOG GAP,no catalog home under any name
+apple cider,311,cider,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+pineapple tidbits,310,,CATALOG GAP,no catalog home under any name
+caraway seed,304,seed,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+lemon flavoring,303,flavoring,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+cranberry juice,301,juice,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+shredded monterey jack cheese,300,cheese,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+butter beans,297,,CATALOG GAP,no catalog home under any name
+hamburg,297,,CATALOG GAP,no catalog home under any name
+beef bouillon,296,bouillon,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+angel,294,,CATALOG GAP,no catalog home under any name
+veg all,289,,CATALOG GAP,no catalog home under any name
+corn bread,286,bread,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+paraffin,283,,CATALOG GAP,no catalog home under any name
+almond flavoring,282,flavoring,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+pepper sauce,281,sauce,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+cayenne,278,,CATALOG GAP,no catalog home under any name
+tater,273,,CATALOG GAP,no catalog home under any name
+cooking oats,267,oats,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+semisweet chocolate morsels,264,,CATALOG GAP,no catalog home under any name
+cream of chicken,260,chicken,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+frozen whipped topping,256,topping,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+chicken bouillon,255,bouillon,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+chili beans,251,,CATALOG GAP,no catalog home under any name
+candied pineapple,249,pineapple,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+buns,246,,CATALOG GAP,no catalog home under any name
+frozen hash brown potatoes,242,,CATALOG GAP,no catalog home under any name
+buttered bread crumbs,240,,CATALOG GAP,no catalog home under any name
+slivered almonds,239,,CATALOG GAP,no catalog home under any name
+cream of mushroom,239,,CATALOG GAP,no catalog home under any name
+apricot preserves,238,,CATALOG GAP,no catalog home under any name
+white cake,236,,CATALOG GAP,no catalog home under any name
+broccoli flowerets,224,,CATALOG GAP,no catalog home under any name
+pimientos,219,,CATALOG GAP,no catalog home under any name
+chunky peanut butter,211,peanut butter,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+vegetable cooking spray,210,cooking spray,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+stew meat,207,meat,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+hash browns,205,,CATALOG GAP,no catalog home under any name
+club soda,203,,CATALOG GAP,no catalog home under any name
+pie shells,203,,CATALOG GAP,no catalog home under any name
+hot pepper sauce,201,sauce,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
++,199,,CATALOG GAP,no catalog home under any name
+bourbon,198,,CATALOG GAP,no catalog home under any name
+alum,197,,CATALOG GAP,no catalog home under any name
+italian bread crumbs,194,,CATALOG GAP,no catalog home under any name
+oyster crackers,194,,CATALOG GAP,no catalog home under any name
+rolls,193,,CATALOG GAP,no catalog home under any name
+purple onion,191,onion,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+ground round,189,,CATALOG GAP,no catalog home under any name
+angel food cake,189,,CATALOG GAP,no catalog home under any name
+kernel corn,187,,CATALOG GAP,no catalog home under any name
+orange sherbet,182,,CATALOG GAP,no catalog home under any name
+bacon drippings,180,,CATALOG GAP,no catalog home under any name
+mein noodles,179,,CATALOG GAP,no catalog home under any name
+chuck roast,176,roast,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+grape jelly,175,jelly,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+longhorn cheese,174,cheese,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+layer,172,,CATALOG GAP,no catalog home under any name
+yellow corn meal,172,,CATALOG GAP,no catalog home under any name
+muffins,170,,CATALOG GAP,no catalog home under any name
+pickling spice,169,spice,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+apricot nectar,169,,CATALOG GAP,no catalog home under any name
+tart apples,167,,CATALOG GAP,no catalog home under any name
+beef consomme,164,,CATALOG GAP,no catalog home under any name
+bulk sausage,162,sausage,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+dill pickles,161,,CATALOG GAP,no catalog home under any name
+shell macaroni,158,macaroni,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+garbanzo beans,157,,CATALOG GAP,no catalog home under any name
+cooking sherry,152,sherry,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+mushroom stems,152,,CATALOG GAP,no catalog home under any name
+chocolate bits,151,,CATALOG GAP,no catalog home under any name
+regular rice,149,rice,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+frozen lemonade concentrate,147,concentrate,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+english peas,146,,CATALOG GAP,no catalog home under any name
+n,145,,CATALOG GAP,no catalog home under any name
+egg substitute,145,,CATALOG GAP,no catalog home under any name
+frozen mixed vegetables,141,,CATALOG GAP,no catalog home under any name
+butterscotch morsels,141,,CATALOG GAP,no catalog home under any name
+artichokes,140,,CATALOG GAP,no catalog home under any name
+onion rings,140,,CATALOG GAP,no catalog home under any name
+whipped topping,138,topping,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+unbaked pie shell,138,,CATALOG GAP,no catalog home under any name
+wieners,137,,CATALOG GAP,no catalog home under any name
+containers,133,,CATALOG GAP,no catalog home under any name
+cream of coconut,132,coconut,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+wide noodles,131,,CATALOG GAP,no catalog home under any name
+kahlua,131,,CATALOG GAP,no catalog home under any name
+saltines,131,,CATALOG GAP,no catalog home under any name
+cranberry juice cocktail,130,,CATALOG GAP,no catalog home under any name
+mixed nuts,129,,CATALOG GAP,no catalog home under any name
+coconut flavoring,128,flavoring,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+stew beef,128,beef,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+hominy,128,,CATALOG GAP,no catalog home under any name
+onion juice,126,juice,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+bay seasoning,125,,CATALOG GAP,no catalog home under any name
+bean dip,124,dip,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+seasoning salt,123,salt,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+grated monterey,122,,CATALOG GAP,no catalog home under any name
+caramel ice cream topping,121,topping,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+cornbread,121,,CATALOG GAP,no catalog home under any name
+cake yeast,119,yeast,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+english cheese,119,cheese,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+nut meats,118,,CATALOG GAP,no catalog home under any name
+stack,118,,CATALOG GAP,no catalog home under any name
+chunky salsa,117,,CATALOG GAP,no catalog home under any name
+equal,117,,CATALOG GAP,no catalog home under any name
+beef stew meat,116,meat,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+spareribs,116,,CATALOG GAP,no catalog home under any name
+frankfurters,114,,CATALOG GAP,no catalog home under any name
+cream of celery,113,celery,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+peg corn,113,,CATALOG GAP,no catalog home under any name
+liquid,111,,CATALOG GAP,no catalog home under any name
+nutmeats,111,,CATALOG GAP,no catalog home under any name
+beef roast,110,roast,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+semisweet chocolate bits,109,,CATALOG GAP,no catalog home under any name
+butterscotch,109,,CATALOG GAP,no catalog home under any name
+romaine lettuce,107,lettuce,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+canning salt,106,salt,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+kisses,106,,CATALOG GAP,no catalog home under any name
+pickling salt,105,salt,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+cornflake crumbs,105,,CATALOG GAP,no catalog home under any name
+egg beaters,103,,CATALOG GAP,no catalog home under any name
+vanilla wafer crumbs,100,,CATALOG GAP,no catalog home under any name
+ground pecans,100,,CATALOG GAP,no catalog home under any name
+browns,100,,CATALOG GAP,no catalog home under any name
+corn flake crumbs,99,,CATALOG GAP,no catalog home under any name
+ramen noodles,99,,CATALOG GAP,no catalog home under any name
+great northern beans,99,,CATALOG GAP,no catalog home under any name
+mushroom pieces,99,,CATALOG GAP,no catalog home under any name
+refrigerated biscuits,98,,CATALOG GAP,no catalog home under any name
+ham bone,96,bone,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+string beans,96,,CATALOG GAP,no catalog home under any name
+butter flavor,95,,CATALOG GAP,no catalog home under any name
+salad supreme,94,,CATALOG GAP,no catalog home under any name
+taco chips,94,,CATALOG GAP,no catalog home under any name
+strawberry glaze,93,glaze,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+red hots,93,,CATALOG GAP,no catalog home under any name
+smooth peanut butter,92,peanut butter,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+lean hamburger,92,,CATALOG GAP,no catalog home under any name
+chocolate morsels,92,,CATALOG GAP,no catalog home under any name
+swiss,91,,CATALOG GAP,no catalog home under any name
+bacon grease,91,,CATALOG GAP,no catalog home under any name
+apple juice concentrate,90,concentrate,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+tuna fish,89,fish,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+no,89,,CATALOG GAP,no catalog home under any name
+mexicorn,89,,CATALOG GAP,no catalog home under any name
+t,89,,CATALOG GAP,no catalog home under any name
+clam juice,87,juice,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+crisp rice cereal,86,cereal,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+baking cocoa,86,cocoa,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+orange sections,86,,CATALOG GAP,no catalog home under any name
+realemon juice,85,juice,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+bottles,85,,CATALOG GAP,no catalog home under any name
+crescent dinner rolls,85,,CATALOG GAP,no catalog home under any name
+coconut extract,84,extract,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+currant jelly,83,jelly,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+double acting baking powder,83,baking powder,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+sherry wine,83,wine,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+lime sherbet,83,,CATALOG GAP,no catalog home under any name
+beef chuck,83,,CATALOG GAP,no catalog home under any name
+frozen limeade,83,,CATALOG GAP,no catalog home under any name
+tomato catsup,83,,CATALOG GAP,no catalog home under any name
+red cherries,83,,CATALOG GAP,no catalog home under any name
+dill pickle,82,pickle,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+strawberry preserves,82,,CATALOG GAP,no catalog home under any name
+sherbet,82,,CATALOG GAP,no catalog home under any name
+hormel chili,81,,CATALOG GAP,no catalog home under any name
+coca cola,81,,CATALOG GAP,no catalog home under any name
+refrigerator biscuits,81,,CATALOG GAP,no catalog home under any name
+hash brown potatoes,81,,CATALOG GAP,no catalog home under any name
+pickling spices,81,,CATALOG GAP,no catalog home under any name
+rum flavoring,80,flavoring,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+hamburger meat,80,meat,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+season,80,,CATALOG GAP,no catalog home under any name
+low fat,80,,CATALOG GAP,no catalog home under any name
+bran cereal,79,cereal,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+chicken flavor,79,,CATALOG GAP,no catalog home under any name
+prepared mustard,78,mustard,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+ready,78,,CATALOG GAP,no catalog home under any name
+heavy whipping cream,77,cream,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+lesueur peas,77,,CATALOG GAP,no catalog home under any name
+dish pie shell,77,,CATALOG GAP,no catalog home under any name
+maple flavoring,76,flavoring,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+lemon lime,76,lime,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+soda crackers,75,,CATALOG GAP,no catalog home under any name
+choice,75,,CATALOG GAP,no catalog home under any name
+liquid sweetener,74,sweetener,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+center,74,,CATALOG GAP,no catalog home under any name
+saltine crackers,73,,CATALOG GAP,no catalog home under any name
+party rye bread,72,bread,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+paraffin wax,72,,CATALOG GAP,no catalog home under any name
+nacho chips,72,,CATALOG GAP,no catalog home under any name
+cream style cottage cheese,71,cottage cheese,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+crawfish tails,71,,CATALOG GAP,no catalog home under any name
+almond bark,71,,CATALOG GAP,no catalog home under any name
+cajun seasoning,71,,CATALOG GAP,no catalog home under any name
+unflavored gelatine,70,,CATALOG GAP,no catalog home under any name
+english muffins,70,,CATALOG GAP,no catalog home under any name
+caramel topping,69,topping,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+apple jelly,69,jelly,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+lasagne noodles,69,,CATALOG GAP,no catalog home under any name
+baking apples,69,,CATALOG GAP,no catalog home under any name
+ladyfingers,68,,CATALOG GAP,no catalog home under any name
+maple,68,,CATALOG GAP,no catalog home under any name
+apple pie spice,67,spice,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+tomato ketchup,67,ketchup,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+bacon fat,67,,CATALOG GAP,no catalog home under any name
+well,67,,CATALOG GAP,no catalog home under any name
+lasagna,67,,CATALOG GAP,no catalog home under any name
+cooking wine,66,wine,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+dinner rolls,65,,CATALOG GAP,no catalog home under any name
+butterfinger,65,,CATALOG GAP,no catalog home under any name
+unpeeled apples,63,,CATALOG GAP,no catalog home under any name
+your choice,62,,CATALOG GAP,no catalog home under any name
+cornbread crumbs,62,,CATALOG GAP,no catalog home under any name
+extra lean ground beef,61,ground beef,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+blackberry jam,61,jam,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+fennel seed,61,seed,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+fryers,61,,CATALOG GAP,no catalog home under any name
+freshly grated parmesan cheese,60,cheese,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+monde,60,,CATALOG GAP,no catalog home under any name
+chili with beans,60,,CATALOG GAP,no catalog home under any name
+roll garlic,59,garlic,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+chili seasoning,59,,CATALOG GAP,no catalog home under any name
+ground coriander,59,,CATALOG GAP,no catalog home under any name
+parkay margarine,58,margarine,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+regular oats,58,oats,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+raspberry sherbet,58,,CATALOG GAP,no catalog home under any name
+gumdrops,58,,CATALOG GAP,no catalog home under any name
+sugar cookie,57,cookie,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+niblets corn,57,,CATALOG GAP,no catalog home under any name
+rabbits,57,,CATALOG GAP,no catalog home under any name
+cartons,57,,CATALOG GAP,no catalog home under any name
+jumbo shells,57,,CATALOG GAP,no catalog home under any name
+condensed beef broth,56,beef broth,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+chronicles,56,,CATALOG GAP,no catalog home under any name
+milky,56,,CATALOG GAP,no catalog home under any name
+english cheese spread,55,cheese spread,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+angel hair pasta,55,pasta,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+consomme,55,,CATALOG GAP,no catalog home under any name
+pasta shells,55,,CATALOG GAP,no catalog home under any name
+linguini,55,,CATALOG GAP,no catalog home under any name
+nahum,54,,CATALOG GAP,no catalog home under any name
+shredded mozzarella,54,,CATALOG GAP,no catalog home under any name
+process cheese,53,cheese,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+spring onions,53,,CATALOG GAP,no catalog home under any name
+sprite,53,,CATALOG GAP,no catalog home under any name
+chicken gravy,52,gravy,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+mixed candied fruit,52,candied fruit,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+fresh corn,52,,CATALOG GAP,no catalog home under any name
+monosodium glutamate,52,,CATALOG GAP,no catalog home under any name
+broccoli spears,52,,CATALOG GAP,no catalog home under any name
+butternut squash,51,squash,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+all bran cereal,51,cereal,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+coconut flakes,51,,CATALOG GAP,no catalog home under any name
+lemon lime soda,51,,CATALOG GAP,no catalog home under any name
+chicken parts,51,,CATALOG GAP,no catalog home under any name
+italian,51,,CATALOG GAP,no catalog home under any name
+new potatoes,50,,CATALOG GAP,no catalog home under any name
+season all,50,,CATALOG GAP,no catalog home under any name
+frozen broccoli cuts,50,,CATALOG GAP,no catalog home under any name
+frozen broccoli spears,50,,CATALOG GAP,no catalog home under any name
+white shoe peg corn,50,,CATALOG GAP,no catalog home under any name
+marsala wine,49,wine,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+liquid butter,49,butter,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+lemon flavor,49,,CATALOG GAP,no catalog home under any name
+twinkies,49,,CATALOG GAP,no catalog home under any name
+orange slice candy,49,,CATALOG GAP,no catalog home under any name
+pineapple sherbet,49,,CATALOG GAP,no catalog home under any name
+beef gravy,48,gravy,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+salad supreme seasoning,48,,CATALOG GAP,no catalog home under any name
+tamales,48,,CATALOG GAP,no catalog home under any name
+chocolate wafers,48,,CATALOG GAP,no catalog home under any name
+loaves,48,,CATALOG GAP,no catalog home under any name
+chocolate sandwich cookies,48,,CATALOG GAP,no catalog home under any name
+hawaiian punch,48,,CATALOG GAP,no catalog home under any name
+whole wheat bread,47,bread,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+instant beef bouillon,47,bouillon,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+pineapple chunks,47,,CATALOG GAP,no catalog home under any name
+pack,47,,CATALOG GAP,no catalog home under any name
+light rum,47,,CATALOG GAP,no catalog home under any name
+fresh herbs,47,,CATALOG GAP,no catalog home under any name
+pimento cheese,46,cheese,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+cooking rice,46,rice,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+drops red food coloring,46,food coloring,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+irish potatoes,46,,CATALOG GAP,no catalog home under any name
+cake paraffin,46,,CATALOG GAP,no catalog home under any name
+numbers,46,,CATALOG GAP,no catalog home under any name
+bing cherries,46,,CATALOG GAP,no catalog home under any name
+packets equal,46,,CATALOG GAP,no catalog home under any name
+butterscotch bits,46,,CATALOG GAP,no catalog home under any name
+wide egg noodles,46,,CATALOG GAP,no catalog home under any name
+crescent dinner,46,,CATALOG GAP,no catalog home under any name
+stewing beef,45,beef,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+beef round steak,45,round steak,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+pumpkin spice,45,spice,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+italian seasoned bread crumbs,45,,CATALOG GAP,no catalog home under any name
+chuck,45,,CATALOG GAP,no catalog home under any name
+frozen tater,45,,CATALOG GAP,no catalog home under any name
+buttered crumbs,45,,CATALOG GAP,no catalog home under any name
+red delicious apples,45,,CATALOG GAP,no catalog home under any name
+bay scallops,45,,CATALOG GAP,no catalog home under any name
+spanish rice,44,rice,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+cakes yeast,44,yeast,MODIFIER STRIP,"was miscategorized as strippable, it is a specific the catalog lacks"
+green chili salsa,44,,CATALOG GAP,no catalog home under any name
+summer,44,,CATALOG GAP,no catalog home under any name
+saltine cracker crumbs,44,,CATALOG GAP,no catalog home under any name
+chili hot beans,44,,CATALOG GAP,no catalog home under any name
+white almond bark,44,,CATALOG GAP,no catalog home under any name
