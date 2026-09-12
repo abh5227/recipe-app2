@@ -31,10 +31,27 @@ ALLOWED_MINED_TEXT_COLS = {"source_slug", "source_url", "library_id", "a_id", "b
 NAME_COLS = {"library_id", "a_id", "b_id", "from_id", "to_id", "dish_type", "name", "canonical"}
 
 
+# ⚠️ A PREFIX IS A NAMING CONVENTION AND WAS DOING SECURITY WORK. Anything corpus-derived that
+#    happened to be called library_something was invisible to this scan and passed the checks
+#    without being looked at. Proved rather than supposed: a table named library_substitutions
+#    carrying a free-text `note` column was waved through, while the identical table named
+#    mined_substitution_candidates was refused.
+#
+#    So a table is guarded by a DECISION recorded here, not by what somebody called it. Add a
+#    table to this list when it will hold anything derived from the corpus, and add it BEFORE the
+#    table exists. A guard added after the table it was meant to guard is not a guard.
+GUARDED_TABLES = {
+    # the substitution work, listed before either table is built. See
+    # previews/substitution-curation-scoping.md.
+    "library_substitutions",              # confirmed facts, replayed from hand_substitutions.csv
+    "library_substitution_candidates",    # in case the candidate table is ever renamed off mined_
+}
+
+
 def mined_tables(conn):
-    return [r[0] for r in conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE ?",
-        (MINED_PREFIX + "%",))]
+    """Every table the boundary checks must read: the mined_ prefix plus the declared list."""
+    have = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    return sorted({t for t in have if t.startswith(MINED_PREFIX)} | (have & GUARDED_TABLES))
 
 
 @pytest.fixture
@@ -101,6 +118,35 @@ def test_known_marks_are_caught_in_every_surface_form_seen():
     for form in ("velveeta", "velveeta cheese", "crisco", "crisco oil", "strawberry jello",
                  "jell o", "bisquick mix", "campbell s tomato soup", "cool whip", "oreos"):
         assert brand_guard.is_brand(form), f"{form!r} is a mark and was not caught"
+
+
+def test_the_guarded_list_covers_a_table_the_prefix_would_miss():
+    """⚠️ THE GAP THIS CLOSES. A corpus-derived table named library_* used to be invisible.
+
+    Three cases, because the list is only useful if it catches what the prefix misses AND leaves
+    everything else alone.
+    """
+    db = sqlite3.connect(":memory:")
+    # 1. a DECLARED library_ table holding free text is now seen, and refused
+    db.execute("CREATE TABLE library_substitutions (from_id TEXT, to_id TEXT, n INTEGER, "
+               "note TEXT)")
+    assert "library_substitutions" in mined_tables(db), "the declared table must be scanned"
+    with pytest.raises(AssertionError):
+        check_no_corpus_text(db)
+
+    # 2. the same table with only ids and integers passes
+    db2 = sqlite3.connect(":memory:")
+    db2.execute("CREATE TABLE library_substitutions (from_id TEXT, to_id TEXT, n INTEGER, "
+                "origin TEXT)")
+    with pytest.raises(AssertionError):
+        check_no_corpus_text(db2)      # `origin` is not an allowed text column yet, and should
+                                       # be added deliberately rather than by accident
+
+    # 3. an ORDINARY library table, not corpus-derived and not listed, is untouched
+    db3 = sqlite3.connect(":memory:")
+    db3.execute("CREATE TABLE library_entries (entry_id TEXT, name TEXT, scope_note TEXT)")
+    assert mined_tables(db3) == [], "an unlisted library table must not be scanned"
+    check_no_corpus_text(db3)          # no exception
 
 
 def test_a_catalog_canonical_is_food_unless_its_exact_form_is_listed():
