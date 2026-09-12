@@ -1,0 +1,40 @@
+# hand_substitutions.csv - the substitutions a person decided, read on every build.
+#
+# ⚠️ THE FIFTH HAND FILE, AND THE ONLY WRITER of library_substitutions. hand_removals.csv is what
+# comes out of the library, authored_rows.csv is what goes in, hand_renames.csv is what gets
+# called something else, hand_links.csv is how rows sit under one another. This is what stands in
+# for what. Everything in the catalog is replayed from a file like this on every build, and a row
+# living only in recipes.db is orphaned by the next load with nothing there to notice it.
+#
+# ⚠️ THE CORPUS PROPOSES, THIS DISPOSES. mined_substitution_candidates holds 4,477 ordered pairs
+# that RecipeNLG's directions text suggested. None of them is a fact. A line here is a person
+# saying yes or no to one, and only the yeses reach library_substitutions.
+#
+# ⚠️ A REJECTION IS A LINE, WHICH IS THE WHOLE POINT. The queue is rebuilt whole by the next
+# mining run, so a rejection held anywhere else would be proposed again the next morning.
+# Rejected stays rejected because it is written down here.
+#
+# ⚠️ APPEND, NEVER EDIT. Changing your mind writes a new line and the last line for a pair wins.
+# The file is then a record of what was decided and when, rather than only of what stands now.
+#
+# COLUMNS
+#   from, to       library_ids. An id that does not resolve stops the load rather than being
+#                  skipped, the same rule hand_links.csv has. A skipped row is a silent no-op.
+#   from_name      what those ids were called when the decision was made. A snapshot, the way
+#   to_name        library_relations keeps child_canonical, so a later rename is diagnosable by
+#                  reading the line instead of re-deriving it. Not loaded into the database.
+#   decision       confirmed  a queue candidate that holds up. Becomes origin 'mined-confirmed'.
+#                  rejected   a queue candidate that does not. Nothing is written to the database.
+#                  authored   a substitution written by hand, never proposed by the corpus.
+#                             Becomes origin 'authored', and must carry a note.
+#   ratio          how much `to` stands in for one of `from`. 1 for a straight swap, 0.75 where
+#                  it takes three quarters as much. Blank when it is not a fixed number.
+#   n              the corpus support at the moment of the decision, copied from the queue. A
+#                  snapshot again: a later run disagreeing is then something you can see.
+#   note           your words. ⚠️ THE ONLY PLACE THEY GO. Neither table has a note column, because
+#                  a free-text column on a corpus-derived table is the documented way boundary (b)
+#                  of docs/mining-decision.md erodes. It starts as somewhere to keep a reason and
+#                  ends holding the sentence the extractor read.
+#   decided        the date, ISO.
+#
+from,from_name,to,to_name,decision,ratio,n,note,decided

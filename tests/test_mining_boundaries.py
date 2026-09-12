@@ -24,9 +24,15 @@ import build_sources_db as bsd  # noqa: E402
 from harness import make_kitchen  # noqa: E402
 
 MINED_PREFIX = "mined_"
+# ⚠️ A COLUMN GETS ON THIS LIST BY A DECISION, NEVER BY BEING CONVENIENT. Each one holds a value
+#    from a vocabulary this repo declares, not a span the extractor read. Two were added for the
+#    substitution work in migration 037 and both are checked further down:
+#      pattern   the name of the rule that fired, one of five labels in substitution_run.RULES.
+#                test_a_stored_pattern_is_a_rule_label_not_a_sentence asserts the vocabulary.
+#      origin    mined-confirmed or authored, which says who decided, not what the corpus said.
 ALLOWED_MINED_TEXT_COLS = {"source_slug", "source_url", "library_id", "a_id", "b_id",
                            "from_id", "to_id", "dish_type", "method", "role", "cuisine",
-                           "technique", "course", "fact_kind"}
+                           "technique", "course", "fact_kind", "pattern", "origin"}
 # the columns a mined fact would carry a NAME in, which is what the brand check reads
 NAME_COLS = {"library_id", "a_id", "b_id", "from_id", "to_id", "dish_type", "name", "canonical"}
 
@@ -41,9 +47,11 @@ NAME_COLS = {"library_id", "a_id", "b_id", "from_id", "to_id", "dish_type", "nam
 #    table to this list when it will hold anything derived from the corpus, and add it BEFORE the
 #    table exists. A guard added after the table it was meant to guard is not a guard.
 GUARDED_TABLES = {
-    # the substitution work, listed before either table is built. See
-    # previews/substitution-curation-scoping.md.
+    # the substitution work of migration 037. Listed here BEFORE either table existed, and the
+    # listing did its job on the day they arrived: library_substitutions.origin was refused on
+    # sight, before a single row could be loaded into it.
     "library_substitutions",              # confirmed facts, replayed from hand_substitutions.csv
+    "mined_substitution_candidates",      # the queue. The prefix reaches it, the decision is here
     "library_substitution_candidates",    # in case the candidate table is ever renamed off mined_
 }
 
@@ -134,19 +142,108 @@ def test_the_guarded_list_covers_a_table_the_prefix_would_miss():
     with pytest.raises(AssertionError):
         check_no_corpus_text(db)
 
-    # 2. the same table with only ids and integers passes
+    # 2. an undeclared text column is refused even when the name sounds harmless. `source_text`
+    #    is the erosion boundary (b) actually describes: source_slug is allowed, so a column one
+    #    word away from it reads as a small extension and is the whole sentence.
     db2 = sqlite3.connect(":memory:")
     db2.execute("CREATE TABLE library_substitutions (from_id TEXT, to_id TEXT, n INTEGER, "
-                "origin TEXT)")
+                "source_text TEXT)")
     with pytest.raises(AssertionError):
-        check_no_corpus_text(db2)      # `origin` is not an allowed text column yet, and should
-                                       # be added deliberately rather than by accident
+        check_no_corpus_text(db2)
 
     # 3. an ORDINARY library table, not corpus-derived and not listed, is untouched
     db3 = sqlite3.connect(":memory:")
     db3.execute("CREATE TABLE library_entries (entry_id TEXT, name TEXT, scope_note TEXT)")
     assert mined_tables(db3) == [], "an unlisted library table must not be scanned"
     check_no_corpus_text(db3)          # no exception
+
+
+# ── the substitution tables, migration 037 ─────────────────────────────────────────────────────
+
+def has(conn, table):
+    """sources.db carries none of the library tables, so a check that assumes one is there fails
+    on the wrong database rather than on the thing it guards."""
+    return bool(conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                             (table,)).fetchone())
+
+
+def live_db():
+    """The real catalog, when there is one. A fixture DB has the tables and no rows, so a check
+    written only against it is vacuous and proves nothing about what got loaded."""
+    live = BASE / "recipes.db"
+    if not live.exists():
+        pytest.skip("no live catalog here")
+    return sqlite3.connect(f"file:{live}?mode=ro", uri=True)
+
+
+def check_patterns(conn):
+    """⚠️ THE PATTERN COLUMN IS A CLOSED VOCABULARY, AND THIS IS WHAT CLOSES IT.
+
+    Labels are read from substitution_run.RULES rather than copied here, so renaming a rule
+    cannot leave the test asserting a vocabulary the extractor stopped using. Same idea as
+    tests/js/factor-sync.test.js, which keeps scaler.js honest against weights.py."""
+    import substitution_run
+    ok = {name for name, _ in substitution_run.RULES}
+    assert len(ok) == 5, f"expected five rules, found {len(ok)}"
+    if not has(conn, "mined_substitution_candidates"):
+        return
+    for (v,) in conn.execute("SELECT DISTINCT pattern FROM mined_substitution_candidates"):
+        for lab in (v or "").split("+"):
+            assert lab in ok, (
+                f"pattern {v!r} carries {lab!r}, which is not one of the rule labels "
+                f"{sorted(ok)}. Boundary (b): the column holds the name of the rule that fired, "
+                f"never the clause it read.")
+
+
+def test_a_stored_pattern_is_a_rule_label_not_a_sentence(dbs):
+    for conn in dbs.values():
+        check_patterns(conn)
+    conn = live_db()
+    n = conn.execute("SELECT COUNT(*) FROM mined_substitution_candidates").fetchone()[0]
+    check_patterns(conn)
+    conn.close()
+    assert n, "the live queue is empty, so the check above proved nothing about loaded rows"
+
+
+def test_a_sentence_in_the_pattern_column_fails_the_check():
+    """The check above is only worth having if it catches the thing it exists for."""
+    db = sqlite3.connect(":memory:")
+    db.execute("CREATE TABLE mined_substitution_candidates (pattern TEXT)")
+    db.execute("INSERT INTO mined_substitution_candidates VALUES "
+               "('you can use margarine instead of butter')")
+    with pytest.raises(AssertionError):
+        check_patterns(db)
+
+
+def test_the_confirmed_table_carries_no_note_column(dbs):
+    """⚠️ A NOTE IS A PERSON'S WORDS AND LIVES IN hand_substitutions.csv.
+
+    check_no_corpus_text already refuses an undeclared text column. This says the specific thing
+    out loud, because `note` is the column somebody adds in good faith. It starts as somewhere to
+    keep a reason and ends holding the sentence the extractor read.
+    """
+    for conn in dbs.values():
+        for t in ("library_substitutions", "mined_substitution_candidates"):
+            if not has(conn, t):
+                continue
+            cols = {c[1] for c in conn.execute(f"PRAGMA table_info({t})")}
+            assert "note" not in cols, f"{t} grew a note column. It belongs in the hand file."
+
+
+def test_a_one_to_many_candidate_is_flagged_rather_than_left_null(dbs):
+    """⚠️ A NULL to_id IS A RECORDED GAP, NOT A MISSING VALUE.
+
+    143 matches read as one ingredient replaced by two, which (from_id, to_id) cannot express.
+    They are stored flagged so the queue shows the shape this schema cannot hold. A NULL without
+    the flag would be indistinguishable from a load that half worked.
+    """
+    for conn in list(dbs.values()) + [live_db()]:
+        if not has(conn, "mined_substitution_candidates"):
+            continue
+        bad = conn.execute(
+            "SELECT COUNT(*) FROM mined_substitution_candidates "
+            "WHERE (to_id IS NULL) <> (one_to_many=1)").fetchone()[0]
+        assert bad == 0, f"{bad} candidate rows disagree about whether they are one-to-many"
 
 
 def test_a_catalog_canonical_is_food_unless_its_exact_form_is_listed():

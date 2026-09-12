@@ -3,9 +3,17 @@
 
     python3.13 library_viewer.py        then open http://localhost:8100
 
-⚠️ READ-ONLY BY CONSTRUCTION. Every connection is opened `file:recipes.db?mode=ro`, so the process
-CANNOT write even if a query tried. A verification tool that can corrupt what it verifies is worse
-than none.
+⚠️ READ-ONLY ON THE DATABASE, BY CONSTRUCTION. Every connection is opened
+`file:recipes.db?mode=ro`, so the process CANNOT write to it even if a query tried. A verification
+tool that can corrupt what it verifies is worse than none.
+
+⚠️ IT WRITES ONE FILE, AND ONLY ONE: hand_substitutions.csv. The substitutions tab is a review
+queue, and a confirm or a reject there appends a line to that file. This is not an exception to
+the rule above, it is the project's own pattern applied here. load_relations.py states it plainly:
+the hand file is the only writer, and a decision stored in recipes.db would be orphaned by the
+next load with nothing in the build to notice it. So the decision goes where a rebuild will find
+it, and library_substitutions is a projection of the file rather than a place anything is typed
+into. Everything else on this instrument still reads and nothing more.
 
 ⚠️ SEPARATE FROM app.py. Different port, own process, own connections, no imports from it.
 
@@ -34,12 +42,16 @@ values, never on a label.
 ⚠️ THE EMPTY STATE IS THE DEFAULT. Two catalog rows in five carry no relation at all and only
 53 have a written entry. A bare row is the ordinary thing this viewer shows.
 """
-import hashlib, math, os, re, sqlite3, time
-from flask import Flask, request, jsonify
+import csv, datetime, hashlib, math, os, re, sqlite3, time
+from flask import Flask, request, jsonify, redirect
 from markupsafe import escape
 from urllib.parse import quote
 
 DB = os.environ.get("VIEWER_DB", "recipes.db")
+# ⚠️ THE ONE FILE THIS PROCESS CAN WRITE. Named here beside the database so the pair is read
+#    together, and printed in the readout strip on every page so the claim is visible rather
+#    than buried in a docstring.
+HAND = os.environ.get("VIEWER_HAND", "hand_substitutions.csv")
 PORT = int(os.environ.get("VIEWER_PORT", "8100"))
 PER = 60
 app = Flask(__name__)
@@ -519,6 +531,23 @@ thead th.num a.hd{flex-direction:row-reverse}
 .pager span.gap{border:none;color:var(--steel)}
 .pager a:hover{border-color:var(--teal);color:var(--teal)}
 
+/* ── the decision controls, the only place this instrument writes ──────────
+   Two buttons, sized to the row rather than to themselves. Teal for the confirm because teal
+   carries meaning here as everywhere else, amber for the reject because amber is what this
+   instrument already uses for the unbound and the set-aside. Neither is a colour of alarm. */
+.act{display:flex;gap:6px;justify-content:flex-end;align-items:baseline}
+.act form{margin:0;display:inline}
+.act button{padding:2px 9px;border:1px solid var(--hair);background:var(--surface);
+  color:var(--steel);font-family:inherit;font-size:var(--s0);cursor:pointer;line-height:1.6}
+.act button:hover{border-color:var(--teal);color:var(--teal);background:var(--teal-wash)}
+.act button.no:hover{border-color:#E7CFAE;color:var(--amber);background:var(--amber-wash)}
+.act .held{font-size:var(--s0);color:#AFBAC1}
+
+/* the authored-row form. Wider than a refine control because an id is longer than a filter. */
+.authored{border:1px solid var(--hair);padding:14px 16px;margin:0 0 18px;max-width:var(--chart)}
+.authored h3{margin:0 0 4px}
+.authored p{margin:0 0 11px;font-size:var(--s1);color:var(--steel);line-height:1.55;max-width:74ch}
+
 .empty{padding:16px 0;color:var(--steel);font-size:var(--s2);border-top:1px solid var(--hair)}
 .note{font-size:var(--s1);color:var(--steel);margin-top:6px;line-height:1.5}
 .banner{border-left:3px solid var(--amber);background:var(--amber-wash);padding:11px 14px;
@@ -552,14 +581,15 @@ def counts(c):
         "relations": q("SELECT COUNT(*) FROM library_relations"),
         "links": q("SELECT COUNT(*) FROM recipe_ingredients WHERE catalog_id IS NOT NULL"),
         "recipes": q("SELECT COUNT(*) FROM recipes"),
+        "subs": q("SELECT COUNT(*) FROM mined_substitution_candidates"),
     }
 
 
 NAV = [("/", "Condition", None), ("/catalog", "Catalog", "catalog"),
        ("/entries", "Entries", "entries"), ("/categories", "Categories", "categories"),
        ("/relations", "Relations", "relations"), ("/links", "Recipe links", "links"),
-       ("/recipes", "Recipes", "recipes"), ("/uncovered", "Not covered", None),
-       ("/search", "Search", None)]
+       ("/recipes", "Recipes", "recipes"), ("/substitutions", "Substitutions", "subs"),
+       ("/uncovered", "Not covered", None), ("/search", "Search", None)]
 
 
 def page(title, body, active="/", crumbs=(), head="", n=None):
@@ -592,7 +622,8 @@ def page(title, body, active="/", crumbs=(), head="", n=None):
 <div class=rail>
   <div class=mark><b>Library bench</b><span>read-only instrument</span></div>
   <nav aria-label="Registers">{items}</nav>
-  <div class=tail>Queries run per request.<br>Nothing is cached, nothing written.</div>
+  <div class=tail>Queries run per request.<br>Nothing is cached.<br>
+    The database is never written.</div>
 </div>
 <main>
   <div class=readout>
@@ -601,6 +632,7 @@ def page(title, body, active="/", crumbs=(), head="", n=None):
     <div class=f><label>size</label><div class="v mono">{st.st_size/1e6:.1f} MB</div></div>
     <div class=f><label>revised</label><div class=v>{time.strftime('%-d %b %Y, %H:%M', time.localtime(st.st_mtime))}</div></div>
     <div class=f><label>mode</label><div class=v><span class=live>read-only</span></div></div>
+    <div class=f><label>writes</label><div class="v mono">{escape(HAND)}</div></div>
   </div>{cr}{body}
   <footer><p>Every figure on this panel is counted at the moment it is read. The database is
     opened read-only, so nothing here can alter what it measures.</p></footer>
@@ -2411,6 +2443,320 @@ def search():
 # ════════════════════════════════════════════════════════════════════════════
 #  GRAPH
 # ════════════════════════════════════════════════════════════════════════════
+
+
+# ════════════════════════════════════════════════════════════════════════════
+#  SUBSTITUTIONS. The corpus proposes, a person disposes, the hand file records it.
+#
+#  ⚠️ THE ONLY WRITE SURFACE ON THIS INSTRUMENT, and it writes a CSV, never the database. See
+#     the second warning in the module docstring. mined_substitution_candidates is a queue that
+#     the next mining run rebuilds whole, so a decision kept in recipes.db would be re-proposed
+#     the next morning and lost the morning after. hand_substitutions.csv is in git and is
+#     replayed by load_substitutions.py, so a decision written there survives both.
+# ════════════════════════════════════════════════════════════════════════════
+
+SUB_SORT = {"n": "s.n", "reverse": "s.n_reverse", "from": "f.canonical COLLATE NOCASE",
+            "to": "t.canonical COLLATE NOCASE"}
+STATE_TAG = {"confirmed": "teal", "rejected": "amber", "pending": ""}
+
+
+def hand_rows():
+    """Every line of the hand file, in the order it was written. Read fresh on every request,
+    like everything else here. The file is small and a cached decision is a wrong decision."""
+    if not os.path.exists(HAND):
+        return []
+    import importlib, sys as _s
+    _s.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import load_substitutions
+    importlib.reload(load_substitutions)
+    return load_substitutions.read(HAND)
+
+
+def hand_state():
+    """(from, to) -> the winning decision. ⚠️ THE LAST LINE FOR A PAIR WINS, because the file is
+    appended to and never edited. Changing your mind about butter to margarine writes a second
+    line, and the first stays as a record that you once thought otherwise."""
+    return {(r["from"], r["to"]): r for r in hand_rows()}
+
+
+def append_decision(frm, to, decision, ratio="", note="", n=""):
+    """⚠️ THE ONE WRITER. Every path that records a decision comes through here.
+
+    It resolves both ids against the catalog and refuses rather than skipping, the same rule
+    load_relations.py states: a skipped row is a silent no-op, and Phase C measured what those
+    cost. The canonical names are snapshotted into the line, the way library_relations keeps
+    child_canonical, so a later rename is diagnosable by reading the line.
+    """
+    if decision not in ("confirmed", "rejected", "authored"):
+        return f"decision {decision!r} is not one of confirmed, rejected, authored"
+    if not frm or not to:
+        return "a substitution needs both sides"
+    c = db()
+    names = {}
+    for side in (frm, to):
+        r = c.execute("SELECT library_id, canonical FROM library_names WHERE library_id=? "
+                      "OR canonical=? COLLATE NOCASE", (side, side)).fetchone()
+        if not r:
+            c.close()
+            return (f"{side} is not a catalog row. use the library_id, or the name as the "
+                    f"catalog spells it")
+        names[side] = (r["library_id"], r["canonical"])
+    if names[frm][0] == names[to][0]:
+        c.close()
+        return "both sides are the same row"
+    if not n:
+        row = c.execute("SELECT n FROM mined_substitution_candidates WHERE from_id=? AND to_id=?",
+                        (names[frm][0], names[to][0])).fetchone()
+        n = str(row["n"]) if row else ""
+    c.close()
+    if decision == "authored" and not note.strip():
+        return "an authored substitution needs a note. nothing proposed it, so say why it is there"
+    if ratio:
+        try:
+            float(ratio)
+        except ValueError:
+            return f"ratio {ratio!r} is not a number. leave it blank when it is not a fixed one"
+    # ⚠️ APPEND, in one line, with the csv writer rather than a format string. A note carrying a
+    #    comma would otherwise shift every column after it and the loader would refuse the file.
+    with open(HAND, "a", newline="", encoding="utf-8") as fh:
+        csv.writer(fh).writerow([names[frm][0], names[frm][1], names[to][0], names[to][1],
+                                 decision, ratio.strip(), n, note.strip(),
+                                 datetime.date.today().isoformat()])
+    return None
+
+
+@app.route("/substitutions/decide", methods=["POST"])
+def decide():
+    f = request.form
+    err = append_decision(f.get("from", "").strip(), f.get("to", "").strip(),
+                          f.get("decision", ""), f.get("ratio", ""), f.get("note", ""),
+                          f.get("n", ""))
+    back = f.get("back") or "/substitutions"
+    # a return path from a form is still a path. Anything that could leave this host is refused.
+    if not back.startswith("/") or back.startswith("//"):
+        back = "/substitutions"
+    sep = "&" if "?" in back else "?"
+    return redirect(f"{back}{sep}err={uq(err)}" if err else back, code=303)
+
+
+@app.route("/substitutions")
+def substitutions():
+    c = db()
+    state = request.args.get("state") or ""
+    shape = request.args.get("shape") or ""
+    floor = request.args.get("floor") or ""
+    qy = (request.args.get("q") or "").strip()
+    sort = request.args.get("sort") or "n"
+    sdir = request.args.get("dir") or "desc"
+    p = max(1, int(request.args.get("page") or 1))
+    n_all = c.execute("SELECT COUNT(*) FROM mined_substitution_candidates").fetchone()[0]
+
+    where, args = [], []
+    if shape == "gap":
+        where.append("s.one_to_many=1")
+    elif shape == "pair":
+        where.append("s.one_to_many=0")
+    if floor:
+        where.append("s.n>=?"); args.append(int(floor))
+    if qy:
+        where.append("(f.canonical LIKE ? COLLATE NOCASE OR t.canonical LIKE ? COLLATE NOCASE)")
+        args += [f"%{qy}%", f"%{qy}%"]
+    w = ("WHERE " + " AND ".join(where)) if where else ""
+    e = SUB_SORT.get(sort, "s.n")
+    d = "DESC" if sdir == "desc" else "ASC"
+    # ⚠️ EVERY SORT ENDS WITH THE SAME TIEBREAK, the rule the catalog page already runs on. 3,299
+    #    of the 4,600 rows sit at n=1, so a sort on n alone reorders them on every page load and
+    #    a row can be read twice while another is never seen at all.
+    order = f"{e} {d}, f.canonical COLLATE NOCASE, t.canonical COLLATE NOCASE"
+    rows_sql = c.execute(
+        f"SELECT s.from_id, s.to_id, s.n, s.n_reverse, s.one_to_many, s.pattern, "
+        f"       f.canonical fn, t.canonical tn "
+        f"FROM mined_substitution_candidates s "
+        f"JOIN library_names f ON f.library_id=s.from_id "
+        f"LEFT JOIN library_names t ON t.library_id=s.to_id {w} ORDER BY {order}", args).fetchall()
+
+    # ⚠️ STATE IS NOT IN THE DATABASE, so it cannot be a WHERE clause. A decision lives in
+    #    hand_substitutions.csv, and library_substitutions holds only the confirmed half of it
+    #    with no trace of a rejection at all. SQL does what SQL can see, and the state filter runs
+    #    here over at most 4,600 rows already in memory.
+    decided = hand_state()
+
+    def st(r):
+        got = decided.get((r["from_id"], r["to_id"]))
+        return got["decision"] if got else "pending"
+
+    tally = {"pending": 0, "confirmed": 0, "rejected": 0, "authored": 0}
+    for r in rows_sql:
+        tally[st(r)] += 1
+    rows_f = [r for r in rows_sql if not state or st(r) == state]
+    total = len(rows_f)
+    page_rows = rows_f[(p - 1) * PER: p * PER]
+
+    back = "/substitutions" + qs()
+    out = []
+    for r in page_rows:
+        s_now = st(r)
+        if r["one_to_many"]:
+            # ⚠️ NO CONTROLS ON A GAP, because there is nothing to confirm. The row is here so the
+            #    shape this schema cannot hold stays visible instead of being quietly dropped.
+            to_cell = '<span class=dimc>two ingredients, which this table cannot hold</span>'
+            act = '<span class=held>flagged</span>'
+        else:
+            to_cell = f'<span class=nm>{ilink(r["to_id"], r["tn"] or r["to_id"])}</span>'
+
+            def btn(dec, label, cls="", _r=r):
+                return (f'<form method=post action="/substitutions/decide">'
+                        f'<input type=hidden name=from value="{escape(_r["from_id"])}">'
+                        f'<input type=hidden name=to value="{escape(_r["to_id"])}">'
+                        f'<input type=hidden name=n value="{_r["n"]}">'
+                        f'<input type=hidden name=decision value="{dec}">'
+                        f'<input type=hidden name=back value="{escape(back)}">'
+                        f'<button class="{cls}" type=submit>{label}</button></form>')
+
+            act = ('<div class=act>'
+                   + (btn("confirmed", "confirm") if s_now != "confirmed" else "")
+                   + (btn("rejected", "reject", "no") if s_now != "rejected" else "")
+                   + '</div>')
+        out.append((
+            f'<span class=nm>{ilink(r["from_id"], r["fn"] or r["from_id"])}</span>',
+            to_cell,
+            f'<span class=mono>{fmt(r["n"])}</span>',
+            f'<span class=mono>{fmt(r["n_reverse"])}</span>' if r["n_reverse"]
+            else '<span class=zero>0</span>',
+            f'<span class="dimc wrap">{escape(r["pattern"])}</span>',
+            tag(s_now, STATE_TAG.get(s_now, "")) if s_now != "pending"
+            else '<span class=dimc>pending</span>',
+            act))
+
+    # ⚠️ THE GAUGE IS SCOPED TO THE FILTERS BUT NOT TO THE STATE, and each segment is the door to
+    #    that state. Scoping it to the state as well would draw one full bar every time, which is
+    #    a picture of the filter rather than of the data. Same split the catalog chart runs on.
+    parts = [(k, tally[k], f"/substitutions{qs(state=k, page=None)}")
+             for k in ("pending", "confirmed", "rejected") if tally[k] or k == "pending"]
+    chart = gauge(parts, sum(tally[k] for k in ("pending", "confirmed", "rejected")),
+                  "the queue, by what has been decided") if rows_sql else ""
+
+    n_conf = c.execute("SELECT COUNT(*) FROM library_substitutions").fetchone()[0]
+    said_yes = sum(1 for r in decided.values() if r["decision"] in ("confirmed", "authored"))
+    # ⚠️ THE STORED TABLE IS NEVER PRINTED AS FACT, the same rule GOTCHA 3 states for link_state.
+    #    A confirm appends to the file and nothing else. library_substitutions catches up when
+    #    load_substitutions.py runs, and until it does the two disagree. Saying so is the job.
+    drift = ""
+    if said_yes != n_conf:
+        drift = (f'<div class=banner><b>{fmt(said_yes)}</b> confirmed in the hand file, '
+                 f'<b>{fmt(n_conf)}</b> in <span class=mono>library_substitutions</span>. '
+                 f'A decision is written to the file, and the table catches up when '
+                 f'<span class=mono>python3.13 load_substitutions.py</span> replays it.</div>')
+    err = request.args.get("err")
+    if err:
+        drift = f'<div class=banner>{escape(err)}</div>' + drift
+
+    n_gap = c.execute("SELECT COUNT(*) FROM mined_substitution_candidates "
+                      "WHERE one_to_many=1").fetchone()[0]
+    # ⚠️ THESE COUNT PAIRS, WHICH IS NOT THE SAME AS COUNTING ROWS, and the first draft of this
+    #    page got both wrong in the same direction. A one-to-many gap is a row and not a pair, so
+    #    n>=3 over the whole table reads 608 against the 593 pairs that can actually be confirmed.
+    #    A pair seen both ways is stored as two rows, so n_reverse>0 reads 1,262 for 631 pairs.
+    n_both = c.execute("SELECT COUNT(*) FROM mined_substitution_candidates "
+                       "WHERE n_reverse>0").fetchone()[0] // 2
+    n3 = c.execute("SELECT COUNT(*) FROM mined_substitution_candidates "
+                   "WHERE n>=3 AND one_to_many=0").fetchone()[0]
+    about = (
+      "<p class=about>A substitution here is a proposal, not a fact. RecipeNLG's directions text "
+      'says things like <span class=ex>use margarine instead of butter</span>, and an extractor '
+      f'pulled <b>{fmt(n_all - n_gap)}</b> ordered pairs out of 2,231,142 recipes. Slightly over '
+      'half of what it matched survived cleaning, so the rest of the work is reading.</p>'
+      '<p class=about>Direction is the fact, so the pair is ordered and the reverse count sits '
+      f'beside it. <b>{fmt(n_both)}</b> pairs were seen both ways round. Water to chicken broth '
+      'was seen 137 times and 5 times the other way, and that asymmetry is what says the rule '
+      'read the preposition rather than the verb.</p>'
+      f'<p class=about><b>{fmt(n3)}</b> pairs were seen three times or more. <b>{fmt(n_gap)}</b> '
+      'more read as one ingredient replaced by two, which a from-and-to row cannot say, so they '
+      'are held here flagged rather than dropped. Confirming or rejecting writes a line to '
+      f'<span class=mono>{escape(HAND)}</span>. Nothing on this page writes the database.</p>')
+
+    HEADS = [
+      ("from", "the ingredient being replaced", "from_id", "from"),
+      ("to", "what stands in for it", "to_id", "to"),
+      ("n", "times the corpus said so", "n", "n"),
+      ("reverse", "times it said the opposite", "n_reverse", "reverse"),
+      ("pattern", "which rule fired. provenance, never the sentence it read", "pattern"),
+      # ⚠️ THE COLUMN LABEL NAMES A FILE, NOT A COLUMN, and that is the honest label. Every other
+      #    header here says which stored field it shows. This one is not stored in the database at
+      #    all, and writing a column name under it would be the one place this page lied.
+      ("state", "what you decided. not a database column", HAND),
+      ("", "", ""),
+    ]
+    # ⚠️ AN AUTHORED ROW IS NOT IN THE QUEUE, so it would otherwise be written and never seen
+    #    again. Nothing proposed it, so no candidate row carries it and every count on this page
+    #    is blind to it. They are read back out of the hand file and shown under the form that
+    #    writes them. A write surface where the write disappears is worse than no write surface.
+    in_queue = {(r["from_id"], r["to_id"]) for r in rows_sql}
+    own = [r for k, r in decided.items() if r["decision"] == "authored" and k not in in_queue]
+    own_rows = [(f'<span class=nm>{ilink(r["from"], r["from_name"] or r["from"])}</span>',
+                 f'<span class=nm>{ilink(r["to"], r["to_name"] or r["to"])}</span>',
+                 f'<span class=mono>{escape(r["ratio"])}</span>' if r["ratio"]
+                 else '<span class=dimc>not fixed</span>',
+                 f'<span class="dimc wrap">{escape(r["note"])}</span>',
+                 f'<span class=dimc>{escape(r["decided"])}</span>') for r in own]
+    own_block = ""
+    if own_rows:
+        own_block = ('<h3 style="margin:22px 0 6px">Written in by hand '
+                     f'<span class=dimc>{len(own_rows)}</span></h3>'
+                     + table([("from", "the ingredient being replaced"),
+                              ("to", "what stands in for it"),
+                              ("ratio", "how much of it stands in for one of the other"),
+                              ("why", "your words. they stay in the file and never reach a table"),
+                              ("decided", "the day you wrote it")],
+                             own_rows, ["nm", "nm", "num", "", ""]))
+    bits = []
+    if state:
+        bits.append(f"Showing the <b>{escape(state)}</b> rows only.")
+    if shape == "gap":
+        bits.append("One ingredient replaced by two, which this table cannot store.")
+    if shape == "pair":
+        bits.append("Ordered pairs only, so the rows that can be confirmed.")
+    if floor:
+        # ⚠️ THE HEADER COUNTS ROWS AND THE PARAGRAPH ABOVE COUNTS PAIRS, so at a floor of 3 one
+        #    says 608 and the other says 593 within three inches of each other. Both are true and
+        #    together they read as a contradiction. The 15 between them are one-to-many gaps,
+        #    which are rows and are not pairs, and naming them here is cheaper than making either
+        #    number wrong.
+        n_gap_here = sum(1 for r in rows_f if r["one_to_many"])
+        bits.append(f"Seen <b>{escape(floor)}</b> times or more."
+                    + (f" <b>{fmt(total - n_gap_here)}</b> of them are pairs and "
+                       f"<b>{fmt(n_gap_here)}</b> are one-to-many gaps." if n_gap_here else ""))
+    strip = ctx(bits, "/substitutions") if bits else ""
+    authored = (
+      '<div class=authored><h3>Write one in by hand</h3>'
+      '<p>For a substitution you know and the corpus never proposed. It goes into the same file '
+      'marked authored, and it has to carry a note, since nothing but you stands behind it.</p>'
+      '<form method=post action="/substitutions/decide">'
+      '<input type=hidden name=decision value="authored">'
+      f'<input type=hidden name=back value="{escape(back)}">'
+      '<div class=rf>'
+      '<label><span>replace this</span><input name=from placeholder="library_id or the exact name" required></label>'
+      '<label><span>with this</span><input name=to placeholder="library_id or the exact name" required></label>'
+      '<label><span>ratio</span><input name=ratio placeholder="1" style="width:70px"></label>'
+      '</div><div class=rf>'
+      '<label><span>why</span><input name=note style="width:420px" required></label>'
+      '<button type=submit>add</button></div></form>' + own_block + '</div>')
+    body = f"""<section>
+{phead("Substitutions", total, "candidates", "mined_substitution_candidates", "", said=about,
+       of=n_all if (state or shape or floor or qy) else None)}
+{drift}
+{chart}
+<div class=filters>{filters("/substitutions","state",[("","all"),("pending",f"pending {fmt(tally['pending'])}"),("confirmed",f"confirmed {fmt(tally['confirmed'])}"),("rejected",f"rejected {fmt(tally['rejected'])}")],state,"state")}</div>
+<div class=filters>{filters("/substitutions","shape",[("","all"),("pair",f"ordered pairs {fmt(n_all-n_gap)}"),("gap",f"one-to-many {fmt(n_gap)}")],shape,"shape")}</div>
+<div class=filters>{filters("/substitutions","floor",[("","any"),("2","seen 2+"),("3","seen 3+"),("5","seen 5+"),("10","seen 10+")],floor,"support")}{searchbox("filter by ingredient",("state","shape","floor","sort","dir"))}</div>
+{strip}
+{authored}
+{table(HEADS, out, ["nm","nm","num","num","","","act"], "No candidate matches those filters.")}
+{pager(p,total,"/substitutions")}</section>"""
+    c.close()
+    return page("Substitutions", body, "/substitutions",
+                [("Condition", "/"), ("Substitutions", None)])
+
 
 @app.route("/g/<path:lid>")
 def graph(lid):
