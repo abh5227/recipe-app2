@@ -27,6 +27,28 @@ import re
 # compromise (ROADMAP: extract a shared public amounts.py).
 from stepscale import _NUM, _SCALE_UNIT, _UNI, _to_value, _normalize_unicode, _canon_amount
 
+from recipe_line_parser import MEASURE_ABBREV
+
+# ⚠️ THE LEADING UNIT IS A WIDER QUESTION THAN WHAT TO SCALE, and conflating the two was the bug.
+#    _SCALE_UNIT comes from stepscale and answers "which quantities does the CLIENT SCALE". It is
+#    mirrored in static/app.js and held there by tests/js/factor-sync.test.js, so it cannot be
+#    widened from this side. Where an ingredient line's NAME BEGINS is a different question.
+#    `1 pkg. cream cheese` has a leading unit whether or not anything scales it, and leaving the
+#    `pkg.` on the front produced an ingredient called `pkg. cream cheese`.
+#
+#    ⚠️ SAME FAMILY AS THE PERIOD LEAK that produced `. ground pork`, and it hid for the same
+#    reason: the calibration corpus was a Paprika export that spells units out. Measured on the
+#    live catalog, 3 stored rows carry the unit into the label and all three are `tbs`.
+#
+#    ⚠️ `t` IS DELIBERATELY ABSENT. _LEAD_RE is IGNORECASE, so it cannot tell `t.` (teaspoon) from
+#    `T.` (tablespoon), and guessing is a threefold error on a quantity. recipe_line_parser makes
+#    the same exclusion for the same reason. Measured over the corpus: 0.1% of lines.
+#
+#    Longest-first so `pkgs` is never shadowed by `pkg`.
+_LEAD_UNIT = (r"(?:" + _SCALE_UNIT + r"|"
+              + "|".join(re.escape(u) for u in sorted(MEASURE_ABBREV, key=len, reverse=True))
+              + r")")
+
 # --------------------------------------------------------------------------- #
 # Regexes (built from the reused stepscale fragments)
 # --------------------------------------------------------------------------- #
@@ -43,7 +65,7 @@ _LEAD_RE = re.compile(
     #    It also blocked _SECONDARY_MEASURE below, which needs the name to START with "/", so
     #    "16 oz./500g spinach" kept its dual measure too. recipe_line_parser.py has done the
     #    same strip(".") on its own unit check since it was written.
-    r"(?:\s*(?P<unit>" + _SCALE_UNIT + r")\b\.?)?"
+    r"(?:\s*(?P<unit>" + _LEAD_UNIT + r")\b\.?)?"
     r"\s*(?P<name>.*)$",
     re.IGNORECASE,
 )
@@ -59,7 +81,7 @@ _ALT_RE = re.compile(r"\bor\b", re.IGNORECASE)
 # "2 tsp / 6 g salt" parses qty "2 tsp" and leaves "/ 6 g salt" as the name. Strip a LEADING
 # "/ <amount> <unit>" so the label (and the future linkage key) is the clean ingredient name;
 # raw_text keeps the original. A "/ 60 ml" deeper in the line (e.g. inside a note) is untouched.
-_SECONDARY_MEASURE = re.compile(r"^/\s*" + _NUM + r"\s*" + _SCALE_UNIT + r"\b\s*", re.IGNORECASE)
+_SECONDARY_MEASURE = re.compile(r"^/\s*" + _NUM + r"\s*" + _LEAD_UNIT + r"\b\s*", re.IGNORECASE)
 
 # A lone trailing orphan "(" (e.g. "Thai tea mix (") is unbalanced source junk — strip it from
 # the parsed name. Only a trailing "(" with nothing after it; a contentful/balanced paren is kept.

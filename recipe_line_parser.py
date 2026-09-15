@@ -68,14 +68,31 @@ FORM  = {"ground","dried","powder","powdered","smoked","roasted","toasted","whol
 TRAIL = (STATE | {"powder","sprig","sprigs","stalk","stalks","granules","matchsticks","sheets",
                   "cubes","fillets","leaves","leaf","wedges","slices","pieces","strips","halves",
                   "florets","cloves","segments","rounds","batons","julienne"})
-UNIT = {"cup","cups","tablespoon","tablespoons","tbsp","teaspoon","teaspoons","tsp","g","kg","gram",
+# ⚠️ THE ABBREVIATED MEASURING UNITS, NAMED AND EXPORTED, BECAUSE TWO PARSERS NEED THE SAME ONES.
+#    This set used to be inlined in UNIT below and nowhere else, so import_cleanup.parse_amount
+#    never got it. That parser reads an ingredient line's leading unit, and without `c` it read
+#    `2 c. flour` as two of an ingredient called `c. flour`. Measured on the live catalog before
+#    the fix: 3 stored rows carried the unit into the label, all three `tbs`.
+#
+#    ⚠️ IT IS NOT stepscale._SCALE_UNITS AND MUST NOT BE MERGED WITH IT. That list answers a
+#    different question, which numbers in method text get SCALED, it is mirrored in static/app.js
+#    and held there by tests/js/factor-sync.test.js. Widening it would change what the client
+#    scales. This set answers only where an ingredient line's name begins.
+#
+#    ⚠️ `t` IS DELIBERATELY ABSENT, and the reason is repeated at UNIT below because both readers
+#    need it. Both parsers match case-insensitively, `T.` is tablespoon and `t.` is teaspoon, and
+#    guessing is a threefold error on a quantity. Measured over the corpus: 0.1% of lines.
+MEASURE_ABBREV = {"c", "tbs", "tosp", "tblsp", "pkg", "pkgs", "pt", "pts", "qt", "qts",
+                  "doz", "ctn", "env", "sq", "bu", "pk", "pc", "pcs", "lg", "sm", "med"}
+
+UNIT = MEASURE_ABBREV | {"cup","cups","tablespoon","tablespoons","tbsp","teaspoon","teaspoons","tsp","g","kg","gram",
         "grams","oz","ounce","ounces","lb","lbs","ib","pound","pounds","ml","l","litre","liter",
         "clove","cloves","pinch","dash","can","cans","jar","package","packet","stick","sticks",
         "bunch","handful","handfuls","slice","slices","sprig","sprigs","piece","pieces","x","quart",
         "pint","gallon","stalk","block","bag","box","tin","tub","carton","head","bulb",
         # abbreviations and containers the read found parsing as ingredients: 'tbs soy sauce',
         # 'qt chicken', 'tosp white wine', 'pc skin-on'.
-        "tbs","tosp","tblsp","qt","qts","pc","pcs","bunches","handfuls","sprigs","cloves",
+        "bunches","handfuls","sprigs","cloves",
         "wedge","wedges","bundle","bundles","glove","gloves","stem","stems","ear","ears","of",
         # ⚠️ THE AMERICAN HOME-RECIPE ABBREVIATIONS. The machinery already handled these: the
         #    unit check below strips a trailing period, so 'tbsp. sugar' and 'oz. cream cheese'
@@ -90,7 +107,7 @@ UNIT = {"cup","cups","tablespoon","tablespoons","tbsp","teaspoon","teaspoons","t
         #    NAME that does not matter, both strip. For a QUANTITY it is a threefold error, and
         #    the raw column is read for quantities. A unit that cannot be read correctly is
         #    worse than a unit that is not read at all.
-        "c","pkg","pkgs","pt","pts","env","ctn","sq","lg","sm","med","doz","bu","pk"}
+        }
 QTY = re.compile(r"^[\d\s./¼½¾⅓⅔⅛⅜⅝⅞\-–—]+")
 MODWORDS = STATE | FORM | UNIT
 
