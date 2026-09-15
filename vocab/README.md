@@ -1,7 +1,7 @@
 # vocab/ — the classification model the ingredient library is built on
 
-Five files. Four of them **cannot be regenerated** and one can. Read the next section
-before deleting anything here.
+Eleven files. Read the next section before deleting anything here. Five of them came from live
+fetches that would not reproduce, six are hand-reviewed decisions, and one is derived.
 
 ## What cannot be regenerated, and why it is committed
 
@@ -29,8 +29,27 @@ derive 262 KB.
 | `wikidata-class-labels.json` | 27,612 | class QID to its English label |
 | `wikidata-kind-anchors.json` | 4 keys | the anchor QIDs per kind, their priority order, the generic fallback, the hop cap |
 | `off-taxonomy-tree.json` | 5,745 | the Open Food Facts parent and child tree |
+| `dish-vocab.csv` | 800 | the dish FORM vocabulary, with a `keep` column and `style-not-form` flags |
+| `base-vocab.csv` | 147 | the BASE vocabulary, what a dish is made of, with `keep` and `EXCLUDE` |
+| `method-vocab.csv` | 63 | the METHOD vocabulary, participles only |
+| `diet-vocab.csv` | 27 | the DIET vocabulary |
+| `structural-vocab.csv` | 15 | the STRUCTURAL vocabulary |
+| `appliance-vocab.csv` | 36 | the APPLIANCE vocabulary |
 
-Total 6.1 MB.
+Total 6.2 MB.
+
+## ⚠️ The six dish vocabularies, and why they moved here
+
+`dish_facets.py` reads all six at import. They carry a `keep` column the owner edited by hand, one
+row at a time, and the rejections carry as much meaning as the entries. `light` is out of diet at
+83.3% ambiguous. `dump` is out of structural because 86% of its 461 titles are `Dump Cake`. Bare
+verb stems are out of method because `dip` is a trailing noun 96% of the time. **None of that
+reproduces from anything.**
+
+⚠️ **They were read from `previews/` first, which is gitignored.** That made `dish_facets.py`
+unimportable on a fresh clone and the whole dish extraction unreproducible from the repository
+alone. The corpus may be absent, since it is 2.29 GB and licensed derive-only. **The decisions
+about it may not.** Same test as everything else on this page.
 
 ## How the grouping was built
 

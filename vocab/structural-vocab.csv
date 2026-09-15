@@ -1,0 +1,16 @@
+keep,word,proposed,note,n_sample,est_corpus,sample_1,sample_2
+y,no-bake,add,,1391,5173,No Bake Cookies,No-Bake Cookies
+y,overnight,add,,464,1725,Overnight Salad,Overnight Salad
+y,dump,add,⚠️ JUDGEMENT. `Dump Cake` may be a dish name rather than a format,461,1714,Dump Cake,Dump Cake
+y,freezer,add,,313,1164,Freezer Slaw,Freezer Slaw
+y,make-ahead,add,,310,1153,Make-Ahead Lasagna,Make-Ahead Burritos
+y,one-pot,add,,269,1000,One-Pot Chicken ,One-Pot Breakfast
+y,no-cook,add,,241,896,No Cook Fudge,No Cook Pickles
+y,one-pan,add,,163,606,One Pan Fall Dinner,One Pan Banana Bread
+y,one-bowl,add,,143,532,One-Bowl Spice Cake,One-Bowl Vanilla Cake
+y,one-dish,add,,143,532,One Dish Ham Bake,One-Dish Ground Beef
+y,sheet-pan,add,,78,290,Sheet Pan Mac & Cheese Pizza,Easy Sheet Pan Chicken And Veggies
+,easy,EXCLUDE,fluff,11825,43973,Easy Stew,Easy Fudge
+,baked,EXCLUDE,a METHOD. it belongs to that facet,11198,41642,Baked Ziti,Baked Nuts
+,quick,EXCLUDE,"fluff. a promise about effort, not a property of the dish",4210,15656,Quick Bread,Quick Chili
+,slow-cooker,EXCLUDE,an APPLIANCE. it belongs to that facet,1728,6426,Slow Cooker Yogurt,Slow Cooker Lasagna

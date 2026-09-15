@@ -1,0 +1,64 @@
+keep,word,proposed,note,n_sample,est_corpus,sample_1,sample_2
+y,baked,add,heat,11198,41642,Baked Ziti,Baked Nuts
+y,roasted,add,heat,9049,33650,Roasted Fries,Roasted Pecans
+y,grilled,add,"heat. the participle is the method, the bare `grill` is the appliance",8689,32312,Grilled Chili,Grilled Salsa
+y,stuffed,add,treatment,7344,27310,Stuffed Loaf,Stuffed Crab
+y,fried,add,heat,6658,24759,Fried Rice,Fried Rice
+y,glazed,add,treatment,2794,10390,Glazed Beets,Glazed Donuts
+y,smoked,add,heat and preservation both,2554,9498,Smoked Trout,Smoked Cheese
+y,marinated,add,treatment,2366,8798,Marinated Feta,Marinated Salad
+y,braised,add,heat,1843,6854,Braised Beans,Braised Rabbit
+y,mashed,add,treatment,1737,6459,Mashed Potatoes,Mashed Potatoes
+y,dried,add,preservation,1655,6154,Dried Beef Dip,Dried Beef Dip
+y,sauteed,add,heat,1443,5366,Sauteed Apples,Sauteed Peppers
+y,pickled,add,preservation,1388,5162,Pickled Eggs,Pickled Okra
+y,caramelized,add,heat,1267,4712,Caramelized Onions,Caramelized Onions 
+y,barbecued,add,heat. only 0.1% of `barbecue` titles use the verb,1129,4198,Barbecued Meat,Barbecued Beef
+y,scalloped,add,⚠️ JUDGEMENT. a dish style more than a method. `Scalloped Potatoes`,1087,4042,Scalloped Corn,Scalloped Corn
+y,toasted,add,heat,1085,4035,Quinoa-Toasted,Toasted Ricotta
+y,layered,add,assembly,1045,3886,Layered Salad,Layered Salad
+y,steamed,add,heat,1015,3774,Steamed Pears,Steamed Pudding
+y,poached,add,heat,1010,3756,Poached Salmon,Poached Chicken
+y,seared,add,heat,898,3339,Simply Seared Opah,Seared Sea Scallops
+y,wrapped,add,assembly,895,3328,Bacon-Wrapped Quail,Bacon Wrapped Shrimp
+y,creamed,add,treatment,820,3049,Creamed Corn,Creamed Corn
+y,candied,add,treatment,810,3012,Candied Yams,Candied Yams
+y,broiled,add,heat,807,3001,Broiled Veggies,Broiled Bananas
+y,deviled,add,treatment,796,2960,Deviled Crab,Deviled Eggs
+y,stir-fried,add,heat,710,2640,Stir Fried Spinach,Stir-Fried Broccoli
+y,whipped,add,treatment,707,2629,Whipped Frosting,Mock Whipped Cream
+y,boiled,add,heat,621,2309,Boiled Shrimp,Boiled Cookies
+y,iced,add,treatment,591,2198,Iced Coffee,Iced Red Tea
+y,chilled,add,treatment,520,1934,Chilled Mango Soup,Chilled Fruit Salad
+y,pan-fried,add,heat,410,1525,Pan Fried Tilapia,Catfish (Pan Fried)
+y,shredded,add,knife work,408,1517,Shredded Pork Wraps,Shredded Beef Recipe
+y,frosted,add,treatment,348,1294,Frosted Grapes,Frosted Delights
+y,stewed,add,"heat. the bare `stew` is a form, 95% the trailing noun",336,1249,Stewed Chicken,Stewed Tomatoes
+y,oven-baked,add,heat,333,1238,Oven Baked Cheese,Oven Baked Chicken
+y,smothered,add,treatment,332,1235,Smothered Chicken,Smothered Chicken
+y,deep-fried,add,heat,319,1186,Deep Fried Butter,Deep-Fried Catfish
+y,dipped,add,treatment,313,1164,Tater Dipped Chicken,Batter-Dipped Hot Dogs
+y,breaded,add,treatment,302,1123,Breaded Pork Chops,Breaded Pork Chops
+y,simmered,add,heat,267,993,Easy Simmered Potatoes,Slow Simmered Pork Roast
+y,blackened,add,heat,204,759,Blackened Grouper,Blackened Pork Ribs
+y,charred,add,heat,200,744,Charred Beets and Herbs,Charred Lemon Shrimp Skewers
+y,cured,add,preservation,118,439,Home Cured Corned Beef,Salt Cured Cherry Blossoms
+y,skewered,add,assembly,105,390,Garlic Skewered Shrimp,Skewered Okara Dumplings
+y,minced,add,knife work,91,338,Minced Prawn Curry Balls,Silky Skewered Minced Chicken
+y,fire-roasted,add,heat,82,305,Fire Roasted Tomato-Orzo Salad,Baked Ziti With Fire Roasted Tomatoes
+y,pureed,add,treatment,62,231,Pureed Spinach-Potato Soup,Roasted and Pureed Cauliflower
+y,crumbled,add,knife work,43,160,Pan Fried Plantain With Crumbled Feta,Apple and Onion Soup With Crumbled Stilton
+y,griddled,add,heat,21,78,Griddled spicy paneer skewers recipe,Griddled Venison With Pink Gin Applesauce
+y,blanched,add,heat,21,78,Simple Blanched Green Beans,Blanched Greens In Oyster Sauce Recipe
+,bread,EXCLUDE,a bare stem. 79% the trailing noun. `Banana Bread` is a FORM,16576,61641,Egg Bread,Nut Bread
+,cream,EXCLUDE,"a bare stem, and a base ingredient",16494,61336,Ice Cream,Ice Cream
+,dip,EXCLUDE,"a bare stem. 96% the trailing noun, a FORM",10059,37406,Fun Dip,Blt Dip
+,bake,EXCLUDE,"a bare stem. 78% of the time it is the trailing noun, so it is a FORM",5233,19460,Ziti Bake,Bean Bake
+,stew,EXCLUDE,"a bare stem. 95% the trailing noun, a FORM",5068,18846,Beef Stew,Lazy Stew
+,roast,EXCLUDE,"a bare stem. `Pot Roast` is a roast, a FORM",4336,16124,Pot Roast,Pot Roast
+,toast,EXCLUDE,a bare stem. 81% the trailing noun. `French Toast` is a FORM,2056,7646,Tommy Toast,French Toast
+,glaze,EXCLUDE,"a bare stem. 89% the trailing noun, a FORM",1415,5262,Yuzu Glaze,Lime Glaze 
+,chop,EXCLUDE,a bare stem. 74% the trailing noun. `Pork Chops` is a FORM,746,2774,Chop Suey,Chop Chop
+,wrap,EXCLUDE,"a bare stem. 95% the trailing noun, a FORM",489,1818,Lettuce Wrap,Bacon Wrap-Ups
+,slow-cooked,EXCLUDE,"⚠️ this is the slow cooker. it belongs to the APPLIANCE facet, and keeping it here double-counts",341,1268,Slow-Cooked Applesauce,Slow Cooked Round Steak
+,pickle,EXCLUDE,"a bare stem. 86% the trailing noun, a FORM",321,1194,7 Day Pickle,Pickle Relish

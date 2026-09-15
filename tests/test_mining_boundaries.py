@@ -30,9 +30,36 @@ MINED_PREFIX = "mined_"
 #      pattern   the name of the rule that fired, one of five labels in substitution_run.RULES.
 #                test_a_stored_pattern_is_a_rule_label_not_a_sentence asserts the vocabulary.
 #      origin    mined-confirmed or authored, which says who decided, not what the corpus said.
+#    Four more were added for the dish facets in migration 038:
+#      dish_id      a surrogate key, the first 16 hex of a sha256. It carries no corpus text at all,
+#                   and it is what lets seven facet tables reference a dish without repeating the
+#                   string. An earlier draft put the string on every table and all seven were
+#                   refused.
+#      diet         one of about 20 authored words, `vegan`, `gluten-free`, `lite`.
+#      structural   one of 10 authored words, `no-bake`, `overnight`, `one-pot`.
+#      appliance    one of the authored appliance words, `slow-cooker`, `microwave`.
 ALLOWED_MINED_TEXT_COLS = {"source_slug", "source_url", "library_id", "a_id", "b_id",
                            "from_id", "to_id", "dish_type", "method", "role", "cuisine",
-                           "technique", "course", "fact_kind", "pattern", "origin"}
+                           "technique", "course", "fact_kind", "pattern", "origin",
+                           "dish_id", "diet", "structural", "appliance"}
+
+# ⚠️ THE ONE FREE-TEXT EXCEPTION IN THE WHOLE MINED SCHEMA, and it is recorded as an exception
+#    rather than by widening the list above, so that it stays visible and countable. Adding `dish`
+#    to ALLOWED_MINED_TEXT_COLS would have let any future mined table hold a column called `dish`
+#    without anybody noticing. This grants it to exactly one table.
+#
+#    mined_dish.dish holds the normalized specific dish, `chicken marsala`, `bread pudding`. It is
+#    a transformation of the corpus's own words and no closed vocabulary bounds it, which is
+#    exactly what boundary (b) exists to stop. It is granted because the facet cannot exist without
+#    it and because the alternative, dropping the facet, loses the subgroup distinction the whole
+#    dish model was built for.
+#
+#    ⚠️ THE GRANT IS CONDITIONAL AND THE CONDITION IS TESTED. The string must be CLEANED, meaning no
+#    brand and no personal name survives into it. test_the_dish_exception_is_cleaned checks the
+#    populated table rather than trusting the loader that wrote it.
+FREE_TEXT_EXCEPTIONS = {
+    ("mined_dish", "dish"): "the normalized specific dish, cleaned. See migration 038.",
+}
 # the columns a mined fact would carry a NAME in, which is what the brand check reads
 NAME_COLS = {"library_id", "a_id", "b_id", "from_id", "to_id", "dish_type", "name", "canonical"}
 
@@ -80,6 +107,8 @@ def check_no_corpus_text(conn):
         for col in cols:
             name, decl = col[1], (col[2] or "").upper()
             if "CHAR" in decl or "TEXT" in decl or "CLOB" in decl:
+                if (t, name) in FREE_TEXT_EXCEPTIONS:
+                    continue
                 assert name in ALLOWED_MINED_TEXT_COLS, (
                     f"{t}.{name} is a free-text column on a mined table. Facts leave the "
                     f"extractor as tuples and the sentence is never retained. "
@@ -244,6 +273,173 @@ def test_a_one_to_many_candidate_is_flagged_rather_than_left_null(dbs):
             "SELECT COUNT(*) FROM mined_substitution_candidates "
             "WHERE (to_id IS NULL) <> (one_to_many=1)").fetchone()[0]
         assert bad == 0, f"{bad} candidate rows disagree about whether they are one-to-many"
+
+
+# ── the dish facets, migration 038 ─────────────────────────────────────────────────────────────
+
+def test_the_free_text_exception_list_stays_short():
+    """⚠️ ONE EXCEPTION IS A DECISION. THREE IS A HABIT.
+
+    The value of recording the grant rather than widening ALLOWED_MINED_TEXT_COLS is that it can
+    be counted. This fails if somebody adds a second one without a conversation."""
+    assert len(FREE_TEXT_EXCEPTIONS) == 1, (
+        f"{len(FREE_TEXT_EXCEPTIONS)} free-text exceptions are granted. Each one is a place the "
+        f"corpus's own words reach storage. Adding another needs a reason written down, not a "
+        f"line in a dict: {sorted(FREE_TEXT_EXCEPTIONS)}")
+    assert ("mined_dish", "dish") in FREE_TEXT_EXCEPTIONS
+
+
+def test_the_dish_exception_is_conditional_on_being_cleaned():
+    """⚠️ THE GRANT IS NOT UNCONDITIONAL. mined_dish.dish may hold corpus words, and it may not
+    hold a brand or a person's name. Measured before the facet was built: about 11,600 recipes
+    carry a brand into the dish value and about 3,400 carry a personal name. This checks the rows
+    that were actually written rather than trusting the loader."""
+    import re
+    conn = live_db()
+    if not has(conn, "mined_dish"):
+        conn.close(); pytest.skip("migration 038 has not been applied here")
+    rows = conn.execute("SELECT dish FROM mined_dish").fetchall()
+    if not rows:
+        conn.close(); pytest.skip("the dish table is empty, which is correct without the corpus")
+    b = brand_guard.load_brands()
+    chk = brand_guard.catalog_name_check(conn)
+    NAME = re.compile(r"(?<![\w-])(?:aunt|uncle|grandma|grandmas|granny|nana|mrs|mr|miss|chef|"
+                      r"grandmother|mom|moms|mother|mama|dad|dads|daddy)(?![\w-])", re.I)
+    bad_brand = [d for (d,) in rows
+                 if brand_guard.classify(d, brands=b, is_catalog_name=chk)[0] == "brand"]
+    bad_name = [d for (d,) in rows if NAME.search(d)]
+    conn.close()
+    assert not bad_brand, (
+        f"{len(bad_brand)} dish values carry a brand, e.g. {bad_brand[:5]}. Boundary (g). The "
+        f"cleaning step did not run or did not cover these.")
+    assert not bad_name, (
+        f"{len(bad_name)} dish values carry a personal name, e.g. {bad_name[:5]}. Boundary (d): "
+        f"the creative title is expression and a real person's name is the worst of it.")
+
+
+def test_every_facet_table_other_than_the_dish_holds_no_corpus_text():
+    """⚠️ THE POINT OF THE SURROGATE ID. Seven facet tables reference a dish and none of them
+    repeats its string. An earlier draft put `dish` on every table and the guard refused all
+    seven, which is what the dish_id column exists to avoid."""
+    conn = live_db()
+    if not has(conn, "mined_dish"):
+        conn.close(); pytest.skip("migration 038 has not been applied here")
+    facets = [t for t in mined_tables(conn) if t.startswith("mined_dish_")]
+    assert facets, "migration 038 created no facet tables"
+    for t in facets:
+        cols = {c[1] for c in conn.execute(f"PRAGMA table_info({t})")}
+        assert "dish" not in cols, f"{t} repeats the dish string. Reference it by dish_id."
+        assert "dish_id" in cols, f"{t} has no dish_id, so it cannot say which dish it describes"
+    conn.close()
+
+
+def test_the_catalog_keyed_facets_resolve_to_real_rows():
+    """base and accompaniment hold library_ids. An orphan means the catalog moved under them."""
+    conn = live_db()
+    if not has(conn, "mined_dish_base"):
+        conn.close(); pytest.skip("migration 038 has not been applied here")
+    for t in ("mined_dish_base", "mined_dish_accompaniment"):
+        n = conn.execute(f"SELECT COUNT(*) FROM {t} f LEFT JOIN library_names l "
+                         f"ON l.library_id=f.library_id WHERE l.library_id IS NULL").fetchone()[0]
+        assert n == 0, f"{t} holds {n} library_ids that are not catalog rows"
+    conn.close()
+
+
+
+# ── the floor, and the parity gap ──────────────────────────────────────────────────────────────
+
+# ⚠️ BOUNDARY (c) SAID "a minimum n on every aggregate table, set when the tables are built" AND
+#    NO TABLE HAD ONE. The check above only asserts that an `n` COLUMN EXISTS. Measured when the
+#    dish facets were built: mined_pairings held 118,609 rows at n=1 of 362,319, mined_occurrences
+#    403 of 3,018, mined_substitution_candidates 3,374 of 4,600.
+#
+#    ⚠️ THE FLOORS ARE DECLARED RATHER THAN ASSUMED, so the three that predate the rule stay
+#    countable instead of hidden. A table at floor 1 is a recorded gap, not a passing grade.
+#    Raising one is a decision about that table, and this dict is where it gets made.
+#
+#    The dish tables are at 10 by the owner's decision. A dish x ingredient cell is the thin cell
+#    docs/mining-decision.md section 2 names, and the floor is what answers it.
+MIN_N_FLOORS = {
+    # ⚠️ 2, NOT 10. The dish floor was lowered deliberately to keep thin regional dishes as
+    #    elevation hooks for multi-source aggregation. See load_dish_facets.FLOOR and
+    #    docs/open-library-queues.md section 12. Boundary (c) forbids n=1 and this never admits it.
+    "mined_dish": 2, "mined_dish_form": 2, "mined_dish_method": 2, "mined_dish_diet": 2,
+    "mined_dish_structural": 2, "mined_dish_appliance": 2, "mined_dish_base": 2,
+    "mined_dish_accompaniment": 2,
+    # ⚠️ 2, NOT 10, AND THAT IS THE HONEST NUMBER. The profile uses a share rule rather than a
+    #    flat count, so its minimum is 2 by construction. Declaring 10 here would be aspirational
+    #    and would fail the moment the table is populated.
+    "mined_dish_ingredient": 2,
+    # ⚠️ PREDATE THE RULE. Each one holds n=1 rows today. Raising these is its own decision.
+    "mined_pairings": 1, "mined_occurrences": 1, "mined_substitution_candidates": 1,
+    # ⚠️ NOT AN AGGREGATE TABLE AT ALL, and it is here because the guard reads it. Every row is a
+    #    decision somebody made in hand_substitutions.csv. Its `n` is the corpus support behind
+    #    that decision, NULL when the row was authored outright, so a floor would be measuring
+    #    the wrong thing.
+    "library_substitutions": 1,
+}
+
+
+def test_every_aggregate_table_holds_its_declared_floor():
+    """⚠️ A ROW AT n=1 IS NOT AN AGGREGATE. Boundary (c), checked on what was actually loaded."""
+    conn = live_db()
+    checked = 0
+    for t in mined_tables(conn):
+        floor = MIN_N_FLOORS.get(t)
+        if floor is None:
+            conn.close()
+            pytest.fail(f"{t} declares no floor. Add it to MIN_N_FLOORS, at 1 if it predates "
+                        f"the rule, so the gap stays countable.")
+        col = "n_recipes" if t == "mined_occurrences" else "n"
+        cols = {c[1] for c in conn.execute(f"PRAGMA table_info({t})")}
+        if col not in cols:
+            continue
+        low = conn.execute(f"SELECT MIN({col}) FROM {t}").fetchone()[0]
+        if low is None:
+            continue                       # empty, which is correct without the corpus
+        checked += 1
+        assert low >= floor, (
+            f"{t} holds a row at {col}={low}, under its declared floor of {floor}. Boundary (c): "
+            f"only aggregates across recipes are stored.")
+    conn.close()
+    if not checked:
+        pytest.skip("no populated mined tables here")
+
+
+def test_every_sqlite_migration_has_an_alembic_revision():
+    """⚠️ THE GAP THAT LET 038 SHIP WITHOUT ONE. 035, 036 and 037 each had a counterpart and 038
+    did not, so eight tables existed in SQLite and would have been absent from Postgres. Nothing
+    in the suite compared the two directories, so CI stayed green while the dialects diverged.
+
+    ⚠️ IT COUNTS RATHER THAN MATCHES BY NAME. The two sides use different naming schemes on
+    purpose, numbered files against hash revisions, so a name match is not available. A migration
+    that adds a table and has no revision behind it is what this catches."""
+    root = BASE
+    sqlite_migrations = sorted((root / "migrations").glob("[0-9][0-9][0-9]_*.sql"))
+    revisions = sorted((root / "alembic" / "versions").glob("*.py"))
+    assert sqlite_migrations, "no numbered migrations found"
+    assert revisions, "no alembic revisions found"
+    created = set()
+    for f in sqlite_migrations:
+        for line in f.read_text().splitlines():
+            up = line.upper().strip()
+            if up.startswith("CREATE TABLE"):
+                name = up.replace("IF NOT EXISTS", "").split("CREATE TABLE")[1].strip()
+                created.add(name.split("(")[0].strip().strip('"').lower())
+    in_alembic = set()
+    for f in revisions:
+        txt = f.read_text()
+        for chunk in txt.split('create_table(')[1:]:
+            q = chunk.strip()
+            if q and q[0] in "\"'":
+                in_alembic.add(q[1:].split(q[0])[0].lower())
+        for chunk in txt.split('FACETS = [')[1:]:
+            for piece in chunk.split('("')[1:]:
+                in_alembic.add(piece.split('"')[0].lower())
+    missing = sorted(t for t in created - in_alembic if t.startswith(("mined_", "library_")))
+    assert not missing, (
+        f"{len(missing)} table(s) are created by a numbered migration and by no Alembic "
+        f"revision, so Postgres would not have them: {missing}")
 
 
 def test_a_catalog_canonical_is_food_unless_its_exact_form_is_listed():

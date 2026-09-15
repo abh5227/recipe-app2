@@ -1,0 +1,28 @@
+keep,word,proposed,note,n_sample,est_corpus,sample_1,sample_2
+y,vegan,add,,2154,8010,Vegan Chili,Vegan Scones
+y,gluten-free,add,,1674,6225,Gluten Free Brisket,Gluten-Free Brownies
+y,low-fat,add,,1639,6095,Low-Fat Sausage,Low-Fat Granola
+y,vegetarian,add,,1307,4860,Vegetarian Chili,Vegetarian Chili
+y,low-carb,add,,565,2101,Low Carb Brownies,Low Carb Carbonara
+y,sugar-free,add,,556,2068,Sugar-Free Frosting,Sugar-Free Apple Pie
+y,diabetic,add,,453,1685,Diabetic Cookies,Diabetic Apple Pie
+y,paleo,add,,345,1283,Paleo Crackers ,Paleo Pancakes V4
+y,weight-watchers,add,,295,1097,Not Weight Watchers Chicken,Weight Watchers Baked Oatmeal
+y,dairy-free,add,,293,1090,Dairy-Free Pumpkin Bread,Dairy Free Mashed Potatoes
+y,low-calorie,add,,285,1060,Low Calorie Hot Dish,Low Calorie Spaghetti
+y,fat-free,add,,279,1038,Fat-Free Carrot Cake,Crusty Fat-Free Bread
+y,skinny,add,"⚠️ JUDGEMENT. `Skinny Soup` is diet, `Skinny Dip` is a pun",214,796,Skinny Margarita,Skinny Pumpkin Pie
+y,lite,add,"⚠️ KEEP. the unambiguous diet spelling, never a texture word",186,692,"""lite"" Tortillas",Lite Eggplant Dip
+y,egg-free,add,,109,405,Egg-Free Raspberry Muffins,"Gluten Free, Egg Free Brownies"
+y,keto,add,,83,309,Keto Cinnamon Granola,Simple Keto Zucchini Hash
+y,guilt-free,add,,70,260,Guilt Free Oatmeal Cookies,Guilt Free West Coast Veggies
+y,reduced-fat,add,,66,245,Reduced-Fat Chocolate Delite,Reduced-Fat Icebox Key Lime Pie
+y,grain-free,add,,64,238,Grain-Free Tortillas (Paleo),Grain-Free Boysenberry Peach Pie
+y,low-sodium,add,,54,201,"Low Fat, Low Sodium Apple Pie","Low Sodium, Lots Flavor Bbq Sauce"
+y,nut-free,add,,28,104,Nut Free Blueberry Matcha Tart,Raw Nut-Free Cacao & Raspberry Spread
+y,whole30,add,,20,74,Whole30® Healthy Chicken Soup,Paleo whole30 - Garlic lime tilapia
+y,plant-based,add,,3,11,"Plant Based Pho, A Vegan Alternative To The Beefy Original","Plant Based Pho, A Vegan Alternative To The Beefy Original"
+,healthy,EXCLUDE,"subjective marketing, not a diet. `Healthy Sloppy Joes`",1705,6340,A Healthy Start,Healthy Granola
+,light,EXCLUDE,"⚠️ 83% ambiguous. `corn light bread` is a Southern white yeast bread, neither diet nor texture",1017,3782,Light Brownies,Light Ice Cream
+,healthier,EXCLUDE,subjective marketing,207,770,Healthier Bran Muffins,Healthier Eggs Benedict
+,lean,EXCLUDE,"describes a cut of meat, not a diet",58,216,Lean Homemade Sausage,Lean Green Healing Machine

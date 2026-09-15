@@ -1,0 +1,148 @@
+keep,word,proposed,why_excluded,blanks_resolved,est_corpus_recipes,in_n_recipes,pct_of_corpus,sample_1,sample_2,sample_3
+y,fruit,add,,4662,17337,3304,0.1%,fruit salad,fruit cake,fruit dip
+y,vegetable,add,,4249,15801,8578,0.4%,vegetable soup,vegetable salad,vegetable casserole
+y,cream,add,,3979,14797,32041,1.4%,ice cream,cream pie,cream cake
+,pepper,EXCLUDE,"in 13.7%, and the word is two foods. black pepper the seasoning swamps bell pepper the vegetable",2220,8255,306668,13.7%,stuffed pepper,bell pepper,pepper soup
+y,meat,add,,1970,7326,6174,0.3%,meat loaf,meat ball,meat pie
+y,cranberry,add,,1813,6742,20817,0.9%,cranberry salad,cranberry sauce,cranberry relish
+y,tea,add,,1779,6616,2378,0.1%,tea cake,iced tea,spiced tea
+,sugar,EXCLUDE,in 29.4% of all recipes. every dessert would file under it,1575,5857,655297,29.4%,sugar cookie,sugar cake,sugar pie
+,butter,EXCLUDE,"in 22.8%. a fat, not what a dish is made of",1519,5649,508630,22.8%,butter cookie,butter cake,honey butter
+y,cucumber,add,,1292,4805,33721,1.5%,cucumber salad,cucumber soup,cucumber pickle
+y,nut,add,,1288,4790,79712,3.6%,nut cake,nut cookie,nut roll
+y,buttermilk,add,,968,3600,49821,2.2%,buttermilk biscuit,buttermilk pie,buttermilk pancake
+,cinnamon,EXCLUDE,"in 5.7%. a spice. `cinnamon roll` is a roll, not a cinnamon dish",906,3369,126983,5.7%,cinnamon roll,cinnamon bun,cinnamon cookie
+y,seafood,add,,886,3295,235,0.0%,seafood salad,seafood chowder,seafood gumbo
+y,berry,add,,880,3272,4474,0.2%,berry pie,berry,berry salad
+y,beet,add,,871,3239,6673,0.3%,beet salad,pickled beet,harvard beet
+,garlic,EXCLUDE,in 18.8%. a seasoning present across every savory form,748,2782,419468,18.8%,garlic soup,garlic sauce,garlic butter
+y,rhubarb,add,,747,2778,6278,0.3%,rhubarb pie,rhubarb cake,rhubarb jam
+,ginger,EXCLUDE,in 2.8%. a spice. gingerbread and gingersnap are forms already in the dish vocabulary,725,2696,62556,2.8%,ginger cookie,ginger cake,ginger snap
+y,raisin,add,,717,2666,49242,2.2%,raisin cookie,raisin pie,raisin cake
+,spice,EXCLUDE,too vague to mean anything. `spice cake` has no base,701,2607,2000,0.1%,spice cake,spice cookie,spice mix
+y,yogurt,add,,676,2514,19165,0.9%,yogurt,yogurt dip,yogurt pie
+y,applesauce,add,,649,2413,12520,0.6%,applesauce cake,applesauce,applesauce cookie
+y,apricot,add,,639,2376,7429,0.3%,apricot salad,apricot bar,apricot jam
+y,mango,add,,598,2224,11498,0.5%,mango salsa,mango salad,mango chutney
+y,date,add,,555,2064,15054,0.7%,date cake,date bar,date ball
+,milk,EXCLUDE,in 17.0%. a liquid in most baking,515,1915,379007,17.0%,condensed milk,milk shake,milk cake
+,honey,EXCLUDE,in 3.2%. a sweetener,512,1904,71925,3.2%,honey cake,honey butter,honey cookie
+,seed,EXCLUDE,"too vague. a category, not a food",508,1889,519,0.0%,seed cake,seed dressing,seed cookie
+,mustard,EXCLUDE,in 4.0%. a condiment,506,1882,90257,4.0%,mustard sauce,mustard dressing,mustard
+,mint,EXCLUDE,in 1.1%. a flavoring,505,1878,23855,1.1%,mint tea,mint,mint julep
+,dill,EXCLUDE,"in 0.8%. an herb. `dill pickle` has base cucumber, not dill",460,1711,17129,0.8%,dill pickle,dill dip,dill sauce
+y,bran,add,,455,1692,3848,0.2%,bran muffin,bran roll,bran cookie
+y,olive,add,,453,1685,20687,0.9%,olive tapenade,olive salad,marinated olive
+,dish,EXCLUDE,"⚠️ NOT A FOOD. Q746549 is the Wikidata item for `dish`, a catalog row that should not be there",450,1673,118,0.0%,dish,dish pizza,hamburger dish
+y,sauerkraut,add,,435,1618,5381,0.2%,sauerkraut salad,sauerkraut,sauerkraut casserole
+,wine,EXCLUDE,in 0.1% here but it is a cooking liquid rather than a base,431,1603,3221,0.1%,mulled wine,wine cake,wine sauce
+,cocoa,EXCLUDE,in 2.1%. chocolate already covers this and is the better word,416,1547,47292,2.1%,cocoa mix,cocoa,cocoa cake
+y,watermelon,add,,411,1528,2067,0.1%,watermelon salad,watermelon sorbet,watermelon margarita
+y,grape,add,,401,1491,4680,0.2%,grape salad,grape leaf,grape pie
+y,blackberry,add,,398,1480,4689,0.2%,blackberry cobbler,blackberry pie,blackberry cake
+y,kale,add,,394,1465,4120,0.2%,kale salad,kale,kale chips
+y,molasses,add,,384,1428,18812,0.8%,molasses cookie,molasses cake,molasses crinkle
+y,fig,add,,374,1391,2063,0.1%,fig,fig cake,fig jam
+y,venison,add,,368,1368,788,0.0%,venison stew,venison roast,venison
+,citrus,EXCLUDE,"a genus, not a dish's base. lemon, lime and orange are already in the list",366,1361,22,0.0%,citrus salad,citrus punch,citrus cheesecake
+y,wheat,add,,365,1357,695,0.0%,wheat pancake,wheat roll,wheat biscuit
+y,ricotta,add,,361,1342,2609,0.1%,ricotta,ricotta cheesecake,ricotta pancake
+y,parmesan,add,,332,1235,11054,0.5%,parmesan crisp,parmesan dressing,parmesan roll
+y,lettuce,add,,326,1212,12676,0.6%,lettuce salad,lettuce wrap,wilted lettuce
+y,okra,add,,314,1168,3876,0.2%,okra,pickled okra,okra gumbo
+,marshmallow,EXCLUDE,in 1.1%. a mix-in,311,1157,25308,1.1%,marshmallow treat,marshmallow,marshmallow pop
+y,cider,add,,307,1142,972,0.0%,mulled cider,spiced cider,cider punch
+,surprise,EXCLUDE,"⚠️ NOT A FOOD. Q18386568. catalog junk, and evidence for the open shape-based-junk item",303,1127,3,0.0%,surprise cookie,surprise,surprise cake
+,yeast,EXCLUDE,"in 1.2%. a leavening agent, never a base",288,1071,26296,1.2%,yeast roll,yeast biscuit,yeast doughnut
+,oil,EXCLUDE,in 4.0%. a fat,284,1056,89985,4.0%,oil cake,olive oil,chili oil
+y,rib,add,,265,985,0,0.0%,rib roast,prime rib,rib rub
+y,fennel,add,,248,922,4922,0.2%,fennel salad,fennel,fennel soup
+y,brie,add,,247,919,179,0.0%,brie,wrapped brie,brie bite
+,champagne,not proposed,"below the line, add it if you want it",244,907,1459,0.1%,champagne punch,champagne cocktail,champagne salad
+,celery,not proposed,"below the line, add it if you want it",241,896,137978,6.2%,celery soup,stuffed celery,celery salad
+,basil,not proposed,"below the line, add it if you want it",235,874,53158,2.4%,basil pesto,basil dressing,basil sauce
+,juice,not proposed,"below the line, add it if you want it",229,852,724,0.0%,fruit juice,grape juice,green juice
+,batter,not proposed,"below the line, add it if you want it",223,829,1028,0.0%,beer batter,batter,batter roll
+,melon,not proposed,"below the line, add it if you want it",204,759,365,0.0%,melon salad,melon soup,melon ball
+y,cornmeal,add,,203,755,18701,0.8%,cornmeal muffin,cornmeal waffle,cornmeal cake
+,vinegar,not proposed,"below the line, add it if you want it",202,751,59969,2.7%,vinegar pie,vinegar sauce,vinegar dressing
+,leek,not proposed,"below the line, add it if you want it",202,751,8592,0.4%,leek,leek soup,leek salad
+,cereal,not proposed,"below the line, add it if you want it",195,725,4409,0.2%,cereal bar,cereal cookie,cereal treat
+,radish,not proposed,"below the line, add it if you want it",195,725,5648,0.3%,radish salad,radish,daikon radish
+,grapefruit,not proposed,"below the line, add it if you want it",193,718,905,0.0%,grapefruit salad,broiled grapefruit,grapefruit sorbet
+,sourdough,not proposed,"below the line, add it if you want it",185,688,336,0.0%,sourdough starter,sourdough pancake,sourdough biscuit
+,heart,not proposed,"below the line, add it if you want it",184,684,6364,0.3%,artichoke heart,heart cake,heart salad
+,turnip,not proposed,"below the line, add it if you want it",182,677,0,0.0%,turnip greens,turnip,turnip casserole
+,nacho,not proposed,"below the line, add it if you want it",181,673,0,0.0%,nacho dip,nacho casserole,nacho bake
+,chorizo,not proposed,"below the line, add it if you want it",177,658,1438,0.1%,chorizo,con chorizo,chorizo taco
+,feta,not proposed,"below the line, add it if you want it",175,651,2127,0.1%,feta salad,feta dip,feta
+,liver,not proposed,"below the line, add it if you want it",173,643,78,0.0%,liver,liver pate,chopped liver
+,persimmon,not proposed,"below the line, add it if you want it",170,632,484,0.0%,persimmon pudding,persimmon cookie,persimmon cake
+,chard,not proposed,"below the line, add it if you want it",168,625,703,0.0%,swiss chard,chard,chard gratin
+,teriyaki,not proposed,"below the line, add it if you want it",166,617,54,0.0%,teriyaki sauce,teriyaki marinade,teriyaki burger
+,caviar,not proposed,"below the line, add it if you want it",165,614,244,0.0%,texas caviar,cowboy caviar,caviar
+,prune,not proposed,"below the line, add it if you want it",164,610,2781,0.1%,prune cake,prune whip,prune
+,chestnut,not proposed,"below the line, add it if you want it",163,606,1325,0.1%,chestnut soup,water chestnut,chestnut
+,flour,not proposed,"below the line, add it if you want it",162,602,472216,21.2%,flour tortilla,flour mix,flour blend
+,hazelnut,not proposed,"below the line, add it if you want it",162,602,4753,0.2%,hazelnut cake,hazelnut cookie,hazelnut biscotti
+,kielbasa,not proposed,"below the line, add it if you want it",161,599,1779,0.1%,kielbasa,sour kielbasa,barbecue kielbasa
+,twist,not proposed,"below the line, add it if you want it",160,595,19,0.0%,cinnamon twist,twist,cream twist
+,flounder,not proposed,"below the line, add it if you want it",158,588,812,0.0%,flounder,stuffed flounder,flounder fillet
+,sole,not proposed,"below the line, add it if you want it",157,584,94,0.0%,sole,of sole,sole meuniere
+,pomegranate,not proposed,"below the line, add it if you want it",156,580,729,0.0%,pomegranate salad,pomegranate margarita,pomegranate punch
+,miso,not proposed,"below the line, add it if you want it",153,569,1623,0.1%,miso soup,miso sauce,miso dressing
+,chipotle,not proposed,"below the line, add it if you want it",151,562,1363,0.1%,chipotle chili,chipotle salsa,chipotle sauce
+,water,not proposed,"below the line, add it if you want it",145,539,397576,17.8%,water chestnut,water cornbread,infused water
+,rosemary,not proposed,"below the line, add it if you want it",143,532,25870,1.2%,rosemary focaccia,rosemary breadstick,rosemary sauce
+,parsnip,not proposed,"below the line, add it if you want it",141,524,3283,0.1%,parsnip soup,parsnip,parsnip puree
+,masala,not proposed,"below the line, add it if you want it",141,524,309,0.0%,garam masala,chana masala,masala chai
+,salt,not proposed,"below the line, add it if you want it",140,521,960395,43.0%,seasoned salt,salt substitute,bath salt
+,breast,not proposed,"below the line, add it if you want it",137,509,174,0.0%,duck breast,breast salad,breast
+,fillet,not proposed,"below the line, add it if you want it",125,465,847,0.0%,flounder fillet,bass fillet,fillet
+,pepperoni,not proposed,"below the line, add it if you want it",124,461,6536,0.3%,pepperoni pizza,pepperoni roll,pepperoni dip
+,endive,not proposed,"below the line, add it if you want it",124,461,1457,0.1%,endive salad,endive,belgian endive
+,mincemeat,not proposed,"below the line, add it if you want it",122,454,512,0.0%,mincemeat,mincemeat cookie,mincemeat pie
+,farro,not proposed,"below the line, add it if you want it",122,454,329,0.0%,farro salad,farro,farro risotto
+,vodka,not proposed,"below the line, add it if you want it",121,450,7612,0.3%,vodka sauce,vodka slush,vodka martini
+,plantain,not proposed,"below the line, add it if you want it",120,446,1091,0.0%,plantain,plantain chips,green plantain
+,cilantro,not proposed,"below the line, add it if you want it",115,428,70914,3.2%,cilantro pesto,cilantro salsa,cilantro hummus
+,portobello,not proposed,"below the line, add it if you want it",115,428,77,0.0%,portobello burger,portobello pizza,portobello
+,edamame,not proposed,"below the line, add it if you want it",111,413,897,0.0%,edamame,edamame salad,edamame hummus
+,soba,not proposed,"below the line, add it if you want it",107,398,3,0.0%,soba noodles,soba,soba salad
+,papaya,not proposed,"below the line, add it if you want it",105,390,1523,0.1%,papaya salad,papaya,papaya smoothie
+,prosciutto,not proposed,"below the line, add it if you want it",102,379,332,0.0%,prosciutto salad,prosciutto pizza,prosciutto panini
+,bulgur,not proposed,"below the line, add it if you want it",102,379,627,0.0%,bulgur salad,bulgur pilaf,bulgur
+,rye,not proposed,"below the line, add it if you want it",101,376,244,0.0%,rye,rye appetizer,rye pizza
+,whiskey,not proposed,"below the line, add it if you want it",100,372,1645,0.1%,whiskey sour,whiskey cake,whiskey pie
+,paneer,not proposed,"below the line, add it if you want it",99,368,192,0.0%,paneer,saag paneer,palak paneer
+,tomatillo,not proposed,"below the line, add it if you want it",96,357,450,0.0%,tomatillo salsa,tomatillo guacamole,tomatillo sauce
+,mackerel,not proposed,"below the line, add it if you want it",95,353,322,0.0%,mackerel,spanish mackerel,mackerel simmered
+,kimchi,not proposed,"below the line, add it if you want it",94,350,10,0.0%,kimchi,cucumber kimchi,kimchi jjigae
+,brandy,not proposed,"below the line, add it if you want it",92,342,8353,0.4%,brandy slush,brandy ball,brandy alexander
+,cantaloupe,not proposed,"below the line, add it if you want it",92,342,2375,0.1%,cantaloupe soup,cantaloupe salad,cantaloupe
+,haddock,not proposed,"below the line, add it if you want it",91,338,838,0.0%,haddock,smoked haddock,stuffed haddock
+,espresso,not proposed,"below the line, add it if you want it",91,338,3377,0.2%,espresso martini,espresso brownie,espresso cookie
+,oats,not proposed,"below the line, add it if you want it",90,335,20591,0.9%,overnight oats,cut oats,oats
+,deer,not proposed,"below the line, add it if you want it",89,331,150,0.0%,deer jerky,deer chili,deer meat
+,poblano,not proposed,"below the line, add it if you want it",89,331,150,0.0%,poblano pepper,mole poblano,stuffed poblano
+,udon,not proposed,"below the line, add it if you want it",89,331,44,0.0%,udon noodles,udon,udon soup
+,eye,not proposed,"below the line, add it if you want it",88,327,19,0.0%,eye salad,rib eye,eye roast
+,grain,not proposed,"below the line, add it if you want it",87,324,907,0.0%,grain salad,grain pancake,grain muffin
+,brioche,not proposed,"below the line, add it if you want it",87,324,86,0.0%,brioche,brioche toast,brioche loaf
+,rock,not proposed,"below the line, add it if you want it",86,320,41,0.0%,rock candy,rock cookie,rock cake
+,parsley,not proposed,"below the line, add it if you want it",86,320,131369,5.9%,parsley pesto,parsley salad,parsley sauce
+,tahini,not proposed,"below the line, add it if you want it",85,316,3550,0.2%,tahini sauce,tahini,tahini dressing
+,nectarine,not proposed,"below the line, add it if you want it",81,301,1318,0.1%,nectarine,nectarine salad,nectarine tart
+,octopus,not proposed,"below the line, add it if you want it",81,301,322,0.0%,octopus,octopus salad,baby octopus
+,streusel,not proposed,"below the line, add it if you want it",80,297,603,0.0%,streusel muffin,streusel cake,streusel topping
+,lavender,not proposed,"below the line, add it if you want it",79,294,556,0.0%,lavender lemonade,lavender cookie,lavender shortbread
+,pheasant,not proposed,"below the line, add it if you want it",78,290,148,0.0%,pheasant,roast pheasant,pheasant stew
+,grasshopper,not proposed,"below the line, add it if you want it",77,286,24,0.0%,grasshopper pie,grasshopper,grasshopper parfait
+,salami,not proposed,"below the line, add it if you want it",77,286,1897,0.1%,salami,salami sandwich,deer salami
+y,sprout,add,,0,0,0,0.0%,,,
+y,noodle,add,,0,0,16155,0.7%,,,
+y,bean,add,,0,0,40388,1.8%,,,
+y,oat,add,,0,0,0,0.0%,,,
+y,gelatin,add,,0,0,0,0.0%,,,
+y,pistachio,add,,0,0,0,0.0%,,,
+y,artichoke,add,,0,0,0,0.0%,,,
