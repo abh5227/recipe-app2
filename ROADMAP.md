@@ -893,6 +893,49 @@ The large data cluster.
   9d, a weekly prep-ahead list) from the plan. *Schema:* a meal-plan table.
   *See also: Phase 19 (recipe recommender) — the "what should I cook" single-pick view
   that feeds naturally into this planner once it exists.*
+- **13f. Pantry match against the mined dish corpus (Phase 4 read-path, DESIGN INTENT).**
+  ⚠️ **Not the same feature as 13b and the difference is the corpus.** 13b asks how much of one of
+  *your* 298 recipes you can already make. 13f asks what the world cooks with what you have, ranked
+  over the **19,002 mined dish types** in `mined_dish`, and it answers for foods you have never
+  saved. The two want different UI and only 13f depends on the mining.
+  *Reads:* `mined_dish_ingredient (dish_id, library_id, n, n_dish)`, already loaded, 397,763 cells.
+  - **Why the share is the whole point.** The table stores how many recipes of a dish carry an
+    ingredient, so `avocado` is 92% of a guacamole and 0.4% of a chicken salad. Ranking on raw
+    containment, which is all a plain ingredient list supports, cannot tell those apart. The share
+    is what makes a match mean *this dish is about the thing you have*.
+  - ⚠️ **Share alone is not enough, and this is measured rather than assumed.** `salt` sits in
+    15,809 of the 19,002 dishes at a mean share of 51%. `tahini` sits in 78 at 28%. A share-weighted
+    score therefore rates salt as mattering more to a dish than tahini does, and a pantry of
+    `avocado, salt, onion, tomato` ranks `tex-mex dip` and `nine bean soup` above every guacamole.
+    Weighting each ingredient by how few dishes carry it puts five guacamole variants in the top
+    eight. **Distinctiveness is a requirement, not a refinement.**
+  - ⚠️ **THE RANKING IS MULTI-FACTOR AND POPULARITY IS ONE WEIGHTED INPUT, NEVER A GATE.** The
+    scoping measured a lean toward obscure dishes and the cause is not a defect. Shares are not
+    inflated on small dishes, 83% mean top share at 10 to 12 recipes against 79% above 1,000, and
+    the lean is simply that **15,425 of the 19,002 dishes sit under 50 recipes**. The answer is to
+    let popularity weigh in the score rather than to filter on it. Factors, with the weighting
+    settled at build time:
+    - **distinctiveness**, proven essential above. Are my ingredients characteristic of this dish.
+    - **coverage**, how many of the dish's own key ingredients I actually have, read off the share.
+    - **popularity**, `mined_dish.n`, a tunable weight that nudges.
+    - others as the build finds them.
+  - ⚠️ **What the multi-factor shape protects, and this is the reason it is written down.** A rare
+    dish I match well on distinctiveness and coverage can outrank a common one, and a common dish I
+    match only through salt and onion ranks low. **Popularity is a thumb on the scale and never a
+    door.** A floor on `n` would have been the obvious fix and it is the wrong one, because the
+    dishes it would cut first are the under-represented cuisines the library exists to serve.
+    `docs/what-the-library-is-for.md` already governs this: corpus frequency may order and inform,
+    and it may never cut. A ranking weight informs. A filter cuts.
+  - **Every input already exists and no schema change is needed.** Distinctiveness computes at
+    query time from the same table, 0.45 ms per ingredient. Popularity is `mined_dish.n`. Coverage
+    is the stored share. The reverse index `idx_mdi_ing (library_id, n DESC)` is already there and
+    the planner already uses it for a set of ingredients. **How heavily each factor weighs is a
+    Phase 4 tuning choice and nothing in the schema commits to it.** See
+    `previews/pantry-match-scoping.md` for the measurements behind every claim here.
+  - **Open design question:** which denominator. Dish-level (how many of the 19,002 dishes carry it)
+    and recipe-level (`mined_occurrences.n_recipes`, over 2,231,142 recipes) disagree sharply.
+    `salt` is 83% of dishes and 43% of recipes. The dish-level one matches the question being asked
+    and is the current recommendation, but it is a decision rather than a fact.
 - **Capstone view — "what can I cook tonight":** emerges from pantry (13b) + in-season (10c) +
   time (9b) + make-ahead (9d). Not new data, just a combined view.
 - **Cross-cutting:** match %, substitutes, in-season, and shopping-list subtraction work only

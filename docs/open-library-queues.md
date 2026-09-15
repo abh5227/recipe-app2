@@ -361,3 +361,123 @@ reads both rather than checking the new work on its own terms.**
 
 **Both defects above are fixed.** The four gluten entries in 9b are not, and they are the standing
 instance of this shape.
+
+## 11. Eighteen base words the catalog has no row for
+
+**Recorded 2026-09-14, from the dish facet build.** The dish model's `base` facet resolves a word
+to a catalog `library_id` before storing it, so a word with no row stores nothing. 128 of the 146
+base vocabulary words resolve. These 18 do not.
+
+⚠️ **This is a queue, not a cut list, and it is not a proposal to admit anything.**
+`docs/what-the-library-is-for.md` governs what gets admitted and nothing here overrides it. The
+dish keeps every other facet and simply carries no base row, which is a true statement about the
+catalog rather than a silent drop.
+
+| word | recipes losing a base facet | what is actually wrong |
+| --- | --- | --- |
+| turkey | 19,016 | no row in `library_names` |
+| mushroom | 18,682 | no row |
+| pecan | 17,713 | no row |
+| cherry | 15,188 | no row |
+| caramel | 12,308 | no row |
+| crab | 11,725 | no row |
+| lasagna | 9,730 | no row |
+| artichoke | 7,255 | no row |
+| quinoa | 3,942 | no row |
+| sprout | 3,230 | no row |
+| pistachio | 3,019 | no row |
+| oat | 2,892 | the row is `oats`, and the matcher does not reach it from the singular |
+| polenta | 2,143 | no row |
+| tortellini | 2,080 | no row |
+| rib | 1,442 | the row is `ribs`, same as `oat` |
+| gnocchi | 1,407 | **two rows**, `Q20063` and a bare `gnocchi`, so the match is ambiguous |
+| gelatin | 1,043 | no row |
+| calamari | 490 | no row |
+
+**133,305 recipes in total.** Three different problems are mixed together above and they want
+different answers.
+
+**15 are genuinely absent.** A catalog of 10,474 rows has no turkey and no mushroom.
+
+**2 are present under their plural only.** `oats` is `Q24265484` and `ribs` is `Q7322430`. The
+linkage matcher finds neither from the singular form. This one is a matcher question rather than
+an admission question, and it is the cheapest of the three to answer.
+
+**1 is a duplicate.** `gnocchi` has both a Wikidata row and a bare-string row, so it resolves to
+two candidates and the matcher declines. That is a catalog cleanup, not a gap.
+
+⚠️ **This list arrived independently of the one already in `docs/mining-decision.md`, and they
+overlap.** That document records a wide brand heuristic that was tried and rejected, and the top
+of its false-positive queue was "pecans, hamburger, pimento, cherries, mayo and crabmeat, every
+one a real food the catalog lacks." Pecan, cherry and crab are on both lists. Two unrelated
+measurements finding the same holes is stronger evidence than either one alone.
+
+## 12. The dish floor is 2 on purpose, and the junk in it is deferred work
+
+**Recorded 2026-09-15, when the dish floor was lowered from 10 to 2.**
+
+⚠️ **A reader who finds `ahmad rashad banana pancake` stored as a dish will think the floor is
+broken. It is not. This section is why.**
+
+### What the floor does
+
+`mined_dish` stores a dish when the corpus names it at least twice. At 10 it held 19,002 dishes and
+covered 48.5% of the corpus. At 2 it holds roughly 159,500 and covers 68.1%.
+
+### Why 2 rather than 10
+
+**Thin dishes are elevation hooks.** A dish this corpus barely names is often a real dish somewhere
+else. Measured against the owner's own 298 recipes, these sit below 10:
+
+```
+mongolian chicken 8 · agedashi tofu 9 · beef bulgogi 9 · cilantro chutney 8 · toum 6
+khichdi 5 · larb 5 · matar paneer 4 · kuku paka 2 · mejadra 2 · chana chaat 2
+```
+
+Every one is a real dish. None is junk. They are thin because an English-language web corpus
+under-names them, which is the same limit
+[what-the-library-is-for.md](what-the-library-is-for.md) already records and the reason recipe-line
+count is banned there as a cut signal.
+
+**`source_slug` is in every mined primary key**, so a second source adds rows rather than
+overwriting them. A real regional dish gains recipes across sources and rises. **A dish kept at 2
+today is a row a future source can elevate. A dish cut today is gone and cannot be.**
+
+### Why the junk is tolerated rather than filtered
+
+The floor also admits one-offs, `ahmad rashad banana pancake` and `mary jane bean pot soup` being
+the shape. Three reasons they stay for now.
+
+**It is boundary-safe.** A row at n=2 is an aggregate over two recipes. Boundary (c) forbids n=1 and
+this floor never admits one. The cell floor on profiles is separately `n >= 3 OR (n >= 2 AND share
+>= 10%)`, so no stored cell rests on a single recipe either.
+
+**Measured, it is rarer than it looks.** Sampling 3,000 dishes per band with the loader's own
+refusal test, the rate of a stored role-word name is **0.00% at every band down to n = 2**, and
+0.10% at n = 1. The loader accepts the whole n >= 2 set without refusing a row.
+
+⚠️ **The filter that would remove it does not work.** A probe written to catch bare personal names
+matched `memphis style pork ribs`, `spanish style fish` and `ethiopian style samosa`. **A filter
+that cannot tell a cuisine from a person would cut exactly the dishes the floor was lowered to
+keep.** Guessing now is worse than waiting.
+
+### ⚠️ The deferred plan, and the evidence it waits for
+
+**After a second and third source, junk becomes identifiable without guessing.** The query is
+already supported by the schema:
+
+> a dish that is still `n = 2` **and still present in only one `source_slug`** after N sources have
+> landed is proven unelevatable, and that is evidence rather than a guess.
+
+A real regional dish appears in an Indian or Filipino source and rises. A person's one-off appears
+nowhere else, ever. **Cutting on that evidence is defensible. Cutting on a name heuristic today is
+not.**
+
+### ⚠️ This is a bet, and the bet is on sources that do not exist yet
+
+**The payoff needs real additional corpora.** Until one lands, the thin rows sit there doing
+nothing, taking storage and adding noise to a browse that sorts by `n` anyway. **If no second source
+ever arrives, the floor should go back up rather than the junk staying forever.**
+
+That is the honest shape of it. The cost of being wrong is a larger table. The cost of cutting early
+is the regional dishes, and those do not come back.

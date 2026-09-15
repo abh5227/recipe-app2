@@ -107,3 +107,4 @@ study/matcher/*.html
 # like previews/ above. The locked treatment lives in library_viewer.py's own CSS, so these five
 # files record rounds already superseded rather than anything the tool reads.
 mockups/
+recipes-preview.db
