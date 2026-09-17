@@ -1061,3 +1061,285 @@ design, 299 recipes and 3,563 ingredient lines intact with `Guinness` still link
 Pie, the 36 curated rows untouched, cook log at 134 and ratings at 118, integrity ok and the foreign
 key check clean. Both suites run at 1,296 Python and 154 JavaScript, with the one standing
 `Miracle Whip` boundary failure that reads live `recipes.db` and is unrelated to this work.
+
+## 20. Stage 2 fix-firsts, and the load-time rulings Pass 1 and 2 must carry
+
+Five rulings settled the questions that had to be answered before any stage-2 edge loads. Two of
+them changed the catalog and are applied. Three are rules the load itself has to apply, recorded
+here so Pass 1 and Pass 2 carry them rather than deciding them again.
+
+### Applied: four more Russian classifier rows
+
+The cleanup's classifier sweep cut 20 rows and missed six. Two went with the catch-all cut earlier
+in this pass. These four are the rest of that family.
+
+```
+  Q26869352  dry butter                  All-Russian Classifier of Products
+  Q26882158  cream butter                All-Russian Classifier of Products by Types of Economic Activity
+  Q26844116  cheese and cottage cheese    product classification
+  Q26883713  Milk sugar and syrups        OKPD 15.51.54 and OKPD2 10.51.54
+```
+
+The verifying build went from 10,120 to 10,116 with 0 rows added and 0 renamed. Three of the four
+were zero-reference. `cream butter` was not, and it is the one worth recording. It matched 9 times
+over 8 recipes and carried 34 pairing rows. Reading those before the delete showed a text
+mis-parse, an ingredient line reading "cream, butter" matched to the classifier label, with no
+coherent partner behind it. Egg at 3, then sour cream, onion, sugar, salt and chicken breast at 2.
+Removing the row releases 8 recipes from a wrong attribution.
+
+⚠️ **The keyword rule that found these four is not a verdict and must not be replayed as one.** It
+returned 26 rows. Reading cut it to 4. `gingerbread` is described as a "category of baked goods"
+and has 85 recipes. `frozen vegetable` is described as a "product category" and has 881. A rule
+run without reading would have cut both. The 13 `Q1156xxxxx` retail "product category" rows are a
+separate question and are untouched.
+
+### Applied: the melon misclassification
+
+`melon` (`Q5881191`) and `Charentais melon` (`Q1063115`) were loaded `in_category vegetable`. Both
+are now `in_category fruit`, corrected in `hand_links.csv` and in the copy. Every other melon row
+in the catalog already sat under `fruit` or the `melon` slug, so these two were the outliers.
+`bitter melon` stays under `vegetable`, which is right. The category totals moved from 135 to 137
+for fruit and 145 to 143 for vegetable.
+
+⚠️ Two follow-ups this exposes, neither ruled on. The `melon` category slug has 20 members and no
+`parent_slug`, so it hangs outside the fruit tree. `Charentais melon` could sit under `melon`
+rather than `fruit` to match its seven siblings.
+
+### Load-time rule 1: skip the backwards candidate, load the correct one
+
+Seven edges were named. **Three are already settled**, since the row removals above took their
+parent away. `butter` and `cheese` now see only good candidates and need no rule.
+
+Four remain, and each has a correct parent sitting in the same candidate set.
+
+```
+  Q22915010  black pepper  154,344   SKIP kind_of Q3143131  peppercorn      LOAD kind_of Q42527    spice
+  Q25434     saffron         3,089   SKIP kind_of Q753009   food coloring   LOAD kind_of Q42527    spice
+  Q578307    hazelnut        4,753   SKIP kind_of Q104738415 hazelnut, unspecified  LOAD kind_of Q3320037  nut
+  Q18087876  poultry             1   SKIP kind_of Q60443694 poultry products LOAD kind_of Q124748469 bird meat
+```
+
+⚠️ Two of these carry a third candidate that no ruling covers. `hazelnut` is also offered
+`seed of cultivated plants` (`Q1762933`) and `poultry` is also offered `white meat` (`Q3315904`).
+Neither is named in the ruling, so Pass 1 or 2 should surface them rather than load them silently.
+
+### Load-time rule 2: skip the edge, keep the row
+
+Four edges have no better candidate on offer. The edge is skipped. ⚠️ **The rows stay.** These are
+real things, unlike the classifier labels above, and each already carries a loaded `in_category`
+that answers the navigation question.
+
+```
+  Q10987   honey   71,925   SKIP kind_of Q6584340   syrup                 has in_category syrup
+  Q123122627 sheep       0   SKIP kind_of Q10990     meat                  has in_category meat
+  Q3320037 nut     79,712   SKIP kind_of Q3314483   fruit                 has in_category fruit
+  Q8495    milk   379,007   SKIP kind_of Q115435123 dairy-milk beverage   has in_category dairy
+```
+
+None of the four flips cleanly, which is why the edge is dropped rather than reversed. A milkshake
+is a dairy-milk beverage and is not milk, so `dairy-milk beverage kind_of milk` would be false.
+`meat` is not a kind of sheep.
+
+### Load-time rule 3: the ten cheeses keep both parents
+
+`farmstead cheese` (`Q3088318`) and `industrial cheese` (`Q3088323`) both load on all ten rows.
+The protected name is made both ways by different producers, so both parents are true of the name.
+This is poly-hierarchy, not a contradiction, and it matches the cheese-attribute axes that Pass 1
+loads anyway.
+
+```
+  charolais  Pont-l'Eveque  Picodon  Selles-sur-Cher cheese  morbier
+  Pouligny-saint-pierre  Sainte-Maure de Touraine  Valencay  Cabecou  Pelardon
+```
+
+### Load-time rule 4: tomato collapses to fruit vegetable
+
+`tomato` (`Q20638126`, 204,676 recipes) is offered `fruit`, `vegetable` and `fruit vegetable`
+(`Q1470762`). Load `fruit vegetable` and drop the bare two.
+
+⚠️ **Checked, and nothing needs fixing now.** Tomato has no loaded `kind_of` edge at all. Its one
+loaded edge is `in_category vegetable`, which is a different axis and is correct for a recipe app,
+since a tomato is cooked as a vegetable. That is the same fact `fruit vegetable` encodes. The
+melons were different, and were fixed, because a melon is eaten as fruit.
+
+### State after this pass
+
+```
+  library_names    10,116      library_relations  11,502
+  stage-2 first-parent edges    3,596     multi-parent rows  543
+  mined_pairings  361,138
+```
+
+Pass 1 is next, the 23 held corrections plus the 262 cheese-attribute edges.
+
+## 21. Stage 2 Pass 2, loaded. What it recovered and what it queues
+
+1,706 edges loaded against the copy, plus one authored row and four category corrections.
+`library_relations` went from 11,846 to 13,552.
+
+### The authored row
+
+`herb`, in `authored_rows.csv`, no source behind it. 32 rows already sat `in_category herb` with
+no `kind_of` parent between them, and 9 herbs were filed `kind_of spice`. No Wikidata entry for
+`herb` exists in `sources.db` across the 6,072 catalog rows carrying a source record.
+
+**Herb and spice are siblings, the leaf against the seed, bark and root.** Spice keeps its 42
+correct children, cinnamon and black pepper and cumin among them. 16 rows now sit `kind_of herb`.
+
+Four rows were also `in_category spice` and are corrected to `in_category herb`. `bay leaf`,
+`tarragon`, `epazote leaf` and `Lemon Gras`. That was a live misclassification of the same kind as
+the melons in section 20.
+
+### What the load is made of
+
+```
+  1,652  corpus-present kind_of edges, read by parent hub
+     23  re-pointed to an existing row, correct-don't-discard
+     16  re-pointed to the authored herb row
+     14  structural cheese-axis edges, loaded against the corpus filter
+      4  food additive edges restored after re-reading the class
+      1  poultry kind_of white meat, your ruling on the surfaced third candidate
+```
+
+⚠️ **The 14 structural edges matter more than their count suggests.** `farmstead cheese`,
+`industrial cheese` and `raw-milk cheese` have zero recipes, so the corpus-present filter excluded
+exactly the rows holding the cheese hierarchy together. The Pass 1 web bottomed out without them.
+With them, `Pélardon -> raw-milk cheese -> cheese -> dairy product` is a complete `kind_of` chain.
+
+### What it recovered
+
+46 real ingredients would have been left with no `kind_of` parent by a true-or-false read of the
+89 wrong-kind edges. The method note lives in
+[docs/measuring-the-premise.md](measuring-the-premise.md). The largest are `parsley` 131,369,
+`oregano` 75,118, `thyme` 71,385, `cilantro` 70,914, `basil` 53,158, `bay leaf` 46,818,
+`chili pepper` 35,884, `broccoli` 35,330 and `caper` 12,535.
+
+Three re-points turned out to be unnecessary, since the correct edge already existed on another
+axis. `garlic clove part_of garlic`, `fried plantain made_from plantain` and
+`ganache made_from chocolate` were all already loaded.
+
+### Depth, before and after
+
+```
+             Pass 1     Pass 2
+  depth 0     6,200      5,177
+  depth 1     2,839      1,197
+  depth 2       933      1,732
+  depth 3       123      1,438
+  depth 4        21        470
+  depth 5+        0        103
+```
+
+Rows with a `kind_of` parent went from 3,916 to 4,940.
+
+### ⚠️ Queued by this pass, not done
+
+**Row cleanup, the essential-oil rows that fail the inclusion test.** `fragrance oil` 17,
+`lavender oil` 40, `eucalyptus oil` 9, `geranium oil` 5, `jasmine oil` 3, `pine oil` 1,
+`flower oil` 4 and `castor oil` 21. Nobody consumes these. The culinary flavor oils stay,
+`garlic oil`, `cinnamon oil`, `orange oil`, `oregano oil`, `lemongrass oil`, `cumin oil`,
+`Cassia oil` and `bitter almond oil`.
+
+**Brand guard, three rows found as edge children.** `Chicken Tonight` 2, `Baconnaise` 1 and
+`LOOK` 18, beside `Hellman's Real Mayonnaise`.
+
+**One ambiguous row.** `stone` 249 sits under `seed` and means a fruit pit. The bare word will
+collide with anything else called stone, so it needs a rename or a read before it takes a parent.
+
+**Pass 3, optional.** 2,652 zero-traffic edges. They connect rows nobody has cooked from, and the
+orphaning risk described in the method note is higher there than it was here.
+
+## 22. Stage 2 Pass 3, loaded. Stage 2 is done
+
+102 rows removed and 2,503 edges loaded against the copy. `library_names` went from 10,117 to
+10,015 and `library_relations` from 13,552 to 16,013.
+
+### ⚠️ The finding that shaped the pass
+
+The zero-recipe rows were expected to be where non-food junk concentrates. **They are 96.5% real.**
+79 of 2,251 failed the inclusion test, which is 3.5%, the same rate the catalog-wide cleanup found
+across every row. Having no recipes in this corpus says the corpus is American home cooking from
+one 2020 dataset, not that a row is junk. A Belgian farmhouse cheese simply does not appear in it.
+
+### The removals, 102
+
+```
+   79  the scoping triage: enzymes, functional-class labels, industrial materials, non-culinary
+       oils, retail bucket labels, non-food organisms, bare taxonomic ranks, article titles, brands
+    5  new from the edge-by-edge read: cold-hardy citrus, Mpusemate, two retail dough categories,
+       and 'seed of cultivated plants' appearing as a child
+    7  human milk
+    5  bushmeat
+    6  per-species blood artifacts
+```
+
+⚠️ **Two of those are judgements, not rule applications, and are recorded as such.** Human milk
+passes the inclusion test as written, since a person does consume it. Bushmeat is eaten in several
+regions. Both are out by Andy's call rather than by the rule, so the rule stays as written.
+
+**The blood triage, read row by row.** Kept, each with a real blood-dish tradition: `pig blood`,
+`lamb blood`, `rabbit blood`, `roe-deer blood`, `partridge blood`, `lamprey blood`, `game blood`,
+`blood curd`, `blodpudding`. Removed as per-species artifacts with no cooking behind them:
+`hoopoe blood`, `tench blood`, `spined loach blood`, `northern pike blood`, `huso blood`,
+`fish blood`. A hoopoe is a protected wild bird.
+
+One alias was lost with its row, `calcium lactate` on `calcium DL-lactate`. Nothing else outside
+`library_relations` referenced any of the 102.
+
+### ⚠️ One edge repaired 46 chains
+
+`table apple` had `kind_of fresh fruit` and nothing else. 46 apple cultivars hung off it and none
+reached the `apple` row at 53,378 recipes. `cooking apple` already had `kind_of apple` and
+`table apple` did not, and that asymmetry was the whole defect. **Adding `table apple kind_of apple`
+fixed all of them at once**, with no cultivar re-pointed.
+
+### The four floating hubs, parented
+
+```
+  kofta                 -> kind_of meatball      an existing row. 26 Bengali and Iranian dishes
+  dip                   -> kind_of sauce         ⚠️ REVERSES a Pass 2 drop, see below
+  fruit for processing  -> kind_of fruit         13 of its 15 children re-pointed to the species
+  congee                -> made_from rice        ⚠️ no kind_of parent exists, see below
+```
+
+⚠️ **The `dip` reversal is the two-halves rule catching one of its own earlier calls.**
+`dip kind_of sauce` was dropped in Pass 2 as a genuine wrong-kind, which was defensible on the
+first half of the test and orphaned `dip` and the 13 real dips under it on the second.
+
+⚠️ **`congee` has no correct `kind_of` parent in the catalog.** `porridge` (`Q186817`) exists in
+`sources.db` and was never admitted as a row. **That is a row-admission question, not an edge one,
+and it is left open.** 19 porridge rows would hang off it, including `oatmeal` at 10,475 recipes.
+`made_from rice` is true and connects the 20 congee dishes in the meantime.
+
+### The corrections, 26
+
+7 body parts moved from `kind_of` to `part_of`, including `chicken stomach`, which moved parent as
+well as axis, from `offal` to `chicken`. 13 cultivars re-pointed off the `fruit for processing`
+use-class to `cherry`, `pear` and `apple`. `Mellunaro` re-pointed from `watermelon` to `melon` and
+`Sîrmastok`, a garlic and yogurt sauce, from `food additive` to `sauce`.
+
+⚠️ **Three rows are deliberately left with no parent.** `Burgoo` is a stew and no `stew`, `soup` or
+`snack` row exists. `Buns snack` is the same. `pectinase` lost `food enzyme` with the removals.
+**Authoring a parent for a single row is worse than leaving it flat**, which is the rule the
+`enzyme` case set earlier in this pass.
+
+### Depth, across the three passes
+
+```
+              Pass 1    Pass 2    Pass 3
+  depth 0      6,200     5,177     3,511
+  depth 1      2,839     1,197     1,491
+  depth 2        933     1,732     1,877
+  depth 3        123     1,438     1,956
+  depth 4         21       470     1,003
+  depth 5+         0       103       177
+```
+
+Rows with a `kind_of` parent went from 3,916 after Pass 1 to 6,504 of 10,015.
+
+### ⚠️ Still open
+
+`porridge` (`Q186817`) as a row admission. The three deliberately unparented rows. The three brand
+rows queued in section 21, `Chicken Tonight`, `Baconnaise` and `LOOK`, plus `Big Mac Sauce` and
+`Blair's 16 Million Reserve` which were removed here instead. `stone`, the ambiguous fruit-pit row.
+The copy is still not promoted to live.
