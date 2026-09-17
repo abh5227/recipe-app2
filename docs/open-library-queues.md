@@ -481,3 +481,583 @@ ever arrives, the floor should go back up rather than the junk staying forever.*
 
 That is the honest shape of it. The cost of being wrong is a larger table. The cost of cutting early
 is the regional dishes, and those do not come back.
+
+## 13. The class B alias review: refusals, pending items, and two queued categories
+
+**Recorded 2026-09-15.** Class B's top 150, ranked by corpus impact, was read one row at a time.
+**109 aliases were loaded** into `library_aliases` from `hand_aliases.csv`. What follows is what
+was NOT loaded, so a later pass does not re-propose it.
+
+### Refused outright, 24 rows
+
+Reasons are in `previews/alias-b-review.md`. The largest was **`whipping cream` to
+`crème fraîche liquide`, 22,004 recipes**, which is the second-largest alias in the class and
+wrong. Bulk-loading class B would have written it.
+
+### Refused with a reason to come back, 4 rows
+
+| alias | proposed | recipes | status | what unblocks it |
+| --- | --- | --- | --- | --- |
+| `greens` | leaf vegetable | 343 | **pending-recipe-check** | Southern US usage often means collards. Read what the corpus recipes mean before deciding |
+| `Soybean paste` | miso | 19 | **pending-cuisine** | means miso in Japanese and **doenjang** in Korean. Same class as `black bean` and `pawpaw` |
+| `rice sticks` | bánh phở | 76 | **needs a parent row** | the alias is backwards, a generic pointed at a specific. Wants a generic `rice noodle` row with `bánh phở` under it |
+| `Niçoise` | Cailletier | 55 | **refused** | also the salad, the style and the sauce. Too ambiguous to alias to the olive |
+
+⚠️ **The pending-cuisine list now has three members**: `black bean`, `pawpaw` and `Soybean paste`.
+All three need a cuisine fact the catalog does not carry. Revisit together.
+
+### Queued as a category, not an alias, 2 rows
+
+`salad greens` (847 recipes) and `leafy greens` (54) were proposed as aliases of `leaf vegetable`
+and **should be a parent category instead**, with the specific greens as children. This is a
+hierarchy-structure task rather than a naming one, so it is queued here and not built.
+
+**Blocked on the same thing as section 11's general-term gaps:** a parent needs to exist before
+children can point at it.
+
+### Held on a dependency, 1 row
+
+`pak choi` (58 recipes) is an accept, **retargeted to the new `bok choy` row rather than to
+`Chinese cabbage`**. That row does not exist yet, so the alias is held rather than written to the
+wrong target. It loads with the new rows.
+
+### Held for provenance, 6 rows. ⚠️ Wikibooks checked 2026-09-15 and does NOT source them
+
+`ground round`, `red currant jelly`, `mentaiko`, `spring cabbage`, `Tape` and `sprout` were
+approved as rows and held back because **their only source entry is the row they would split
+from**, so each would ship with one name and no provenance. `authored_rows.csv` warns against
+exactly that shape.
+
+**Wikibooks was proposed as their provenance and measured. Zero of six hold up.** No Cookbook page
+and no `Recipes using X` category for any of them. `Cookbook:Sprout` exists but is a
+**disambiguation page** saying the word may mean Brussels sprouts, bean sprouts or germinated
+seeds. `Tape` reaches only a recipe for one Indonesian dish.
+
+⚠️ **The sprout result may be telling us to refuse rather than to source.** Wikibooks calling the
+term ambiguous is the same signal as `neep` and `meal`, which `linkage_matcher.DROPPED` refuses on
+purpose.
+
+**Registering Wikibooks as a source is still licence-clean** (CC-BY-SA-4.0, `share_alike=1`, the
+same shape as `wikipedia_redirect` and `wiktextract`, both already ingested) and recording that an
+ingredient exists is a fact with attribution rather than republished recipe prose. **It is simply
+not justified by these six**, since it supplies nothing for them. If it is registered it should be
+for the 1,880 recipes and 10,174 human tags the validation used.
+
+### RESOLVED 2026-09-15: five created unsourced, sprout refused
+
+**The five real ones were created bare and MARKED.** `ground round`, `red currant jelly`,
+`mentaiko`, `spring cabbage` and `Tape` are rows with an empty `seed` and an empty `sources`
+column, so `build_library` records them as **"authored by hand, no source"** and they ship
+**GENERATED** per `docs/sourcing-tiers.md`. Each `reason` in `authored_rows.csv` states outright
+that no source we hold names it and that Wikibooks was checked on 2026-09-15 and had nothing. The
+catalog is honest about them rather than quietly unsourced. **5,548 recipes.**
+
+⚠️ **`spring cabbage` relates to `cabbage` (Q14328596), not to the binomial.** The edge is in
+`hand_links.csv` and `library_relations` went 10,192 to 10,193.
+
+**`sprout` is REFUSED, not created.** It is in `linkage_matcher.DROPPED` beside `meal`,
+`blood pudding` and `neep`. ⚠️ **It was nearly given a row on the strength of 3,230 corpus recipes
+and 23 existing sprout specifics.** `Cookbook:Sprout` settles it the other way: a disambiguation
+page reading *"the term sprout is an ambiguous term that may refer to: Brussels sprouts, Bean
+sprouts, Sprouted (germinated) seeds."* Three foods, no safe target. **Refusing costs 3,230
+misses. A row would have cost 3,230 wrong matches.** `bean sprout` still resolves EXACT, so the
+refusal is on the bare word only.
+
+### RESOLVED 2026-09-15: sources.db register synced
+
+First flagged 2026-09-06. **`recipenlg` AND `recipe1m` both read `declined` while
+`build_sources_db.py` declared them `derive_only`.** Both now match the builder, license,
+attribution and decision_reason included.
+
+⚠️ **It needed a table rebuild, not an UPDATE.** The live CHECK read
+`status IN ('ingest','declined')` and predated `derive_only` entirely, so the register could not
+hold the value the builder had been declaring. The 5.18 GB of fetched entry and label data was not
+touched. Register is now 9 ingest, 5 declined, 2 derive_only.
+
+**This unblocks registering any new source**, Wikibooks or the India dataset, which could not have
+been recorded correctly against the old constraint.
+
+## 14. Class A applied, and the hierarchy work it leaves behind
+
+**Recorded 2026-09-16.** 147 candidates reviewed, ranked by corpus impact over all 2,231,142
+recipes. **44 aliases applied**, `library_aliases` 110 to 154. **No row added, renamed or merged.**
+
+### The 11 refusals
+
+`Amaretto` (1,670 recipes), `pastry` (566), `soy` (237), `raw` (78), `dairy` (14), `tartar` (9),
+`cut` (3), `buffer` (2), `salt, pepper` (1), `varietal` (0), `celebrity` (0).
+
+⚠️ **Four of the eleven are in `linkage_matcher.DROPPED`, and the split is deliberate.**
+`amaretto`, `pastry`, `soy` and `tartar` are words a cook really writes with a target that is
+**wrong rather than missing**, so a later pass could re-propose them. The worst is `tartar`: a
+baking line means **cream of tartar** and the only near row is `tartar sauce`. **The other seven
+are not food words at all** and live here instead, because `DROPPED` exists for food-word
+ambiguity and adjectives would bloat it. Verified after the change: `cream of tartar`,
+`pastry flour` and `soy sauce` all still resolve EXACT.
+
+### The 3 real unset, resolved. All three are NEEDS-PARENT
+
+| word | Andy's note | catalog evidence | ruling |
+| --- | --- | --- | --- |
+| `Rabbit` | "rabbit is the parent" | 6 children: rabbit blood, breast, broth, filet, liver, milk | **needs-parent, no alias** |
+| `tenderloin` | "tenderloin is a parent of those other" | 3 children: pork tenderloin, raw lean pork tenderloin, raw ostrich tenderloin | **needs-parent, no alias** |
+| `ranch` | "ranch as parent, ranch dressing and ranch style as children" | ⚠️ **0 children. Only `ranch dressing` exists** | **needs-parent, with a caveat** |
+
+⚠️ **`ranch` is not the same shape as the other two.** Authoring `ranch` as a parent gives it
+exactly **one** child until someone also authors `ranch seasoning` and `ranch style`. Those rows
+do not exist in the catalog. The parent is defensible and it does not yet have a family.
+
+### Queued for the parent pass: 17 rows, 108 child edges
+
+**The alias fixed the NAME. The children are separate authoring and were not touched.**
+
+```
+  mushroom    -> edible mushroom    ⚠️ NO PARENT   23 children waiting
+  fiber       -> dietary fiber      ⚠️ NO PARENT   20
+  pistachio   -> pistachio nut      up: nut        11
+  cheddar     -> Cheddar cheese     up: cheese     10
+  quinoa      -> quinoa seed        up: grain       9
+  cashew      -> cashew nut         up: nut         9
+  mozzarella  -> mozzarella cheese  up: Italian cheese  8
+  horseradish, porridge, artichoke, balsamic, macadamia, pecan,
+  raclette, Romanesco, straw, side                              17 rows, 108 edges
+```
+
+⚠️ **Five of the 17 have no parent of their own**, so those are chains rather than single edges.
+
+**The parent pass therefore holds:** these 17 rows and 108 edges, plus `rabbit`, `tenderloin` and
+`ranch` as new parent rows, plus the 31 restructures and the 4 mushroom and amaranth collision
+rows from the canonical diagnosis, plus the 79 missing general terms with 1,211 children.
+
+⚠️ **Superseded by section 16, which is the complete inventory.** Two more items joined after this
+was written: the 11 Latin restructures and the 5 folded-in renames. **Read section 16, not this
+paragraph.**
+
+### Still open after this
+
+- **The rename batch**, roughly 54 rows after the `PART` reclassification. ⚠️ See
+  `previews/rename-batch-sample.md`: worth only 6,806 recipes and it resisted four filters.
+- **The Latin reading list**, 31 confirmed plus 225 to filter. Read, never batched.
+- **`broth`**, still deferred pending a re-mine.
+
+## 15. The read-through passes: decided, and what folds into the parent pass
+
+**Recorded 2026-09-16. Documentation only, nothing applied. `recipes.db` unchanged at `07b4fbd4`.**
+
+Both batches were read whole rather than sampled, and both collapsed. **80 rename candidates gave
+4 worth applying. 36 Latin rows gave 1 rename.** Neither justifies a rebuild of its own, so the
+survivors fold into the parent pass, which is rebuilding anyway.
+
+⚠️ **A count correction against `previews/read-through-passes.md`.** That file says 38 renames and
+42 rejects. Re-reading with your four refusals folded in gives **42 renames and 38 refusals**,
+because `cat`, `bat`, `seal` and `game` moved to refuse, and `kutha meat` and `sheep tail meat`
+moved with them on a second look. `kutha` names a slaughter method and `sheep tail` names a cut.
+
+### REFUSED, 38 rows. Recorded so nothing re-proposes them
+
+| reason | rows | recipes | members |
+| --- | --- | --- | --- |
+| ⚠️ **sausage-meat mis-parse** | 7 | **2,617** | `pork/chicken/fish/beef/veal/partridge/roe-deer sausage meat` |
+| **a texture or a state** | 16 | 1,180 | `boneless`, `lean`, `minced`, `boiling`, `fatty`, `salt-cured`, `cultured`, `fermented`, `mystery`, `junk`, `PSE`, `precooked chicken`, `white chicken`, `minced lamb`, `kutha`, `sheep tail` |
+| **a word collision** | 4 | 15 | `cat`, `bat`, `seal`, `game` |
+| **a taxonomic class** | 6 | 11 | `bird`, `camelid`, `cetacean`, `crocodilian`, `reptile`, `mollusc` |
+| **the qualifier is load-bearing** | 3 | 13 | `wild duck broth`, `wild boar haunch`, `wild boar's back` |
+| **a region** | 1 | 6 | `Sicilian meat` |
+| **not Latin** | 1 | 0 | `Common pandora` |
+
+⚠️ **The sausage-meat seven carry 2,617 recipes, more than half the batch's value, and the rule
+that produced them never had a chance.** `sausage meat` is its own catalog row, `Q995566`,
+distinct from `Sausage`. `pork sausage meat` is pork forcemeat, not "pork sausage" plus a
+redundant word.
+
+⚠️ **`wild boar is not boar` and `wild duck is not duck`.** Stripping `wild` changes the animal.
+
+### ⚠️ DROPPED from the Latin list: six rows that are not Latin, and the lesson
+
+`Common pandora`, `Himo tougarashi`, `Horikawa gobo`, `Kawachi bankan`,
+`Neapolitan papaccella`, `Shishigatani kabocha`.
+
+⚠️ **A CAPITALISED TWO-WORD PHRASE IS NOT A LATIN-BINOMIAL TEST. This is the third time that
+shape has fooled a test in this project.**
+
+```
+  1st  a bare-first-name probe caught 'memphis style pork ribs' and 'ethiopian style samosa'
+       -- cuisine STYLES read as personal names. That result was voided.
+  2nd  a binomial regex scored 6% precision, flagging 'Abertam cheese', 'Adzuki bean',
+       'African cherry' and 'Albert sauce' -- ordinary English phrases.
+  3rd  these six -- Japanese and Italian vegetable and fish names, plus an English fish.
+```
+
+**Any future binomial detection must use STRUCTURE, not capitalisation.** What worked here was
+capitalised genus plus a **lowercase specific epithet that is not a shared English head noun**,
+validated against Wikidata `P225` ground truth at 96% recall. ⚠️ **Even that scored badly on
+precision alone**, so the reliable signal was structure **and** a taxon property on the row, which
+is why the evidenced set is 36 and the structure-only set of 220 is not a reading list.
+
+### DEDUP QUEUE: lovage
+
+⚠️ **`Ligusticum officinale` is lovage, and `lovage` already exists as a separate row,
+`en:lovage`.** Two rows, one concept. **A merge is refused** because it destroys an id and
+`mined_dish_ingredient`, `mined_dish_base` and `mined_pairings` hold ids. **This needs a proper
+dedup pass** that decides which id survives and what happens to the other's references. Not
+forced, not renamed, recorded here.
+
+### No action needed: 5 Latin rows already solved
+
+`Colocasia esculenta` carries `taro`, `Triticum spelta` carries `spelt`, `Eisenia bicyclis`
+carries `Arame`, `Dioscorea polystachya` carries `nagaimo`, and
+`Brassica oleracea var. palmifolia` carries four kale names. **The plain word already resolves.**
+A rename would change only what displays, so it is cosmetic and is not queued.
+
+## 16. THE PARENT PASS: the complete inventory
+
+**Recorded 2026-09-16. Everything real now converges here.** Four separate diagnoses have each
+ended by queueing work for this one pass, so this section is the whole of it in one place. Nothing
+below is built.
+
+### A. Rows to CREATE
+
+| what | rows | note |
+| --- | --- | --- |
+| `rabbit` | 1 | Andy: "rabbit is the parent". 6 children waiting |
+| `tenderloin` | 1 | 3 children: pork, raw lean pork, raw ostrich tenderloin |
+| `ranch` | 1 | ⚠️ **a parent of ONE.** Only `ranch dressing` exists. `ranch seasoning` and `ranch style` are not in the catalog |
+| the 79 missing general terms | up to 79 | `broth` (91 children), `powder` (68), `fat` (62), `protein` (59), `paste` (55), `leaf` (45) |
+
+⚠️ **`broth` is the largest and is separately blocked.** Splitting it needs a re-mine, because
+`Q275068` carries `broth` as its Wikidata **label** with `stock` only an alias, and the row holds
+124 dish cells, 787 pairings and 96 edges. **The corpus text needed to split those is discarded by
+the mining boundary.** Do not create `broth` as part of a bulk parent pass.
+
+### B. Edges to AUTHOR
+
+| what | edges | note |
+| --- | --- | --- |
+| the 17 class A rows with children waiting | **108** | ⚠️ **5 have no parent themselves**, so those are chains |
+| the 31 restructures from the canonical diagnosis | ~31 | plain word is a genuine parent |
+| the 4 collision rows | 4 | `mushroom` twice, `amaranth` twice. A collision proves the parent |
+| **the 11 Latin restructures** | 11 | below |
+| the 79 general terms' children | **1,211** | only once the parents in A exist |
+
+**The 11 Latin restructures, each one species under a plain word that ALREADY has a row:**
+
+```
+  Prunus domestica                    -> plum      Q12372598
+  Sparus aurata                       -> bream     Q17767599
+  Penaeus monodon                     -> shrimp    Q1517781
+  Dioscorea polystachya               -> yam       Q8047551
+  Brassica oleracea var. palmifolia   -> kale      Q45989
+  Saccharomyces pastorianus           -> yeast     Q45422
+  Capsicum annuum var. glabriusculum  -> chili pepper  Q165199
+  Acheta domestica                    -> cricket   Q124801245
+  Alphitobius diaperinus              -> mealworm  Q124801111
+  Citrus sulcata, Citrus voangiala    -> citrus    Q81513
+```
+
+⚠️ **That is the `Cancer pagurus` shape eleven times over**, and none of them is a rename. The
+parent exists, the child exists, the edge does not.
+
+⚠️ **`Glycyrrhiza uralensis` wants a `licorice` parent that does NOT exist**, so it belongs to
+list A rather than here.
+
+### C. Renames to FOLD IN
+
+**Five, and they are folded in rather than run alone because a standalone full-catalog rebuild
+for 644 recipes is not worth it.**
+
+| current canonical | becomes | recipes |
+| --- | --- | --- |
+| `duck meat` | duck | 356 |
+| `quail meat` | quail | 227 |
+| `capon meat` | capon | 27 |
+| `poultry meat` | poultry | 34 |
+| `Nephelium lappaceum` | **rambutan** | 0 |
+
+**The qualified form stays as an alias on the same row in every case.** Ids do not move.
+
+⚠️ **The other 38 renames are deferred as low value**, 620 recipes across 38 rows, almost all
+animals this corpus never cooks. `zebra meat`, `pangolin meat`, `wapiti meat`. **They are not
+refused, they are not worth a rebuild.** If the parent pass is rebuilding anyway they can ride
+along at no extra cost, which is a decision for whoever runs it.
+
+### D. What this pass must NOT do
+
+⚠️ **No merges.** `mined_dish_ingredient`, `mined_dish_base` and `mined_pairings` hold
+`library_id`. A rename moves a display name and a restructure adds a row beside an existing one,
+and **neither deletes an id**. A merge does, and would orphan the staged dish data in
+`recipes-preview.db`. **The `lovage` duplicate in section 15 is exactly this and is queued
+separately for a dedup pass that can decide it properly.**
+
+### E. Scale
+
+```
+  rows to create        3 now (rabbit, tenderloin, ranch) + up to 79 general terms
+  edges to author     ~154 now (108 + 31 + 4 + 11) + 1,211 once the general terms exist
+  renames to fold       5 (+38 optional)
+  hierarchy coverage  61% today -> 85% if every absent source edge is also loaded
+```
+
+⚠️ **Do not justify this pass with the extraction recall figure.** Measured in
+`previews/missing-links-diagnosis.md`, every edge added raises the random-profile null nearly as
+fast as it raises the score. **The case is catalog correctness.**
+
+## 17. Stage 1 of the source re-harvest, loaded. What it left behind
+
+**Recorded 2026-09-16. Loaded into `recipes-preview.db` only, which went `7948aa75` to `9863927d`.
+`recipes.db` is untouched at `07f8712c`.**
+
+**1,488 edges from Wikidata `P186` and `P361`, the two axes that were empty.** `made_from` 4 to
+1,463 and `part_of` 0 to 29. **Every edge was read before loading**, 1,479 individually and 112
+classified by parent. Specs in `previews/reharvest-scoping.md`, `stage1-corrections.md` and
+`madefrom-full-read.md`.
+
+⚠️ **10 edges were loaded CORRECTED rather than as the source stated them**, and each carries its
+reason in `hand_links.csv`. Six inverted `part_of` claims became `made_from` in the right
+direction, three organ rows were retargeted from `fish` to their species, and `chrain` moved from
+`root vegetable` to `horseradish root`.
+
+### HELD FOR STAGE 2: 25 edges, corrections already decided
+
+⚠️ **These are real facts on the wrong axis. They are `kind_of` or `part_of`, so they belong with
+the kind_of stages rather than with the two empty axes.** The correction is done and recorded here
+so stage 2 does not re-derive it.
+
+**From the part_of set, 13.** Four need the direction flipped as well as the kind.
+
+```
+  iguana meat kind_of lizard meat        ⚠️ direction flipped
+  puffin meat kind_of bird meat          ⚠️ direction flipped
+  whale meat kind_of cetacean meat       ⚠️ direction flipped
+  poultry kind_of bird meat              ⚠️ direction flipped
+  Tupí kind_of Spanish cheese            black tea kind_of tea
+  side dish kind_of dish                 Emmental kind_of Swiss cheeses
+  fruit kind_of fruits and vegetables    vegetable kind_of fruits and vegetables
+  cereal legume kind_of cereals and pseudocereals
+  Crimson Bramley kind_of Bramley        Bon Rouge kind_of Williams' bon chrétien
+```
+
+**From the made_from set, 12.** Ten to correct and two that need nothing.
+
+```
+  Istarski pršut kind_of prosciutto      Njeguška pršuta kind_of prosciutto
+  schnitzel Pavlišov kind_of schnitzel   speculaas biscuit kind_of speculaas
+  speculoos biscuit kind_of speculoos    crayfish as food kind_of crayfish
+  golden raisin kind_of sultana          golden yellow raisin kind_of sultana
+  fermented milk product kind_of fermented milk    raw fish kind_of fish
+  cut of beef part_of beef               cheese wheel part_of cheese
+  ⚠️ chocolate ice cream and vanilla ice cream already carry kind_of ice cream.
+     Their made_from edges were refused and need no correction.
+```
+
+### ⚠️ THREE BAD ROWS, queued separately. These are rows, not edges
+
+| row | problem | queue |
+| --- | --- | --- |
+| `ozonated oil` | ⚠️ **a cosmetic and medical product, not a food.** It carried two made_from edges, both refused | **row removal**, beside `drinking straw` |
+| `Hellman's Real Mayonnaise` | ⚠️ **a BRAND row** carrying a made_from edge | **brand guard** |
+| `drinking straw` Q189211 | tableware, already flagged in `previews/parent-pass-scoping.md`, and the class A pass gave it the alias `straw` | **row removal** |
+
+**Removing a row is not a rename and not a merge, and it is the one operation in this area that
+can orphan the staged dish data. It is queued rather than done.**
+
+### What stage 1 refused, so nothing re-proposes it
+
+**112 dropped mechanically.** 70 `made_from table salt`, checked one by one for a real
+salt-as-primary case and none found, plus 42 with a catch-all parent (`meat` 12, `vegetable` 9,
+`fruit` 7, `spice` 6, `cereal` 5, `condiment` 3). ⚠️ **`flour` at 42 and `milk` at 36 were
+deliberately kept.** They are general and real.
+
+**20 refused by name.** 14 made_from (an enzyme, bee anatomy, two cosmetic-oil edges, a chili-oil
+confusion, a false claim about pastry flour, five vague parents, and two whose `kind_of` already
+exists) and 6 part_of with no real relationship underneath.
+
+**6 redundant inversions dropped.** `almond part_of almond milk` and five like it, where the
+correct `made_from` direction is already in this same load. **The source stated those facts twice,
+correctly under `P186` and inverted under `P361`.**
+
+### ⚠️ A process note worth keeping
+
+**`load_relations.py` takes no `--db` argument. It hardcodes `DB = "recipes.db"` at line 25.**
+Passing `--db recipes-preview.db` is silently ignored and the load goes to LIVE. It happened once
+in this pass and was caught immediately by a hash check, and live was restored from
+`backups/recipes-20260916-134317.db` with zero loss. **The working call is
+`load_relations.load(db=...)` from Python, not a command-line flag.** The same is true of
+`load_aliases.py`.
+
+## 18. The inclusion rule, and the row cleanup it settles
+
+### The rule
+
+**Does a person consume this?** That one question is now the library's admission test, recorded in
+[what-the-library-is-for.md](what-the-library-is-for.md). It is deliberately broader than the
+"cooking ingredient" wording it replaces. Tea and tisane botanicals, coffee, herbal and eastern
+medicine taken by mouth, and beverages are all in. Out is anything a person does not consume at all,
+meaning events, programs, places, companies, taxonomic ranks, functional-class labels, industrial
+and non-ingestible chemicals, and label-parse fragments.
+
+### What the rule did to the 462 cleanup candidates
+
+| Verdict | Rows | |
+|---|---|---|
+| **KEEP** | 78 | the rule rescues them from the narrower reading |
+| **QUEUE** | 24 | the rule does not settle them, they need a read |
+| **REMOVE** | 360 | confirmed not consumed |
+
+The 78 keeps break down as 35 branded products, 23 short words the read proved are real consumables
+in another language, 10 consumed medicinals, 9 bare element names and 1 object. Three of those
+groups are worth stating because a cooking-only rule would have cut them:
+
+- **Branded products are consumed.** `Hellman's Real Mayonnaise`, `Mrs. Dash`, `Yakult`, `Guinness`.
+  Whether a brand should be a row's canonical name is `brand_guard.py`'s question, not this one. A
+  company, `Kalleh Dairy`, is still out.
+- **Swallowed medicinals are consumed.** `castor oil` is an oral laxative, `linctus` is a cough
+  syrup, `quinine` is in tonic water, `Drakshasava` is a drunk Ayurvedic tonic, `Pharmaceutical
+  glaze` is shellac on both tablets and confectionery.
+- **A bare element name is the substance, not a functional class.** `calcium`, `iodine`,
+  `Magnesium`, `Fluoride` and five more are consumed nutrients and stay. `Minerals` and `Other
+  nutritional substances` are class labels and go.
+
+### The 85 additive rows split exactly as the rule predicts
+
+All 85 are function labels (`gelling agent`, `anticaking agent`, `raising agent`) and all 85 are out.
+The consumables they name are separate rows that were never candidates and are untouched: `gelatin`,
+`fruit pectin`, `citrus pectin`, `lemon pectin`, `apple pectin`, `soya lecithin`, `baking soda`,
+`cream of tartar`.
+
+### Phase 1, applied to the copy
+
+119 rows removed. Clear-not-consumed, zero references anywhere, one source entry each, so the drop
+removes the row rather than renaming it.
+
+```
+I additive class labels  44    aerating agent, coating agent, meat curing agent, ...
+H label fragments        30    no1..no12, n°, Exxx, E15x, FD&C, complet, de fer, monosodique
+G classifier labels      20    18 Russian GOST and OKPD product classes, Brotgetreide, Kochfischware
+A not consumed            8    manufacture of ice cream, Livsmedelstillsatser i Sverige, Kaga yasai
+D industrial              6    Hair Bleaching Agents, tooth bleaching agents, veterinary beta-agonist
+E ornamental koi          6    Kōhaku, Showa, Tancho, Asagi, hi utsuri, Shiro Bekko
+J abstract classes        2    Other nutritional substances, cooking ingredient
+K techniques              2    hot water kneading, rimming
+F objects                 1    cookie decorating kit
+```
+
+The decision is durable in `hand_removals.csv` as 119 `drop` rows keyed on `(anchor, id)`, 80
+wikidata and 39 off_taxonomy. The file now holds 362 decisions, 143 of them drops. The copy went
+`aea10240` to `f7baed74`. Live `recipes.db` was not touched.
+
+⚠️ **The copy edit and the hand-file are two separate things, and only one of them is proven.** The
+119 rows were deleted from the copy directly. `build_library` has not been run, so the claim that
+these 119 `drop` rows reproduce this exact result through a build is reasoned, not measured. The
+reasoning is that each row sits on exactly one source entry, which is the case where a drop cannot
+leave the row standing under another id.
+
+### What is still queued
+
+**Phase 2, 84 rows.** Zero references, but several source entries behind each, so a drop may remove
+some names and leave the row standing under a different id. Needs a dry-run build to tell which.
+The worst are `dish` at 81 entries, `Clupea` at 53, `diet` at 43 and `side dish` at 40.
+
+**Phase 3, 157 rows.** Referenced, so the references come first. Inside it:
+
+- `Guinness` is a real consumable **and** is linked from your Shepherd's Pie. It is a keep.
+- `Miracle Whip` is the row behind the standing red boundary test. Both it and `Guinness` are
+  authored rows with no source entry, so `hand_removals.csv` cannot reach either one.
+- `Trapani salt ponds`, `Swiss cheeses` and `Citrus` are parents. Their children need re-pointing
+  first, `Swiss cheeses` to `cheese`, `Trapani salt ponds` to a salt row.
+- `semi-sweet` (256 recipes) and `sharp` (136 recipes, all macaroni cheese) are fragments matching
+  correctly against truncated label text. They want `fold` onto `semi-sweet chocolate` and a cheddar
+  row, not `drop`.
+
+**24 reads the rule does not settle.** 18 are genus rows that are taxonomic ranks and also real
+culinary groupings (`Citrus`, `Ribes`, `Pleurotus`, `Laminaria`, `Penicillium`). The other 6 are the
+consumption edge itself: `croton oil` twice (a purgative that is an acute toxin), `turpentine` (a
+folk remedy that is a solvent), `Charas`, `zinc oxide` (a fortificant and a sunscreen), `emu oil`
+(a supplement and a topical) and `sepiolitic clay` (a filter aid removed before eating).
+
+**The non-food recipes in the corpus, unrelated to row admission.** 172 mined dishes over 1,601
+recipes are household or cosmetic, led by `play dough` at 528, `dog biscuit` at 89 and `lye soap` at
+42. `baby oil` and `turpentine` were linking to them correctly. Removing the rows hides the symptom
+and leaves the corpus as it is.
+
+## 19. The row cleanup, finished
+
+Phases 2 and 3 applied to the copy along with the edge reads and the genus ruling. The catalog went
+`10,371` to **`10,123`**, and the copy went `f7baed74` to `db07d0c9`. Live `recipes.db` was not
+touched at any point.
+
+### What was applied
+
+| Operation | Rows | |
+|---|---|---|
+| **Drops** | 241 | Phase 2's 84 less one now folded, Phase 3's 146, the 6 edge-read rows, the 4 fish genera, and the 2 re-pointed parents |
+| **Folds** | 7 | names and links move to the row that answers for them |
+| **Re-points** | 4 edges | children moved to a real parent before their old parent was cut |
+| **Keeps confirmed** | 19 | present and absent from every removal verdict |
+
+The folds, with the links measured after the move:
+
+```
+sharp                     ->  Cheddar cheese          111,233 recipes  (111,103 + 136 - 6 co-occurring)
+semi-sweet                ->  semi-sweet chocolate      5,870 recipes  (5,617 + 256 - 3)
+non-nutritive sweetener   ->  sweetener                 1,745 recipes  (236 + 1,509 - 0)
+nutritive / bulk / intense / high-intensity sweetener -> sweetener     (no corpus rows to move)
+```
+
+`sweetener` stays as a row. The merged recipe counts use inclusion and exclusion, so a recipe holding
+both the fragment and its target is counted once rather than twice.
+
+The re-points:
+
+```
+Emmentaler Switzerland, Gros-de-vaud, fromage de Bagnes   kind_of   -> Swiss cheese (Q4117114)
+Menola salata PAT                                         made_from -> Sale Marino di Trapani PGI
+```
+
+The `in_category swiss-cheeses` edges on the same three cheeses were left alone, since a category id
+is not a library row. The Menola edge was wrong on its own terms before this, since a salted fish is
+made from salt rather than from a salt pond.
+
+### Three traps the work hit, all caught before they landed
+
+**⚠️ A fold must not move edges.** `sharp` carried `kind_of flour`. Moving its edges to the target
+would have written `Cheddar cheese kind_of flour` into the catalog. The five sweetener variants
+carried `in_category sweetener`, which would have become a self-loop on their own target. Edges are
+deleted with the folded row, which is also what `build_library.apply_folds` does, since it moves
+names and nothing else.
+
+**⚠️ `mined_pairings` is canonically ordered and has a unique key.** All 362,319 rows satisfy
+`a_id < b_id`. A fold has to re-normalize the order after moving an id, merge on the roughly 493 key
+collisions rather than overwrite, and delete the self-pair that appears when a fragment already pairs
+with its own target. `mined_substitution_candidates` carries a second unique index,
+`(from_id, ifnull(to_id,''), source_slug)`, which a first attempt violated and rolled back on. Two
+self-referencing substitution rows were dropped for the same reason.
+
+**⚠️ Cutting a fold target resurrects its sources, and only the verifying build found it.** A
+PHASE C collision merge had folded duplicate `binder` and `croton oil` rows into the rows this pass
+then cut. A fold whose target is cut is refused, and the duplicate comes back as a live row. The
+first verifying build produced 10,125 against the copy's 10,123 and named both. They now take the
+same ruling as the rows they used to fold into. **A candidate set built from `library_names` cannot
+see already-folded rows, so dropping any fold target needs this check.**
+
+### The verifying build
+
+The whole accumulated state reproduces from the hand files, which is what makes the copy a
+description of the decisions rather than a hand-edited artifact:
+
+```
+verifying build 10,123    copy 10,123
+  in build but not in copy  0
+  in copy but not in build  0
+  canonical drift           0
+  folds refused             0
+  removals dangling         0
+```
+
+`hand_removals.csv` now holds 610 decisions, 386 drops, 166 variation trims and 58 folds.
+`hand_links.csv` lost 188 edge lines whose row went away and carries the 4 re-points.
+
+Verified after the apply: 0 new orphans, the 247 unresolved parent ids still the category ids by
+design, 299 recipes and 3,563 ingredient lines intact with `Guinness` still linked to the Shepherd's
+Pie, the 36 curated rows untouched, cook log at 134 and ratings at 118, integrity ok and the foreign
+key check clean. Both suites run at 1,296 Python and 154 JavaScript, with the one standing
+`Miracle Whip` boundary failure that reads live `recipes.db` and is unrelated to this work.
