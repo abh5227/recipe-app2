@@ -734,7 +734,8 @@ NAMES = {
     ("kind", "kind_of"):     "is a kind of",
     ("kind", "in_category"): "is in category",
     ("kind", "made_from"):   "is made from",
-    ("kind", "hierarchy"):   "is a kind of, or made from",
+    ("kind", "part_of"):     "is part of",
+    ("kind", "hierarchy"):   "is a kind of, made from, or part of",
     ("confidence", "high"):     "the source stated it",
     ("confidence", "picked"):   "picked by hand",
     ("confidence", "read"):     "read off a page",
@@ -988,11 +989,21 @@ def entry_states(conn):
 
 
 def neighbourhood(conn, lid):
-    """⚠️ GOTCHA 1 and 6. kind is constrained on every branch; parents deduped by row.
+    """⚠️ GOTCHA 1 and 6. kind is constrained on every branch, and parents are deduped by row.
 
     parent_id holds either a library_id or a category slug. 'bread' and 'pasta' exist in BOTH
     tables under the same string, so a join without a kind constraint mixes them silently. And a
-    child can carry both a kind_of and a made_from edge to one parent, which would draw twice.
+    child can carry several edges to one parent under different kinds, which would draw twice.
+
+    ⚠️ part_of WAS MISSING FROM BOTH PANELS UNTIL 2026-09-16, and the bug was invisible from the
+    catalog list. These two queries named ('kind_of','made_from') while the list columns `par` and
+    `kids` count `kind<>'in_category'`, so a row could report one parent in the list and "No
+    parent" on its own page. Measured when the gap was found: 29 part_of edges loaded in stage 1 of
+    the source re-harvest, every one of them unreachable in the viewer. `whey part_of milk` showed
+    "No parent" and `milk` did not list `whey`.
+
+    ⚠️ THE FIX IS THE TUPLE, NOT A `kind<>'in_category'` TEST. The two namespaces above are the
+    reason: a negated test would let a future kind through into a join that assumes library_names.
     """
     out = {"category": [], "parent": [], "child": [], "sibling": []}
     for r in conn.execute(
@@ -1004,7 +1015,7 @@ def neighbourhood(conn, lid):
     for r in conn.execute(
             "SELECT ln.library_id id, ln.canonical label, r.kind, r.confidence, r.source "
             "FROM library_relations r JOIN library_names ln ON ln.library_id=r.parent_id "
-            "WHERE r.child_id=? AND r.kind IN ('kind_of','made_from')", (lid,)):
+            "WHERE r.child_id=? AND r.kind IN ('kind_of','made_from','part_of')", (lid,)):
         d = seen.setdefault(r["id"], {"id": r["id"], "label": r["label"], "kinds": [],
                                       "confidence": r["confidence"], "source": r["source"]})
         d["kinds"].append(r["kind"])
@@ -1013,7 +1024,8 @@ def neighbourhood(conn, lid):
     for r in conn.execute(
             "SELECT ln.library_id id, ln.canonical label, r.kind, r.confidence "
             "FROM library_relations r JOIN library_names ln ON ln.library_id=r.child_id "
-            "WHERE r.parent_id=? AND r.kind IN ('kind_of','made_from') ORDER BY ln.canonical", (lid,)):
+            "WHERE r.parent_id=? AND r.kind IN ('kind_of','made_from','part_of') "
+            "ORDER BY ln.canonical", (lid,)):
         d = kids.setdefault(r["id"], {"id": r["id"], "label": r["label"], "kinds": [],
                                       "confidence": r["confidence"]})
         d["kinds"].append(r["kind"])
@@ -1484,9 +1496,9 @@ def catalog():
       ("category", "the browsable family it was filed under", "in_category parent", "category"),
       ("written entry", f"whether prose has been written about it. {fmt(n_ent)} of {fmt(n_all)} have",
        "library_entries", "entry"),
-      ("parents", "broader rows above it", "kind_of, made_from", "parents"),
+      ("parents", "broader rows above it", "kind_of, made_from, part_of", "parents"),
       ("children", f"narrower rows below it. Only {fmt(n_par)} rows parent anything",
-       "kind_of, made_from", "children"),
+       "kind_of, made_from, part_of", "children"),
       ("lines", "recipe lines that resolved here", "catalog_id", "lines"),
       ("library_id", "the stored id. Everything else points at this", "library_id", "library_id"),
     ]
