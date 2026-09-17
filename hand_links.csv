@@ -1167,7 +1167,7 @@ Q5072402,cow-s-milk,in_category,wikidata,high,
 fr:chanterelle,mushroom,in_category,off,high,
 Q67206368,edible-mushroom,in_category,wikidata,high,
 Q20857743,grape,in_category,wikidata,high,
-Q1063115,vegetable,in_category,wikidata,picked,
+Q1063115,fruit,in_category,read,read,"CORRECTED 2026-09-17. Was in_category vegetable. A melon is a fruit in both the botanical and the kitchen sense, and every other melon row in the catalog sits under fruit or the melon slug. Ruling on the stage-2 fruit-plus-vegetable contradiction."
 en:charentes-butter-pdo,Q34172,kind_of,off,high,
 en:charentes-butter-pdo,butter,in_category,restructure,authored,browsable family added beside the kind_of it already had
 Q2900324,Q34172,kind_of,wikidata,high,
@@ -5392,7 +5392,7 @@ Q55815430,seed-oil,in_category,wikidata,high,
 fr:beurre-laitier,butter,in_category,off,high,
 Q1894525,dairy-product,in_category,wikidata,high,
 Q10581201,milk,in_category,wikidata,high,
-Q5881191,vegetable,in_category,wikidata,picked,
+Q5881191,fruit,in_category,read,read,"CORRECTED 2026-09-17. Was in_category vegetable. A melon is a fruit in both the botanical and the kitchen sense, and every other melon row in the catalog sits under fruit or the melon slug. Ruling on the stage-2 fruit-plus-vegetable contradiction."
 Q16664041,fruit,in_category,wikidata,high,
 Q89999771,fruit-jam,in_category,wikidata,high,
 en:melted-cheddar,cheddar-cheese,in_category,off,high,
