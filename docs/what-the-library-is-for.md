@@ -3,10 +3,44 @@
 The standing purpose. Read this before writing any rule that admits, cuts, renames, or merges a
 library row.
 
-## The library is a list of cooking-facing ingredient names
+## The library is a list of things a person consumes
 
-A row is something a person buys or cooks with. Garlic, cilantro, black pepper, kosher salt,
-gochugaru, fish sauce.
+**The test for any row is one question. Does a person consume this?**
+
+A row is something a person eats, drinks, or takes. Garlic, cilantro, black pepper, kosher salt,
+gochugaru, fish sauce. Also chamomile, rooibos, yerba mate, ginseng, ashwagandha, licorice root and
+the rest of the botanicals that reach a person through a teapot, a tisane, a coffee pot or a herbal
+remedy rather than a pan. Also beverages.
+
+**This is deliberately broader than "cooking ingredient."** An earlier version of this section said a
+row was something a person buys or cooks with, and that reading drops a shelf of real consumables on
+a technicality. Ginseng is not cooked. It is consumed. It stays.
+
+What fails the test is anything a person does not consume at all:
+
+| Out | Why | Rows found |
+|---|---|---|
+| Events, programs, places, companies | Nobody consumes a trade fair | `PotatoEurope`, `Potato Patch Plan`, `Trapani salt ponds`, `Kalleh Dairy` |
+| Overview articles | A page about a food is not the food | `Cheese in Canada`, `chocolate in Japan`, 15 national-cheese articles |
+| Taxonomic ranks | A classification is not the thing classified | `Perciformes`, `Gadidae`, `Salmonidae`, `Batomorphi` |
+| Functional-class labels | The class is not the substance | `gelling agent` is out, `gelatin` is in. `raising agent` is out, `baking soda` is in |
+| Industrial and non-ingestible chemicals | Not for human consumption | `turpentine`, `tung oil`, `bleach`, `imazalil`, `jojoba oil` |
+| Label-parse fragments | Never a name for anything | `no1` through `no12`, `n°`, `FD&C`, `de production biologique`, `monosodique` |
+
+**Two edges the test settles that the old rule got wrong.**
+
+A medicinal that is swallowed is in. Castor oil is a laxative a person drinks, so it stays, and
+`turpentine` beside it is a solvent, so it goes. The rule splits them on consumption, not on the word
+oil.
+
+A branded product is in. Somebody consumes `Hellman's Real Mayonnaise`. Whether a brand should be the
+row's **canonical name** is a separate question that `brand_guard.py` answers, and it is not this
+question. A company, `Kalleh Dairy`, is still out, since nobody consumes a company.
+
+**The fuzzy edge is real and does not get blanket-treated.** A botanical taken as medicine is in. A
+ritual item that is not ingested, or one too toxic to be consumed safely, still fails the test.
+`croton oil` was a purgative once and is an acute toxin, so it is queued for a reading rather than
+waved through on the word medicinal.
 
 It exists to serve **other people's recipe imports across every cuisine**, Filipino, Ethiopian,
 Peruvian, anything. It is not scoped to the recipes in this repo. Those 298 recipes are a **test
@@ -65,7 +99,7 @@ likely to have meant. It ranks nothing on the display side and it never decides 
 survives. A rare-language ingredient is exactly the kind of thing another person will import, so
 speaker population must never be used to drop a row or a name for being in a small language.
 
-## A concept that is not a cooking ingredient is not a row at all
+## A concept that is not consumed is not a row at all
 
 A mango cultivar reached through a homograph. An economics concept reached through a Catalan word. A
 mushroom reached through a German color name. A Wikipedia article title like "Coffee in Italy". A
@@ -79,6 +113,9 @@ come out.
 
 Basic food knowledge is enough to tell garlic from a mango cultivar. Do not over-cut.
 
+**Consumed-but-not-cooked is not a cut signal.** A tea botanical, a tisane herb, a medicinal root or
+a beverage is a row. Asking whether it belongs in a pan is the wrong question.
+
 **Do not use recipe-line count as a cut signal.** A real ingredient nobody in these 298 recipes
 happens to use, a regional spice or an obscure sauce, stays, because it will be in someone else's
 import. A zero-line row is evidence about this corpus and never about the row. See
@@ -86,7 +123,7 @@ import. A zero-line row is evidence about this corpus and never about the row. S
 
 The only things that leave are:
 
-- concepts that are not cooking ingredients, and
+- concepts that are not consumed, and
 - rows that are really just an other-language or Latin **name** for an ingredient that already has a
   common-name row, and those become **aliases**. They do not disappear.
 
