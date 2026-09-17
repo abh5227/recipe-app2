@@ -50,17 +50,43 @@ DECIDED_BY_CORPUS = {
     "half and half cream": "half-and-half",
 }
 # Names with no safe target. Mapping them would MANUFACTURE a wrong match, which is worse than a miss.
-DROPPED = {"rose", "meal", "blood pudding", "custard apple", "red tea"}
+# ⚠️ sprout ADDED 2026-09-15, and it was nearly given a row instead. 3,230 corpus recipes lose a base
+#    facet on it and the catalog holds 23 sprout specifics, so a general row looked obvious. Wikibooks
+#    settles it the other way: Cookbook:Sprout is a DISAMBIGUATION page reading "the term sprout is an
+#    ambiguous term that may refer to: Brussels sprouts, Bean sprouts, Sprouted (germinated) seeds."
+#    Three different foods, so a bare 'sprout' has no safe target, exactly like 'meal' above. Refusing
+#    it costs 3,230 misses and a row would have cost 3,230 wrong matches.
+# ⚠️ FOUR ADDED 2026-09-16 from the class A review, and only four of eleven refusals. The other
+#    seven ('raw', 'dairy', 'cut', 'buffer', 'varietal', 'celebrity', 'salt, pepper') are not food
+#    words at all and will never be proposed again, so they live in docs/open-library-queues.md
+#    rather than bloating a set whose job is FOOD-WORD ambiguity. These four are words a cook
+#    really writes, with a target that is wrong rather than missing, so a later pass could
+#    re-propose them:
+#      amaretto  an almond liqueur. The only near row is 'Amaretto macaron', a cookie.
+#      pastry    broader than 'pastry dough', and 'pastry cream' and 'pastry flour' also exist.
+#      soy       'soy sauce' or 'soy bean', and US recipes mean the first. Genuinely two targets.
+#      tartar    ⚠️ 'tartar sauce' against 'cream of tartar'. A baking line saying tartar means
+#                the raising agent and would land on mayonnaise. The worst of the four.
+DROPPED = {"rose", "meal", "blood pudding", "custard apple", "red tea", "sprout",
+           "amaretto", "pastry", "soy", "tartar"}
 
 
 # ⚠️ SPELLING FOLDS, each one measured against the unmatched set rather than guessed.
 #   chile/chilli/chillies  the corpus uses all three spellings and the catalog holds one.
-#   bare 'chili'           the catalog has no 'chili' row, it has 'chili pepper', so a bare chili
-#                          would otherwise reach nothing at all. 24 lines.
+#                          ⚠️ These fold to a bare 'chili', which reaches Q165199 through the
+#                          ALIAS since 2026-09-16. The hardcode that used to do it is retired,
+#                          and these three stay because they work inside a phrase: 'chilli
+#                          powder' folds to 'chili powder', which no alias can do.
 #   Parmigiano             Parmigiano, Parmigiano Reggiano and Parmigiana all name the catalog's
 #                          'Parmesan'. 6 lines.
-#   the typos              tumeric, brussel, crimini, jalepeno, semi-sweet, yoghurt. Each was read
-#                          in the corpus, not invented.
+#   the typos              tumeric, brussel, crimini, jalepeno, semi-sweet, yoghourt. Each was
+#                          read in the corpus, not invented.
+#   ⚠️ THE YOGHURT ENTRY IS NOT WHAT IT LOOKS LIKE, and this comment used to say 'yoghurt'.
+#                          The pattern is \byoghou?rt\b, which matches yoghourt and yoghort and
+#                          NOT the commoner yoghurt, since that has no 'o' after the 'h'. The
+#                          bare word 'yoghurt' reaches Q13317 through an alias instead. The two
+#                          cover different spellings and neither is redundant. A phrase like
+#                          'greek yoghurt' is reached by neither and is still unmatched.
 _FOLDS = [
     (r"\bchill?ies\b", "chili"), (r"\bchill?i\b", "chili"), (r"\bchiles?\b", "chili"),
     (r"\bparmigian[oa]( reggiano)?\b", "parmesan"), (r"\bparm\b", "parmesan"),
@@ -78,23 +104,45 @@ def fold(s):
     s = norm_name(s)
     for pat, rep in _FOLDS:
         s = re.sub(pat, rep, s)
-    # the catalog has no bare 'chili' row, only 'chili pepper'
-    if s == "chili":
-        s = "chili pepper"
+    # ⚠️ THE BARE-'chili' HARDCODE WAS RETIRED 2026-09-16 when library_aliases was wired into
+    #    load_catalog. It read `if s == "chili": s = "chili pepper"`, and its twin in
+    #    load_catalog copied the chili pepper rows under the bare word. Both existed for one
+    #    reason: the catalog had no row a bare 'chili' could reach. 'chili' is now an alias on
+    #    Q165199, so the table states what the hardcode used to assume. The three spelling
+    #    folds above still do their own job, turning chilli, chillies, chile and chiles into
+    #    'chili' ANYWHERE IN A PHRASE, which an alias on one row cannot do.
     return s
 
 
 def load_catalog(conn):
+    """Every name the catalog answers to, normalized, mapping to the rows that own it.
+
+    ⚠️ ALIASES ARE READ HERE, AND UNTIL 2026-09-16 THEY WERE NOT. library_aliases held 164 rows
+    that no code path consulted, so every alias applied by the class A, class B and tier 0
+    passes was recorded and inert. Measured before wiring, in previews/alias-wiring-scoping.md:
+    163 keys gained, 0 keys made ambiguous, 0 existing targets changed, and 160 of the 164
+    aliases change a word's outcome.
+
+    ⚠️ AN ALIAS INDEXES TO ITS ROW'S CANONICAL, NOT TO ITSELF. The matcher's output names the
+    row, and putting the alias string there would report a name the catalog does not display.
+
+    ⚠️ BOTH norm_name AND fold ARE INDEXED. They differ for some aliases, and indexing one
+    leaves the other spelling unreachable."""
     cat = collections.defaultdict(list)
+    canon_of = {}
     for lid, canon in conn.execute("select library_id, canonical from library_names"):
+        canon_of[lid] = canon
         cat[norm_name(canon)].append((lid, canon))
         f = fold(canon)
         if f != norm_name(canon) and (lid, canon) not in cat[f]:
             cat[f].append((lid, canon))
-    # ⚠️ strip_forms generates a bare 'chili' and the catalog only has 'chili pepper', so the
-    #    stripped form would reach nothing. Index the row under the bare word too.
-    if "chili pepper" in cat and "chili" not in cat:
-        cat["chili"] = list(cat["chili pepper"])
+    for lid, alias in conn.execute("select library_id, alias from library_aliases"):
+        canon = canon_of.get(lid)
+        if canon is None:          # an alias whose row was cut. load_aliases refuses these,
+            continue               # and a stale database is not worth crashing the matcher for
+        for key in {norm_name(alias), fold(alias)}:
+            if (lid, canon) not in cat[key]:
+                cat[key].append((lid, canon))
     return cat
 
 
