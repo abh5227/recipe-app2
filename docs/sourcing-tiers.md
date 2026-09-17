@@ -22,6 +22,15 @@ finding, and you have not reached it yet.
 
 Facts are promoted on evidence and **never demoted silently.** A demotion is recorded with its reason.
 
+⚠️ **AN OPEN QUESTION: where a recovered snapshot sits. Recorded 2026-09-16.** ROADMAP.md
+(Recipe Import P15, "Source rating snapshot") proposes storing what a source page displayed at a
+moment in time, such as a star rating read on the day a recipe was imported. **That is not a claim
+about food and none of the three tiers fits it.** It is a dated observation of what a page showed,
+closer to a fetch record than to a fact. **Whether it becomes a fourth tier or an axis beside the
+three is undecided**, and it is recorded here rather than in ROADMAP because this file is where
+tier questions belong.
+
+
 Allergen, food-safety and storage-safety claims split two ways. Asserting that something is absent
 requires CITED and fails closed. Flagging that something may be present fails toward the warning and
 ships at any tier. The asymmetry is the whole rule and it has its own section below.

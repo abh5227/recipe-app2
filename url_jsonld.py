@@ -279,6 +279,11 @@ def read(page_html, url=""):
         # recipe; this app's ratings are cook-gated on purpose, because the outcome data — what THIS
         # cook made and thought — is the entire point of the app. Importing a publisher's average
         # would poison exactly the signal being collected. Do not "fix" this.
+        #
+        # ⚠️ AND IT STAYS 0 EVEN IF THE SNAPSHOT FEATURE IS BUILT. ROADMAP.md (Recipe Import P15,
+        # "Source rating snapshot") proposes capturing aggregateRating as a dated point-in-time
+        # observation: "the page said 4.6 on this date". That is a SEPARATE field and it does not
+        # license writing a publisher's average here. The two coexist only while they stay apart.
         "rating": 0,
         "uid": "",                               # Paprika's dedup key; a URL import has none
         "hash": "",

@@ -217,6 +217,40 @@ adding a source never touches the hard logic.
 - *Cleanup-core concerns, exercised at scale on import: cross-reference the
   ingredient-name-cleanup / amount-structure / data-capture / provenance notes (top).*
 
+**Source rating snapshot. A design note, not scheduled. Recorded 2026-09-16.**
+
+On a URL import, capture what the source page said about its own reception at that moment:
+*"4.6 stars, 1,200 reviews on allrecipes, recovered 2026-09-16."* A point-in-time snapshot, never
+presented as current.
+
+⚠️ **THIS DOES NOT OVERTURN `rating: 0` IN `url_jsonld.py`, AND MUST NOT BE READ AS DOING SO.**
+That comment says a publisher's average "would poison exactly the signal being collected. Do not
+'fix' this," and it stays correct. **The snapshot is a SEPARATE field.** `recipes.rating` remains
+cook-gated and remains 0 on import. The two coexist only while they stay apart, and a build that
+writes a scraped average into `recipes.rating` has misread this note.
+
+- **The timestamp is part of the claim, not metadata beside it.** The stored fact is "the page said
+  4.6 on this date", not "this recipe is 4.6". The UI has to show staleness so an old snapshot
+  reads as old. A snapshot with the date stripped off is a different and false claim.
+- **Recipe-instance level, tied to the source URL.** NOT the normalized dish type, and NOT the
+  cook's edited version. It describes one web page, so it does not travel to a scaled, substituted
+  or re-written copy, and it says nothing about the dish in general.
+- **A social signal, not intrinsic quality.** It records the source audience's reception. A cook
+  may reasonably want "this had good reviews when I saved it." It must never render as "this
+  recipe is objectively 4.6," which is the failure mode to design against.
+- **Extraction: schema.org `Recipe` / `AggregateRating` only.** The clean machine-readable case,
+  already present on most sites the JSON-LD reader targets, and the field it deliberately skips
+  today. ⚠️ **Visually-rendered numbers are out of scope.** Capture where the page exposes it
+  cleanly and promise nothing else, the same decline-over-guess rule the importer already runs on.
+- **Provenance: no new licensing question.** The rating is another field on a page the importer is
+  already reading, so it rides the existing URL import and raises nothing that import does not
+  already navigate.
+- **It is its own sourcing tier.** Under [docs/sourcing-tiers.md](docs/sourcing-tiers.md) a
+  recovered snapshot is neither GENERATED nor CURATED nor CITED. It is a dated observation of what
+  a page displayed, which is closer to a fetch record than to a fact about food. **Whoever builds
+  this decides whether that is a fourth tier or an axis beside the three**, and the sourcing doc is
+  where that belongs rather than here.
+
 **Phase 15 design decisions (settled):**
 
 - **Two projects, sequenced.** Project A = import MY 298 Paprika files (build now). Project B
