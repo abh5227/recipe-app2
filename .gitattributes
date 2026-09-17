@@ -1,0 +1,29 @@
+# .gitattributes - line endings are pinned here, not left to whatever last wrote the file.
+#
+# ⚠️ WHY THIS EXISTS. Three hand files were silently flipped between CRLF and LF during one
+# session's work. `"\n".join(lines)` forces LF. csv.writer does the opposite: its lineterminator
+# defaults to "\r\n", so any script that rewrites a CSV through it converts the whole file. Neither
+# changed a single character of content, and both turned a small edit into a whole-file rewrite:
+# hand_links.csv diffed at 22,226 lines against a real change of 1,694. The first diagnosis blamed
+# row ordering and restoring the original order changed the diff by exactly zero lines.
+#
+# With the rules below git normalizes on the way in, so a script may write whatever it likes and the
+# committed diff still shows only the lines that actually changed.
+
+# Everything text is LF in the repository and LF in the working tree.
+* text=auto eol=lf
+
+# ⚠️ CAPTURED WEB PAGES ARE EVIDENCE AND ARE FROZEN BYTE FOR BYTE. They are what a real site
+# actually served, and the importer's fixtures exist to prove the reader handles that page as it
+# was. Normalizing them would edit the record. Four of them carry CRLF today and keep it.
+tests/fixtures/pages/** -text
+
+# Binary, never normalized and never diffed as text.
+*.woff2 binary
+*.xlsx  binary
+*.db    binary
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.heic  binary
+*.webp  binary
