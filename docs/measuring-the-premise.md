@@ -131,3 +131,47 @@ fix is to state what shape the data has rather than to debug the code.
 **Both are failures of the premise, not of the work done on top of it, and both are
 invisible from inside the work.** A projection cannot tell you it counted the wrong
 person's hours. A filter cannot tell you it kept the wrong 16,931 rows.
+
+## A sibling rule, found in the stage-2 edge passes
+
+This note is about assuming the shape of the data. The rule below is about assuming that a
+question has one half when it has two, and it belongs here because the failure is invisible in the
+same way.
+
+**Correct-don't-discard was being applied as a single test.** Pass 2 of the stage-2 edge load read
+1,793 candidate `kind_of` edges hub by hub and asked one question of each. *Is this edge true?* It
+named 89 that were not, and proposed to drop them. That read was accurate. Every one of the 89 was
+genuinely wrong.
+
+⚠️ **Dropping all 89 would have orphaned 46 real ingredients**, because for those 46 the wrong
+parent was the only parent on offer. `parsley` at 131,369 recipes was filed `kind_of spice`, which
+is false. Dropping it leaves parsley with no `kind_of` parent at all. `broccoli` at 35,330 was
+filed under `designated vegetable`, a Japanese regulatory term, and that was its only candidate.
+
+**The test has two halves.**
+
+1. Is the edge true? If not, it does not load as stated.
+2. **Does the child still have a parent once this edge goes?** If not, the child is a real thing
+   about to be disconnected, and the work is to find the right parent rather than to drop the edge.
+
+The second half produced three outcomes over the 132 edges examined. 70 were safe, the child kept
+a correct parent from the same pass and nothing was lost. 46 were re-pointed, 23 to a row that
+already existed and 16 to a row that had to be authored, with the rest already carrying the right
+edge on another axis. 16 were genuine drops, mostly a hub filed under another hub, where a
+top-level class simply does not need a parent.
+
+**The authored row is the part worth remembering.** Nine herbs were filed `kind_of spice`. The
+catalog already had a `herb` category holding 32 rows, and not one of those rows had a `kind_of`
+parent, so the `kind_of` axis had no herb node to point at. No source held one either. The fix was
+not to drop nine edges and not to leave them wrong. It was to author the missing parent.
+
+⚠️ **The same read also reversed one of its own class-level calls.** `food additive` was called a
+functional catch-all and cut entirely. Reading it child by child, it is a real class with two
+wrong children. `condiment` and `blood` do not belong under it. `food coloring` at 5,398 recipes
+and `liquid smoke` at 4,894 do, and neither has an `in_category` to fall back on, so cutting the
+class would have disconnected both. A class-level verdict hides child-level facts exactly the way
+a keyword rule does.
+
+**Where this bites next.** Pass 3 holds 2,652 zero-traffic edges. Rows with no corpus presence are
+more likely to carry a single stated parent, so the share that a true-or-false read would orphan
+is higher there, not lower.
