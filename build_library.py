@@ -797,11 +797,24 @@ def apply_renames(rows, renames):
     THREE REFUSALS, each reported rather than silently skipped:
       the new name is not already ON the row, which would put a string in the library
         that no source ever stated,
-      the new name is already another KEPT row's canonical, which is a merge rather than
-        a rename and needs a person to say which row keeps it,
-      the key matches no row, which usually means a rule dropped the entry first."""
-    owned = {norm_name(row["canonical"]) for row in rows if not row.get("cut_by")}
-    done, refused = [], []
+      the new name is still held by another KEPT row once every rename is applied, which is
+        a merge rather than a rename and needs a person to say which row keeps it,
+      the key matches no row, which usually means a rule dropped the entry first.
+
+    ⚠️ THE COLLISION IS JUDGED AFTER EVERY RENAME, NOT BEFORE, AND IT USED TO BE JUDGED
+    BEFORE. The old check compared each new name against a snapshot of the canonicals taken
+    before anything moved, so renaming A off a name so that B could take it read as a merge
+    and was refused. A swap is not a merge. The name is being vacated in the same pass.
+
+    ⚠️ MEASURED, and it is why this changed. The cacao pass renames Q34115776 from 'cacao' to
+    'cacao tree', which is the tree, and renames Q45912917 from 'cocoa' to 'cacao', which is
+    the material the bean becomes. The first applied and the second was refused against a name
+    no row would still be holding. Both apply now, and a real merge, where two rows would end
+    on one name, is still refused and now names how many rows would hold it."""
+    # eligible: the key matches a row and the new name is already on that row. Both halves of
+    # the collision check below need this settled first, because a refused rename leaves its
+    # row on the old canonical and that old canonical is what the name count has to see.
+    planned, refused = {}, []
     for row in rows:
         rule = renames.get((row["anchor"], str(row["id"])))
         if not rule:
@@ -811,9 +824,22 @@ def apply_renames(rows, renames):
         if match is None:
             refused.append((rule, f"'{new}' is not a name on the row"))
             continue
-        if norm_name(new) in owned - {norm_name(row["canonical"])}:
-            refused.append((rule, f"'{new}' is already another row's canonical, so this "
-                                  "is a merge rather than a rename"))
+        planned[id(row)] = (rule, new)
+
+    # the canonical every kept row would hold once the planned renames are applied
+    holders = collections.Counter(
+        norm_name(planned[id(row)][1]) if id(row) in planned else norm_name(row["canonical"])
+        for row in rows if not row.get("cut_by"))
+
+    done = []
+    for row in rows:
+        if id(row) not in planned:
+            continue
+        rule, new = planned[id(row)]
+        if holders[norm_name(new)] > 1:
+            refused.append((rule, f"'{new}' would be the canonical of "
+                                  f"{holders[norm_name(new)]} rows once every rename is "
+                                  "applied, so this is a merge rather than a rename"))
             continue
         row["variations"].setdefault(row["canonical"], set()).add(
             (row["anchor"] or "authored", DERIVED, "en"))
