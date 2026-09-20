@@ -72,7 +72,8 @@ def records(path, limit):
                    [x for x in items if isinstance(x, str) and x.strip()])
 
 
-def run(corpus, limit, out, floor=10, db=None, reader_key="recipenlg", source_slug=None):
+def run(corpus, limit, out, floor=10, db=None, reader_key="recipenlg", source_slug=None,
+        tally_from=None, tally_out=None):
     rd = MP.reader(reader_key)
     conn = sqlite3.connect(f"file:{db or BASE/'recipes.db'}?mode=ro", uri=True)
     # ⚠️ THE CATALOG IS LOADED AT THE SOURCE'S SCOPE. A source-scoped alias exists because
@@ -102,6 +103,36 @@ def run(corpus, limit, out, floor=10, db=None, reader_key="recipenlg", source_sl
             tally[d] += 1
     p1 = time.time() - t0
     print(f"  pass 1: {n:,} titles, {len(tally):,} unrouted dish strings, {p1:.0f}s", flush=True)
+    if tally_out:
+        Path(tally_out).parent.mkdir(parents=True, exist_ok=True)
+        json.dump({"source_slug": source_slug or rd["slug"], "titles_read": n,
+                   "tally": dict(tally)}, open(tally_out, "w"))
+        print(f"  wrote the routing tally to {tally_out}", flush=True)
+
+    # ── ⚠️ A SMALL SOURCE CANNOT ROUTE ON ITS OWN TALLY ──────────────────────────────────────
+    #
+    # ⚠️ ROUTING IS A FREQUENCY COMPARISON AND A SMALL CORPUS HAS NO FREQUENCIES. F.route keeps
+    #    `baked` in the dish name unless `eggplant` is commoner than `baked eggplant`, which
+    #    3,456 dish strings cannot establish and 903,755 can. Run against its own tally Wikibooks
+    #    produces `baked eggplant` as a dish distinct from `eggplant`, and the two never combine
+    #    because dish_id is derived from the name.
+    #
+    #    Measured over all 3,786 Wikibooks pages: 179 of them, 4.7%, land on a different dish_id
+    #    under their own tally than under RecipeNLG's. Carried into the facet tables that is 49
+    #    of 1,047 cuisine rows and 77 of 822 course rows hanging on a dish nothing else names.
+    #
+    # ⚠️ IT REPLACES THE TALLY, IT DOES NOT MERGE. Adding the small source's own counts back in
+    #    would let a dish it happens to name often out-vote the large corpus, which is the bias
+    #    this option exists to remove. The scratch script that first mined Wikibooks passed
+    #    RecipeNLG's tally alone, and replacing is what reproduces its dish_ids exactly.
+    if tally_from:
+        loaded = json.load(open(tally_from))
+        borrowed = collections.Counter(loaded.get("tally", loaded))
+        moved = sum(1 for d in tally if (F.route(d, tally)[0] or d) != (F.route(d, borrowed)[0] or d))
+        print(f"  ⚠️ routing on a BORROWED tally: {len(borrowed):,} strings from "
+              f"{loaded.get('source_slug', tally_from)!r}, replacing this corpus's {len(tally):,}. "
+              f"{moved:,} of {len(tally):,} dish strings route differently.", flush=True)
+        tally = borrowed
 
     _acc = {}
     def acc_ids(phrase):
@@ -316,8 +347,15 @@ if __name__ == "__main__":
     ap.add_argument("--db", default=None, help="database to match against. Default recipes.db")
     ap.add_argument("--reader", default="recipenlg", help="corpus format. See mining_probe.READERS")
     ap.add_argument("--source", default=None, help="source_slug to stamp. Default the reader's")
+    ap.add_argument("--tally-out", default=None,
+                    help="write pass 1's routing tally here, for a small source to borrow")
+    ap.add_argument("--tally-from", default=None,
+                    help="⚠️ route against THIS tally instead of the corpus's own. A source under "
+                         "roughly 100k recipes cannot establish that `eggplant` beats `baked "
+                         "eggplant`, and routing on its own tally splits dishes off the shared id.")
     a = ap.parse_args()
-    p = run(a.corpus, a.n, a.out, a.floor, db=a.db, reader_key=a.reader, source_slug=a.source)
+    p = run(a.corpus, a.n, a.out, a.floor, db=a.db, reader_key=a.reader, source_slug=a.source,
+            tally_from=a.tally_from, tally_out=a.tally_out)
     print(f"\n  titles {p['titles_read']:,}  dishes {p['distinct_dishes']:,}")
     for k, v in p["coverage"].items():
         print(f"    {k:<20}{v:>9,}{v/p['titles_read']:>8.1%}")
