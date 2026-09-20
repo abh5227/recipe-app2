@@ -64,12 +64,16 @@ class Recipe(Base):
 
 
 class Ingredient(Base):
-    """The ingredient field guide. Hand-authored rows come from seed.py's INGREDIENTS, 36 of them.
+    """Ingredient rows. ⚠️ seed.py's INGREDIENTS is EMPTY and the table holds 0 rows: the 36
+    hand-authored "field guide" entries were an early demo, deleted in migration 046. The seed tier
+    below is kept because the machinery is, not because a seed row exists.
     Add-on-save stage 5 SHIPPED and DOES create rows PROMOTED from the ingredient library, so migration
     030 added the two columns that tell them apart. source mirrors recipes.source exactly, same vocabulary
     and same TEXT NOT NULL DEFAULT 'seed'. It defaults to 'seed' because that is the fail-safe
     direction. Stage 6's delete path refuses a seed row, so a writer that forgets to set 'app' leaves a
-    row undeletable rather than leaving the 36 curated rows deletable. library_id is AUDIT PROVENANCE
+    row undeletable rather than leaving a hand-authored row deletable. (That risk was concrete
+    while the 36 existed. They were deleted in migration 046 and the fail-safe direction is
+    unchanged.) library_id is AUDIT PROVENANCE
     and is deliberately NOT a foreign key to library_names, since library ids are not durable across a
     rebuild (7 died in commit 460cae5) and it is expected to dangle. It IS READ. _promote_library_row
     matches on it so a repeat promote is a no-op, search_library reports a row as already promoted, and

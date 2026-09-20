@@ -9,8 +9,9 @@ tour and history see [CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md); for the plan se
 A **personal recipe web app** — Flask + SQLAlchemy, SQLite locally and Postgres in production, with a
 Vite-built vanilla-JS frontend. It began single-user and no-auth; it now has **accounts and per-recipe
 ownership** (default-deny: only the owner may write), though it is still a small private app rather than
-a public service. Recipes link to a shared ingredient **"field guide"**
-(tap an ingredient to see when it's in season, where it grows, and which other recipes use it),
+a public service. Recipes link to a shared **ingredient library** of 10,013 entries built from
+public food vocabularies (the 36-row "field guide" that preceded it was a demo, deleted in
+migration 046),
 with live **quantity scaling**, **metric/imperial + volume→weight** conversion, **star ratings**,
 a **cook log**, and **per-person versions** of cookbook recipes (each person can tweak a quantity,
 remove a line, or add an ingredient without forking the original).

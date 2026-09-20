@@ -1,9 +1,8 @@
 # Chef's Choice
 
-A personal recipe app. Recipes link to a shared **ingredient field guide** — tap an
-ingredient to see when it's in season, where it grows, and which other recipes use it —
-plus star ratings, a cooking log, cook photos, and a small feed for sharing a cook with
-friends. It runs on your own machine and is gated behind a login.
+A personal recipe app. Recipes link to a shared **ingredient library** built from public food
+vocabularies, plus star ratings, a cooking log, cook photos, and a small feed for sharing a cook
+with friends. It runs on your own machine and is gated behind a login.
 
 > For the full design rationale and a guided tour of the code, see
 > **`CODE_WALKTHROUGH.md`**. That document is the living history of how and why this is
@@ -43,9 +42,10 @@ library, it stops with a clear message so a typo can't quietly break the page. A
 
 ## The ingredient library, and one optional file
 
-The 36 ingredients in `seed.py` are the field guide you see in the app. Behind them sits a
-much larger **ingredient library** built from public food vocabularies, about 10,500 entries,
-which exists so a recipe line can be linked to a real ingredient rather than left as text.
+The **ingredient library** is built from public food vocabularies and holds 10,013 entries. It
+exists so a recipe line can be linked to a real ingredient rather than left as text. ⚠️ An earlier
+36-row "field guide" in `seed.py` was an early demo of what a library would look like, written
+before one existed. It was deleted in migration 046 and `seed.py`'s `INGREDIENTS` is now empty.
 
 Linking is **opt-in and off by default**, because the library's name list ships as a
 server-side file that is not in git:
@@ -65,16 +65,17 @@ also not in git. If you do not have those, you do not need this file.
 
 ## Two rules worth knowing
 
-1. **Content vs. your data.** `seed.py` owns *content*: the ingredient library, and any
-   recipes you choose to keep there. `recipes.db` owns *your data*: ratings, cook history,
-   photos, and every recipe you write in the app. A rebuild refreshes the first and never
-   touches the second. Today `seed.py`'s recipe list is empty and all 298 recipes are
-   app-owned, so in practice a rebuild only refreshes the 36-row ingredient library.
+1. **Content vs. your data.** `seed.py` owns *content*: recipes and ingredients you choose
+   to keep there. `recipes.db` owns *your data*: ratings, cook history, photos, and every
+   recipe you write in the app. A rebuild refreshes the first and never touches the second.
+   Today both of `seed.py`'s lists are empty. The 298 recipes are all app-owned, and the
+   36-row ingredient library was an early demo deleted in migration 046, so in practice a
+   rebuild now refreshes only the King Arthur weight chart and the library-name lookup.
 
 2. **Seed vs. app tiers.** Rows carry a `source` of `seed` or `app`. Seed rows are
    hand-authored and read-only in the app, changed by editing `seed.py` and rebuilding. App
-   rows are created and edited in the app. The tier is what protects the curated ingredient
-   library from being deleted through the API.
+   rows are created and edited in the app. The tier still guards the delete route, and no
+   seed row exists for it to guard right now.
 
 ## Files at a glance
 

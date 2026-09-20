@@ -104,8 +104,10 @@ An earlier version of this section derived its rules by measuring the 36 library
 `seed.py` and the 35 error strings in `app.py`. Those were written by an earlier Claude Code session.
 They are an example of the voice being avoided, not evidence of it, so the measurement was circular
 and every number it produced is void. **Do not support, soften, or amend any rule below by measuring
-an existing string, and do not treat a shipped string as a precedent.** The 36 entries are
-model-written copy awaiting rewrite.
+an existing string, and do not treat a shipped string as a precedent.** ⚠️ **Updated 2026-09-20.**
+The 36 entries were model-written copy, and they were deleted rather than rewritten (migration 046).
+They were an early demo of what an ingredient library would look like. The rules below stand on the
+two style guides alone, which is what this section always said they did.
 
 ### The surface split, which governs everything below
 
@@ -346,11 +348,14 @@ shipped in migration 016 (a later session):** the tests were first decoupled to 
 `no-knead-bread`) were flipped to `source='app'` and their `seed.py` defs removed (`RECIPES` is now
 `[]`). They are ordinary owned app recipes that **no longer lag from build_db's seed-rebuild** — a
 rebuild leaves them intact (0 seed duplicates). This is DONE, not a pending follow-up. **NB:** the 36
-hand-authored **ingredient** rows are *still* seed-rebuilt on every `build_db`
-(`build_db.seed_content` upserts them `ON CONFLICT(id) DO UPDATE`, and deletes no ingredient row, only
-the three child tables). ⚠️ **That is current behavior, not an intended permanent state.** The 36 are
-the owner's corpus, early hand-curated library entries carrying hand-written `descr` and `pairs`, and
-retiring the rebuild is slated work whose stage A shipped in `36f5868`.
+hand-authored **ingredient** rows are **GONE**, deleted in **migration 046** (2026-09-20) in lockstep
+with emptying `seed.py`'s `INGREDIENTS`. They were an early demo of what an ingredient library would
+look like, carrying model-written `descr` and `pairs`, and Andy's ruling is that they have no purpose
+now or later. ⚠️ **`ingredient_weights` WAS NOT PART OF IT.** Those 129 King Arthur rows are real
+reference data, loaded by `seed_weights`, and they stay. Deleted alongside the 36 were their 65
+seasons, 102 region links and 44 regions. Stage A (`36f5868`) decoupled the test fixtures first, which
+is what made the deletion safe. `ingredients` now holds 0 rows and `seed_content`'s ingredient upsert
+runs over an empty dict.
 **[docs/ingredient-model.md](docs/ingredient-model.md)** is the source of record for the model. Any
 remaining 'stale linked-ingredient' symptom, if real, lives in those records/labels, **not** the
 recipe source-tier, and is diagnosed separately rather than re-fixed via a `source` flip.

@@ -333,10 +333,17 @@ foundational first; the one expensive, risk-concentrated piece (photos) is built
 sequence): filter `source='test'` recipes OUT of boxes/feeds; the owner-based read filter is what converts
 the *recorded* `owner` into an actual **box** (no data migration — a read-side filter only).
 
-**Durability — the moat's culinary-knowledge seed already exists in the schema.** Hook A / the later
-recommendation engine won't start from nothing: `ingredients.pairs` is **36/36 hand-authored adjacency
-text**, plus **44 regions / 102 ingredient-region links / 65 seasons** — a real head start for the
-ingredient-adjacency model (the "culinary knowledge, not collaborative filtering" the moat names).
+**Durability, and the moat's culinary-knowledge seed is mined, not hand-written.** Hook A and the
+later recommendation engine do not start from nothing. ⚠️ **Corrected 2026-09-20.** This paragraph
+used to claim the head start was `ingredients.pairs`, 36 of 36 hand-authored adjacency lines, plus 44
+regions, 102 ingredient-region links and 65 seasons. Those 36 rows were an early demo of what an
+ingredient library would look like, and they were deleted in migration 046. The prose was
+model-written and the adjacency in it was not measured against anything.
+
+What the moat actually rests on is the mined corpus. `mined_pairings` holds **362,319 co-occurrence
+rows** scored by lift over 2,231,142 RecipeNLG recipes, against a catalog of **10,013 rows**. That is
+the "culinary knowledge, not collaborative filtering" the moat names, and it is derived from measured
+co-occurrence rather than from 36 paragraphs nobody checked.
 
 ### Build state (where the sequence stands)
 

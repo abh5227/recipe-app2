@@ -201,9 +201,11 @@ def ingredient_slug(name):
     r"""Mint an ingredients.id from a library canonical: 'egg pasta' -> 'egg_pasta'.
 
     ⚠️ UNDERSCORES, AND THIS IS NOT slugify() ABOVE. slugify mints RECIPE ids and emits hyphens
-    ('andys-roast-chicken'). Every one of the 36 hand-authored ingredient ids uses underscores
+    ('andys-roast-chicken'). Every one of the 36 hand-authored ingredient ids used underscores
     (red_onion, soy_sauce, chile_powder), so an ingredient minted with hyphens would sit in the same
-    column in a different shape and would never match the ones already there.
+    column in a different shape and would never match the ones already there. ⚠️ Those 36 were
+    deleted in migration 046, so nothing is left to clash with today. The convention holds anyway,
+    since a column with two id shapes in it is worse than a column with one.
 
     ⚠️ \w IS UNICODE-AWARE AND THAT IS THE POINT. Folding to ASCII first, which import_write's
     _base_slug does for recipe titles, erases 56 of the 10,515 library canonicals outright: 丸糯米,
@@ -1147,10 +1149,12 @@ def delete_ingredient(iid):
     table, so a row created by mistake was permanent. It exists so a wrong promote is reversible, and
     it landed before the library lookup file was generated so that has always been true.
 
-    ⚠️ SEED ROWS ARE REFUSED, AND THAT IS THE POINT OF THE TIER COLUMN. The 36 hand-authored rows
-    carry source='seed' and hold prose nothing regenerates. TIER IS CHECKED FIRST, before the
-    reference count, for the reason delete_recipe gives about ownership: all 36 are both seed AND
-    linked, and refusing on the intrinsic property yields the truer message.
+    ⚠️ SEED ROWS ARE REFUSED, AND NO SEED ROW EXISTS TODAY. The 36 hand-authored rows this guard
+    was written for were an early demo, deleted in migration 046 along with seed.py's INGREDIENTS,
+    so ingredients holds 0 rows and the refusal has nothing to fire on. The check stays because the
+    tier does, and a future seeded row would need it. TIER IS CHECKED FIRST, before the reference
+    count, for the reason delete_recipe gives about ownership. All 36 were both seed AND linked, so
+    refusing on the intrinsic property yielded the truer message.
 
     ⚠️ A LINKED ROW IS REFUSED BY A PRE-CHECK, WITH THE FOREIGN KEY AS THE BACKSTOP. Deleting a row
     some recipe points at would dangle that link, and recipe_ingredients.ingredient_id carries NO

@@ -279,10 +279,10 @@ in `app.py`**. ✅ queried and grepped.
 
 ## The model, in outline
 
-- **SHARED.** Ingredients every user can use. Today's 36 rows are effectively this, since the
-  table has no owner column at all. ✅ ⚠️ **Accurate about the schema, and since revised as
-  intent.** See "The seed tier, the corpus, and how a fresh clone starts" below: the 36 are the
-  owner's corpus, not a shared starter set.
+- **SHARED.** Ingredients every user can use. The 36 rows this bullet described were effectively
+  this, since the table has no owner column at all. ✅ ⚠️ **Moot since 2026-09-20.** Those rows were
+  an early demo and were deleted in migration 046, so the category currently holds nothing. The
+  shape stays described because a promoted row can still land in it.
 - **PERSONAL.** A user's own ingredients, server-stored per-user data rather than device-local,
   private to them, usable in their own recipes. 🟢 Andy's confirmed shape.
 - ⚠️ **The structural gap is real and verified:** `ingredients` has no owner column, so *nothing*
@@ -423,26 +423,32 @@ The decision below is a real architectural clarification and it resolves a confu
 back repeatedly. **It is not a plan, and the work it implies is entangled with a piece of code that
 has no committed home.** Both halves of that are load-bearing.
 
-### ✅ DECIDED: the 36 curated ingredients are the owner's corpus
+### 🛑 REVERSED: the 36 curated ingredients were a demo, and they are deleted
 
-They are **not** a shared starter set that every installation receives.
+**Retired in migration 046 (2026-09-20), in lockstep with emptying `seed.py`'s `INGREDIENTS`.**
+`ingredients` holds 0 rows.
 
-Today they live in `seed.py` and `build_db.py` re-seeds all 36 into the database on every run. ✅
-That arrangement is **historical**. It predates the reference library and the promotion system,
-which are now the real way an ingredient enters the app.
+The decision that stood here read the 36 as the owner's corpus and concluded they should become
+durable database rows, migrated in rather than re-seeded. The first half of that was right about the
+mechanism and wrong about the content. Andy's ruling is that the 36 were an early demonstration of
+what an ingredient library would look like, written before one existed, and that they have no purpose
+now or later. The library that shipped is 10,013 catalog rows drawn from Wikidata, Open Food Facts,
+AGROVOC and Wiktionary.
 
-**Decided.** The 36 should become durable database rows, app-tier at first and personal later if the
-model calls for it, **migrated in as part of the owner's corpus rather than re-seeded from `seed.py`**.
-Once migrated they are ordinary durable rows, indistinguishable in kind from any promoted ingredient.
+**What survived the reversal.** The reasoning about the anomaly holds, and it points the other way.
+Every other ingredient in the system is either a catalog row in a lookup table or a durable
+`ingredients` row, and the 36 were neither. Removing them is what stops them being special. The
+re-seed is retired because the rows are, not so that they could persist.
 
-**Why.** Every other ingredient in the system already works this way. The 10,515 reference-library
-rows live in a lookup table and are never re-seeded. Any promoted or personal row is a durable
-`ingredients` row. **The 36 are the anomaly, not the pattern.** Treating them like the rest is what
-stops them being special, and "stops being special" is the whole content of the decision.
+⚠️ **`ingredient_weights` WAS NOT PART OF THIS AND MUST NOT BE.** Its 129 King Arthur rows are real
+reference data behind the grams converter, loaded by `seed_weights` rather than `seed_content`, and 0
+of its lookup_keys was one of the 36. The 247-row unit counted further down this file (36 ingredients,
+65 seasons, 102 region links, 44 regions) correctly leaves the weights out, and 247 is exactly what
+migration 046 deleted. The retirement that unit was written to size is the deletion instead.
 
-⚠️ This revises the SHARED bullet under "The model, in outline", which reads the 36 as effectively
-shared because the table had no owner column. That was accurate about the schema and wrong about the
-intent.
+**The delete-protection gap recorded below is moot.** It measured what would happen if the 36 were
+stamped `source='app'` and could then be deleted through the API one unlink at a time. There are no
+rows left to protect.
 
 ### ✅ DECIDED: a fresh clone starts empty, and the library is server-side infrastructure
 
@@ -471,8 +477,11 @@ rows already behave.
 seed-tier diagnostic flagged that shipping 247 rows of content to a fresh clone had no precedent in
 this repo. ✅ Measured: the only three migrations containing `INSERT INTO` (005, 019, 026) are
 table-rebuild copies, not content. **That concern is resolved by scoping, not by finding a technique.**
-There is no shared starter set, so there is nothing to ship to anyone. There is the owner's corpus,
-which gets migrated, and the library, which sits on the server.
+There is no shared starter set, so there is nothing to ship to anyone. ⚠️ **Updated 2026-09-20.** The
+247 rows were deleted rather than migrated, so nothing is shipped at all. Migration 046 is a fourth
+file carrying `INSERT INTO`, and it inserts exactly one catalog row (`lemongrass`) behind a guard that
+makes it a no-op wherever the lookup is empty. A fresh clone starts with an empty `ingredients` table
+and the library sits on the server.
 
 ### ⚠️ THE ENTANGLEMENT: "migrate my ingredients in" IS the matcher work
 
@@ -490,7 +499,7 @@ which exists in the repo, and calls it **the binding constraint on actually link
 So three things that were being treated as separate are one piece of work:
 
 - retiring the seed tier
-- migrating the owner's corpus into durable rows
+- ~~migrating the owner's corpus into durable rows~~ ⚠️ **deleted instead, migration 046**
 - the matcher
 
 They share a single sentence. **Get the owner's ingredients, and the links from his recipes to them,
@@ -509,8 +518,9 @@ never against `recipes.db`. Recorded here because they inform the build whenever
   detail route returns it.
 - **The unit is 247 rows, not 36.** `ingredients` 36, `ingredient_seasons` 65, `ingredient_regions`
   102, `regions` 44. Ingredients are upserted and never deleted. ⚠️ The other three are **wholesale
-  deleted and rebuilt every run** (`build_db.py:152` to `154`). Retirement has to give all four
-  durable storage, and three of them currently have a writer that opens with `DELETE FROM`.
+  deleted and rebuilt every run** (`build_db.py:152` to `154`). ✅ **The count was right and 247 is
+  exactly what migration 046 removed.** The conclusion drawn from it, that all four needed durable
+  storage, is what the reversal above overturns. None of the four needed keeping.
 - **The delete-protection gap is real and was proven, not argued.** With the 36 stamped `source='app'`
   in a scratch copy, one unlink and `DELETE /api/ingredients/allspice` returned **200** with the row
   and its hand-written description gone. In the live database **28 of the 36 are linked by exactly
@@ -538,8 +548,11 @@ never against `recipes.db`. Recorded here because they inform the build whenever
 
 ### ⚠️ OPEN, raised by the decision and not answered by it
 
-- **How the owner's corpus actually gets migrated in**, including the 36 and their 211 season and
-  region child rows. Bound up with the matcher. Unscoped.
+- ~~**How the owner's corpus actually gets migrated in**, including the 36 and their 211 season and
+  region child rows.~~ ✅ **ANSWERED BY DELETION (migration 046).** Nothing is migrated in. The 211
+  is 65 seasons plus 102 region links plus 44 `regions`, and all 211 were deleted with the 36. Only
+  167 of them are child rows of an ingredient, since `regions` is a table the links point at rather
+  than rows hanging off an ingredient.
 - **What replaces the delete protection once `source='seed'` is gone.** A new notion of a protected
   ingredient is needed, and `library_id IS NULL` is not it. That column is provenance, and a future
   hand-authored row would carry NULL too. One line of code, one real decision.

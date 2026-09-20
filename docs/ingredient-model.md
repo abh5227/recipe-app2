@@ -105,35 +105,37 @@ one.
 row**. The predicate is unchanged, the mechanism is unchanged, and the privacy gate built on it is
 correct as written.
 
-## The 36 curated rows are the owner's corpus
+## The 36 curated rows were a demo, and they are gone
 
-**Measured: 36 rows in `ingredients`, and every one of them is a library row.**
+**Retired in migration 046 (2026-09-20). `ingredients` holds 0 rows.**
 
-They are early **hand-curated library entries** that predate the library build. They carry
-hand-written `descr` and `pairs` prose that the library has no equivalent for and that nothing
-regenerates. `_promote_library_row` records the overlap: 32 of the 36 ids are reproduced exactly by
-slugifying some library canonical (garlic, red_onion, soy_sauce), which is why the promote path links
-to an existing row rather than inserting beside it.
+They were early hand-curated library entries written before the library existed, carrying
+model-written `descr` and `pairs` prose that was never rewritten. The reading that stood here, that
+they were the owner's corpus and would become durable rows, was wrong about what they were. Andy's
+ruling is that they were a demonstration of what an ingredient library would look like, built to be
+replaced by one. The library that shipped is 10,013 catalog rows drawn from Wikidata, Open Food
+Facts, AGROVOC and Wiktionary, so the thing they stood in for now exists.
 
-They are **not** a separate tier, and they are **not** a starter set that every installation
-receives. Chef's Choice is a hosted service. Nobody clones it to use it, so there is nothing to ship
-to anyone. There is the owner's corpus, and there is the library on the server.
+⚠️ **WHAT WAS DELETED AND WHAT WAS NOT.** Migration 046 removed the 36 rows, their 65 seasons, their
+102 region links and the 44 regions those reached, in lockstep with emptying `seed.py`'s
+`INGREDIENTS`. `ingredient_weights` was **not** touched. Its 129 King Arthur rows are real reference
+data behind the grams converter, loaded by a different function (`seed_weights`), and 0 of its
+lookup_keys was one of the 36.
 
-⚠️ **How they are loaded today does not match that.** `build_db.seed_content` still upserts all 36
-from `seed.py` on every run, keyed `ON CONFLICT(id) DO UPDATE`, and separately deletes and rebuilds
-three child tables (`ingredient_seasons`, `ingredient_regions`, `regions`). The ingredient rows
-themselves are never deleted, and the comment says why, to protect recipe references.
+**The 50 recipe lines that pointed at them keep their text and their catalog links.** 48 already
+carried a `catalog_id`. The other 2 were re-pointed first, `no-knead-bread`'s yeast to `Q45422` and
+`gai-yang`'s lemongrass to a `lemongrass` row authored for it, so no line lost a link. What all 50
+lost is `ingredient_id`, which is the column the ingredient drawer opened on.
 
-✅ **DECIDED, and the contradiction that stood here is closed.** The rebuild is **current behavior,
-not an intended permanent state.** The 36 are the owner's corpus, the seed-rebuild is slated to be
-retired, and once retired they are ordinary durable rows, indistinguishable in kind from any promoted
-ingredient. **Stage A shipped in `36f5868`**, which decoupled the test fixtures from `seed.py`'s
-`INGREDIENTS`. Nothing after it is scoped.
+⚠️ **TWO FEATURES ARE NOW HONESTLY EMPTY.** `/api/ingredients` backs the ingredient drawer and
+`/api/in-season` backs the month chips. Both read only these rows. The drawer's content was the demo
+prose being retired, so a drawer that still opened would be showing the thing the ruling removes.
 
-This was change-list **D1**, its highest-priority contradiction. `CLAUDE.md`'s seed-to-app-miss
-paragraph, under Working conventions, called the rebuild intended, and now states the corrected model
-and points here. ⚠️ **The mechanism is still undecided**, meaning how the 36 become durable rows and
-what becomes of their `seed.py` definitions. That question is entangled with the backfill below.
+**What this reverses.** The ✅ DECIDED entry that stood here said the 36 were the owner's corpus, that
+the seed-rebuild would be retired, and that they would then be ordinary durable rows. Stage A of that
+shipped (`36f5868`, decoupling the test fixtures from `seed.py`) and the conclusion did not hold. The
+rebuild is retired because the rows are, not so that they could persist. Change-list **D1** closes on
+the other side of the argument it recorded.
 
 ## The two linking surfaces, and neither is built
 
@@ -358,5 +360,6 @@ review queue, the browse surface, the backfill or the import linking. It does no
 comments and test names in change-list section A. Those are separate pieces of work with their own
 decisions, and the change-list is where they are enumerated.
 
-**Change-list D1 is settled** and its answer is stated above, under "The 36 curated rows are the
-owner's corpus". What stays open there is the mechanism, not the direction.
+**Change-list D1 is closed** and its answer is stated above, under "The 36 curated rows were a demo,
+and they are gone". Neither side of the contradiction it recorded survived. The rows were deleted
+rather than made durable, so the mechanism question it left open does not arise.
