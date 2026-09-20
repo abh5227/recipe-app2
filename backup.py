@@ -30,8 +30,19 @@ def create_backup(db=DB, backup_dir=BACKUP_DIR, keep=KEEP):
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     dest = backup_dir / f"recipes-{stamp}.db"
     shutil.copy2(db, dest)
-    # prune oldest backups beyond `keep`, so the folder doesn't grow forever
-    for old in sorted(backup_dir.glob("recipes-*.db"))[:-keep]:
+    # prune oldest backups beyond `keep`, so the folder doesn't grow forever.
+    #
+    # ⚠️ THE GLOB MATCHES A TIMESTAMP, NOT A WILDCARD, AND THAT IS THE WHOLE FIX. It used to read
+    #    "recipes-*.db", which also caught the hand-named recipes-preview-*.db copies sitting in the
+    #    same folder. Digits sort before letters, so a fresh recipes-<stamp>.db sorted to position 0
+    #    and was the FIRST thing pruned once 30 preview files existed. This function deleted the
+    #    backup it had just made, every single run, and the folder held 31 preview copies and not one
+    #    of recipes.db. Found before migration 046, when the backup taken for it vanished.
+    #
+    #    A backup routine that silently destroys its own output is worse than none, because the
+    #    caller is told a backup exists. create_backup returns dest and the import runner treats a
+    #    missing database as abort-before-writing, so both callers believed it.
+    for old in sorted(backup_dir.glob("recipes-[0-9]*.db"))[:-keep]:
         old.unlink()
     return dest
 
