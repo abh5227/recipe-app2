@@ -114,8 +114,14 @@ def fold(s):
     return s
 
 
-def load_catalog(conn):
+def load_catalog(conn, source_slug=None):
     """Every name the catalog answers to, normalized, mapping to the rows that own it.
+
+    ⚠️ source_slug SELECTS WHICH ALIASES ARE LIVE, and None is not "all of them", it is
+    "the unscoped ones". A scoped alias exists because two sources disagree about what a name
+    means, so applying india's 'corn flour' -> cornstarch to a RecipeNLG line would be the
+    resolved-but-wrong failure the scope was added to prevent. Passing no slug is what a local
+    recipe and every existing caller get, and it is the conservative half. See migrations/047.
 
     ⚠️ ALIASES ARE READ HERE, AND UNTIL 2026-09-16 THEY WERE NOT. library_aliases held 164 rows
     that no code path consulted, so every alias applied by the class A, class B and tier 0
@@ -136,7 +142,22 @@ def load_catalog(conn):
         f = fold(canon)
         if f != norm_name(canon) and (lid, canon) not in cat[f]:
             cat[f].append((lid, canon))
-    for lid, alias in conn.execute("select library_id, alias from library_aliases"):
+    # ⚠️ A DATABASE WITHOUT MIGRATION 047 HAS NO source_slug AND MUST STILL MATCH. The four
+    #    mining run scripts read recipes.db by name, and a live database one migration behind
+    #    would otherwise crash the matcher on a column it has never heard of. Every alias in
+    #    such a database is unscoped by definition, so the unscoped query is the correct
+    #    reading of it, not a degraded one. Same reasoning as the cut-row skip below.
+    scoped = any(r[1] == "source_slug"
+                 for r in conn.execute("PRAGMA table_info(library_aliases)"))
+    if not scoped:
+        q, params = "select library_id, alias from library_aliases", ()
+    elif source_slug is None:
+        q, params = "select library_id, alias from library_aliases where source_slug is null", ()
+    else:
+        q = ("select library_id, alias from library_aliases "
+             "where source_slug is null or source_slug = ?")
+        params = (source_slug,)
+    for lid, alias in conn.execute(q, params):
         canon = canon_of.get(lid)
         if canon is None:          # an alias whose row was cut. load_aliases refuses these,
             continue               # and a stale database is not worth crashing the matcher for

@@ -21,6 +21,12 @@ is not in the schema, it is here, and it is about what this file ADDS rather tha
 alias of some other row would make a name that resolves today resolve to two rows tomorrow, which
 is the same failure by a different route.
 
+⚠️ AN ALIAS MAY BE SCOPED TO ONE SOURCE, and an empty source_slug means every source. The
+collision rule above is then per source rather than per file: a source sees the unscoped aliases
+plus its own, and no alias may reach two rows inside that set. A file-wide check would pass an
+unscoped 'corn flour' sitting beside an india-scoped one, which is two live rows when india is
+matched. See migrations/047.
+
 ⚠️ EMPTY IS SAFE AND IS THE NORMAL STATE FOR A FRESH CLONE. library_names is loaded from a
 gitignored, server-side CSV, so a clone has no rows for an alias to point at. With no catalog the
 loader reports and returns rather than raising, exactly as build_db.seed_library_names does.
@@ -70,10 +76,22 @@ def load(db=DB, hand=HAND, verbose=True):
         if holders:
             raise SystemExit(f"⚠️  alias {alias!r} collides with the canonical of "
                              f"{sorted(holders)}. It would resolve to two rows.")
-        if alias.lower() in seen and seen[alias.lower()] != lid:
-            raise SystemExit(f"⚠️  alias {alias!r} is claimed by {seen[alias.lower()]} and by "
-                             f"{lid} in this file. It would resolve to two rows.")
-        seen[alias.lower()] = lid
+        seen.setdefault(alias.lower(), {})[r.get("source_slug") or ""] = lid
+
+    # ⚠️ THE COLLISION CHECK IS PER SOURCE, NOT PER FILE, because an unscoped alias applies
+    #    everywhere. 'corn flour' scoped to india and 'corn flour' left unscoped would BOTH be
+    #    live when india is matched, which is two rows and the failure this file exists to stop.
+    #    A file-wide check would have passed it. Each source's effective set is unscoped + its
+    #    own, and the empty slug is the set a local recipe sees.
+    scopes = {r.get("source_slug") or "" for r in rows}
+    for alias_l, by_scope in seen.items():
+        unscoped = by_scope.get("")
+        for scope in scopes:
+            live = {unscoped, by_scope.get(scope)} - {None}
+            if len(live) > 1:
+                where = f"source {scope!r}" if scope else "every source"
+                raise SystemExit(f"⚠️  alias {alias_l!r} resolves to {sorted(live)} in {where}. "
+                                 "An alias that reaches two rows is refused, scoped or not.")
 
     try:
         conn.execute("BEGIN")
@@ -81,11 +99,11 @@ def load(db=DB, hand=HAND, verbose=True):
         for r in rows:
             conn.execute(
                 "INSERT INTO library_aliases "
-                "(library_id, alias, canonical_at_load, source, confidence, note) "
-                "VALUES (?,?,?,?,?,?)",
+                "(library_id, alias, canonical_at_load, source, confidence, note, source_slug) "
+                "VALUES (?,?,?,?,?,?,?)",
                 (r["library_id"], r["alias"], canon[r["library_id"]],
                  r.get("source") or "read", r.get("confidence") or "read",
-                 r.get("note") or None))
+                 r.get("note") or None, r.get("source_slug") or None))
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
