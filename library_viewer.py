@@ -47,6 +47,13 @@ from flask import Flask, request, jsonify, redirect
 from markupsafe import escape
 from urllib.parse import quote
 
+# ⚠️ THE COMBINE LIVES IN ONE PLACE AND THIS IS NOT IT. Every mined table carries source_slug in
+#    its primary key, so one fact is stored as one row per source and a bare SELECT returns
+#    SHARDS. mined_combine owns the summing, and the four arithmetic checks in
+#    previews/wikibooks-phase-c.md were run against it. The viewer embeds its views rather than
+#    writing its own SUM, so the page shows what the verification proved.
+import mined_combine as MC
+
 DB = os.environ.get("VIEWER_DB", "recipes.db")
 # ⚠️ THE ONE FILE THIS PROCESS CAN WRITE. Named here beside the database so the pair is read
 #    together, and printed in the readout strip on every page so the claim is visible rather
@@ -595,7 +602,9 @@ def counts(c):
         #    derived from a corpus that is not in the repo, and empty is their normal state in a
         #    clone. A bare COUNT here would take the whole viewer down on a database that simply
         #    has not been migrated yet.
-        "dishes": q("SELECT COUNT(*) FROM mined_dish") if has_dishes(c) else 0,
+        # ⚠️ COUNT(DISTINCT dish_id), NOT COUNT(*). With two sources loaded the row count is
+        #    161,215 and the dish count is 159,528: 1,687 dishes are held by both.
+        "dishes": q("SELECT COUNT(DISTINCT dish_id) FROM mined_dish") if has_dishes(c) else 0,
     }
 
 
@@ -1046,11 +1055,53 @@ def neighbourhood(conn, lid):
     return out
 
 
+def _depunct(s):
+    """The key a category name and its catalog twin share once punctuation is dropped."""
+    return re.sub(r"[^a-z0-9]+", "", (s or "").casefold())
+
+
+def category_twin(conn, name):
+    """⚠️ GOTCHA 7. The twin is matched THREE ways, and canonical alone finds the wrong number.
+
+    A category name is a de-punctuated label. The catalog row it pairs with may keep the
+    punctuation ('cow s milk cheese' against "cow's-milk cheese"), or may carry the category name
+    as an ALIAS rather than as its canonical ('mushroom' is an alias on 'edible mushroom',
+    'poultry meat' on 'poultry'). Matching canonical only found neither.
+
+    Measured: with canonical-only matching, 198 rows dropped off their category page when the
+    miscategorization pass moved them from in_category onto the catalog row. Same rows, same
+    parents, invisible for a punctuation mark.
+    """
+    for q in ("SELECT library_id FROM library_names WHERE canonical=? COLLATE NOCASE",
+              "SELECT library_id FROM library_aliases WHERE alias=? COLLATE NOCASE"):
+        hit = conn.execute(q, (name,)).fetchone()
+        if hit:
+            return hit["library_id"]
+    key = _depunct(name)
+    if key:
+        for r in conn.execute("SELECT library_id, canonical FROM library_names"):
+            if _depunct(r["canonical"]) == key:
+                return r["library_id"]
+    # Last, the plural label against a singular row. Measured across all 258 categories this
+    # resolves exactly two, 'lentils' to 'lentil' and 'Swiss cheeses' to 'Swiss cheese', and
+    # matches nothing else, so it cannot quietly bind a category to the wrong food.
+    if name.endswith("s"):
+        hit = conn.execute("SELECT library_id FROM library_names WHERE canonical=? COLLATE NOCASE",
+                           (name[:-1],)).fetchone()
+        if hit:
+            return hit["library_id"]
+    return None
+
+
 def category_members(conn, cid):
     """⚠️ GOTCHA 4. A category can be reached two ways and both must be gathered.
 
     'legume' has children on the slug AND on the catalog row Q145909 that shares its name.
     Asking only about the slug understates the membership by about two fifths.
+
+    ⚠️ The catalog-row half gathers EVERY kind except in_category, not kind_of alone. After the
+    miscategorization pass a cut reaches its parent as part_of ('turkey breast' under 'turkey') and
+    a product as made_from ('ganache' under 'chocolate'). Asking only for kind_of loses 82 of them.
     """
     rows, seen = [], set()
     for r in conn.execute(
@@ -1059,17 +1110,14 @@ def category_members(conn, cid):
             "WHERE r.parent_id=? AND r.kind='in_category'", (cid,)):
         seen.add(r["id"]); rows.append(dict(r, via="in_category"))
     cat = conn.execute("SELECT name FROM library_categories WHERE category_id=?", (cid,)).fetchone()
-    twin = None
-    if cat:
-        for t in conn.execute("SELECT library_id FROM library_names WHERE canonical=? COLLATE NOCASE",
-                              (cat["name"],)):
-            twin = t["library_id"]
-            for r in conn.execute(
-                    "SELECT ln.library_id id, ln.canonical label, r.confidence, r.source "
-                    "FROM library_relations r JOIN library_names ln ON ln.library_id=r.child_id "
-                    "WHERE r.parent_id=? AND r.kind='kind_of'", (twin,)):
-                if r["id"] not in seen:
-                    seen.add(r["id"]); rows.append(dict(r, via="kind_of on the catalog row"))
+    twin = category_twin(conn, cat["name"]) if cat else None
+    if twin:
+        for r in conn.execute(
+                "SELECT ln.library_id id, ln.canonical label, r.confidence, r.source, r.kind "
+                "FROM library_relations r JOIN library_names ln ON ln.library_id=r.child_id "
+                "WHERE r.parent_id=? AND r.kind<>'in_category'", (twin,)):
+            if r["id"] not in seen:
+                seen.add(r["id"]); rows.append(dict(r, via=f"{r['kind']} on the catalog row"))
     rows.sort(key=lambda x: x["label"].lower())
     return rows, twin
 
@@ -1290,12 +1338,46 @@ CAT_EXPR = {
              " ON lc.category_id=r.parent_id WHERE r.child_id=ln.library_id"
              " AND r.kind='in_category' LIMIT 1)",
     "ent":   "(SELECT e.entry_id FROM library_entries e WHERE e.library_id=ln.library_id)",
+    # ⚠️ COALESCE, AND SUM ACROSS SOURCES. A row with no mined_occurrences row at all must read
+    #    0 rather than NULL, because the threshold compares it with >= and NULL >= 2 is NULL,
+    #    which is not false. SUM is the combine's rule: two sources are added, never averaged.
+    "corpus": "(SELECT COALESCE(SUM(o.n_recipes),0) FROM mined_occurrences o"
+              " WHERE o.library_id=ln.library_id)",
 }
+
+# ⚠️ THE ONE TUNABLE NUMBER. 2 matches the dish floor. The 0-to-1 step is what does the work:
+#    6,934 of 10,013 rows sit at zero and only 417 more sit at exactly 1.
+FOREGROUND_N = 2
+
+# The Content-vs-Your-Data rule applied to VISIBILITY. A row earns the foreground by corpus
+# evidence, OR by being in one of your recipes, OR by having prose written about it. The last two
+# clauses are why a threshold cannot demote what you actually cook with: measured at T=2, 13 rows
+# Andy cooks with fall below the count and every one of them is held up by clause two or three.
+FOREGROUND_SQL = (
+    f"({CAT_EXPR['corpus']} >= {FOREGROUND_N}"
+    " OR EXISTS(SELECT 1 FROM recipe_ingredients ri WHERE ri.catalog_id=ln.library_id)"
+    " OR EXISTS(SELECT 1 FROM library_entries e WHERE e.library_id=ln.library_id))")
+
+CAT_TIERS = [("", "the core"), ("background", "the tail"), ("all", "everything")]
+
+
+def mined_ready(c):
+    """⚠️ THE GUARD, AND IT IS THE WHOLE RISK OF THE FEATURE. The threshold reads
+    mined_occurrences. A fresh clone runs the migrations and has the TABLE with no ROWS in it, so
+    every count would read 0, nothing would clear the floor, and the default view would hide the
+    entire catalog behind a control nobody knew to press. A database old enough not to have the
+    table at all would 500 instead.
+
+    Both degrade to showing everything. An empty corpus is not evidence that a row is obscure, it
+    is the absence of evidence, and the two must not render the same."""
+    return has_table(c, "mined_occurrences") and bool(
+        c.execute("SELECT 1 FROM mined_occurrences LIMIT 1").fetchone())
 
 # the sort whitelist. A key that is not in here never reaches SQL.
 CAT_SORT = {"ingredient": "ln.canonical COLLATE NOCASE", "category": CAT_EXPR["cat"],
             "entry": CAT_EXPR["ent"], "parents": CAT_EXPR["par"], "children": CAT_EXPR["kids"],
-            "lines": CAT_EXPR["lines"], "library_id": "ln.library_id COLLATE NOCASE"}
+            "lines": CAT_EXPR["lines"], "library_id": "ln.library_id COLLATE NOCASE",
+            "corpus": CAT_EXPR["corpus"]}
 
 
 def cat_order(key, direction):
@@ -1329,11 +1411,24 @@ CAT_TEXT = {"q": ("ingredient", "name contains"), "cat": ("category", "category 
             "ent": ("entry", "entry contains")}
 
 
-def cat_where():
+def cat_where(c):
     """Read the request into (where, args, active). Every control lands in one WHERE, so the
-    head count and the rows can never disagree about what is being shown."""
+    head count and the rows can never disagree about what is being shown.
+
+    ⚠️ THE TIER IS A WHERE CLAUSE LIKE ANY OTHER, which is what makes it view-only. Nothing is
+    stored, nothing is flagged, and the same row moves between tiers as sources accumulate."""
     where, args, active = [], [], []
     g = lambda k: (request.args.get(k) or "").strip()
+
+    # The default is the core. "all" lifts the threshold, "background" inverts it. With no counts
+    # loaded, mined_ready is false and no tier clause is added at all.
+    tier = g("tier") if g("tier") in ("background", "all") else ""
+    if mined_ready(c):
+        if tier == "":
+            where.append(FOREGROUND_SQL)
+        elif tier == "background":
+            where.append(f"NOT {FOREGROUND_SQL}")
+            active.append(("tier", "showing", "the tail only"))
 
     if g("q"):
         where.append("ln.canonical LIKE ? COLLATE NOCASE"); args.append(f"%{g('q')}%")
@@ -1452,9 +1547,15 @@ def activebar(active, total, n_all):
 def catalog():
     c = db()
     p = max(1, int(request.args.get("page") or 1))
+    ready = mined_ready(c)
+    # ⚠️ THE CORPUS SORT IS OFFERED ONLY WHEN THE COUNTS EXIST. Its expression selects from
+    #    mined_occurrences, so letting ?sort=corpus through on a database without the table turns
+    #    a bookmarked URL into a 500.
     sort = request.args.get("sort") if request.args.get("sort") in CAT_SORT else ""
+    if sort == "corpus" and not ready:
+        sort = ""
     direc = "desc" if (request.args.get("dir") or "") == "desc" else "asc"
-    where, args, active = cat_where()
+    where, args, active = cat_where(c)
     w = ("WHERE " + " AND ".join(where)) if where else ""
     # ⚠️ THE COUNT AND THE ROWS SHARE ONE WHERE. The head figure is the same query as the body.
     total = c.execute(f"SELECT COUNT(*) FROM library_names ln {w}", args).fetchone()[0]
@@ -1464,7 +1565,7 @@ def catalog():
     for r in c.execute(
             f"SELECT ln.library_id, ln.canonical, {CAT_EXPR['lines']} lines,"
             f" {CAT_EXPR['par']} par, {CAT_EXPR['kids']} kids, {CAT_EXPR['cat']} cat,"
-            f" {CAT_EXPR['ent']} ent"
+            f" {CAT_EXPR['ent']} ent, {CAT_EXPR['corpus'] if ready else '0'} corpus"
             f" FROM library_names ln {w} ORDER BY {order} LIMIT ? OFFSET ?",
             args + [PER, (p - 1) * PER]):
         lid = uq(r["library_id"])
@@ -1477,6 +1578,9 @@ def catalog():
             cnt(r["par"], f'/relations?child={lid}&kind=hierarchy'),
             cnt(r["kids"], f'/relations?parent={lid}&kind=hierarchy'),
             cnt(r["lines"], f'/links?catalog={lid}'),
+            # the count the threshold reads, shown so a row's tier is legible rather than opaque
+            ((fmt(r["corpus"]) if r["corpus"] else '<span class=dimc>0</span>')
+             if ready else '<span class=dimc>-</span>'),
             f'<span class="mono dimc">{ilink(r["library_id"])}</span>'))
     q1 = lambda sql: c.execute(sql).fetchone()[0]
     n_bare = q1("SELECT COUNT(*) FROM library_names ln WHERE NOT EXISTS(SELECT 1 FROM "
@@ -1485,12 +1589,19 @@ def catalog():
     n_used = q1("SELECT COUNT(DISTINCT catalog_id) FROM recipe_ingredients WHERE catalog_id IS NOT NULL")
     n_ent = q1("SELECT COUNT(*) FROM library_entries")
     n_par = q1("SELECT COUNT(DISTINCT parent_id) FROM library_relations WHERE kind<>'in_category'")
+    n_fore = q1(f"SELECT COUNT(*) FROM library_names ln WHERE {FOREGROUND_SQL}") if ready else 0
     cats = [x[0] for x in c.execute("SELECT category_id FROM library_categories ORDER BY 1")]
     about = (f'Every name the library can resolve, and mostly that is all it holds. '
              f'<b>{fmt(n_bare)}</b> of the {fmt(n_all)} carry nothing but a name, which is the '
              f'ordinary state of a catalog this size. <b>{fmt(n_used)}</b> have ever been reached '
              f'by a recipe line, and <b>{fmt(n_ent)}</b> have prose written about them. A row '
              f'earns its detail by being cooked with, not by being listed.')
+    if ready:
+        about += (f' The core is the <b>{fmt(n_fore)}</b> rows that {FOREGROUND_N} or more corpus '
+                  f'recipes reach, plus everything you cook with or have written up. The other '
+                  f'<b>{fmt(n_all - n_fore)}</b> wait in the tail until a source finds them.')
+    else:
+        about += ' No corpus counts are loaded, so the whole catalog is shown.'
     HEADS = [
       ("ingredient", "the name as the library spells it", "canonical", "ingredient"),
       ("category", "the browsable family it was filed under", "in_category parent", "category"),
@@ -1500,16 +1611,31 @@ def catalog():
       ("children", f"narrower rows below it. Only {fmt(n_par)} rows parent anything",
        "kind_of, made_from, part_of", "children"),
       ("lines", "recipe lines that resolved here", "catalog_id", "lines"),
+      ("corpus", (f"corpus recipes that reach it, summed over every source. {FOREGROUND_N} or "
+                  f"more puts a row in the core") if ready else "no corpus counts are loaded",
+       "mined_occurrences", "corpus" if ready else ""),
       ("library_id", "the stored id. Everything else points at this", "library_id", "library_id"),
     ]
+    # ⚠️ BUILT ONLY WHEN THE COUNTS EXIST, and empty otherwise, so a database with no corpus
+    #    shows no depth control rather than a control that cannot do anything.
+    tierbar = ('<div class=filters>' + filters(
+        "/catalog", "tier", CAT_TIERS,
+        request.args.get("tier") if request.args.get("tier") in ("background", "all") else "",
+        "depth") + '</div>') if ready else ''
+    # ⚠️ THE DEFAULT TIER NARROWS WITHOUT PUTTING A CHIP IN `active`, so `active` alone no longer
+    #    answers "is this the whole catalog". cat_gauge's rule is that the chart and the table
+    #    describe the same set, and the head has to obey it too: drawn with bool(active) the page
+    #    read "2,717 rows" under a caption saying "all 10,013 rows". Compare the counts instead.
+    narrowed = bool(active) or total != n_all
     body = f"""<section>
-{phead("Catalog", total, "rows" if not active else "rows shown", "library_names", about,
-       of=None if not active else n_all)}
-{cat_gauge(c, w, args, total, n_all, bool(active))}
+{phead("Catalog", total, "rows" if not narrowed else "rows shown", "library_names", about,
+       of=None if not narrowed else n_all)}
+{cat_gauge(c, w, args, total, n_all, narrowed)}
 <div class=filters>{filters("/catalog","filter",CAT_FILTERS,request.args.get("filter") or "","show")}</div>
+{tierbar}
 {refine(cats)}
 {activebar(active, total, n_all)}
-{table(HEADS, rows, ["nm","","","num","num","num",""], "No catalog row matches.")}
+{table(HEADS, rows, ["nm","","","num","num","num","num",""], "No catalog row matches.")}
 {pager(p,total,"/catalog")}</section>"""
     c.close()
     return page("Catalog", body, "/catalog", [("Condition", "/"), ("Catalog", None)])
@@ -2069,21 +2195,22 @@ def recipe(rid):
     if hit:
         did, dname, dn = hit
         fbits, fbase = dish_facet_bits(c, did, dn)
+        _pv, _pp = MC.profile_view()
         top = list(c.execute(
-            "SELECT l.canonical, i.n, i.n_dish FROM mined_dish_ingredient i "
-            "JOIN library_names l ON l.library_id=i.library_id "
-            "WHERE i.dish_id=? ORDER BY i.n DESC LIMIT 8", (did,)))
+            f"SELECT l.canonical, i.n, i.n_dish FROM {_pv} i "
+            f"JOIN library_names l ON l.library_id=i.library_id "
+            f"WHERE i.dish_id=? ORDER BY i.n DESC LIMIT 8", _pp + [did]))
         mine = {x["catalog_id"] for x in c.execute(
             "SELECT catalog_id FROM recipe_ingredients WHERE recipe_id=? AND catalog_id IS NOT NULL",
             (rid,))}
         common = list(c.execute(
-            f"SELECT l.library_id, l.canonical, i.n, i.n_dish FROM mined_dish_ingredient i "
+            f"SELECT l.library_id, l.canonical, i.n, i.n_dish FROM {_pv} i "
             f"JOIN library_names l ON l.library_id=i.library_id WHERE i.dish_id=? "
-            f"ORDER BY i.n DESC", (did,)))
+            f"ORDER BY i.n DESC", _pp + [did]))
         have = [x for x in common if x["library_id"] in mine]
         dishsec = f"""<section><h2>As the corpus cooks it</h2>
 <p class=cap>This recipe's name reduces to the dish <b>{dlink(did, dname)}</b>, which
- {fmt(dn)} recipes in RecipeNLG also resolve to. Everything in this section is the corpus
+ {fmt(dn)} recipes across every mined source also resolve to. Everything here is the corpus
  speaking, not this library. It is here to compare against, never to correct with.</p>
 <div class=two><dl class=kv>
   <dt>dish</dt><dd>{dlink(did, dname)} <span class=dimc>{fmt(dn)} recipes</span></dd>
@@ -2216,20 +2343,27 @@ def ingredient(lid):
     #    derived from a corpus that is not in the repository.
     dish_base, dish_use, n_base, n_use = [], [], 0, 0
     if has_dishes(c):
-        n_base = c.execute("SELECT COUNT(*) FROM mined_dish_base WHERE library_id=?",
+        # ⚠️ COUNT(DISTINCT dish_id). A plain COUNT(*) counts shards: an ingredient in a dish
+        #    both sources hold was counted twice.
+        n_base = c.execute("SELECT COUNT(DISTINCT dish_id) FROM mined_dish_base WHERE library_id=?",
                            (lid,)).fetchone()[0]
-        n_use = c.execute("SELECT COUNT(*) FROM mined_dish_ingredient WHERE library_id=?",
-                          (lid,)).fetchone()[0]
+        n_use = c.execute("SELECT COUNT(DISTINCT dish_id) FROM mined_dish_ingredient "
+                          "WHERE library_id=?", (lid,)).fetchone()[0]
+        _dv, _dp = MC.dish_view()
+        _bv, _bp = MC.id_facet_view("mined_dish_base")
+        _pv, _pp = MC.profile_view()
         dish_base = list(c.execute(
-            "SELECT d.dish_id, d.dish, d.n FROM mined_dish_base b JOIN mined_dish d "
-            "ON d.dish_id=b.dish_id WHERE b.library_id=? ORDER BY d.n DESC LIMIT 60", (lid,)))
+            f"SELECT d.dish_id, d.dish, d.n FROM {_bv} b JOIN {_dv} d "
+            f"ON d.dish_id=b.dish_id WHERE b.library_id=? ORDER BY d.n DESC LIMIT 60",
+            _bp + _dp + [lid]))
         # ⚠️ ORDERED BY SHARE, NOT BY COUNT. By raw count this list is just the biggest dishes in
         #    the corpus over and over. `chicken 10,262` outranks `guacamole 899` for avocado on
         #    count and says nothing, where share says avocado is 92% of a guacamole.
         dish_use = list(c.execute(
-            "SELECT d.dish_id, d.dish, i.n, i.n_dish, (i.n * 1.0 / i.n_dish) share "
-            "FROM mined_dish_ingredient i JOIN mined_dish d ON d.dish_id=i.dish_id "
-            "WHERE i.library_id=? ORDER BY share DESC, i.n DESC LIMIT 60", (lid,)))
+            f"SELECT d.dish_id, d.dish, i.n, i.n_dish, (i.n * 1.0 / i.n_dish) share "
+            f"FROM {_pv} i JOIN {_dv} d ON d.dish_id=i.dish_id "
+            f"WHERE i.library_id=? ORDER BY share DESC, i.n DESC LIMIT 60",
+            _pp + _dp + [lid]))
     base_rows = [(f'<span class=nm>{dlink(x["dish_id"], x["dish"])}</span>', fmt(x["n"]))
                  for x in dish_base]
     use_rows = [(f'<span class=nm>{dlink(x["dish_id"], x["dish"])}</span>',
@@ -2514,8 +2648,10 @@ def category(cid):
         mid = uq(m["id"])
         # 'reached through' names how the edge was found. The in-category path is the slug itself,
         # the other is the catalog row sharing the name, so each points at its own record.
+        # ⚠️ m["via"] now names the ACTUAL kind (kind_of, made_from, part_of), so the label is read
+        # from it rather than hardcoded. A cut reaching its parent as part_of must not read "kind-of".
         via = (clink(cid, "in-category") if m["via"] == "in_category"
-               else ilink(twin, "kind-of on the catalog row") if twin
+               else ilink(twin, m.get("kind", "kind_of").replace("_", "-") + " on the catalog row") if twin
                else escape(m["via"]))
         rows.append((
             f'<span class=nm>{ilink(m["id"], m["label"])}</span>',
@@ -2547,11 +2683,13 @@ def category(cid):
     if has_dishes(c) and members:
         ids = [m["id"] for m in members]
         qm = ",".join("?" * len(ids))
+        _dv, _dp = MC.dish_view()
+        _bv, _bp = MC.id_facet_view("mined_dish_base")
         drows = list(c.execute(
             f"SELECT d.dish_id, d.dish, d.n, l.canonical, b.library_id "
-            f"FROM mined_dish_base b JOIN mined_dish d ON d.dish_id=b.dish_id "
+            f"FROM {_bv} b JOIN {_dv} d ON d.dish_id=b.dish_id "
             f"JOIN library_names l ON l.library_id=b.library_id "
-            f"WHERE b.library_id IN ({qm}) ORDER BY d.n DESC LIMIT 60", ids))
+            f"WHERE b.library_id IN ({qm}) ORDER BY d.n DESC LIMIT 60", _bp + _dp + ids))
         ndish = c.execute(f"SELECT COUNT(DISTINCT dish_id) FROM mined_dish_base "
                           f"WHERE library_id IN ({qm})", ids).fetchone()[0]
         dishsec = f"""<h2 style="margin-top:26px">Dishes built on this family
@@ -2737,11 +2875,29 @@ def append_decision(frm, to, decision, ratio="", note="", n=""):
 #    row the rest of the bench already knows about. That link is the whole reason the facets store
 #    ids, and an earlier draft that stored the vocabulary word instead could not have drawn it.
 
-DISH_FACETS = [("form", "mined_dish_form", "dish_type"),
-               ("method", "mined_dish_method", "method"),
-               ("diet", "mined_dish_diet", "diet"),
-               ("structural", "mined_dish_structural", "structural"),
-               ("appliance", "mined_dish_appliance", "appliance")]
+# ⚠️ THE FOURTH FIELD SAYS WHETHER A SHARE IS MEANINGFUL, and cuisine and course are the two
+#    where it is not. The other five are frequencies: `vegan 1%` on banana bread is 31 recipes of
+#    3,245 and the percentage is the fact. A cuisine row is an assertion an editor made once, so
+#    its n counts pages carrying the tag rather than evidence, and it loads at a floor of 1 (see
+#    load_dish_facets.FLOOR_BY_TABLE). Rendering `indian 0%` against a 10,270-recipe dish would
+#    read as a measurement of how Indian the dish is, which is not what the number means.
+#
+# ⚠️ THEY ARE NOT IN DISH_TABLES, AND THAT IS DELIBERATE. has_dishes() demands every table in
+#    that tuple, and migration 043 arrives after 038 and 039. Adding these two there would blank
+#    the whole dish section on any database migrated to 042 and no further, which is the exact
+#    failure the DISH_TABLES comment above records. They are guarded one at a time instead.
+DISH_FACETS = [("form", "mined_dish_form", "dish_type", True),
+               ("method", "mined_dish_method", "method", True),
+               ("cuisine", "mined_dish_cuisine", "cuisine", False),
+               ("course", "mined_dish_course", "course", False),
+               ("diet", "mined_dish_diet", "diet", True),
+               ("structural", "mined_dish_structural", "structural", True),
+               ("appliance", "mined_dish_appliance", "appliance", True)]
+
+
+def live_facets(c):
+    """DISH_FACETS minus any table this database has not been migrated to yet."""
+    return [f for f in DISH_FACETS if has_table(c, f[1])]
 
 
 def dish_missing():
@@ -2784,8 +2940,13 @@ def recipe_dishes(c):
             _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
             import dish_facets as _F, brand_guard as _BG
             chk, brands = _BG.catalog_name_check(c), _BG.load_brands()
+            # ⚠️ THIS DICT USED TO SILENTLY DROP A SOURCE. Keyed on dish_id over a raw SELECT,
+            #    the last row scanned won, and with Wikibooks loaded that was Wikibooks for all
+            #    1,687 shared dishes. `Banana Bread` reported 3 recipes instead of 3,250, on 54
+            #    of Andy's 299 recipe pages. The combined view returns one row per dish.
+            _dv, _dp = MC.dish_view()
             known = {r["dish_id"]: (r["dish"], r["n"]) for r in
-                     c.execute("SELECT dish_id, dish, n FROM mined_dish")}
+                     c.execute(f"SELECT dish_id, dish, n FROM {_dv} d", _dp)}
             for r in c.execute("SELECT id, name FROM recipes"):
                 d = _F.specific_dish(r["name"], brands, chk)
                 did = _F.dish_id(d) if d else None
@@ -2805,18 +2966,22 @@ def dish_facet_bits(c, did, n_dish=None):
     is a property of some recipes for the dish. The number is what makes the tag true.
     """
     if n_dish is None:
-        r = c.execute("SELECT n FROM mined_dish WHERE dish_id=?", (did,)).fetchone()
-        n_dish = r[0] if r else 0
+        r = MC.dish(c, did)
+        n_dish = r[2] if r else 0
     bits = []
-    for label, tbl, col in DISH_FACETS:
+    for label, tbl, col, share in live_facets(c):
+        fv, fp = MC.facet_view(tbl)
         vals = list(c.execute(
-            f"SELECT {col} v, n FROM {tbl} WHERE dish_id=? ORDER BY n DESC LIMIT 3", (did,)))
-        bits += [tag(f'{x["v"]} {x["n"]/n_dish*100:.0f}%' if n_dish else x["v"], "teal")
+            f"SELECT {col} v, n FROM {fv} f WHERE f.dish_id=? ORDER BY n DESC LIMIT 3",
+            fp + [did]))
+        bits += [tag(f'{x["v"]} {x["n"]/n_dish*100:.0f}%' if (share and n_dish) else x["v"],
+                     "teal" if share else "")
                  for x in vals]
+    bv, bp = MC.id_facet_view("mined_dish_base")
     base = [ilink(x["library_id"], x["canonical"]) for x in c.execute(
-        "SELECT b.library_id, l.canonical FROM mined_dish_base b "
-        "JOIN library_names l ON l.library_id=b.library_id WHERE b.dish_id=? ORDER BY b.n DESC",
-        (did,))]
+        f"SELECT b.library_id, l.canonical FROM {bv} b "
+        f"JOIN library_names l ON l.library_id=b.library_id WHERE b.dish_id=? ORDER BY b.n DESC",
+        bp + [did])]
     return bits, base
 
 
@@ -2828,6 +2993,8 @@ def dishes():
         return dish_missing()
     q = (request.args.get("q") or "").strip()
     form = request.args.get("form") or ""
+    cuisine = request.args.get("cuisine") or ""
+    course = request.args.get("course") or ""
     show = request.args.get("show") or ""
     sort = request.args.get("sort") or "n"
     sdir = "ASC" if (request.args.get("dir") or "desc") == "asc" else "DESC"
@@ -2837,6 +3004,14 @@ def dishes():
     if form:
         where.append("EXISTS (SELECT 1 FROM mined_dish_form f WHERE f.dish_id=d.dish_id "
                      "AND f.dish_type=?)"); args.append(form)
+    # ⚠️ EXISTS NEEDS NO COMBINE. It asks whether any source says so, and a shard is enough to
+    #    answer that. Only the COUNTS need summing.
+    if cuisine and has_table(c, "mined_dish_cuisine"):
+        where.append("EXISTS (SELECT 1 FROM mined_dish_cuisine x WHERE x.dish_id=d.dish_id "
+                     "AND x.cuisine=?)"); args.append(cuisine)
+    if course and has_table(c, "mined_dish_course"):
+        where.append("EXISTS (SELECT 1 FROM mined_dish_course x WHERE x.dish_id=d.dish_id "
+                     "AND x.course=?)"); args.append(course)
     if show == "noprofile":
         where.append("NOT EXISTS (SELECT 1 FROM mined_dish_ingredient i WHERE i.dish_id=d.dish_id)")
     elif show == "nobase":
@@ -2844,25 +3019,32 @@ def dishes():
     elif show == "profiled":
         where.append("EXISTS (SELECT 1 FROM mined_dish_ingredient i WHERE i.dish_id=d.dish_id)")
     w = ("WHERE " + " AND ".join(where)) if where else ""
-    total = c.execute(f"SELECT COUNT(*) FROM mined_dish d {w}", args).fetchone()[0]
-    n_all = c.execute("SELECT COUNT(*) FROM mined_dish").fetchone()[0]
+    # ⚠️ EVERY READ BELOW GOES THROUGH THE COMBINED VIEW. Against the raw table `chicken` is two
+    #    rows, 10,264 and 6, and the list showed both. Through the view it is one row at 10,270,
+    #    which is the number the four arithmetic checks were run against.
+    dv, dp = MC.dish_view()
+    total = c.execute(f"SELECT COUNT(*) FROM {dv} d {w}", dp + args).fetchone()[0]
+    n_all = c.execute(f"SELECT COUNT(*) FROM {dv} d", dp).fetchone()[0]
     page_no = max(1, int(request.args.get("page") or 1))
     order = {"dish": "d.dish", "n": "d.n", "cells": "cells"}.get(sort, "d.n")
     rows = list(c.execute(
         f"""SELECT d.dish_id, d.dish, d.n,
-                   (SELECT COUNT(*) FROM mined_dish_ingredient i WHERE i.dish_id=d.dish_id) cells
-            FROM mined_dish d {w} ORDER BY {order} {sdir}, d.dish
-            LIMIT ? OFFSET ?""", args + [PER, (page_no - 1) * PER]))
+                   (SELECT COUNT(DISTINCT i.library_id) FROM mined_dish_ingredient i
+                     WHERE i.dish_id=d.dish_id) cells
+            FROM {dv} d {w} ORDER BY {order} {sdir}, d.dish
+            LIMIT ? OFFSET ?""", dp + args + [PER, (page_no - 1) * PER]))
     ids = [r["dish_id"] for r in rows]
     qmark = ",".join("?" * len(ids)) or "''"
     forms, bases = {}, {}
     if ids:
-        for r in c.execute(f"SELECT dish_id, dish_type FROM mined_dish_form "
-                           f"WHERE dish_id IN ({qmark}) ORDER BY n DESC", ids):
+        fv, fp = MC.facet_view("mined_dish_form")
+        for r in c.execute(f"SELECT dish_id, dish_type FROM {fv} f "
+                           f"WHERE dish_id IN ({qmark}) ORDER BY n DESC", fp + ids):
             forms.setdefault(r["dish_id"], []).append(r["dish_type"])
-        for r in c.execute(f"SELECT b.dish_id, b.library_id, l.canonical FROM mined_dish_base b "
+        bv, bp = MC.id_facet_view("mined_dish_base")
+        for r in c.execute(f"SELECT b.dish_id, b.library_id, l.canonical FROM {bv} b "
                            f"JOIN library_names l ON l.library_id=b.library_id "
-                           f"WHERE b.dish_id IN ({qmark}) ORDER BY b.n DESC", ids):
+                           f"WHERE b.dish_id IN ({qmark}) ORDER BY b.n DESC", bp + ids):
             bases.setdefault(r["dish_id"], []).append(ilink(r["library_id"], r["canonical"]))
     body_rows = [(f'<span class=nm>{dlink(r["dish_id"], r["dish"])}</span>',
                   fmt(r["n"]),
@@ -2872,24 +3054,36 @@ def dishes():
     bits = []
     if q: bits.append(f'matching <b>{escape(q)}</b>')
     if form: bits.append(f'form <b>{escape(form)}</b>')
+    if cuisine: bits.append(f'cuisine <b>{escape(cuisine)}</b>')
+    if course: bits.append(f'course <b>{escape(course)}</b>')
     if show: bits.append(f'<b>{escape(show)}</b>')
     top_forms = [x[0] for x in c.execute(
-        "SELECT dish_type, COUNT(*) k FROM mined_dish_form GROUP BY 1 ORDER BY k DESC LIMIT 14")]
-    about = ("Every dish the corpus names at least 10 times, reduced to a normalized form. The "
-             "specific dish is the one place a mined table holds the corpus's own words, and it "
-             "is cleaned of brands and personal names before it is stored. Everything beside it "
-             "is a vocabulary word or a catalog id.")
+        "SELECT dish_type, COUNT(DISTINCT dish_id) k FROM mined_dish_form "
+        "GROUP BY 1 ORDER BY k DESC LIMIT 14")]
+    # ⚠️ TOP VALUES BY DISHES, NOT BY ROWS, for the same reason the counts above are DISTINCT.
+    top_cui = [r[0] for r in c.execute(
+        "SELECT cuisine, COUNT(DISTINCT dish_id) k FROM mined_dish_cuisine "
+        "GROUP BY 1 ORDER BY k DESC LIMIT 16")] if has_table(c, "mined_dish_cuisine") else []
+    top_crs = [r[0] for r in c.execute(
+        "SELECT course, COUNT(DISTINCT dish_id) k FROM mined_dish_course "
+        "GROUP BY 1 ORDER BY k DESC")] if has_table(c, "mined_dish_course") else []
+    about = ("Every dish the corpus names at least twice, reduced to a normalized form, counted "
+             "across every mined source. The specific dish is the one place a mined table holds "
+             "the corpus's own words, and it is cleaned of brands and personal names before it "
+             "is stored. Everything beside it is a vocabulary word or a catalog id.")
     body = f"""<section>
 {phead("Dishes", total, "dishes" if not bits else "dishes shown", "mined_dish", about,
        of=None if not bits else n_all)}
-<div class=filters>{searchbox("filter by dish", keep=("form", "show"))}</div>
+<div class=filters>{searchbox("filter by dish", keep=("form", "show", "cuisine", "course"))}</div>
 <div class=filters>{filters("/dishes", "show", [("", "all"), ("profiled", "has a profile"),
   ("noprofile", "no profile"), ("nobase", "no base")], show, "show")}</div>
 <div class=filters>{filters("/dishes", "form", [("", "any form")] + [(f, f) for f in top_forms],
   form, "form")}</div>
+{f'<div class=filters>{filters("/dishes", "cuisine", [("", "any cuisine")] + [(x, x) for x in top_cui], cuisine, "cuisine")}</div>' if top_cui else ''}
+{f'<div class=filters>{filters("/dishes", "course", [("", "any course")] + [(x, x) for x in top_crs], course, "course")}</div>' if top_crs else ''}
 {ctx(bits, "/dishes" if bits else None)}
 {table([("dish", "the normalized specific dish", "mined_dish.dish", "dish"),
-        ("recipes", "how many recipes in the corpus resolved to it", "mined_dish.n", "n"),
+        ("recipes", "recipes resolving to it, summed over every source", "SUM(mined_dish.n)", "n"),
         ("form", "the functional category", "mined_dish_form.dish_type"),
         ("base", "what it is made of, as catalog rows", "base.library_id"),
         ("profile", "how many ingredients are stored for it", "ingredient cells", "cells")],
@@ -2905,38 +3099,49 @@ def dish(did):
     if not has_dishes(c):
         c.close()
         return dish_missing()
-    row = c.execute("SELECT * FROM mined_dish WHERE dish_id=?", (did,)).fetchone()
+    row = MC.dish(c, did)
     if not row:
         c.close()
         return page("Not found", f'<section><h1>No dish</h1><p class=sub>'
                     f'<code>{escape(did)}</code> is not in mined_dish.</p></section>',
                     "/dishes", [("Condition", "/"), ("Dishes", "/dishes")]), 404
-    nd = row["n"]
+    dish_name, nd = row[1], row[2]
+    facet_defs = live_facets(c)
     vocab = {}
-    for label, tbl, col in DISH_FACETS:
+    for label, tbl, col, share in facet_defs:
+        fv, fp = MC.facet_view(tbl)
         vocab[label] = list(c.execute(
-            f"SELECT {col} v, n FROM {tbl} WHERE dish_id=? ORDER BY n DESC", (did,)))
+            f"SELECT {col} v, n FROM {fv} f WHERE f.dish_id=? ORDER BY n DESC", fp + [did]))
+    shares = {label: share for label, _t, _c, share in facet_defs}
+    bv, bp = MC.id_facet_view("mined_dish_base")
     base = list(c.execute(
-        "SELECT b.library_id, b.n, l.canonical FROM mined_dish_base b "
-        "JOIN library_names l ON l.library_id=b.library_id WHERE b.dish_id=? ORDER BY b.n DESC",
-        (did,)))
+        f"SELECT b.library_id, b.n, l.canonical FROM {bv} b "
+        f"JOIN library_names l ON l.library_id=b.library_id WHERE b.dish_id=? ORDER BY b.n DESC",
+        bp + [did]))
+    av, ap = MC.id_facet_view("mined_dish_accompaniment")
     acc = list(c.execute(
-        "SELECT a.library_id, a.n, l.canonical FROM mined_dish_accompaniment a "
-        "JOIN library_names l ON l.library_id=a.library_id WHERE a.dish_id=? ORDER BY a.n DESC",
-        (did,)))
+        f"SELECT a.library_id, a.n, l.canonical FROM {av} a "
+        f"JOIN library_names l ON l.library_id=a.library_id WHERE a.dish_id=? ORDER BY a.n DESC",
+        ap + [did]))
+    pv, pp = MC.profile_view()
     prof = list(c.execute(
-        "SELECT i.library_id, i.n, i.n_dish, l.canonical FROM mined_dish_ingredient i "
-        "JOIN library_names l ON l.library_id=i.library_id WHERE i.dish_id=? ORDER BY i.n DESC",
-        (did,)))
+        f"SELECT i.library_id, i.n, i.n_dish, l.canonical FROM {pv} i "
+        f"JOIN library_names l ON l.library_id=i.library_id WHERE i.dish_id=? ORDER BY i.n DESC",
+        pp + [did]))
+    # ⚠️ THE ACCUMULATION, MADE VISIBLE. One row per source is the whole reason a second corpus
+    #    was added, and the combined number alone hides which sources are carrying it.
+    contrib = MC.dish_sources(c, did)
 
     def vrow(label):
         """⚠️ EVERY FACET CARRIES ITS SHARE, for the reason in dish_facet_bits. `vegan` on banana
         bread is 31 of 3,245 recipes, and a bare tag beside `bread` at 99% claims they are the
         same kind of true."""
-        v = vocab[label]
+        v = vocab.get(label)
         if not v:
             return '<span class=dimc>not recorded</span>'
-        return " ".join(tag(f'{x["v"]} {x["n"]/nd*100:.0f}%' if nd else x["v"], "teal") for x in v)
+        sh = shares.get(label, True)
+        return " ".join(tag(f'{x["v"]} {x["n"]/nd*100:.0f}%' if (sh and nd) else x["v"],
+                            "teal" if sh else "") for x in v)
 
     # ⚠️ A BAR PER ROW, NOT A gauge(). gauge() refuses to draw parts that do not partition a
     #    total, and these do not: a recipe carries many ingredients, so the shares sum well past
@@ -2955,25 +3160,45 @@ def dish(did):
     base_html = ", ".join(ilink(r["library_id"], r["canonical"]) for r in base) or \
         '<span class=dimc>not recorded</span>'
 
-    body = f"""<section><h1>{escape(row["dish"])}</h1>
+    # one line per source, so which corpora carry the dish is on the page rather than implied
+    src_line = " + ".join(f'<b>{fmt(n)}</b> <span class=dimc>{escape(s)}</span>'
+                          for s, n in contrib)
+    breakdown = (f'<p class=note>{src_line} = <b>{fmt(nd)}</b> recipes. Counts add across '
+                 f'sources and a recipe is worth one wherever it came from.</p>'
+                 if len(contrib) > 1 else
+                 f'<p class=note>All {fmt(nd)} from <span class=dimc>'
+                 f'{escape(contrib[0][0]) if contrib else "one source"}</span>.</p>')
+    cui_row = (f'  <dt>cuisine</dt><dd>{vrow("cuisine")}</dd>\n' if "cuisine" in vocab else "")
+    crs_row = (f'  <dt>course</dt><dd>{vrow("course")}</dd>\n' if "course" in vocab else "")
+    assertion_note = (
+        " cuisine and course carry no share, and the grey tag is what says so: they are"
+        " assertions an editor made once rather than counts of recipes."
+        if (cui_row or crs_row) else "")
+    body = f"""<section><h1>{escape(dish_name)}</h1>
 <p class=sub><span class=mono>{escape(did)}</span> ·
- <b>{fmt(nd)}</b> recipes in the corpus resolved to this dish</p>
-<p class=ident>read from <span class=mono>mined_dish</span>, with its facets from
+ <b>{fmt(nd)}</b> recipes across every mined source resolved to this dish</p>
+<p class=ident>read from <span class=mono>mined_dish</span> through
+ <span class=mono>mined_combine</span>, with its facets from
  <span class=mono>mined_dish_*</span> and its profile from
  <span class=mono>mined_dish_ingredient</span></p>
+{breakdown}
 <div class=two><dl class=kv>
   <dt>base</dt><dd>{base_html}</dd>
   <dt>form</dt><dd>{vrow("form")}</dd>
-  <dt>method</dt><dd>{vrow("method")}</dd></dl>
+  <dt>method</dt><dd>{vrow("method")}</dd>
+{cui_row}</dl>
 <dl class=kv>
-  <dt>diet</dt><dd>{vrow("diet")}</dd>
+{crs_row}  <dt>diet</dt><dd>{vrow("diet")}</dd>
   <dt>structural</dt><dd>{vrow("structural")}</dd>
   <dt>appliance</dt><dd>{vrow("appliance")}</dd></dl></div>
-<p class=note>base is a catalog row and links to it. The other five are words from a vocabulary
- this repository authored, so they name a quality rather than a thing and have no row to open.</p>
+<p class=note>base is a catalog row and links to it. The rest are words from a vocabulary this
+ repository authored, so they name a quality rather than a thing and have no row to open.
+ <b>baked</b> sits on method and <b>baking</b> on course, and a cake is honestly both.
+{assertion_note}</p>
 </section>
 <section><h2>Ingredient profile <span class=dimc>{fmt(len(prof))}</span></h2>
-<p class=cap>What this dish is made of, counted across all {fmt(nd)} recipes. An ingredient is
+<p class=cap>What this dish is made of, counted across all {fmt(nd)} recipes of every source. An
+ ingredient is
  stored when it appears in at least 3 of them, or in at least 2 and at least a tenth of them.
  The share arm is what keeps a dish the corpus rarely sees from storing nothing at all.</p>
 {table([("ingredient", "the catalog row the line resolved to", "ingredient.library_id"),
@@ -2989,8 +3214,8 @@ def dish(did):
         ("recipes", "how many said so", "n")],
        acc_rows, ["nm", "num"], "Nothing recorded.")}</section>"""
     c.close()
-    return page(row["dish"], body, "/dishes",
-                [("Condition", "/"), ("Dishes", "/dishes"), (row["dish"], None)])
+    return page(dish_name, body, "/dishes",
+                [("Condition", "/"), ("Dishes", "/dishes"), (dish_name, None)])
 
 
 @app.route("/substitutions/decide", methods=["POST"])
