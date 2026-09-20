@@ -550,7 +550,7 @@ thead th.num a.hd{flex-direction:row-reverse}
 /* ── the decision controls, the only place this instrument writes ──────────
    Two buttons, sized to the row rather than to themselves. Teal for the confirm because teal
    carries meaning here as everywhere else, amber for the reject because amber is what this
-   instrument already uses for the unbound and the set-aside. Neither is a colour of alarm. */
+   instrument already uses for the unbound and the set-aside. Neither is a color of alarm. */
 .act{display:flex;gap:6px;justify-content:flex-end;align-items:baseline}
 .act form{margin:0;display:inline}
 .act button{padding:2px 9px;border:1px solid var(--hair);background:var(--surface);
@@ -564,6 +564,205 @@ thead th.num a.hd{flex-direction:row-reverse}
 .authored h3{margin:0 0 4px}
 .authored p{margin:0 0 11px;font-size:var(--s1);color:var(--steel);line-height:1.55;max-width:74ch}
 
+/* the description block. An image only appears when image_license is non-NULL. */
+.desc{display:grid;grid-template-columns:auto 1fr;gap:0 26px;align-items:start;max-width:var(--chart)}
+@media(max-width:700px){.desc{grid-template-columns:1fr;gap:16px 0}}
+.desc figure{margin:0;width:240px}
+.desc figure img{display:block;width:240px;height:auto;border:1px solid var(--rule);background:var(--wash)}
+.desc figcaption{font-size:var(--s0);color:var(--steel);line-height:1.5;margin-top:6px}
+.desc .body p{margin:0 0 11px;max-width:70ch;line-height:1.65;font-size:var(--s3)}
+.desc .sci{font-style:italic;color:var(--steel);font-size:var(--s2);margin:0 0 11px}
+.prov{font-size:var(--s0);color:var(--steel);line-height:1.6;margin:14px 0 0;
+  padding-top:9px;border-top:1px solid var(--hair);max-width:74ch}
+.prov b{font-weight:500;color:var(--ink)}
+
+/* the frequency readout, beside the identity line rather than in a section of its own */
+.freq{margin:9px 0 0;font-size:var(--s2);color:var(--steel)}
+.freq b{font-family:"IBM Plex Mono",monospace;font-weight:500;color:var(--ink);
+  font-variant-numeric:tabular-nums}
+.freq .rank{color:var(--steel-dim);font-size:var(--s1)}
+
+/* cuisines. An assertion facet, so a bare list and no share. */
+.cui{display:flex;flex-wrap:wrap;gap:6px;max-width:var(--chart);margin:0}
+.cui .dishn{font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  color:var(--steel-dim);font-size:var(--s0);margin-left:5px}
+
+/* ── relations, T2 refined. R1 balanced columns + R2 weight bar + R3 kind accents ───────
+   Lifted verbatim from the treatment build. Children by corpus weight, name only as tiebreak. */
+.relgrp{background:var(--surface);border:1px solid var(--hair);margin:0 0 18px;padding:15px 18px 8px}
+.relhead{display:flex;align-items:baseline;gap:12px;padding-bottom:9px;
+  border-bottom:1px solid var(--rule);margin-bottom:13px}
+.relhead h3{margin:0;font-size:var(--s3);font-weight:500;line-height:1.1}
+.relcount{font-family:"IBM Plex Mono",monospace;font-size:var(--s1);color:var(--steel-dim);
+  font-variant-numeric:tabular-nums}
+.relall{margin-left:auto;font-size:var(--s1);color:var(--steel);text-decoration:none}
+.relall:hover{color:var(--teal)}
+
+.bucket{margin:0 0 13px}
+.bhead{display:flex;align-items:center;gap:8px;margin:0 0 7px}
+.bcount{font-family:"IBM Plex Mono",monospace;font-size:var(--s0);color:var(--steel-dim);
+  font-variant-numeric:tabular-nums}
+.tag.plum{border-color:#D6C2D8;color:#6B3A70;background:#F8F3F9}
+.tag.slate{border-color:var(--rule);color:var(--steel);background:var(--wash)}
+
+/* ⚠️ THE COLUMN COUNT IS SET FROM THE ITEM COUNT, not from a fixed column-width. A fixed width
+   spread a six-item bucket over four columns and left three of them holding a single line. */
+.cols{column-gap:var(--gut);column-fill:balance}
+.cols.c1{column-count:1}
+.cols.c2{column-count:2}
+.cols.c3{column-count:3}
+.cols.c4{column-count:4}
+.colrow{display:flex;align-items:baseline;gap:7px;padding:2.5px 7px 2.5px 0;
+  break-inside:avoid;color:var(--ink);text-decoration:none;font-size:var(--s2)}
+.colrow:hover{background:var(--teal-wash)}
+.colrow:hover .cn{color:var(--teal)}
+.cn{order:0;flex:0 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* the leader ties a name to its number across the gap, so the eye does not lose the row */
+.colrow::after{content:"";order:1;flex:1 1 10px;border-bottom:1px dotted var(--rule);
+  margin:0 0 4px;min-width:10px}
+.relw,.relw0{order:2;flex:0 0 54px;text-align:right;font-family:"IBM Plex Mono",monospace;
+  font-variant-numeric:tabular-nums;font-size:var(--s1)}
+.relw{color:var(--steel)}
+/* ⚠️ A row with no corpus evidence prints a dot. Nought is a claim, absence of evidence is not. */
+.relw0{color:var(--rule)}
+
+/* R2: the reference list of R1 plus the magnitude of a bar. Linear, scaled to the biggest
+   child in THIS bucket, following gauge()'s rule that a sliver is the honest picture. */
+.colrow.withbar{display:grid;grid-template-columns:1fr auto;grid-template-rows:auto 2px;
+  column-gap:8px;row-gap:4px;align-items:baseline;padding:3px 7px 6px 0}
+.colrow.withbar::after{display:none}
+.colrow.withbar .cn{grid-column:1;grid-row:1}
+.colrow.withbar .relw,.colrow.withbar .relw0{grid-column:2;grid-row:1}
+.cbar{grid-column:1/-1;grid-row:2;background:var(--hair)}
+.cbar i{display:block;height:100%;background:var(--teal-mid)}
+.colrow.withbar:hover .cbar i{background:var(--teal)}
+
+/* R3: every kind becomes its own block, with the color carried down a left accent rather
+   than living only in the tag. */
+.r3 .bucket{border-left:3px solid var(--rule);padding:11px 0 11px 15px;margin:0 0 2px}
+.r3 .bucket+.bucket{border-top:1px solid var(--hair);margin-top:9px}
+.r3 .bucket.k-kind_of{border-left-color:var(--teal-mid)}
+.r3 .bucket.k-made_from{border-left-color:#C98A3C}
+.r3 .bucket.k-part_of{border-left-color:#9B6BA0}
+.r3 .bucket.k-in_category{border-left-color:var(--rule)}
+.r3 .bhead{margin-bottom:9px}
+/* pairings reuse the same rows, with lift in the number cell instead of a recipe count */
+.pairs .cbar i{background:#C98A3C}
+.pairs .colrow:hover .cbar i{background:var(--amber)}
+/* ── the pairings scale, three forms under a PAIR_SCALE switch ──────────────────────────
+   ⚠️ THE AXIS IS LOGARITHMIC AND FIXED AT HALF TO 256, AND BOTH HALVES OF THAT ARE MEASURED.
+   Fixed, so 4x means the same thing on every ingredient page. Logarithmic, because the values
+   actually drawn run from 0.11x to 38,981x: on a linear axis of the same span the median pair
+   sits at 2.5% and everything from the 1st to the 75th percentile is crushed into the leftmost
+   twentieth. On this axis the 1st percentile lands at 4% and the 99th at 100%. */
+
+/* A: a gradient from weak to strong, with chance marked and this row's band bracketed */
+
+/* B: a ruled axis, with every shown pair drawn on it as a tick */
+
+/* C: a key chip, the scale reduced to a line of type and one small strip */
+/* ── form B finished: the ruled log axis, hovered, with reference points ────────────────
+   ⚠️ FIXED ENDS AT HALF AND 256, LOGARITHMIC. Measured over 2,332 rows and 32,314 drawn
+   values: min 0.11x, p25 3.22, median 6.32, p95 63.76, max 38,981. On a linear axis of the
+   same span the median sits at 2.5% and p01 through p75 crush into the leftmost twentieth. */
+
+/* the zones sit behind everything and carry no border of their own */
+
+/* ⚠️ chance is the one reference the reader has to find without looking for it */
+
+/* the label rides the mark. attr() keeps it out of the markup twice over. */
+
+/* a list row lights up when its own mark is hovered, which is what ties the two together */
+.pairs .colrow.on{background:var(--teal-wash)}
+.pairs .colrow.on .cn{color:var(--teal)}
+/* ── the pairings scale, final: dodged marks, kept below-chance, global benchmarks ───────
+   ⚠️ FIXED ENDS AT HALF AND 256, LOGARITHMIC. Measured over 2,332 rows and 32,314 drawn
+   values: min 0.11x, p25 3.22, median 6.32, p95 63.76, max 38,981. A linear axis of the same
+   span puts the median at 2.5% and crushes p01 through p75 into the leftmost twentieth. */
+
+/* the plot grows with the lanes, so a clustered row gets height rather than a wider spread */
+
+
+/* ⚠️ THE MARK NEVER MOVES SIDEWAYS. Its x is the measured value. The only freedom taken is
+   which lane it sits in, so 18 marks at one value stack instead of merging into a bar. */
+
+/* ── the benchmarks. BELOW the line, so the yardstick is visibly not your data ───────── */
+
+.pairs .colrow.on{background:var(--teal-wash)}
+.pairs .colrow.on .cn{color:var(--teal)}
+/* ── the fixed-axis pairings scale: no jitter, benchmarks by color ─────────────────────
+   ⚠️ FIXED ENDS AT HALF AND 256, LOGARITHMIC, so a position means the same strength on every
+   page. Measured over 2,332 rows and 32,314 drawn values: min 0.11x, p25 3.22, median 6.32,
+   p95 63.76, max 38,981. A linear axis of the same span puts the median at 2.5%.
+   ⚠️ NO JITTER. Marks at the same value sit on top of each other. Garlic's eighteen partners
+   really are all near 3.5x and a dense spot is what that looks like. The list below is where
+   the names are read. */
+.fx{max-width:var(--chart);margin:0 0 18px}
+.fx .cap2{font-size:var(--s2);color:var(--steel);line-height:1.6;margin:0 0 6px;max-width:74ch}
+.fx .cap2 b{font-family:"IBM Plex Mono",monospace;font-weight:500;color:var(--ink)}
+
+.fx .axis{position:relative;height:22px;border-bottom:1px solid var(--rule);margin-top:13px}
+.fx .zone{position:absolute;top:0;bottom:0;
+  background:repeating-linear-gradient(135deg,transparent 0 5px,var(--hair) 5px 6px)}
+.fx .chance{position:absolute;top:0;bottom:-17px;width:1px;background:var(--ink);z-index:2}
+.fx .t{position:absolute;bottom:0;width:1px;height:5px;background:var(--rule)}
+.fx .t.major{height:8px;background:var(--steel-dim)}
+
+/* ⚠️ ONE SHAPE, TWO COLORS. A tick is a tick. Teal is this ingredient, plum is the yardstick,
+   and amber stays what it already meant, a pair that turns up less often than chance. */
+.fx .pin{position:absolute;bottom:4px;width:3px;height:13px;margin-left:-1px;
+  background:var(--teal-mid);border-radius:1px;display:block;z-index:3;opacity:.85}
+.fx .pin.weak{background:var(--amber)}
+.fx .pin:hover,.fx .pin.on{background:var(--teal);width:5px;margin-left:-2px;opacity:1;z-index:7}
+.fx .pin.weak:hover,.fx .pin.weak.on{background:var(--amber)}
+.fx .bmrow{position:relative;height:15px}
+.fx .bm{position:absolute;top:0;width:3px;height:11px;margin-left:-1px;background:#9B6BA0;
+  border-radius:1px;display:block;cursor:help;z-index:3;opacity:.85}
+.fx .bm.ceil{background:#6B3A70;height:14px}
+.fx .bm:hover{background:#6B3A70;width:5px;margin-left:-2px;opacity:1;z-index:7}
+.fx .pin::after,.fx .bm::after{content:attr(data-lab);position:absolute;white-space:nowrap;
+  font-size:var(--s0);color:#fff;background:var(--ink);padding:3px 8px;opacity:0;
+  pointer-events:none;z-index:8;left:50%;transform:translateX(-50%)}
+.fx .pin::after{bottom:17px}
+.fx .bm::after{top:14px}
+.fx .pin.e-l::after,.fx .bm.e-l::after{left:0;transform:none}
+.fx .pin.e-r::after,.fx .bm.e-r::after{left:auto;right:0;transform:none}
+.fx .pin:hover::after,.fx .pin.on::after,.fx .bm:hover::after{opacity:1}
+
+.fx .labels{position:relative;height:14px;margin-top:2px}
+.fx .labels span{position:absolute;transform:translateX(-50%);font-size:var(--s0);
+  color:var(--steel-dim);font-family:"IBM Plex Mono",monospace}
+.fx .labels span.k1{color:var(--ink);font-weight:500}
+.fx .labels span.edge{transform:none}
+.fx .labels span.edge.r{right:0;left:auto!important}
+
+.fx .key{font-size:var(--s0);color:var(--steel-dim);margin:9px 0 0;line-height:1.7}
+.fx .key u{display:inline-block;width:3px;height:10px;text-decoration:none;margin:0 4px -1px 0;
+  border-radius:1px;vertical-align:middle}
+.fx .key u.mine{background:var(--teal-mid)}
+.fx .key u.bench{background:#9B6BA0}
+.fx .key u.weak{background:var(--amber)}
+.fx .key span{margin-right:15px;white-space:nowrap}
+
+/* the expandable, for depth (b) */
+.fx details{margin:9px 0 0;border-top:1px solid var(--hair);padding-top:8px}
+.fx summary{cursor:pointer;font-size:var(--s1);color:var(--teal);list-style:none;
+  display:inline-flex;align-items:center;gap:5px}
+.fx summary::-webkit-details-marker{display:none}
+.fx summary::before{content:"+";font-family:"IBM Plex Mono",monospace;color:var(--steel-dim)}
+.fx details[open] summary::before{content:"–"}
+.fx summary:hover{color:var(--ink)}
+.fx .how{font-size:var(--s1);color:var(--steel);line-height:1.65;margin:9px 0 0;max-width:72ch}
+.fx .how p{margin:0 0 9px}
+.fx .how b{color:var(--ink);font-weight:500}
+.fx .sum{display:grid;grid-template-columns:auto 1fr;gap:3px 14px;margin:10px 0 2px;
+  font-size:var(--s1);max-width:56ch}
+.fx .sum dt{color:var(--steel-dim)}
+.fx .sum dd{margin:0;font-family:"IBM Plex Mono",monospace;font-variant-numeric:tabular-nums;
+  color:var(--ink)}
+.fx .sum dd.hi{font-weight:600}
+.pairs .colrow.on{background:var(--teal-wash)}
+.pairs .colrow.on .cn{color:var(--teal)}
 .empty{padding:16px 0;color:var(--steel);font-size:var(--s2);border-top:1px solid var(--hair)}
 .note{font-size:var(--s1);color:var(--steel);margin-top:6px;line-height:1.5}
 .banner{border-left:3px solid var(--amber);background:var(--amber-wash);padding:11px 14px;
@@ -997,6 +1196,12 @@ def entry_states(conn):
     return computed, stored, dis
 
 
+# ⚠️ THE SAME 12 THE DISHES SECTIONS USE. Three capped sections reading three different numbers
+#    would be three decisions where there is only one: how much of a long tail belongs on a page
+#    that is read top to bottom. Each cap links out to the full list.
+RECIPE_USE_CAP = 12
+
+
 def neighbourhood(conn, lid):
     """⚠️ GOTCHA 1 and 6. kind is constrained on every branch, and parents are deduped by row.
 
@@ -1370,8 +1575,12 @@ def mined_ready(c):
 
     Both degrade to showing everything. An empty corpus is not evidence that a row is obscure, it
     is the absence of evidence, and the two must not render the same."""
-    return has_table(c, "mined_occurrences") and bool(
-        c.execute("SELECT 1 FROM mined_occurrences LIMIT 1").fetchone())
+    return (has_table(c, "mined_occurrences")
+            and bool(c.execute("SELECT 1 FROM mined_occurrences LIMIT 1").fetchone())
+            # ⚠️ AND THE CORPUS ROW, which is where N lives. A database with occurrences loaded
+            #    and no mined_corpus is exactly what live is: counts with no denominator.
+            and has_table(c, "mined_corpus")
+            and bool(c.execute("SELECT 1 FROM mined_corpus LIMIT 1").fetchone()))
 
 # the sort whitelist. A key that is not in here never reaches SQL.
 CAT_SORT = {"ingredient": "ln.canonical COLLATE NOCASE", "category": CAT_EXPR["cat"],
@@ -1749,110 +1958,146 @@ def categories():
 
 @app.route("/relations")
 def relations():
+    """T2 refined, three treatments. A comparison build, not the shipped route.
+
+    The shared cleanup is IDENTICAL across all three and is unchanged from the prior rounds, so the
+    only thing that varies is how the children read:
+      1. grouped by parent
+      2. redundant in_category edges collapsed when a hierarchy kind states the same thing
+      3. tail children hidden, toggle to show all, guarded by mined_ready
+      4. children ordered by CORPUS WEIGHT descending, name only as the tiebreak
+
+    ⚠️ The twin map uses category_twin(), the same three-way lookup the category pages use, so an
+    in_category edge on the 'cow s milk cheese' slug groups under the row that actually holds its
+    family. Matching canonical only put them in two piles.
+
+    ⚠️ BUILT IN THIS ROUTE ONLY. neighbourhood() is shared by /i/, /g/ and /api/n/, and counts()
+    draws the nav on every page. Neither is touched.
+    """
+    R = "3"
     c = db()
-    kind = request.args.get("kind") or ""
-    conf = request.args.get("confidence") or ""
-    src = request.args.get("source") or ""
+    ready = mined_ready(c)
+    tier = (request.args.get("tier") or "").strip()
+    tier = tier if tier == "all" else ""
     qy = (request.args.get("q") or "").strip()
+    only = (request.args.get("parent") or "").strip()
     p = max(1, int(request.args.get("page") or 1))
-    child = request.args.get("child") or ""
-    parent = request.args.get("parent") or ""
-    where, args = [], []
-    # ⚠️ 'hierarchy' is a pseudo-kind meaning kind-of plus made-from. The catalog's parent and
-    #    child counts exclude in-category edges, so the door has to exclude them too or the
-    #    destination would show more rows than the number that led to it.
-    if kind == "hierarchy":
-        where.append("r.kind<>'in_category'")
-    elif kind:
-        where.append("r.kind=?"); args.append(kind)
-    for col, val in (("confidence", conf), ("source", src)):
-        if val:
-            where.append(f"r.{col}=?"); args.append(val)
-    if child:
-        where.append("r.child_id=?"); args.append(child)
-    if parent:
-        where.append("r.parent_id=?"); args.append(parent)
-    if qy:
-        where.append("(r.child_canonical LIKE ? COLLATE NOCASE OR r.parent_canonical LIKE ? COLLATE NOCASE)")
-        args += [f"%{qy}%", f"%{qy}%"]
-    w = ("WHERE " + " AND ".join(where)) if where else ""
-    total = c.execute(f"SELECT COUNT(*) FROM library_relations r {w}", args).fetchone()[0]
-    rows = []
-    for r in c.execute(f"SELECT * FROM library_relations r {w} "
-                       "ORDER BY r.child_canonical LIMIT ? OFFSET ?", args + [PER, (p - 1) * PER]):
-        # ⚠️ GOTCHA 1: the parent link target depends on kind. in_category goes to a category page,
-        #    kind_of and made_from go to a catalog page. 'bread' and 'pasta' are both.
-        plnk = plink(r["kind"], r["parent_id"], r["parent_canonical"] or r["parent_id"])
-        rows.append((f'<span class=nm>{ilink(r["child_id"], r["child_canonical"] or r["child_id"])}</span>',
-                     taglink(human("kind", r["kind"]), f'/relations?kind={uq(r["kind"])}'),
-                     plnk, taglink(human("confidence", r["confidence"]), f'/relations?confidence={uq(r["confidence"])}'),
-                     f'<span class=dimc><a href="/relations?source={uq(r["source"])}">'
-                     f'{escape(human("source", r["source"]))}</a></span>',
-                     f'<span class="dimc wrap">{escape((r["note"] or "")[:90])}</span>'))
-    def opts(col):
-        base = [("", "all")] + [(x[0], f"{human(col, x[0])} {fmt(x[1])}") for x in c.execute(
-            f"SELECT {col}, COUNT(*) FROM library_relations GROUP BY 1 ORDER BY 2 DESC")]
-        if col == "kind":
-            n = c.execute("SELECT COUNT(*) FROM library_relations WHERE kind<>'in_category'").fetchone()[0]
-            base.append(("hierarchy", f'{human("kind", "hierarchy")} {fmt(n)}'))
-        return base
 
-    # the strip naming a child- or parent-filtered view, so an arrival from a count knows where it is
-    bits, nm = [], lambda i: (c.execute("SELECT canonical FROM library_names WHERE library_id=?",
-                                        (i,)).fetchone() or [i])[0]
-    if child:
-        bits.append(f'Edges above <b>{escape(nm(child))}</b>, so the parents it was given.')
-    if parent:
-        bits.append(f'Edges below <b>{escape(nm(parent))}</b>, so the children it was given.')
-    if kind == "hierarchy":
-        bits.append('Kind-of and made-from only, matching the counts on the catalog.')
-    strip = ctx(bits, "/relations") if bits else ""
-    q1 = lambda sql: c.execute(sql).fetchone()[0]
-    n_par = q1("SELECT COUNT(DISTINCT parent_id) FROM library_relations WHERE kind<>'in_category'")
-    n_kid = q1("SELECT COUNT(DISTINCT child_id) FROM library_relations WHERE kind<>'in_category'")
-    n_cat = q1("SELECT COUNT(*) FROM library_categories")
-    n_twin = q1("SELECT COUNT(*) FROM library_categories lc WHERE EXISTS(SELECT 1 FROM "
-                "library_names ln WHERE ln.canonical=lc.name COLLATE NOCASE)")
-    n_note = q1("SELECT COUNT(*) FROM library_relations WHERE note IS NOT NULL AND note<>''")
-    n_edges = q1("SELECT COUNT(*) FROM library_relations")
-    filtered = bool(kind or conf or src or qy or child or parent)
-    about = (
-      '<p class=about>A relation is one line saying how an ingredient sits under something broader. '
-      'There are three of them and they are not the same claim.</p>'
-      '<p class=about><span class=ex>All-purpose flour <b>is a kind of</b> flour</span>, the same '
-      'stuff named more narrowly. <span class=ex>Cilantro <b>is in the</b> herb <b>category</b></span>, '
-      'filed with a family you can browse. <span class=ex>Garlic powder <b>is made from</b> '
-      'garlic</span>, one ingredient turned into another.</p>'
-      f'<p class=about>The hierarchy is wide and shallow. <b>{fmt(n_par)}</b> rows do all the '
-      f'parenting for <b>{fmt(n_kid)}</b> children. A parent is not always a catalog row either. '
-      f'On an in-category line it is a category, and <b>{n_twin} of the {n_cat}</b> categories '
-      f'share their name with one, so every query here has to say which of the two it means.</p>')
-    HEADS = [
-      ("child", "the row the line is about, the narrower of the two", "child_canonical"),
-      ("kind", "which of the three claims this line makes", "kind"),
-      ("parent", "the broader thing it sits under", "parent_canonical"),
-      ("confidence", "how firmly it stands. high is the source's own claim, the rest are hand calls",
-       "confidence"),
-      ("source", "where it came from. wikidata and off are bulk imports", "source"),
-      ("note", f"a reason, on the {fmt(n_note)} lines that carry one", "note"),
-    ]
-    kind_parts = [(human("kind", k), v, f"/relations?kind={uq(k)}") for k, v in c.execute(
-        "SELECT kind, COUNT(*) FROM library_relations GROUP BY 1 ORDER BY 2 DESC")]
+    TW = {}
+    for cid, cname in c.execute("SELECT category_id, name FROM library_categories"):
+        t = category_twin(c, cname)
+        if t: TW[cid] = t
+    core = set()
+    if ready and tier != "all":
+        core = {i for (i,) in c.execute(f"SELECT library_id FROM library_names ln WHERE {FOREGROUND_SQL}")}
+    W = collections.defaultdict(int)
+    for lid, n in c.execute("SELECT library_id, SUM(n_recipes) FROM mined_occurrences GROUP BY 1"):
+        W[lid] = n
+
+    edges = list(c.execute("SELECT child_id, parent_id, kind, child_canonical FROM library_relations"))
+    kinds_at = collections.defaultdict(set)
+    for ch, pa, k, _ in edges: kinds_at[(ch, TW.get(pa, pa))].add(k)
+
+    groups, n_collapsed, n_tail = collections.defaultdict(list), 0, 0
+    for ch, pa, kind, ch_c in edges:
+        norm = TW.get(pa, pa) if kind == "in_category" else pa
+        if kind == "in_category" and len(kinds_at[(ch, norm)]) > 1:
+            n_collapsed += 1; continue
+        if core and ch not in core:
+            n_tail += 1; continue
+        groups[norm].append({"id": ch, "label": ch_c or ch, "kind": kind, "w": W[ch]})
+
+    def pname(pid):
+        r = c.execute("SELECT canonical FROM library_names WHERE library_id=?", (pid,)).fetchone()
+        if r: return r[0], ilink(pid, r[0])
+        r = c.execute("SELECT name FROM library_categories WHERE category_id=?", (pid,)).fetchone()
+        if r: return r[0], clink(pid, r[0])
+        return pid, escape(pid)
+
+    named = []
+    for pid, kids in groups.items():
+        label, link = pname(pid)
+        if only and pid != only: continue
+        if qy and qy.lower() not in label.lower() and not any(qy.lower() in k["label"].lower() for k in kids):
+            continue
+        named.append((label, pid, link, kids))
+    named.sort(key=lambda g: (-len(g[3]), g[0].casefold()))
+    n_groups = len(named)
+    PERG = 8
+    shown = named[(p - 1) * PERG: p * PERG]
+
+    KIND_ORDER = ["kind_of", "made_from", "part_of", "in_category"]
+    KTAG = {"kind_of": "teal", "made_from": "amber", "part_of": "plum", "in_category": "slate"}
+
+    def wnum(v):
+        """The weight, dimmed, and silent at zero. A row with no corpus evidence says nothing
+        rather than claiming a nought."""
+        return f'<span class=relw>{fmt(v)}</span>' if v else '<span class=relw0>&middot;</span>'
+
+    def ncols(n):
+        """⚠️ THE SPARSE-TAIL FIX. A fixed column-width spreads a six-item bucket across four
+        columns and leaves three of them holding one line each. The count is chosen from the
+        number of items so a small bucket stays narrow and readable, and only a genuinely long
+        list earns four columns."""
+        return 1 if n <= 3 else 2 if n <= 10 else 3 if n <= 30 else 4
+
+    blocks = []
+    for label, pid, link, kids in shown:
+        per = collections.defaultdict(list)
+        for k in kids: per[k["kind"]].append(k)
+        for kd in per: per[kd].sort(key=lambda k: (-k["w"], k["label"].casefold()))
+        head = (f'<div class=relhead><h2>{link}</h2>'
+                f'<span class=relcount>{fmt(len(kids))} children</span>'
+                f'<a class=relall href="/relations?parent={uq(pid)}{"&tier=all" if tier else ""}">'
+                f'only this parent</a></div>')
+        buckets = []
+        for kd in KIND_ORDER:
+            if kd not in per: continue
+            items = per[kd]
+            # ⚠️ The parent name is in the heading directly above, so the bucket tag does not
+            #    repeat it. 'is a kind of fish' under a heading reading 'fish' said it twice.
+            bhead = (f'<div class=bhead><span class="tag {KTAG[kd]}">'
+                     f'{escape(human("kind", kd))}</span>'
+                     f'<span class=bcount>{fmt(len(items))}</span></div>')
+            nc = ncols(len(items))
+            if True:
+                # ⚠️ LINEAR AND HONEST, scaled to the biggest child in THIS bucket. gauge()'s
+                #    rule: a sliver is the true picture and is not padded to be visible.
+                top = max((k["w"] for k in items), default=0) or 1
+                body = f'<div class="cols c{nc}">' + "".join(
+                    f'<a class="colrow withbar" href="/i/{uq(k["id"])}">'
+                    f'<span class=cn>{escape(k["label"])}</span>{wnum(k["w"])}'
+                    f'<span class=cbar><i style="width:{(100.0*k["w"]/top):.3f}%"></i></span></a>'
+                    for k in items) + '</div>'
+            else:
+                body = f'<div class="cols c{nc}">' + "".join(
+                    f'<a class=colrow href="/i/{uq(k["id"])}">'
+                    f'<span class=cn>{escape(k["label"])}</span>{wnum(k["w"])}</a>'
+                    for k in items) + '</div>'
+            buckets.append(f'<div class="bucket k-{kd}">{bhead}{body}</div>')
+        blocks.append(f'<div class="relgrp r{R}">{head}{"".join(buckets)}</div>')
+
+    n_all_edges = c.execute("SELECT COUNT(*) FROM library_relations").fetchone()[0]
+    n_shown = sum(len(g[3]) for g in named)
+    about = (f'<p class=about>Grouped by parent, then by kind, children ordered by how many corpus '
+             f'recipes reach them rather than by the alphabet. '
+             f'<b>{fmt(n_collapsed)}</b> edges are folded away as the same fact written twice. '
+             + (f'<b>{fmt(n_tail)}</b> more are held back because the child sits in the tail.'
+                if n_tail else '') + '</p>')
+    tierbar = ('<div class=filters>' + filters("/relations", "tier",
+               [("", "the core"), ("all", "everything")], tier, "depth") + '</div>') if ready else ''
     body = f"""<section>
-{phead("Relations", total, "edges", "library_relations", "", said=about,
-       of=None if not filtered else n_edges)}
-{gauge(kind_parts, n_edges)}
-<div class=filters>{filters("/relations","kind",opts("kind"),kind,"kind")}</div>
-<div class=filters>{filters("/relations","confidence",opts("confidence"),conf,"confidence")}</div>
-<div class=filters>{filters("/relations","source",opts("source"),src,"source")}{searchbox("filter by name",("kind","confidence","source","child","parent"))}</div>
-{strip}
-{table(HEADS, rows, ["nm","","","","",""], "No relation matches those filters.")}
-{pager(p,total,"/relations")}</section>"""
+{phead("Relations", n_shown, "edges shown", "library_relations", "", said=about, of=n_all_edges)}
+<div class=filters>{searchbox("filter by parent or child", keep=("tier",))}</div>
+{tierbar}
+<p class=sub>{fmt(n_groups)} parents, showing {fmt(len(shown))}. Children are ordered by corpus weight, biggest first.</p>
+{"".join(blocks) or '<div class=empty>No parent matches.</div>'}
+{pager(p, math.ceil(n_groups / PERG) * PER, "/relations")}</section>"""
     c.close()
-    return page("Relations", body, "/relations", [("Condition", "/"), ("Relations", None)])
+    return page("Relations", body, "/relations",
+                [("Condition", "/"), ("Relations", None)])
 
 
-@app.route("/prose")
 def prose_list():
     c = db()
     tier = request.args.get("tier") or ""
@@ -2265,6 +2510,518 @@ def recipe(rid):
 #  DETAIL PAGES
 # ════════════════════════════════════════════════════════════════════════════
 
+import collections
+
+# ── the rich ingredient profile ────────────────────────────────────────────────────────────
+#
+# ⚠️ EVERY SUM OVER A MINED TABLE GOES THROUGH mined_combine. That is the module's standing rule
+#    and it is why the numbers here match /catalog and /dishes rather than drifting from them.
+#    A second source would otherwise be counted here and not there.
+#
+# ⚠️ neighbourhood() AND counts() ARE NOT TOUCHED. Both are shared by /i/, /g/, /api/n/ and the
+#    nav on every page. Everything below reads their output and re-renders it.
+
+BASIS_GLOSS = {
+    "sitelink": "the row's own Wikidata item links to this article",
+    "title":    "the row's name matched this article's title",
+    "redirect": "the row's name reached this article through a redirect",
+    "resolved": "a person read the disambiguation page and chose this article",
+}
+KIND_ORDER = ["kind_of", "made_from", "part_of", "in_category"]
+KTAG = {"kind_of": "teal", "made_from": "amber", "part_of": "plum", "in_category": "slate"}
+
+
+def wnum(v):
+    """The weight, dimmed, and silent at zero. A row with no corpus evidence says nothing
+    rather than claiming a nought."""
+    return f'<span class=relw>{fmt(v)}</span>' if v else '<span class=relw0>&middot;</span>'
+
+
+def ncols(n):
+    """⚠️ THE SPARSE-TAIL FIX. A fixed column-width spreads a six-item bucket across four
+    columns and leaves three of them holding one line each. The count is chosen from the
+    number of items so a small bucket stays narrow and readable."""
+    return 1 if n <= 3 else 2 if n <= 10 else 3 if n <= 30 else 4
+
+
+def occ_map(c):
+    """Combined recipe counts per row, through the combine module rather than a local SUM."""
+    return {r[0]: r[2] for r in MC.occurrences(c)}
+
+
+def core_set(c, ready):
+    """The T=2 foreground. Empty when the corpus is not loaded, which disables every filter
+    built on it rather than emptying the page."""
+    if not ready:
+        return set()
+    return {i for (i,) in c.execute(
+        f"SELECT library_id FROM library_names ln WHERE {FOREGROUND_SQL}")}
+
+
+def sourced_block(c, lid, canonical):
+    """The description: handwritten if there is one, else the sourced text.
+
+    ⚠️ PRECEDENCE IS HANDWRITTEN, THEN SOURCED, THEN NOTHING, AND THE JOIN IS BY NAME. None of
+    the 36 handwritten rows carries a library_id, so an id join would show zero of them. 29 of
+    the 36 resolve by name and all 29 also hold sourced text.
+
+    ⚠️ image_license IS THE GATE. NULL means the rights were not read or are not usable, and the
+    image must not render. The filename is still named, because knowing a picture exists and is
+    unusable is worth more than silence."""
+    s = (c.execute("SELECT * FROM library_sourced_content WHERE library_id=?", (lid,)).fetchone()
+         if has_table(c, "library_sourced_content") else None)
+    hand = c.execute("SELECT descr FROM ingredients WHERE name=? COLLATE NOCASE "
+                     "AND descr IS NOT NULL AND descr<>''", (canonical,)).fetchone()
+    if not s and not hand:
+        return ('<section><h2>Description</h2>'
+                '<p class=cap>No description, handwritten or sourced.</p></section>')
+    img = ""
+    if s and s["image_url"] and s["image_license"]:
+        # ⚠️ escape() returns Markup, and concatenating a plain string to it escapes that string
+        #    too, so an entity written here arrives as &amp;middot;. The literal character has no
+        #    such trap and reads the same.
+        who = (s["image_attribution"] or "").strip()
+        cap = escape(s["image_license"] + (" \u00b7 " + who[:80] if who else ""))
+        img = (f'<figure><img src="{escape(s["image_url"])}" alt="{escape(canonical)}" '
+               f'loading="lazy"><figcaption>{cap}</figcaption></figure>')
+    elif s and s["sourced_image"]:
+        img = (f'<figure><figcaption>A picture exists and its license is not readable, so it is '
+               f'not shown.<br><span class=mono>{escape(s["sourced_image"][:44])}</span>'
+               f'</figcaption></figure>')
+    parts = []
+    if hand:
+        parts.append(f'<p>{escape(hand["descr"])}</p>')
+    elif s and s["sourced_description"]:
+        parts.append("".join(f'<p>{escape(x)}</p>'
+                             for x in s["sourced_description"].split("\n") if x.strip()))
+    if s and s["scientific_name"]:
+        parts.insert(0, f'<p class=sci>{escape(s["scientific_name"])}</p>')
+    prov = ""
+    if s:
+        gl = BASIS_GLOSS.get(s["match_basis"], s["match_basis"])
+        bits = [f'<b>{escape(s["source_title"] or "")}</b> on Wikipedia, {escape(gl)}']
+        if s["license"]:
+            bits.append(escape(s["license"]))
+        if s["source_url"]:
+            bits.append(f'<a href="{escape(s["source_url"])}">read it there</a>')
+        prov = '<p class=prov>' + ' &middot; '.join(bits)
+        if hand:
+            prov += ('<br>The text above is handwritten. Wikipedia\'s own description is held '
+                     'beside it and not shown.')
+        prov += '</p>'
+    where = ("Handwritten." if hand else
+             "From Wikipedia. A handwritten description replaces it when one is written.")
+    return (f'<section><h2>Description</h2><p class=cap>{where}</p>'
+            f'<div class=desc>{img}<div class=body>{"".join(parts)}{prov}</div></div></section>')
+
+
+def freq_line(c, lid, occ, ready):
+    """How common this is, in one line. ⚠️ Silent rather than zero when the corpus is absent."""
+    if not ready:
+        return ""
+    n = occ.get(lid, 0)
+    total = MC.corpus_n(c)
+    if not n:
+        return ('<p class=freq>No corpus recipe reaches this row. '
+                '<span class=rank>It is in the tail.</span></p>')
+    rank = sum(1 for v in occ.values() if v > n) + 1
+    return (f'<p class=freq>Appears in <b>{fmt(n)}</b> of {fmt(total)} corpus recipes. '
+            f'<span class=rank>{fmt(rank)} of {fmt(len(occ))} rows the corpus reaches are '
+            f'commoner.</span></p>' if rank > 1 else
+            f'<p class=freq>Appears in <b>{fmt(n)}</b> of {fmt(total)} corpus recipes. '
+            f'<span class=rank>The commonest row in the catalog.</span></p>')
+
+
+PS_SEP = 0.65        # smallest gap between two marks in one lane, in percent of the axis
+PS_LANE = 7          # pixels per lane
+
+def ps_lanes(xs):
+    """Which lane each mark sits in, given its position in percent.
+
+    ⚠️ VERTICAL ONLY. x is the measured value and never moves. Garlic's 18 partners really do
+    all sit near 3.5x, and spreading them along the axis to make them hoverable would draw a
+    range that does not exist. Stacking them says the same true thing and can be read.
+    Measured lane counts at this separation: garlic 8, lemon 5, saffron 3, pear juice 2."""
+    last, out = [], []
+    for x in xs:
+        for i, lx in enumerate(last):
+            if x - lx >= PS_SEP:
+                out.append(i); last[i] = x; break
+        else:
+            out.append(len(last)); last.append(x)
+    return out
+
+
+# ── the fixed-axis pairings scale ──────────────────────────────────────────────────────────
+#
+# ⚠️ NO JITTER, NO LANES. Two pairs at the same strength sit on the same spot. Garlic's eighteen
+#    partners all fall between 3.2x and 4.0x, which on this axis is 3.5% of the width, and a dense
+#    smudge is an honest picture of that. Separating them vertically was the earlier answer and it
+#    bought hoverability at the cost of a taller graphic every page paid for.
+#
+# ⚠️ ONE SHAPE, TWO COLORS. Benchmarks used to be diamonds. They are now ticks like everything
+#    else, in plum, on their own baseline under the axis line. Amber keeps the meaning it already
+#    had, a pair turning up LESS often than chance, so the palette carries three facts and not two.
+FX_LO, FX_HI = 0.5, 256.0
+FX_TICKS = [(0.5, "½×"), (1, "1×"), (2, ""), (4, "4×"), (8, ""),
+            (16, "16×"), (32, ""), (64, "64×"), (128, ""), (256, "256×")]
+
+# ⚠️ PROVISIONAL AND MEASURED. Every pair resolved against the catalog, its ratio computed the
+#    same way a pairing's is. The ceiling is NOT the maximum: the strongest pair in the dataset is
+#    hops with wheat malt at 38,981x, seen three times, which is a number rather than a fact.
+FX_BENCH = [
+    ("salt + black pepper", 1.46, False), ("garlic + onion", 1.79, False),
+    ("olive oil + garlic", 3.09, False), ("tomato + basil", 4.23, False),
+    ("apple + cinnamon", 6.07, False), ("lime + cilantro", 11.11, False),
+    ("dill + salmon", 15.00, False), ("soy sauce + sesame oil", 19.38, False),
+    ("yeast + bread flour", 41.32, False), ("tahini + chickpea", 65.65, False),
+    ("coriander seed + cumin seeds", 111.21, False), ("mirin + sake", 169.36, True),
+]
+
+
+def fx_pos(v):
+    if v <= 0:
+        return 0.0
+    p = (math.log2(v) - math.log2(FX_LO)) / (math.log2(FX_HI) - math.log2(FX_LO))
+    return max(0.0, min(1.0, p))
+
+
+def _ffig(l):
+    return f"{l:,.0f}×" if l >= 100 else f"{l:.1f}×" if l >= 1 else f"{l:.2f}×"
+
+
+def fx_caption():
+    """⚠️ WHAT THE NUMBER IS AND ROUGHLY HOW IT IS GOT, in two sentences and no jargon. The word
+    'lift' does not appear. The phrase carrying the work is 'given how common each one is', since
+    that is the half a reader would otherwise supply wrongly."""
+    return ('<p class=cap2>Each number compares how often the two actually turn up in the same '
+            'recipe against how often they would if neither had any bearing on the other, '
+            'given how common each one is on its own. <b>8.6×</b> means eight and a half times '
+            'more often than that. <b>1×</b> is exactly what chance predicts.</p>')
+
+
+FX_HOW_A, FX_HOW_B, FX_HOW_REF = "lemon", "globe artichoke", "salt"
+_fx_how_cache = {}
+
+
+def fx_how_figures(c):
+    """The example's numbers, or None when this database cannot supply them.
+
+    ⚠️ None IS A REAL ANSWER, not a failure. A clone with no corpus loaded, or one whose catalog
+    does not hold these three rows, gets the caption and no worked example rather than an
+    example full of zeros."""
+    if "v" in _fx_how_cache:
+        return _fx_how_cache["v"]
+    v = None
+    try:
+        def lid_of(name):
+            r = c.execute("SELECT library_id FROM library_names WHERE canonical=? COLLATE NOCASE",
+                          (name,)).fetchone()
+            return r["library_id"] if r else None
+
+        def n_of(lid):
+            return c.execute("SELECT COALESCE(SUM(n_recipes),0) FROM mined_occurrences "
+                             "WHERE library_id=?", (lid,)).fetchone()[0]
+        a, b, ref = lid_of(FX_HOW_A), lid_of(FX_HOW_B), lid_of(FX_HOW_REF)
+        N = MC.corpus_n(c)
+        if a and b and N:
+            hit = next((dict(r) for r in MC.pairings(c, ids=[a], min_n=1)
+                        if b in (r["a_id"], r["b_id"])), None)
+            if hit:
+                exp = hit["n_a"] * hit["n_b"] / N
+                if exp > 0:
+                    v = {"N": N, "n_a": hit["n_a"], "n_b": hit["n_b"], "exp": exp,
+                         "both": hit["n"], "lift": hit["n"] / exp,
+                         "n_ref": n_of(ref) if ref else 0}
+    except Exception:
+        v = None
+    _fx_how_cache["v"] = v
+    return v
+
+
+def fx_how(c):
+    """The fuller version, folded away until asked for. ⚠️ THE WORKED EXAMPLE IS REAL: lemon and
+    globe artichoke, read off this database rather than invented to be tidy."""
+    f = fx_how_figures(c)
+    if not f:
+        return ""
+    ref = (f'<p>Dividing by how common each one is on its own is what stops the list being salt, '
+           f'flour and butter on every page. Salt is in {fmt(f["n_ref"])} recipes, so meeting it '
+           f'beside anything is unremarkable. {escape(FX_HOW_B.capitalize())} is in '
+           f'{fmt(f["n_b"])}, so meeting it beside {escape(FX_HOW_A)} {fmt(f["both"])} times is '
+           f'not.</p>') if f["n_ref"] else ""
+    return (
+        '<details><summary>How this is worked out</summary><div class=how>'
+        '<p>Count the recipes holding both ingredients. Then work out how many <b>would</b> hold '
+        'both if the two had nothing to do with each other, which is just how common the first '
+        f'is multiplied by how common the second is, across all {fmt(f["N"])} recipes. Divide the '
+        'real count by that expected one.</p>'
+        f'<p>Doing it with {escape(FX_HOW_A)} and {escape(FX_HOW_B)}:</p>'
+        '<dl class=sum>'
+        f'<dt>{escape(FX_HOW_A)} appears in</dt><dd>{fmt(f["n_a"])} recipes</dd>'
+        f'<dt>{escape(FX_HOW_B)} in</dt><dd>{fmt(f["n_b"])} recipes</dd>'
+        f'<dt>expected together, by chance</dt><dd>{fmt(round(f["exp"]))} recipes</dd>'
+        f'<dt>actually together</dt><dd>{fmt(f["both"])} recipes</dd>'
+        f'<dt>so the number is</dt><dd class=hi>{fmt(f["both"])} ÷ {fmt(round(f["exp"]))} = '
+        f'{_ffig(f["lift"])}</dd></dl>'
+        + ref +
+        '<p>A number under <b>1×</b> means the two turn up together <b>less</b> often than chance '
+        'predicts. Those are kept rather than hidden, drawn in amber on the hatched part of the '
+        'scale.</p></div></details>')
+
+
+def fx_scale(c, pairs):
+    """The fixed axis, with the worked example folded away underneath it."""
+    if not pairs:
+        return ""
+    zone = (f'<i class=zone style="left:0;width:{fx_pos(1)*100:.2f}%"></i>'
+            f'<i class=chance style="left:{fx_pos(1)*100:.2f}%"></i>')
+    ticks = "".join(f'<i class="t{" major" if lbl else ""}" style="left:{fx_pos(v)*100:.2f}%"></i>'
+                    for v, lbl in FX_TICKS if v != 1)
+    marks = []
+    for i, n, l in sorted(pairs, key=lambda p: p[2]):
+        x = fx_pos(l) * 100
+        edge = " e-l" if x < 12 else (" e-r" if x > 88 else "")
+        marks.append(f'<a class="pin{" weak" if l < 1 else ""}{edge}" href="/i/{uq(i)}" '
+                     f'data-k="{escape(i)}" data-lab="{escape(n)} {_ffig(l)}" '
+                     f'style="left:{x:.2f}%"></a>')
+    bench = []
+    for nm_, v, ceil in FX_BENCH:
+        x = fx_pos(v) * 100
+        edge = " e-l" if x < 12 else (" e-r" if x > 88 else "")
+        bench.append(f'<a class="bm{" ceil" if ceil else ""}{edge}" '
+                     f'data-lab="{escape(nm_)} {_ffig(v)}" style="left:{x:.2f}%"></a>')
+    labels = "".join(
+        f'<span class="{"k1" if v == 1 else ""}{" edge" if v == FX_LO else ""}'
+        f'{" edge r" if v == FX_HI else ""}" style="left:{fx_pos(v)*100:.2f}%">{lbl}</span>'
+        for v, lbl in FX_TICKS if lbl)
+    weak = sum(1 for _i, _n, l in pairs if l < 1)
+    key = (f'<p class=key><span><u class=mine></u>this ingredient\'s {len(pairs)} pairings</span>'
+           f'<span><u class=bench></u>well-known pairs, for comparison</span>'
+           + (f'<span><u class=weak></u>{weak} below chance</span>' if weak else '')
+           + '</p>')
+    return (f'<div class=fx>{fx_caption()}'
+            + fx_how(c)
+            + f'<div class=axis>{zone}{ticks}{"".join(marks)}</div>'
+              f'<div class=bmrow>{"".join(bench)}</div>'
+              f'<div class=labels>{labels}</div>{key}</div>'
+            + '<script>(function(){var s=document.currentScript.previousElementSibling,'
+              'w=s.parentNode;function tie(k,on){var a=w.querySelectorAll(\'[data-k="\'+k+\'"]\');'
+              'for(var i=0;i<a.length;i++){a[i].classList.toggle("on",on);}}'
+              'w.addEventListener("mouseover",function(e){var t=e.target&&e.target.closest?'
+              'e.target.closest("[data-k]"):null;if(t)tie(t.getAttribute("data-k"),true);});'
+              'w.addEventListener("mouseout",function(e){var t=e.target&&e.target.closest?'
+              'e.target.closest("[data-k]"):null;if(t)tie(t.getAttribute("data-k"),false);});'
+              '})();</script>')
+
+
+def pairs_block(c, lid, occ, core, ready):
+    """What goes with this, strongest first.
+
+    ⚠️ ORDERED BY LIFT, NOT BY COUNT, and the two answer different questions. By count every
+    list is salt, flour, butter, sugar over and over, which says what the corpus cooks rather
+    than what this ingredient goes with. Lift asks how much likelier the pair is than chance.
+    Saffron reads rouille, barberry, mussel and risotto rice. On count it would read salt.
+
+    ⚠️ THE FLOOR IS 0.5% OF THE ROW'S OWN RECIPES, NEVER BELOW 10, AND A FIXED FLOOR WAS
+    MEASURABLY WORSE. Lift rewards rarity, so a common row with a low floor ranks its most
+    obscure partners first. Measured at a fixed 10: lemon read cardoon, turtle meat, poussin,
+    roe. At 0.5% it reads globe artichoke, tahini, Orange, caper, anchovy, salmon fillet.
+    Salt is the clearest case. At 10 it read corn salad, waxy potato, Farfel. At 0.5% it reads
+    bread flour, active dry yeast, shortening, baking soda, which is the one context where
+    salt is doing something specific. At 1% the lists go generic again, garlic dropping to
+    cumin, oregano, tomato paste, so 0.5% is the measured middle rather than a guess.
+
+    ⚠️ AND THE FLOOR DROPS TO 3 WHEN 0.5% LEAVES TOO LITTLE, which only happens on a rare row.
+    The caption says so, because the evidence really is thinner there.
+
+    ⚠️ THE CORE FILTER IS APPLIED AND REMOVES ALMOST NOTHING, WHICH IS ARITHMETIC RATHER THAN A
+    BUG. A partner co-occurring twice has at least two corpus recipes, which IS the T=2
+    threshold. Measured on garlic: 102 partners dropped at a floor of 1, and 0 at a floor of 2
+    or more. It stays because it is correct and costs nothing, not because it is doing work."""
+    if not ready:
+        return ""
+    n_a = occ.get(lid, 0)
+    floor, rows = 10, []
+    for attempt in (max(10, int(n_a * 0.005)), 3):
+        floor = attempt
+        got = MC.pairings(c, ids=[lid], min_n=floor)
+        rows = []
+        for r in got:
+            d = dict(r)
+            other = d["b_id"] if d["a_id"] == lid else d["a_id"]
+            if other == lid or (core and other not in core):
+                continue
+            rows.append((other, d["n"], d["lift"]))
+        if len(rows) >= 6:
+            break
+    # ⚠️ THE BELOW-CHANCE SWITCH, AND IT IS A REAL QUESTION RATHER THAN A TIDY-UP. A section
+    #    headed 'Pairs well with' showing a pair at 0.11x is claiming company for two things that
+    #    turn up together nine times LESS often than chance. Measured: 520 of 2,332 rows show at
+    #    least one, and what gets cut is always the staples, salt, water, butter, sugar, cinnamon,
+    #    which are the partners that say nothing about this ingredient in particular. Exactly 1
+    #    row of 2,332 would be left with no list at all.
+    # ⚠️ KEPT, NOT FILTERED. The weakest pairs are drawn in amber on the hatched side of
+    #    the axis, so a reader can see that a row's company runs below chance rather than
+    #    being shown a shorter list with no sign anything was removed.
+    cut_below = False
+    n_cut = 0
+    if cut_below:
+        keep = [r for r in rows if r[2] >= 1.0]
+        n_cut = len(rows) - len(keep)
+        rows = keep
+    if not rows:
+        return ('<section><h2>Pairs well with</h2>'
+                '<p class=cap>No pairing turns up more often than chance would give.</p>'
+                '</section>')
+    top = rows[:18]
+    nm = dict(c.execute("SELECT library_id, canonical FROM library_names WHERE library_id IN (%s)"
+                        % ",".join("?" * len(top)), [t[0] for t in top]))
+    hi = max(t[2] for t in top) or 1
+    nc = ncols(len(top))
+    body = f'<div class="cols c{nc}">' + "".join(
+        f'<a class="colrow withbar" href="/i/{uq(i)}" data-k="{escape(i)}">'
+        f'<span class=cn>{escape(nm.get(i, i))}</span>'
+        f'<span class=relw>{(f"{l:,.0f}" if l >= 100 else f"{l:.1f}")}&times;</span>'
+        f'<span class=cbar><i style="width:{(100.0 * l / hi):.3f}%"></i></span></a>'
+        for i, n, l in top) + '</div>'
+    thin = (" Seen at least 3 times rather than the usual floor, which left too few to rank."
+            if floor == 3 else "")
+    scale = fx_scale(c, [(i, nm.get(i, i), l) for i, _n, l in top])
+    return (f'<section><h2>Pairs well with <span class=dimc>{fmt(len(rows))}</span></h2>'
+            f'{scale}'
+            f'{f"<p class=note>{thin.strip()}</p>" if thin else ""}'
+            f'{f"<p class=note>{fmt(n_cut)} pair" + ("s" if n_cut != 1 else "") + " turning up less often than chance are not listed.</p>" if n_cut else ""}'
+            f'<div class="pairs r3">{body}</div>'
+            f'{f"<p class=note>Showing the 18 strongest of {fmt(len(rows))}.</p>" if len(rows) > 18 else ""}'
+            f'</section>')
+
+
+def cuisines_block(c, lid):
+    """Which cooking this turns up in, reached through the dishes that carry it.
+
+    ⚠️ AN ASSERTION FACET, SO NO SHARE AND NO PERCENTAGE. The value is a free-text claim a
+    source made about a dish, not a measured frequency, and a percentage would dress one up as
+    the other. The number beside each is how many dishes carry the claim.
+
+    ⚠️ WIKIBOOKS ONLY, 1,047 rows over 850 dishes, so 964 of the 10,012 catalog rows reach any
+    cuisine at all. The section is absent rather than empty for the rest."""
+    if not has_table(c, "mined_dish_cuisine"):
+        return ""
+    rows = c.execute("""SELECT dc.cuisine, COUNT(DISTINCT dc.dish_id) dishes
+                          FROM mined_dish_ingredient di
+                          JOIN mined_dish_cuisine dc ON dc.dish_id = di.dish_id
+                         WHERE di.library_id = ?
+                      GROUP BY dc.cuisine
+                      ORDER BY dishes DESC, dc.cuisine""", (lid,)).fetchall()
+    if not rows:
+        return ""
+    items = "".join(
+        f'<span class="tag slate">{escape(r["cuisine"])}'
+        f'<span class=dishn>{fmt(r["dishes"])}</span></span>' for r in rows[:24])
+    more = (f'<p class=note>Showing 24 of {fmt(len(rows))}.</p>' if len(rows) > 24 else "")
+    return (f'<section><h2>Turns up in <span class=dimc>{fmt(len(rows))}</span></h2>'
+            f'<p class=cap>Cuisines claimed by the dishes that carry this, counted in dishes '
+            f'rather than recipes. A claim a source made, not a measured share.</p>'
+            f'<div class=cui>{items}</div>{more}</section>')
+
+
+def relations_t2(c, lid, nb, occ):
+    """The poly-hierarchy in the T2 layout: grouped by kind, weight-ordered, columned.
+
+    ⚠️ R1 BALANCED COLUMNS, R2 WEIGHT BAR AND R3 KIND ACCENTS, COMBINED. The treatment report
+    said they combine, R2's bar sitting inside R1's columns and R3's accent being structural.
+
+    ⚠️ ONE ROW APPEARS IN ONE BUCKET. A parent carrying both kind_of and made_from goes to the
+    first in KIND_ORDER and the others are named on the row, which keeps the old page's promise
+    that two kinds to one parent are shown together rather than drawn twice.
+
+    ⚠️ A CATEGORY WHOSE TWIN IS ALREADY A HIERARCHY PARENT IS DROPPED AS THE SAME FACT WRITTEN
+    TWICE, the same collapse /relations makes, using the same three-way category_twin lookup."""
+    hier_parents = {p["id"] for p in nb["parent"]}
+    collapsed = 0
+    par = collections.defaultdict(list)
+    for p in nb["parent"]:
+        kinds = [k for k in KIND_ORDER if k in p["kinds"]]
+        par[kinds[0]].append(dict(p, extra=kinds[1:]))
+    for cat in nb["category"]:
+        twin = category_twin(c, cat["label"])
+        if twin and twin in hier_parents:
+            collapsed += 1
+            continue
+        par["in_category"].append({"id": cat["id"], "label": cat["label"],
+                                   "extra": [], "cat": True})
+    kid = collections.defaultdict(list)
+    for k in nb["child"]:
+        kinds = [x for x in KIND_ORDER if x in k["kinds"]]
+        kid[kinds[0]].append(dict(k, extra=kinds[1:]))
+
+    def block(groups, title, count, href, bar=True):
+        if not any(groups.values()):
+            return ""
+        buckets = []
+        for kd in KIND_ORDER:
+            items = groups.get(kd) or []
+            if not items:
+                continue
+            for it in items:
+                it["w"] = 0 if it.get("cat") else occ.get(it["id"], 0)
+            items.sort(key=lambda i: (-i["w"], i["label"].casefold()))
+            bhead = (f'<div class=bhead><span class="tag {KTAG[kd]}">'
+                     f'{escape(human("kind", kd))}</span>'
+                     f'<span class=bcount>{fmt(len(items))}</span></div>')
+            hi = max((i["w"] for i in items), default=0) or 1
+            rows = []
+            for i in items:
+                link = (f'/c/{uq(i["id"])}' if i.get("cat") else f'/i/{uq(i["id"])}')
+                extra = ("".join(f' <span class=bcount>+ {escape(human("kind", e))}</span>'
+                                 for e in i["extra"]))
+                if bar and not i.get("cat"):
+                    rows.append(
+                        f'<a class="colrow withbar" href="{link}">'
+                        f'<span class=cn>{escape(i["label"])}{extra}</span>{wnum(i["w"])}'
+                        f'<span class=cbar><i style="width:{(100.0*i["w"]/hi):.3f}%"></i>'
+                        f'</span></a>')
+                else:
+                    rows.append(f'<a class=colrow href="{link}">'
+                                f'<span class=cn>{escape(i["label"])}{extra}</span>'
+                                f'{wnum(i["w"])}</a>')
+            buckets.append(f'<div class="bucket k-{kd}">{bhead}'
+                           f'<div class="cols c{ncols(len(items))}">{"".join(rows)}</div></div>')
+        return (f'<div class="relgrp r3"><div class=relhead><h3>{title}</h3>'
+                f'<span class=relcount>{fmt(count)}</span>'
+                f'<a class=relall href="{href}">every edge</a></div>'
+                f'{"".join(buckets)}</div>')
+
+    n_par = sum(len(v) for v in par.values())
+    n_kid = sum(len(v) for v in kid.values())
+    note = (f'<p class=note>{fmt(collapsed)} category edge'
+            f'{"s" if collapsed != 1 else ""} folded away as the same fact written twice.</p>'
+            if collapsed else "")
+    return (f'<section><h2>Where it sits</h2>'
+            f'<p class=cap>Grouped by kind, ordered by how many corpus recipes reach each row '
+            f'rather than by the alphabet. <b>Is a kind of</b> means the same stuff named more '
+            f'narrowly. <b>Is made from</b> means one ingredient turned into another. '
+            f'A dot means no corpus recipe reaches that row.</p>'
+            + block(par, "Sits under", n_par, f"/relations?child={uq(lid)}", bar=True)
+            + block(kid, "Below this", n_kid, f"/relations?parent={uq(lid)}", bar=True)
+            + (note or "")
+            + ("" if (n_par or n_kid) else "<div class=empty>No relation either way.</div>")
+            + '</section>')
+
+
+def _sec_order(c, lid, nb, occ, core, ready):
+    """⚠️ ORDER ONLY, AND STILL OPEN. 'pairs' is what is built: what is it, how common, what goes
+    with it, whose cooking, where it sits. 'rel' puts the hierarchy back above the pairings, which
+    is where it sat before this page grew. Nothing inside any section changes between the two."""
+    pairs = pairs_block(c, lid, occ, core, ready)
+    cui = cuisines_block(c, lid)
+    rel = relations_t2(c, lid, nb, occ)
+    # ⚠️ PAIRINGS FIRST, settled. The page reads in the order a cook asks: what is it, what
+    #    goes with it, whose cooking, where it sits.
+    return pairs + cui + rel
+
+
 @app.route("/i/<path:lid>")
 def ingredient(lid):
     c = db()
@@ -2283,6 +3040,9 @@ def ingredient(lid):
                     f"<code>{escape(lid)}</code> is not in library_names.</p></section>",
                     "/catalog", [("Condition", "/"), ("Catalog", "/catalog")]), 404
     nb = neighbourhood(c, lid)                    # ⚠️ GOTCHA 1 and 6
+    _ready = mined_ready(c)
+    _occ = occ_map(c) if _ready else {}
+    _core = core_set(c, _ready)
     ent = c.execute("SELECT * FROM library_entries WHERE library_id=?", (lid,)).fetchone()
     lines = list(c.execute(
         "SELECT rc.id, rc.name, ri.label, ri.raw_text, ri.link_confidence, ri.link_rule "
@@ -2334,7 +3094,8 @@ def ingredient(lid):
     line_rows = [(f'<span class=wrap>{escape(r["label"] or r["raw_text"] or "")}</span>',
                   rlink(r["id"], r["name"]),
                   taglink(r["link_confidence"] or "", f'/links?confidence={uq(r["link_confidence"] or "")}'),
-                  f'<code class=dimc>{escape(r["link_rule"] or "")}</code>') for r in lines]
+                  f'<code class=dimc>{escape(r["link_rule"] or "")}</code>')
+                 for r in lines[:RECIPE_USE_CAP]]
     # ⚠️ counted at this reading. Both figures used to be written into the string, and the first
     #    had already drifted from 53 to 56 without anything noticing.
     # ⚠️ THE REVERSE OF /dish/<id>. Without this the dish pages link INTO the catalog and nothing
@@ -2354,7 +3115,7 @@ def ingredient(lid):
         _pv, _pp = MC.profile_view()
         dish_base = list(c.execute(
             f"SELECT d.dish_id, d.dish, d.n FROM {_bv} b JOIN {_dv} d "
-            f"ON d.dish_id=b.dish_id WHERE b.library_id=? ORDER BY d.n DESC LIMIT 60",
+            f"ON d.dish_id=b.dish_id WHERE b.library_id=? ORDER BY d.n DESC LIMIT 12",
             _bp + _dp + [lid]))
         # ⚠️ ORDERED BY SHARE, NOT BY COUNT. By raw count this list is just the biggest dishes in
         #    the corpus over and over. `chicken 10,262` outranks `guacamole 899` for avocado on
@@ -2362,7 +3123,7 @@ def ingredient(lid):
         dish_use = list(c.execute(
             f"SELECT d.dish_id, d.dish, i.n, i.n_dish, (i.n * 1.0 / i.n_dish) share "
             f"FROM {_pv} i JOIN {_dv} d ON d.dish_id=i.dish_id "
-            f"WHERE i.library_id=? ORDER BY share DESC, i.n DESC LIMIT 60",
+            f"WHERE i.library_id=? ORDER BY share DESC, i.n DESC LIMIT 12",
             _pp + _dp + [lid]))
     base_rows = [(f'<span class=nm>{dlink(x["dish_id"], x["dish"])}</span>', fmt(x["n"]))
                  for x in dish_base]
@@ -2380,63 +3141,34 @@ def ingredient(lid):
 <p class=sub><span class=mono>{escape(lid)}</span> · <a href="/g/{uq(lid)}">open the graph</a></p>
 <p class=ident>read from <span class=mono>library_names</span>, with its edges from
  <span class=mono>library_relations</span></p>
+{freq_line(c, lid, _occ, _ready)}
 {idsec}</section>
-<section><h2>Category and hierarchy</h2>
-<div class=two>
-  <div><h3>Category <a class=dimc href="/relations?child={uq(lid)}&amp;kind=in_category">{fmt(len(nb["category"]))}</a></h3>
-  <p class=cap>The browsable family this row is filed under.</p>
-  {table([("category","the family it is filed under","library_categories.name"),
-          ("kind","always in-category here","kind"),
-          ("confidence","how firmly the filing stands","confidence"),
-          ("source","where the filing came from","source")],
-         cat_rows, ["nm","","",""], "In no category.")}</div>
-  <div><h3>Parents <a class=dimc href="/relations?child={uq(lid)}&amp;kind=hierarchy">{fmt(len(nb["parent"]))}</a></h3>
-  <p class=cap>Broader rows above this one. <b>Is a kind of</b> means the same stuff named more
-   narrowly. <b>Is made from</b> means one ingredient turned into another.</p>
-  {table([("parent","the broader row above this one","parent_id"),
-          ("kind","is a kind of, or is made from","kind"),
-          ("confidence","how firmly it stands","confidence"),
-          ("source","where it came from","source")],
-         par_rows, ["nm","","",""], "No parent.")}{dup}</div>
-</div>
-<h3 style="margin-top:26px">Children <a class=dimc href="/relations?parent={uq(lid)}&amp;kind=hierarchy">{fmt(len(nb["child"]))}</a></h3>
-<p class=cap>Narrower rows that sit below this one. Most rows have none.</p>
-{table([("child","the narrower row below this one","child_id"),
-        ("kind","is a kind of, or is made from","kind"),
-        ("confidence","how firmly it stands","confidence"),("",""," ")],
-       kid_rows, ["nm","","",""], "No children.")}
-{f'<p class=note>Showing 200 of {fmt(len(nb["child"]))}.</p>' if len(nb["child"])>200 else ''}
-<h3 style="margin-top:26px">Siblings <span class=dimc>{fmt(len(nb["sibling"]))}</span></h3>
-<p class=cap>Rows that share a parent with this one. Not stored anywhere, worked out on this
- reading by looking at what else hangs off the same parent.</p>
-{table([("sibling","another row under the same parent","child_id"),
-        ("kind","the relation both of them carry","kind"),
-        ("reached through","the parent they share","parent_id"),("",""," ")],
-       sib_rows, ["nm","","",""], "No siblings.")}
-</section>
-<section><h2>Dishes <span class=dimc>{fmt(n_use)}</span></h2>
-<p class=cap>What the corpus cooks with this, counted over 2,231,142 recipes. {
- "Nothing in this library's own recipes uses it yet, so the section below is empty and this one "
- "is not. That gap is the point of reading a corpus at all."
+{sourced_block(c, lid, row["canonical"])}
+{_sec_order(c, lid, nb, _occ, _core, _ready)}
+<section><h2>Dishes{" <span class=dimc>" + fmt(n_use) + "</span>" if n_use else ""}</h2>
+<p class=cap>What the corpus cooks with this{f", counted over {fmt(MC.corpus_n(c))} recipes" if _ready else ""}. {
+ ("Nothing in this library's own recipes uses it yet, so the section below is empty and this one "
+  "is not. That gap is the point of reading a corpus at all." if n_use or n_base else
+  "The corpus does not reach this row either, so there is nothing to show here.")
  if not lines else
  f"The {fmt(len(lines))} ingredient lines below are a different question and the two are worth "
  f"not reading as one. The corpus says what people cook. The lines say what has been cooked here."
 }</p>
 <div class=two>
-  <div><h3>Dishes this is the base of <a class=dimc href="/dishes">{fmt(n_base)}</a></h3>
+  <div><h3>Dishes this is the base of{" <a class=dimc href=\"/dishes\">" + fmt(n_base) + "</a>" if n_base else ""}</h3>
   <p class=cap>Dishes whose name says they are made of this.</p>
   {table([("dish", "the dish this row is the base of", "mined_dish_base"),
           ("recipes", "how many recipes resolved to that dish", "mined_dish.n")],
          base_rows, ["nm", "num"], "No dish is built on this row.")}
-  {f'<p class=note>Showing 60 of {fmt(n_base)}.</p>' if n_base > 60 else ''}</div>
-  <div><h3>Dishes that use it <span class=dimc>{fmt(n_use)}</span></h3>
+  {f'<p class=note>Showing the 12 biggest of {fmt(n_base)}. <a href="/dishes">All dishes</a>.</p>' if n_base > 12 else ''}</div>
+  <div><h3>Dishes that use it{" <span class=dimc>" + fmt(n_use) + "</span>" if n_use else ""}</h3>
   <p class=cap>Ordered by share rather than by count, so a dish this is characteristic OF ranks
    above a dish that is merely large.</p>
   {table([("dish", "a dish whose profile carries this row", "mined_dish_ingredient"),
           ("in", "recipes of that dish carrying it", "n of n_dish"),
           ("share", "that count as a share of the dish", "n / n_dish")],
          use_rows, ["nm", "num", "num"], "No dish profile carries this row.")}
-  {f'<p class=note>Showing the 60 highest shares of {fmt(n_use)}.</p>' if n_use > 60 else ''}</div>
+  {f'<p class=note>Showing the 12 highest shares of {fmt(n_use)}. <a href="/dishes">All dishes</a>.</p>' if n_use > 12 else ''}</div>
 </div></section>
 <section><h2>Recipe uses <a class=dimc href="/links?catalog={uq(lid)}">{fmt(len(lines))}</a></h2>
 <p class=cap>Every ingredient line in the corpus that resolved to this row. Zero means nothing has
@@ -2445,7 +3177,8 @@ def ingredient(lid):
         ("recipe","the recipe it came from","recipes.name"),
         ("confidence","how the match was made","link_confidence"),
         ("rule","the matcher rule that fired","link_rule")],
-       line_rows, ["wrap","","",""], "This row is not used in any recipe.")}</section>"""
+       line_rows, ["wrap","","",""], "This row is not used in any recipe.")}
+{f'<p class=note>Showing {RECIPE_USE_CAP} of {fmt(len(lines))}. <a href="/links?catalog={uq(lid)}">Every line</a>.</p>' if len(lines) > RECIPE_USE_CAP else ''}</section>"""
     c.close()
     return page(row["canonical"], body, "/catalog",
                 [("Condition", "/"), ("Catalog", "/catalog"), (row["canonical"], None)])
@@ -3171,7 +3904,7 @@ def dish(did):
     cui_row = (f'  <dt>cuisine</dt><dd>{vrow("cuisine")}</dd>\n' if "cuisine" in vocab else "")
     crs_row = (f'  <dt>course</dt><dd>{vrow("course")}</dd>\n' if "course" in vocab else "")
     assertion_note = (
-        " cuisine and course carry no share, and the grey tag is what says so: they are"
+        " cuisine and course carry no share, and the gray tag is what says so: they are"
         " assertions an editor made once rather than counts of recipes."
         if (cui_row or crs_row) else "")
     body = f"""<section><h1>{escape(dish_name)}</h1>
@@ -3357,7 +4090,8 @@ def substitutions():
     about = (
       "<p class=about>A substitution here is a proposal, not a fact. RecipeNLG's directions text "
       'says things like <span class=ex>use margarine instead of butter</span>, and an extractor '
-      f'pulled <b>{fmt(n_all - n_gap)}</b> ordered pairs out of 2,231,142 recipes. Slightly over '
+      f'pulled <b>{fmt(n_all - n_gap)}</b> ordered pairs out of '
+      f'{fmt(MC.corpus_n(c)) + " recipes" if mined_ready(c) else "the corpus"}. Slightly over '
       'half of what it matched survived cleaning, so the rest of the work is reading.</p>'
       '<p class=about>Direction is the fact, so the pair is ordered and the reverse count sits '
       f'beside it. <b>{fmt(n_both)}</b> pairs were seen both ways round. Water to chicken broth '
