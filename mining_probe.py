@@ -108,6 +108,8 @@ SENTINEL = object()
 #              pairing_run and substitution_run consume.
 #    'records' yields (title, [ingredient names]) pairs, what dish_facet_run consumes.
 #    'titles'  yields titles alone.
+#    'assertions' yields (title, facet, value) for a facet the SOURCE STATES rather than one the
+#              miner reads off a title. Optional, and most sources state nothing.
 #    'slug'    the default source_slug for this reader, so --source stays optional.
 #
 #    ⚠️ recipenlg-2020 IS THE DEFAULT AND ITS ENTRY MUST NOT CHANGE BEHAVIOR. Every value here
@@ -116,7 +118,7 @@ READERS = {}
 
 
 def register_reader(key, *, lines=None, records=None, titles=None, slug=None,
-                    needs_resolver=False):
+                    needs_resolver=False, assertions=None):
     """Add a corpus to the registry. Called at import by whichever module owns the format.
 
     ⚠️ needs_resolver SAYS THE READER WANTS THE CALLER'S MATCHER. A source whose own cleaning
@@ -124,7 +126,7 @@ def register_reader(key, *, lines=None, records=None, titles=None, slug=None,
     about the catalog rather than about the file. A reader that sets this is passed a
     `resolves` callable; one that does not is called with two arguments as before."""
     READERS[key] = {"lines": lines, "records": records, "titles": titles, "slug": slug,
-                    "needs_resolver": needs_resolver}
+                    "needs_resolver": needs_resolver, "assertions": assertions}
 
 
 def _rn_records(path, limit):

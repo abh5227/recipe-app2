@@ -192,5 +192,17 @@ def cuisines(path, limit=10**9):
             yield rec.title, v
 
 
+def assertions(path, limit=10**9):
+    """(title, facet, value) for what this source STATES about a recipe.
+
+    ⚠️ ONE FACET, AND IT IS THE REASON THIS SOURCE WAS TAKEN. Every other facet in the mined
+    schema is inferred from a title, so `baked` is in the title and n counts the evidence. The
+    Cuisine column is an editor's claim, present on all 5,938 rows, and a stated `Chettinad` or
+    `Awadhi` is a fact no title inference can reach. 34 of the 82 values are sub-national.
+    """
+    for title, v in cuisines(path, limit):
+        yield title, "cuisine", v
+
+
 MP.register_reader("india", lines=lines, records=records, titles=titles, slug=SLUG,
-                   needs_resolver=True)
+                   needs_resolver=True, assertions=assertions)

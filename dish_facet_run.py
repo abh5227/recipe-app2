@@ -131,7 +131,8 @@ def run(corpus, limit, out, floor=10, db=None, reader_key="recipenlg", source_sl
 
     dish = collections.Counter()
     facets = {k: collections.Counter() for k in
-              ("form", "base", "method", "diet", "structural", "appliance", "accompaniment")}
+              ("form", "base", "method", "diet", "structural", "appliance", "accompaniment",
+               "cuisine", "course")}
     cov = collections.Counter()
     gap_hits = collections.Counter()
     cleaned_brand = cleaned_name = 0
@@ -190,6 +191,30 @@ def run(corpus, limit, out, floor=10, db=None, reader_key="recipenlg", source_sl
             samples.append(row)
     p2 = time.time() - t1
     print(f"  pass 2: {p2:.0f}s   {len(dish):,} distinct dishes", flush=True)
+
+    # ── pass 2b, the facets the source ASSERTS rather than the ones read off a title ─────────
+    # ⚠️ AN ASSERTION IS A DIFFERENT KIND OF FACT AND IT ARRIVES ON ITS OWN STREAM. Every facet
+    #    above is inferred: `baked` is in the title, so the title is the evidence and n counts
+    #    how much of it there is. A cuisine is stated. India carries a Cuisine column on all
+    #    5,938 rows and a stated `Chettinad` is a fact no amount of title inference produces.
+    #    load_dish_facets already floors these two at 1 for exactly that reason.
+    #
+    # ⚠️ IT RE-DERIVES THE dish_id THE SAME WAY PASS 2 DOES rather than carrying one over. The
+    #    routing depends on the pass-1 tally, so a dish_id computed anywhere else could drift
+    #    from the one the dish rows use and the facet would hang on nothing.
+    n_assert = 0
+    if rd.get("assertions"):
+        for title, kind, value in rd["assertions"](corpus, limit):
+            if kind not in facets:
+                raise SystemExit(f"the {reader_key!r} reader asserts {kind!r}, which is not a "
+                                 f"facet this run emits. Known: {sorted(facets)}")
+            d = F.specific_dish(title, brands, is_cat)
+            if not d:
+                continue
+            kept, _ = F.route(d, tally)
+            facets[kind][(F.dish_id(kept or d), value)] += 1
+            n_assert += 1
+        print(f"  pass 2b: {n_assert:,} asserted facet rows", flush=True)
 
     # ── pass 3, the dish x ingredient profile ────────────────────────────────────────────────
     # ⚠️ GATED ON THE FINAL DISH COUNTS, which is why it cannot be folded into pass 2. Ungated
