@@ -24,6 +24,13 @@ import linkage_matcher as LM
 import mining_probe as MP
 from recipe_line_parser import parse
 
+# ⚠️ THE DATABASE AND THE SOURCE ARE PARAMETERS, AND THEY USED TO BE NEITHER. This script read
+#    BASE/'recipes.db' by name, which is the LIVE database, and pinned SOURCE_SLUG to one corpus.
+#    A run aimed at a copy still matched against live's catalog, so the counts looked right and
+#    were wrong: live holds 10,490 names where the working copy holds 10,020. The loaders beside
+#    this script already took --db. This brings the run scripts level with them.
+#
+#    ⚠️ THE DEFAULTS ARE TODAY'S VALUES AND THE ACCEPTANCE TEST IS THAT THEY STAY THAT WAY.
 SOURCE_SLUG = "recipenlg-2020"          # pins which corpus produced these counts
 
 
@@ -42,9 +49,14 @@ class RowTally:
             self.n_recipes[lid] += 1
 
 
-def run(csv_path, limit, column="NER"):
-    conn = __import__("sqlite3").connect(f"file:{BASE/'recipes.db'}?mode=ro", uri=True)
-    cat = LM.load_catalog(conn)
+def run(csv_path, limit, column="NER", db=None, reader_key="recipenlg", source_slug=None):
+    rd = MP.reader(reader_key)
+    conn = __import__("sqlite3").connect(f"file:{db or BASE/'recipes.db'}?mode=ro", uri=True)
+    # ⚠️ THE CATALOG IS LOADED AT THE SOURCE'S SCOPE. A source-scoped alias exists because
+    #    two corpora disagree about what a name means, so loading unscoped here would leave
+    #    india's 'corn flour' -> cornstarch inert and the name would reach nothing. Measured
+    #    before this line: cornstarch counted 0 india recipes with the scope dropped.
+    cat = LM.load_catalog(conn, source_slug=source_slug or rd["slug"])
     decided, problems = LM.load_decisions(cat)
     for p in problems:
         print(f"  decision problem: {p}")
@@ -53,7 +65,7 @@ def run(csv_path, limit, column="NER"):
     t = RowTally()
     seen_here = set()
     t0 = time.time()
-    for line in MP.from_recipenlg(csv_path, limit, column):
+    for line in rd["lines"](csv_path, limit):
         if line is MP.SENTINEL:
             t.recipes += 1
             t.fold(seen_here)
@@ -84,10 +96,14 @@ def main():
     ap.add_argument("corpus")
     ap.add_argument("-n", type=int, default=10**9, help="recipes to read, default all")
     ap.add_argument("-o", "--out", default="previews/occurrence-counts.json")
+    ap.add_argument("--db", default=None, help="database to match against. Default recipes.db")
+    ap.add_argument("--reader", default="recipenlg", help="corpus format. See mining_probe.READERS")
+    ap.add_argument("--source", default=None, help="source_slug to stamp. Default the reader's")
     a = ap.parse_args()
-    t, el = run(a.corpus, a.n)
+    slug = a.source or MP.reader(a.reader)["slug"]
+    t, el = run(a.corpus, a.n, db=a.db, reader_key=a.reader, source_slug=slug)
     out = {
-        "source_slug": SOURCE_SLUG,
+        "source_slug": slug,
         "corpus_file": Path(a.corpus).name,
         "recipes_read": t.recipes,
         "ingredient_lines": t.lines,

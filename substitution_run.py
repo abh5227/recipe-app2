@@ -24,6 +24,12 @@ import nonfood_filter as NF
 from recipe_line_parser import parse
 
 csv.field_size_limit(10_000_000)
+# ⚠️ THE DATABASE AND THE SOURCE ARE PARAMETERS, AND THEY USED TO BE NEITHER. This script read
+#    BASE/'recipes.db' by name, which is the LIVE database. A run aimed at a copy still matched
+#    against live's catalog, so the counts looked right and were wrong: live holds 10,490 names
+#    where the working copy holds 10,020. The loaders beside it already took --db.
+#
+#    ⚠️ THE DEFAULTS ARE TODAY'S VALUES AND THE ACCEPTANCE TEST IS THAT THEY STAY THAT WAY.
 SOURCE_SLUG = "recipenlg-2020"
 
 # ⚠️ DIRECTION IS SET BY THE PREPOSITION, NOT THE VERB. "substitute X for Y" replaces Y with X.
@@ -88,9 +94,13 @@ def longest_catalog_match(text, cat, decided, max_words=5):
     return _SPAN_CACHE[key]
 
 
-def run(csv_path, limit):
-    conn = sqlite3.connect(f"file:{BASE/'recipes.db'}?mode=ro", uri=True)
-    cat = LM.load_catalog(conn)
+# ⚠️ NO --reader HERE, DELIBERATELY. This pass reads the `directions` column, which is recipe
+#    text rather than ingredient names. A derive_only source is one whose counts may be kept
+#    while its text may not, so pointing this script at one would read exactly the column that
+#    status forbids retaining. --db is added because the live-database hazard is real here too.
+def run(csv_path, limit, db=None, source_slug=None):
+    conn = sqlite3.connect(f"file:{db or BASE/'recipes.db'}?mode=ro", uri=True)
+    cat = LM.load_catalog(conn, source_slug=source_slug)
     decided, _ = LM.load_decisions(cat)
     canon = {r[0]: r[1] for r in conn.execute("SELECT library_id, canonical FROM library_names")}
     is_cat_name = BG.catalog_name_check(conn)
@@ -155,15 +165,17 @@ def main():
     ap.add_argument("corpus")
     ap.add_argument("-n", type=int, default=10**9)
     ap.add_argument("--out", default="previews/substitution-candidates.json")
+    ap.add_argument("--db", default=None, help="database to match against. Default recipes.db")
+    ap.add_argument("--source", default=SOURCE_SLUG, help="source_slug to stamp")
     a = ap.parse_args()
-    pairs, unrep, drop, fired, N, el = run(a.corpus, a.n)
+    pairs, unrep, drop, fired, N, el = run(a.corpus, a.n, db=a.db, source_slug=a.source)
     merged = collections.Counter()
     patt = {}
     for (f, t, lab), v in pairs.items():
         merged[(f, t)] += v
         patt.setdefault((f, t), set()).add(lab)
     out = {
-        "source_slug": SOURCE_SLUG, "recipes_read": N, "seconds": round(el, 1),
+        "source_slug": a.source, "recipes_read": N, "seconds": round(el, 1),
         "matches_fired": fired, "clean_tuples": len(merged),
         "dropped": dict(drop),
         "candidates": [{"from_id": f, "to_id": t, "n": v,

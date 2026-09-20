@@ -32,6 +32,12 @@ import nonfood_filter as NF
 from recipe_line_parser import parse
 
 csv.field_size_limit(10_000_000)
+# ⚠️ THE DATABASE AND THE SOURCE ARE PARAMETERS, AND THEY USED TO BE NEITHER. This script read
+#    BASE/'recipes.db' by name, which is the LIVE database. A run aimed at a copy still matched
+#    against live's catalog, so the counts looked right and were wrong: live holds 10,490 names
+#    where the working copy holds 10,020. The loaders beside it already took --db.
+#
+#    ⚠️ THE DEFAULTS ARE TODAY'S VALUES AND THE ACCEPTANCE TEST IS THAT THEY STAY THAT WAY.
 SOURCE_SLUG = "recipenlg-2020"
 LONG_K = 25                 # settled: 99.9% of recipes sit at k<=20, clean gap above
 
@@ -53,9 +59,14 @@ def stream(path, limit):
                 return
 
 
-def run(csv_path, limit, cap=LONG_K):
-    conn = sqlite3.connect(f"file:{BASE/'recipes.db'}?mode=ro", uri=True)
-    cat = LM.load_catalog(conn)
+def run(csv_path, limit, cap=LONG_K, db=None, reader_key="recipenlg", source_slug=None):
+    rd = MP.reader(reader_key)
+    conn = sqlite3.connect(f"file:{db or BASE/'recipes.db'}?mode=ro", uri=True)
+    # ⚠️ THE CATALOG IS LOADED AT THE SOURCE'S SCOPE. A source-scoped alias exists because
+    #    two corpora disagree about what a name means, so loading unscoped here would leave
+    #    india's 'corn flour' -> cornstarch inert and the name would reach nothing. Measured
+    #    before this line: cornstarch counted 0 india recipes with the scope dropped.
+    cat = LM.load_catalog(conn, source_slug=source_slug or rd["slug"])
     decided, _ = LM.load_decisions(cat)
     singles = {r[0]: r[1] for r in conn.execute(
         "SELECT library_id, n_recipes FROM mined_occurrences WHERE source_slug=?", (SOURCE_SLUG,))}
@@ -70,7 +81,7 @@ def run(csv_path, limit, cap=LONG_K):
     nonfood = []                        # (title, reason) for the excluded non-food records
     n_recipes = 0
     t0 = time.time()
-    for title, names in stream(csv_path, limit):
+    for title, names in (rd["records"] or stream)(csv_path, limit):
         n_recipes += 1
         # ⚠️ EXCLUDED AT THE RECIPE LEVEL, NOT BY BANNING AN INGREDIENT. Almost every cosmetic
         #    marker has a real food use, measured: paraffin is in 1,534 candy recipes, lye makes
@@ -112,8 +123,13 @@ def main():
     ap.add_argument("--cap", type=int, default=LONG_K)
     ap.add_argument("--out", default="previews/pairings.json")
     ap.add_argument("--longs-out", default="previews/long-records.json")
+    ap.add_argument("--db", default=None, help="database to match against. Default recipes.db")
+    ap.add_argument("--reader", default="recipenlg", help="corpus format. See mining_probe.READERS")
+    ap.add_argument("--source", default=None, help="source_slug to stamp. Default the reader's")
     a = ap.parse_args()
-    pairs, over, klen, longs, nonfood, singles, N, el = run(a.corpus, a.n, a.cap)
+    slug = a.source or MP.reader(a.reader)["slug"]
+    pairs, over, klen, longs, nonfood, singles, N, el = run(a.corpus, a.n, a.cap, db=a.db,
+                                                            reader_key=a.reader, source_slug=slug)
 
     def lift(ab, n_ab):
         na, nb = singles.get(ab[0], 0), singles.get(ab[1], 0)
@@ -123,7 +139,7 @@ def main():
              "n_b": singles.get(b_, 0), "lift": round(lift((a_, b_), v), 4)}
             for (a_, b_), v in pairs.items()]
     rows.sort(key=lambda r: -r["n"])
-    json.dump({"source_slug": SOURCE_SLUG, "recipes_read": N, "cap_k": a.cap,
+    json.dump({"source_slug": slug, "recipes_read": N, "cap_k": a.cap,
                "nonfood_excluded": len(nonfood),
                "distinct_pairs": len(rows), "seconds": round(el, 1), "pairs": rows},
               open(a.out, "w"))

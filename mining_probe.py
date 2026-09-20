@@ -100,6 +100,62 @@ def from_recipenlg(path, limit, column=None):
 SENTINEL = object()
 
 
+# ⚠️ THE READER REGISTRY. A run script used to name from_recipenlg directly, which pinned every
+#    mining pass to one corpus and one file format. A source is now a key here, and adding one is
+#    a registry entry rather than an edit to four scripts.
+#
+#    'lines'   yields ingredient lines with SENTINEL between recipes, what occurrence_run,
+#              pairing_run and substitution_run consume.
+#    'records' yields (title, [ingredient names]) pairs, what dish_facet_run consumes.
+#    'titles'  yields titles alone.
+#    'slug'    the default source_slug for this reader, so --source stays optional.
+#
+#    ⚠️ recipenlg-2020 IS THE DEFAULT AND ITS ENTRY MUST NOT CHANGE BEHAVIOR. Every value here
+#    is the value the scripts hardcoded before this registry existed.
+READERS = {}
+
+
+def register_reader(key, *, lines=None, records=None, titles=None, slug=None):
+    """Add a corpus to the registry. Called at import by whichever module owns the format."""
+    READERS[key] = {"lines": lines, "records": records, "titles": titles, "slug": slug}
+
+
+def _rn_records(path, limit):
+    """(title, ingredient names) for RecipeNLG. Directions and link are never touched."""
+    with open(path, newline="", encoding="utf-8") as fh:
+        for i, row in enumerate(csv.DictReader(fh)):
+            if i >= limit:
+                return
+            raw = row.get("NER") or ""
+            try:
+                items = ast.literal_eval(raw) if raw.startswith("[") else []
+            except (ValueError, SyntaxError):
+                items = []
+            yield (row.get("title") or "",
+                   [x for x in items if isinstance(x, str) and x.strip()])
+
+
+def _rn_titles(path, limit):
+    with open(path, newline="", encoding="utf-8") as fh:
+        for i, row in enumerate(csv.DictReader(fh)):
+            if i >= limit:
+                return
+            yield row.get("title") or ""
+
+
+register_reader("recipenlg", lines=lambda p, n: from_recipenlg(p, n, "NER"),
+                records=_rn_records, titles=_rn_titles, slug="recipenlg-2020")
+
+
+def reader(key):
+    """The registry entry, or a SystemExit naming what is available. Never a silent default.
+
+    """
+    if key not in READERS:
+        raise SystemExit(f"unknown --reader {key!r}. Registered: {sorted(READERS)}")
+    return READERS[key]
+
+
 def from_local(conn, limit):
     """Self-test source. The 298 local recipes, read-only, to prove the harness measures."""
     q = ("SELECT COALESCE(NULLIF(label,''), raw_text) FROM recipe_ingredients "

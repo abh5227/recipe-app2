@@ -24,6 +24,12 @@ import ast
 import brand_guard as BG
 import dish_facets as F
 import nonfood_filter as NF
+# ⚠️ THE DATABASE AND THE SOURCE ARE PARAMETERS, AND THEY USED TO BE NEITHER. This script read
+#    BASE/'recipes.db' by name, which is the LIVE database. A run aimed at a copy still matched
+#    against live's catalog, so the counts looked right and were wrong: live holds 10,490 names
+#    where the working copy holds 10,020. The loaders beside it already took --db.
+#
+#    ⚠️ THE DEFAULTS ARE TODAY'S VALUES AND THE ACCEPTANCE TEST IS THAT THEY STAY THAT WAY.
 import linkage_matcher as LM
 import mining_probe as MP
 from recipe_line_parser import parse
@@ -66,9 +72,14 @@ def records(path, limit):
                    [x for x in items if isinstance(x, str) and x.strip()])
 
 
-def run(corpus, limit, out, floor=10):
-    conn = sqlite3.connect(f"file:{BASE/'recipes.db'}?mode=ro", uri=True)
-    cat = LM.load_catalog(conn)
+def run(corpus, limit, out, floor=10, db=None, reader_key="recipenlg", source_slug=None):
+    rd = MP.reader(reader_key)
+    conn = sqlite3.connect(f"file:{db or BASE/'recipes.db'}?mode=ro", uri=True)
+    # ⚠️ THE CATALOG IS LOADED AT THE SOURCE'S SCOPE. A source-scoped alias exists because
+    #    two corpora disagree about what a name means, so loading unscoped here would leave
+    #    india's 'corn flour' -> cornstarch inert and the name would reach nothing. Measured
+    #    before this line: cornstarch counted 0 india recipes with the scope dropped.
+    cat = LM.load_catalog(conn, source_slug=source_slug or rd["slug"])
     decided, _ = LM.load_decisions(cat)
     canon = {r[0]: r[1] for r in conn.execute("SELECT library_id, canonical FROM library_names")}
     is_cat = BG.catalog_name_check(conn)
@@ -84,7 +95,7 @@ def run(corpus, limit, out, floor=10):
     t0 = time.time()
     tally = collections.Counter()
     n = 0
-    for title in titles(corpus, limit):
+    for title in (rd["titles"] or titles)(corpus, limit):
         n += 1
         d = F.specific_dish(title, brands, is_cat)
         if d:
@@ -126,7 +137,7 @@ def run(corpus, limit, out, floor=10):
     cleaned_brand = cleaned_name = 0
     samples = []
     t1 = time.time()
-    for idx, title in enumerate(titles(corpus, limit)):
+    for idx, title in enumerate((rd["titles"] or titles)(corpus, limit)):
         raw_norm = F.specific_dish(title, None, None)
         d = F.specific_dish(title, brands, is_cat)
         if raw_norm != d:
@@ -189,14 +200,14 @@ def run(corpus, limit, out, floor=10):
     print(f"  pass 3: profiling {len(above):,} dishes at n >= {floor} "
           f"({sum(dcount[i] for i in above):,} recipes)", flush=True)
     conn = sqlite3.connect(f"file:{BASE/'recipes.db'}?mode=ro", uri=True)
-    cat2 = LM.load_catalog(conn)
+    cat2 = LM.load_catalog(conn, source_slug=source_slug or rd["slug"])
     decided2, _ = LM.load_decisions(cat2)
     conn.close()
     prof = collections.Counter()
     nonfood = 0
     t2 = time.time()
     _seen = {}
-    for idx, (title, names) in enumerate(records(corpus, limit)):
+    for idx, (title, names) in enumerate((rd["records"] or records)(corpus, limit)):
         d = F.specific_dish(title, brands, is_cat)
         if not d:
             continue
@@ -233,7 +244,7 @@ def run(corpus, limit, out, floor=10):
           flush=True)
 
     payload = {
-        "source_slug": F.SOURCE_SLUG, "titles_read": n,
+        "source_slug": source_slug or rd["slug"] or F.SOURCE_SLUG, "titles_read": n,
         "seconds": round(p1 + p2 + p3, 1),
         "coverage": {k: cov[k] for k in sorted(cov)},
         "cleaned_brand": cleaned_brand, "cleaned_name": cleaned_name,
@@ -263,8 +274,11 @@ if __name__ == "__main__":
     ap.add_argument("--out", default="previews/dish-facets.json")
     ap.add_argument("--floor", type=int, default=10,
                     help="dish floor for the pass-3 profile. The loader applies it to every table.")
+    ap.add_argument("--db", default=None, help="database to match against. Default recipes.db")
+    ap.add_argument("--reader", default="recipenlg", help="corpus format. See mining_probe.READERS")
+    ap.add_argument("--source", default=None, help="source_slug to stamp. Default the reader's")
     a = ap.parse_args()
-    p = run(a.corpus, a.n, a.out, a.floor)
+    p = run(a.corpus, a.n, a.out, a.floor, db=a.db, reader_key=a.reader, source_slug=a.source)
     print(f"\n  titles {p['titles_read']:,}  dishes {p['distinct_dishes']:,}")
     for k, v in p["coverage"].items():
         print(f"    {k:<20}{v:>9,}{v/p['titles_read']:>8.1%}")
