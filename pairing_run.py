@@ -61,18 +61,26 @@ def stream(path, limit):
 
 def run(csv_path, limit, cap=LONG_K, db=None, reader_key="recipenlg", source_slug=None):
     rd = MP.reader(reader_key)
+    slug = source_slug or rd["slug"]
     conn = sqlite3.connect(f"file:{db or BASE/'recipes.db'}?mode=ro", uri=True)
     # ⚠️ THE CATALOG IS LOADED AT THE SOURCE'S SCOPE. A source-scoped alias exists because
     #    two corpora disagree about what a name means, so loading unscoped here would leave
     #    india's 'corn flour' -> cornstarch inert and the name would reach nothing. Measured
     #    before this line: cornstarch counted 0 india recipes with the scope dropped.
-    cat = LM.load_catalog(conn, source_slug=source_slug or rd["slug"])
+    cat = LM.load_catalog(conn, source_slug=slug)
     decided, _ = LM.load_decisions(cat)
+    # ⚠️ THE MARGINALS ARE THIS SOURCE'S OWN, AND THIS LINE USED TO NAME THE MODULE CONSTANT.
+    #    lift = n * N / (n_a * n_b), and n_a has to be counted over the same corpus as n. With
+    #    the constant here a wikibooks or india run divided its own co-occurrence counts by
+    #    RecipeNLG's marginals, which is 2.2 million recipes under a 5,938-recipe numerator. The
+    #    lifts came out near zero and nothing errored, because every id in a small source also
+    #    appears in the large one. The --source flag existed and one of its two uses was missed.
     singles = {r[0]: r[1] for r in conn.execute(
-        "SELECT library_id, n_recipes FROM mined_occurrences WHERE source_slug=?", (SOURCE_SLUG,))}
+        "SELECT library_id, n_recipes FROM mined_occurrences WHERE source_slug=?", (slug,))}
     conn.close()
     if not singles:
-        raise SystemExit("mined_occurrences is empty. Run occurrence_run.py and load it first.")
+        raise SystemExit(f"mined_occurrences holds no row for source_slug {slug!r}. Run "
+                         f"occurrence_run.py over this source and load it before pairing.")
 
     pairs = collections.Counter()       # pairs from records at or under the cap
     over = collections.Counter()        # pairs ONLY the over-cap records would add

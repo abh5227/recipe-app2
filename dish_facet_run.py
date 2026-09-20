@@ -199,7 +199,12 @@ def run(corpus, limit, out, floor=10, db=None, reader_key="recipenlg", source_sl
     above = {i for i, c in dcount.items() if c >= floor}
     print(f"  pass 3: profiling {len(above):,} dishes at n >= {floor} "
           f"({sum(dcount[i] for i in above):,} recipes)", flush=True)
-    conn = sqlite3.connect(f"file:{BASE/'recipes.db'}?mode=ro", uri=True)
+    # ⚠️ --db REACHES THIS LINE NOW AND IT DID NOT BEFORE. Passes 1 and 2 were parameterized
+    #    and pass 3 was missed, so a run aimed at a copy built its dish x ingredient profile
+    #    against LIVE's catalog. It fails loudly rather than quietly only by luck: live holds
+    #    10,490 names to the copy's 10,020, so load_dish_facets would refuse the orphans it
+    #    produced. A copy with MORE rows than live would have loaded silently wrong.
+    conn = sqlite3.connect(f"file:{db or BASE/'recipes.db'}?mode=ro", uri=True)
     cat2 = LM.load_catalog(conn, source_slug=source_slug or rd["slug"])
     decided2, _ = LM.load_decisions(cat2)
     conn.close()
