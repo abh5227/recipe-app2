@@ -44,7 +44,7 @@ STATE = {"freshly","finely","roughly","coarsely","thinly","chopped","sliced","di
          # describes what was DONE to the ingredient or how much, never which ingredient it is.
          "julienned","crumbled","mashed","torn","deseeded","picked","unsifted","tightly",
          "loosely","evenly","heaping","heaped","generous","healthy","few","plenty","cut",
-         "sifted","grated","room","temperature","taste","dusting","garnish","serving",
+         "sifted","grated","whipped","room","temperature","taste","dusting","garnish","serving",
          "finish","sprinkling","dredging","brushing","needed","divided","note","recipe",
          "indian","persian","imported","homemade","preferred","your","any","following",
          "more","just","ripe","sturdy","stale","runny","thickened","soft"}
@@ -109,7 +109,38 @@ UNIT = MEASURE_ABBREV | {"cup","cups","tablespoon","tablespoons","tbsp","teaspoo
         #    worse than a unit that is not read at all.
         }
 QTY = re.compile(r"^[\d\s./¼½¾⅓⅔⅛⅜⅝⅞\-–—]+")
-MODWORDS = STATE | FORM | UNIT
+# ⚠️ TRAILING TYPE WORDS. A noun naming the KIND of thing, written after the specific name.
+#    'parmesan cheese' has to reach 'Parmesan' the way 'cheddar cheese' already reaches
+#    'Cheddar cheese', and the catalog is inconsistent about which half carries the word.
+#    KEPT OUT OF MODWORDS ON PURPOSE: putting it there makes 'cheese slices' and 'shredded
+#    cheese' all-modifier fragments that name nothing, which is the black-gram defect in a
+#    different word. Measured before shipping: three working lines became no line at all.
+TYPE_TAIL = {"cheese", "cheeses"}
+
+# ⚠️ HEADS THAT MUST NOT HAVE A TYPE WORD STRIPPED, because the head is a different food.
+#    A pepper cheese is not a peppercorn and a garlic cheese is not garlic. Every entry was
+#    read off a full pass over all three sources: 63 '<X> cheese' names would newly resolve and
+#    these 25 would resolve WRONGLY, 1,951 lines. No structural signal separates them from
+#    'parmesan cheese', so the list is named rather than ruled about.
+TYPE_TAIL_BLOCK = {"pepper","garlic","jalapeno","jalapeño","milk","yogurt","goats","cow","weight",
+                   "herb","chili","bacon","cashew","macaroni","pineapple","orange","broccoli",
+                   "dill","wine","truffle","onion","millet","chocolate cream","coconut cream",
+                   "triple cream","lactose free cream","whipped cream"}
+
+# ⚠️ WORDS THAT ARE A UNIT AND ALSO A FOOD. 'gram' is a unit of mass and a pulse. 'clove' is a
+#    unit of garlic and a spice. Both sit in UNIT, so both were eaten as units and both produced
+#    an EMPTY core when they stood alone: 'cloves (laung)' named nothing on 426 india lines and
+#    'black gram' named nothing everywhere. They are excluded from the all-modifier test below
+#    for the same reason TYPE_TAIL is, and the leading-unit strip leaves them when nothing
+#    follows them.
+FOOD_UNIT = {"gram", "grams", "clove", "cloves"}
+
+# ⚠️ After a leading 'gram' with no number before it, these make it the PULSE. 'gram flour' is
+#    besan and reached 'flour' before this, which is a resolved-but-wrong link no coverage
+#    number can see. Measured: 111 gains, 558 corrections, 0 regressions across all sources.
+GRAM_COMPOUND = {"flour", "flours", "dal", "daal", "dhal", "lentil", "lentils", "besan"}
+
+MODWORDS = (STATE | FORM | UNIT) - FOOD_UNIT
 
 
 def _is_all_modifier(s):
@@ -146,8 +177,21 @@ def parse(name):
         if head.lower() in UNIT or re.fullmatch(r"[\d.]+", head or "x"):
             w[0] = w[0].split("/")[-1]; rules.append("unit_slash_split")
     dropped = False
-    while w and (w[0].lower().strip(".") in UNIT or re.fullmatch(r"[\d.,]+[a-z]{0,2}", w[0].lower())):
-        w.pop(0); dropped = True
+    saw_number = "qty_stripped" in rules
+    while w:
+        head = w[0].lower().strip(".")
+        if re.fullmatch(r"[\d.,]+[a-z]{0,2}", head):
+            w.pop(0); dropped = True; saw_number = True; continue
+        if head in UNIT:
+            nxt = w[1].lower().strip(".,") if len(w) > 1 else ""
+            # ⚠️ a food-unit standing alone IS the food. '4 cloves garlic' still strips.
+            if head in FOOD_UNIT and not nxt:
+                break
+            # ⚠️ 'gram flour' with no number before it is besan, not a mass of flour.
+            if head in ("gram", "grams") and not saw_number and nxt in GRAM_COMPOUND:
+                break
+            w.pop(0); dropped = True; continue
+        break
     if dropped: rules.append("unit_stripped")
     s = " ".join(w)
 
@@ -230,15 +274,23 @@ def strip_forms(n, cat_has, deplural=None):
     start = tuple(n.split())
     if len(start) < 2:
         return None, []
-    for band in (STATE | TRAIL, STATE | TRAIL | FORM):     # prep first, identity only as a fallback
+    # ⚠️ THREE BANDS, AND THE ORDER IS THE CORRECTNESS ARGUMENT. Prep first, identity second,
+    #    a trailing type word last of all, so 'soft cream cheese' reaches 'cream cheese' in one
+    #    removal and never gets the chance to reach 'cream' in two.
+    for band in (STATE | TRAIL, STATE | TRAIL | FORM, STATE | TRAIL | FORM | TYPE_TAIL):
         seen = {start}
         frontier = [(start, [])]
         while frontier:
             nxt = []
             for w, dropped in frontier:
-                for cut, word in ((w[1:], w[0]), (w[:-1], w[-1])):
+                for side, (cut, word) in enumerate(((w[1:], w[0]), (w[:-1], w[-1]))):
                     if len(cut) < 1 or cut in seen or word not in band:
                         continue
+                    if word in TYPE_TAIL:
+                        if side == 0:                       # a type word trails, never leads
+                            continue
+                        if " ".join(cut) in TYPE_TAIL_BLOCK:
+                            continue                        # the head is a different food
                     seen.add(cut)
                     cand = " ".join(cut)
                     if cat_has(cand):
