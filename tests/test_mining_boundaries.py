@@ -366,6 +366,23 @@ MIN_N_FLOORS = {
     "mined_dish": 2, "mined_dish_form": 2, "mined_dish_method": 2, "mined_dish_diet": 2,
     "mined_dish_structural": 2, "mined_dish_appliance": 2, "mined_dish_base": 2,
     "mined_dish_accompaniment": 2,
+    # ⚠️ 2, AND IT IS THE COMBINED COUNT THAT HAS TO CLEAR IT, not the per-source count. Migration
+    #    043 and load_dish_facets.py. A Wikibooks dish seen once beside a RecipeNLG dish seen
+    #    3,110 times is a cell supported by 3,111 recipes, and refusing it would have discarded
+    #    336 of the 480 dishes the two sources actually share.
+    #
+    # ⚠️ CUISINE AND COURSE ARE 1, AND THE 1 IS A DECISION RATHER THAN A GAP. They are the only
+    #    ASSERTED facets. Every other one is a frequency, where n measures evidence: `vegan` at
+    #    n=5 means five titles said so. A cuisine row means an editor categorized the page as
+    #    Thai, and n counts PAGES carrying the tag, not evidence for the claim. On a
+    #    3,774-recipe source where nearly every dish appears once, that number is structurally 1
+    #    however certain the claim is. Measured: a floor of 2 keeps 66 of 1,047 cuisine rows and
+    #    32 of 114 values, losing chinese, thai, louisiana and caribbean outright.
+    #
+    #    ⚠️ THE DISH IT HANGS ON STILL CLEARS THE COMBINED FLOOR OF 2, so no dish invented by one
+    #    page gets in. Only the assertion rests on a single editor, which is where an assertion
+    #    has to rest. See load_dish_facets.FLOOR_BY_TABLE.
+    "mined_dish_cuisine": 1, "mined_dish_course": 1,
     # ⚠️ 2, NOT 10, AND THAT IS THE HONEST NUMBER. The profile uses a share rule rather than a
     #    flat count, so its minimum is 2 by construction. Declaring 10 here would be aspirational
     #    and would fail the moment the table is populated.
@@ -377,11 +394,36 @@ MIN_N_FLOORS = {
     #    that decision, NULL when the row was authored outright, so a floor would be measuring
     #    the wrong thing.
     "library_substitutions": 1,
+    # ⚠️ 1, AND THE NUMBER IS HONEST RATHER THAN ASPIRATIONAL. mined_corpus.n is the denominator
+    #    N itself, the recipes a source was read from, not the support behind a fact. Boundary
+    #    (c) asks whether a row summarizes more than one recipe, and this row summarizes the
+    #    whole corpus by definition. Declaring 2 here would read as a rule about corpus size that
+    #    nothing enforces and nothing needs.
+    "mined_corpus": 1,
 }
 
 
+# columns that are not the fact's identity: the counts themselves, the frozen denominator, the
+# derived score, and the source. Everything else in a mined table is part of the key.
+_NOT_KEY = {"source_slug", "n", "n_recipes", "n_dish", "lift", "n_reverse", "one_to_many",
+            "mined_at"}
+
+
 def test_every_aggregate_table_holds_its_declared_floor():
-    """⚠️ A ROW AT n=1 IS NOT AN AGGREGATE. Boundary (c), checked on what was actually loaded."""
+    """⚠️ A FACT SUPPORTED BY ONE RECIPE IS NOT AN AGGREGATE. Boundary (c), on what was loaded.
+
+    ⚠️ IT SUMS ACROSS SOURCES RATHER THAN READING ONE ROW, and that is the owner's floor ruling
+    made checkable. source_slug is in every mined primary key, so ONE fact is stored as one row
+    per source. `pecan pie` with pecan is a single fact carrying 3,110 RecipeNLG recipes and 2
+    Wikibooks ones, written as two rows. Reading MIN(n) per row asks how big the smallest SHARD
+    is, which is a question about the storage layout. The evidence behind the fact is the sum.
+
+    ⚠️ THIS IS NOT A WEAKENING, AND THE ALONE CASE PROVES IT. A source loaded by itself has
+    combined = its own count, so RecipeNLG's floors are checked exactly as before and its 159,496
+    dishes are unchanged. What the old form ALSO refused was a small second source strengthening
+    a fact the big source already carries, which is the entire reason to add a second source.
+    A genuine n=1 fact, one recipe in one source and nothing anywhere else, still fails here.
+    """
     conn = live_db()
     checked = 0
     for t in mined_tables(conn):
@@ -391,16 +433,22 @@ def test_every_aggregate_table_holds_its_declared_floor():
             pytest.fail(f"{t} declares no floor. Add it to MIN_N_FLOORS, at 1 if it predates "
                         f"the rule, so the gap stays countable.")
         col = "n_recipes" if t == "mined_occurrences" else "n"
-        cols = {c[1] for c in conn.execute(f"PRAGMA table_info({t})")}
+        cols = [c[1] for c in conn.execute(f"PRAGMA table_info({t})")]
         if col not in cols:
             continue
-        low = conn.execute(f"SELECT MIN({col}) FROM {t}").fetchone()[0]
+        keys = [c for c in cols if c not in _NOT_KEY]
+        if keys:
+            g = ", ".join(f'"{k}"' for k in keys)
+            sql = f'SELECT MIN(s) FROM (SELECT SUM({col}) AS s FROM "{t}" GROUP BY {g})'
+        else:
+            sql = f'SELECT MIN({col}) FROM "{t}"'      # mined_corpus: one row per source, N itself
+        low = conn.execute(sql).fetchone()[0]
         if low is None:
             continue                       # empty, which is correct without the corpus
         checked += 1
         assert low >= floor, (
-            f"{t} holds a row at {col}={low}, under its declared floor of {floor}. Boundary (c): "
-            f"only aggregates across recipes are stored.")
+            f"{t} holds a fact whose count summed over every source is {low}, under its declared "
+            f"floor of {floor}. Boundary (c): only aggregates across recipes are stored.")
     conn.close()
     if not checked:
         pytest.skip("no populated mined tables here")
