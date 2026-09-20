@@ -81,7 +81,16 @@ def run(csv_path, limit, cap=LONG_K, db=None, reader_key="recipenlg", source_slu
     nonfood = []                        # (title, reason) for the excluded non-food records
     n_recipes = 0
     t0 = time.time()
-    for title, names in (rd["records"] or stream)(csv_path, limit):
+    def _resolves(name):
+        core, _, _ = parse(name)
+        if not core:
+            return False
+        tier, _, _, _ = LM.match(core, cat, decided)
+        return tier in MP.MATCHED
+    _recs = rd["records"] or stream
+    if rd.get("needs_resolver"):
+        _recs = (lambda p, n, _f=rd["records"]: _f(p, n, _resolves))
+    for title, names in _recs(csv_path, limit):
         n_recipes += 1
         # ⚠️ EXCLUDED AT THE RECIPE LEVEL, NOT BY BANNING AN INGREDIENT. Almost every cosmetic
         #    marker has a real food use, measured: paraffin is in 1,534 candy recipes, lye makes

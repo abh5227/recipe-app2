@@ -115,9 +115,16 @@ SENTINEL = object()
 READERS = {}
 
 
-def register_reader(key, *, lines=None, records=None, titles=None, slug=None):
-    """Add a corpus to the registry. Called at import by whichever module owns the format."""
-    READERS[key] = {"lines": lines, "records": records, "titles": titles, "slug": slug}
+def register_reader(key, *, lines=None, records=None, titles=None, slug=None,
+                    needs_resolver=False):
+    """Add a corpus to the registry. Called at import by whichever module owns the format.
+
+    ⚠️ needs_resolver SAYS THE READER WANTS THE CALLER'S MATCHER. A source whose own cleaning
+    is lossy can repair itself only by testing whether a name resolves, and that is a fact
+    about the catalog rather than about the file. A reader that sets this is passed a
+    `resolves` callable; one that does not is called with two arguments as before."""
+    READERS[key] = {"lines": lines, "records": records, "titles": titles, "slug": slug,
+                    "needs_resolver": needs_resolver}
 
 
 def _rn_records(path, limit):
@@ -150,9 +157,19 @@ register_reader("recipenlg", lines=lambda p, n: from_recipenlg(p, n, "NER"),
 def reader(key):
     """The registry entry, or a SystemExit naming what is available. Never a silent default.
 
-    """
+    ⚠️ A READER REGISTERS ITSELF ON IMPORT, AND NOTHING IMPORTS IT UNTIL IT IS ASKED FOR. The
+    alternative was importing every reader here, which makes this module depend on each one
+    while each one depends on this, and the alternative to that was every run script importing
+    every reader. The lazy import keeps the dependency pointing one way: a reader knows about
+    mining_probe, and mining_probe knows only the naming convention."""
     if key not in READERS:
-        raise SystemExit(f"unknown --reader {key!r}. Registered: {sorted(READERS)}")
+        try:
+            __import__(f"{key}_reader")
+        except ImportError:
+            pass
+    if key not in READERS:
+        raise SystemExit(f"unknown --reader {key!r}. Registered: {sorted(READERS)}, and no "
+                         f"module named {key}_reader could be imported.")
     return READERS[key]
 
 

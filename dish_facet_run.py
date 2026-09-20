@@ -207,7 +207,16 @@ def run(corpus, limit, out, floor=10, db=None, reader_key="recipenlg", source_sl
     nonfood = 0
     t2 = time.time()
     _seen = {}
-    for idx, (title, names) in enumerate((rd["records"] or records)(corpus, limit)):
+    def _resolves(name):
+        core, _, _ = parse(name)
+        if not core:
+            return False
+        tier, _, _, _ = LM.match(core, cat2, decided2)
+        return tier in MP.MATCHED
+    _recs = rd["records"] or records
+    if rd.get("needs_resolver"):
+        _recs = (lambda p, n, _f=rd["records"]: _f(p, n, _resolves))
+    for idx, (title, names) in enumerate(_recs(corpus, limit)):
         d = F.specific_dish(title, brands, is_cat)
         if not d:
             continue

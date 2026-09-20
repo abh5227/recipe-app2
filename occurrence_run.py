@@ -65,7 +65,19 @@ def run(csv_path, limit, column="NER", db=None, reader_key="recipenlg", source_s
     t = RowTally()
     seen_here = set()
     t0 = time.time()
-    for line in rd["lines"](csv_path, limit):
+    # ⚠️ A READER THAT DECLARES needs_resolver GETS THE MATCHER. India's own cleaning deletes
+    #    ingredients from its cleaned column, so it repairs itself from the raw column, and
+    #    whether a name needs repairing is a fact about the catalog rather than about the file.
+    #    A reader that does not declare it is called with two arguments, exactly as before.
+    def _resolves(name):
+        core, _, _ = parse(name)
+        if not core:
+            return False
+        tier, _, _, _ = LM.match(core, cat, decided)
+        return tier in MP.MATCHED
+    _rd_args = (lambda p, n: rd["lines"](p, n, _resolves)) if rd.get("needs_resolver") \
+        else rd["lines"]
+    for line in _rd_args(csv_path, limit):
         if line is MP.SENTINEL:
             t.recipes += 1
             t.fold(seen_here)
