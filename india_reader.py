@@ -169,11 +169,27 @@ def titles(path, limit=10**9):
         yield rec.title
 
 
+# ⚠️ THE CUISINE COLUMN CARRIES THE SAME TITLE STYLE AND A BOM. Measured over all 5,938 rows:
+#    82 distinct values, of which 'north indian recipes' 763, 'south indian recipes' 558 and
+#    'kerala recipes' 133 all end in the label, and 'gujarati recipes﻿' carries a zero-width
+#    no-break space that makes it a different string from 'gujarati recipes'. Left alone the
+#    facet would hold three spellings of one cuisine and none of them would match Wikibooks'.
+_ZERO_WIDTH = re.compile(r"[\ufeff\u200b\u200c\u200d]")
+
+
+def clean_cuisine(value):
+    """A cuisine value with the dataset's label and invisible characters removed, lowercased."""
+    v = _ZERO_WIDTH.sub("", value or "")
+    v = _TIDY.sub(" ", RECIPE_WORD.sub(" ", v)).strip().strip(" -–()").lower()
+    return v
+
+
 def cuisines(path, limit=10**9):
     """(title, cuisine) for the facet pass. Empty cuisines are skipped rather than emitted."""
     for rec in read(path, limit):
-        if rec.cuisine:
-            yield rec.title, rec.cuisine
+        v = clean_cuisine(rec.cuisine)
+        if v:
+            yield rec.title, v
 
 
 MP.register_reader("india", lines=lines, records=records, titles=titles, slug=SLUG,
