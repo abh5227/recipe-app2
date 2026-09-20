@@ -1,0 +1,290 @@
+# wikibooks-categories.csv - what a Wikibooks `<X> recipes` category means.
+#
+# ⚠️ THE COMMITTED RECORD OF A ROUTING THAT LIVED ONLY IN A SCRATCH SCRIPT. wikibooks_reader
+#    already turned `Thai recipes` into ('method', 'thai'), because that is the SHAPE the source
+#    writes. Which of those values is a cuisine, which is a course and which is really a method is
+#    a judgement, and it was made once in an uncommitted file. This is that judgement, written down.
+#
+# ⚠️ MEASURED, NOT TRANSCRIBED. Every row here is a value the corpus actually carries, counted
+#    over all 3,786 usable pages: 265 distinct values, 6,837 tags. The four routing tables in the
+#    scratch script were replayed over that inventory and the result frozen, so a value nobody has
+#    seen cannot be in this file and a value the corpus carries cannot be missing from it.
+#
+# ⚠️ THREE OF THE ROUTES USED TO BE A DATABASE LOOKUP AND ARE NOW A COLUMN. `diet`, `method` and
+#    `form` were decided by asking whether RecipeNLG already used the word that way. That reads as
+#    reproducible and is not, since the answer moves whenever RecipeNLG is re-mined. Checked before
+#    freezing: the lookup returns the same 265 answers whether it sees RecipeNLG alone or every
+#    loaded source, so nothing is lost by fixing it here.
+#
+# keep        y if the value routes to a facet, n if it does not
+# value       the category value, after the merges in merged_from
+# facet       cuisine | course | appliance | diet | method | form, or empty
+# maps_to     the stored value. Differs from `value` only where a course or appliance is renamed
+# n_tags      how many page tags carry it
+# merged_from spellings folded into this value
+keep,value,facet,maps_to,n_tags,merged_from,note
+y,main course,course,main course,495,,"ruling 3 (dinner->main course), ruling 4 (baking is an axis)"
+y,vegetarian,diet,vegetarian,390,,RecipeNLG already uses it as a diet
+y,baking,course,baking,337,,"ruling 3 (dinner->main course), ruling 4 (baking is an axis)"
+y,boiled,method,boiled,321,,RecipeNLG already uses it as a method
+y,vegan,diet,vegan,257,,RecipeNLG already uses it as a diet
+y,baked,method,baked,245,,RecipeNLG already uses it as a method
+y,side dish,course,side dish,230,,"ruling 3 (dinner->main course), ruling 4 (baking is an axis)"
+n,inexpensive,,,197,,
+y,pan fried,method,pan fried,195,,"new method value, not in RecipeNLG"
+y,indian,cuisine,indian,154,,"wb_facets_proposed.json, Andy's ruling 2"
+y,breakfast,course,breakfast,133,,"ruling 3 (dinner->main course), ruling 4 (baking is an axis)"
+y,united states,cuisine,united states,132,american,"wb_facets_proposed.json, Andy's ruling 2"
+y,grilled,method,grilled,123,,RecipeNLG already uses it as a method
+y,italian,cuisine,italian,121,,"wb_facets_proposed.json, Andy's ruling 2"
+y,appetizer,course,appetizer,121,,"ruling 3 (dinner->main course), ruling 4 (baking is an axis)"
+y,deep fried,method,deep fried,113,,"new method value, not in RecipeNLG"
+y,nigerian,cuisine,nigerian,96,national nigerian,"wb_facets_proposed.json, Andy's ruling 2"
+y,gluten-free,diet,gluten-free,96,,RecipeNLG already uses it as a diet
+y,african,cuisine,african,81,,"wb_facets_proposed.json, Andy's ruling 2"
+y,naturally gluten-free,diet,naturally gluten-free,80,,"new diet value, not in RecipeNLG"
+y,halal,diet,halal,80,,"new diet value, not in RecipeNLG"
+y,fried,method,fried,77,,RecipeNLG already uses it as a method
+y,dessert,course,dessert,71,,"ruling 3 (dinner->main course), ruling 4 (baking is an axis)"
+y,french,cuisine,french,68,,"wb_facets_proposed.json, Andy's ruling 2"
+n,kid-friendly,,,65,,
+y,southern u.s.,cuisine,southern u.s.,65,,"wb_facets_proposed.json, Andy's ruling 2"
+y,southwestern,cuisine,southwestern,51,,"wb_facets_proposed.json, Andy's ruling 2"
+y,mexican,cuisine,mexican,50,,"wb_facets_proposed.json, Andy's ruling 2"
+y,roasted,method,roasted,50,,RecipeNLG already uses it as a method
+n,refrigerated,,,49,,
+n,camping,,,46,,
+y,pescatarian,diet,pescatarian,46,,"new diet value, not in RecipeNLG"
+y,english,cuisine,english,45,,"wb_facets_proposed.json, Andy's ruling 2"
+y,dumpling,form,dumpling,45,,RecipeNLG already uses it as a dish form
+y,tex-mex,cuisine,tex-mex,41,,"wb_facets_proposed.json, Andy's ruling 2"
+y,barbecue,form,barbecue,41,,RecipeNLG already uses it as a dish form
+n,featured,,,40,,
+y,japanese,cuisine,japanese,38,,"wb_facets_proposed.json, Andy's ruling 2"
+y,marinade,form,marinade,37,,RecipeNLG already uses it as a dish form
+y,thai,cuisine,thai,37,,"wb_facets_proposed.json, Andy's ruling 2"
+y,ethiopian,cuisine,ethiopian,35,,"wb_facets_proposed.json, Andy's ruling 2"
+y,hausa,cuisine,hausa,33,,"wb_facets_proposed.json, Andy's ruling 2"
+y,middle eastern,cuisine,middle eastern,33,,"wb_facets_proposed.json, Andy's ruling 2"
+y,texas,cuisine,texas,32,,"wb_facets_proposed.json, Andy's ruling 2"
+y,fermented,method,fermented,30,,"new method value, not in RecipeNLG"
+y,austrian,cuisine,austrian,30,,"wb_facets_proposed.json, Andy's ruling 2"
+y,indonesian,cuisine,indonesian,29,,"wb_facets_proposed.json, Andy's ruling 2"
+y,chinese,cuisine,chinese,29,,"wb_facets_proposed.json, Andy's ruling 2"
+n,christmas,,,29,,
+y,soup,form,soup,28,,RecipeNLG already uses it as a dish form
+y,dal,form,dal,28,,RecipeNLG already uses it as a dish form
+y,asian,cuisine,asian,27,,"wb_facets_proposed.json, Andy's ruling 2"
+y,kosher,diet,kosher,26,,"new diet value, not in RecipeNLG"
+y,egyptian,cuisine,egyptian,26,,"wb_facets_proposed.json, Andy's ruling 2"
+y,slow cooker,appliance,slow-cooker,25,,"an appliance, not a method"
+y,smoked,method,smoked,25,,RecipeNLG already uses it as a method
+n,holiday,,,25,,
+y,south asian,cuisine,south asian,24,,"wb_facets_proposed.json, Andy's ruling 2"
+y,yoruba,cuisine,yoruba,23,,"wb_facets_proposed.json, Andy's ruling 2"
+y,spanish,cuisine,spanish,23,,"wb_facets_proposed.json, Andy's ruling 2"
+y,microwave,appliance,microwave,23,,"an appliance, not a method"
+y,german,cuisine,german,23,,"wb_facets_proposed.json, Andy's ruling 2"
+y,steamed,method,steamed,22,,RecipeNLG already uses it as a method
+y,filipino,cuisine,filipino,22,,"wb_facets_proposed.json, Andy's ruling 2"
+y,broiled,method,broiled,21,,RecipeNLG already uses it as a method
+y,snack,course,snack,21,,"ruling 3 (dinner->main course), ruling 4 (baking is an axis)"
+y,midwestern u.s.,cuisine,midwestern u.s.,21,,"wb_facets_proposed.json, Andy's ruling 2"
+n,duplicate,,,21,,
+y,rwandan,cuisine,rwandan,20,,"wb_facets_proposed.json, Andy's ruling 2"
+y,stir fry,method,stir fry,20,,"new method value, not in RecipeNLG"
+y,native american,cuisine,native american,20,,"wb_facets_proposed.json, Andy's ruling 2"
+n,kosher for passover,,,19,,
+y,algerian,cuisine,algerian,19,,"wb_facets_proposed.json, Andy's ruling 2"
+y,greek,cuisine,greek,18,,"wb_facets_proposed.json, Andy's ruling 2"
+y,liberian,cuisine,liberian,18,,"wb_facets_proposed.json, Andy's ruling 2"
+n,easy,,,17,,
+y,caribbean,cuisine,caribbean,17,,"wb_facets_proposed.json, Andy's ruling 2"
+y,turkish,cuisine,turkish,17,,"wb_facets_proposed.json, Andy's ruling 2"
+y,louisiana,cuisine,louisiana,17,,"wb_facets_proposed.json, Andy's ruling 2"
+y,canadian,cuisine,canadian,17,,"wb_facets_proposed.json, Andy's ruling 2"
+y,sindhi,cuisine,sindhi,16,,"wb_facets_proposed.json, Andy's ruling 2"
+y,mediterranean,cuisine,mediterranean,16,,"wb_facets_proposed.json, Andy's ruling 2"
+y,zambian,cuisine,zambian,16,,"wb_facets_proposed.json, Andy's ruling 2"
+y,pakistani,cuisine,pakistani,16,,"wb_facets_proposed.json, Andy's ruling 2"
+y,albanian,cuisine,albanian,15,,"wb_facets_proposed.json, Andy's ruling 2"
+y,australian,cuisine,australian,15,,"wb_facets_proposed.json, Andy's ruling 2"
+y,californian,cuisine,californian,15,,"wb_facets_proposed.json, Andy's ruling 2"
+y,gambian,cuisine,gambian,15,,"wb_facets_proposed.json, Andy's ruling 2"
+y,braised,method,braised,15,,RecipeNLG already uses it as a method
+y,libyan,cuisine,libyan,14,,"wb_facets_proposed.json, Andy's ruling 2"
+y,vietnamese,cuisine,vietnamese,14,,"wb_facets_proposed.json, Andy's ruling 2"
+y,irish,cuisine,irish,13,,"wb_facets_proposed.json, Andy's ruling 2"
+y,igbo,cuisine,igbo,13,,"wb_facets_proposed.json, Andy's ruling 2"
+y,malaysian,cuisine,malaysian,13,,"wb_facets_proposed.json, Andy's ruling 2"
+y,raw,diet,raw,13,,"new diet value, not in RecipeNLG"
+y,ugandan,cuisine,ugandan,13,,"wb_facets_proposed.json, Andy's ruling 2"
+y,polish,cuisine,polish,13,,"wb_facets_proposed.json, Andy's ruling 2"
+y,bulgarian,cuisine,bulgarian,13,,"wb_facets_proposed.json, Andy's ruling 2"
+y,low-gi,diet,low-gi,12,,"new diet value, not in RecipeNLG"
+y,russian,cuisine,russian,12,,"wb_facets_proposed.json, Andy's ruling 2"
+y,south african,cuisine,south african,12,,"wb_facets_proposed.json, Andy's ruling 2"
+y,swedish,cuisine,swedish,12,,"wb_facets_proposed.json, Andy's ruling 2"
+y,hungarian,cuisine,hungarian,12,,"wb_facets_proposed.json, Andy's ruling 2"
+y,puerto rican,cuisine,puerto rican,11,,"wb_facets_proposed.json, Andy's ruling 2"
+y,brazilian,cuisine,brazilian,11,,"wb_facets_proposed.json, Andy's ruling 2"
+y,scottish,cuisine,scottish,11,,"wb_facets_proposed.json, Andy's ruling 2"
+y,cameroonian,cuisine,cameroonian,10,,"wb_facets_proposed.json, Andy's ruling 2"
+y,peruvian,cuisine,peruvian,10,,"wb_facets_proposed.json, Andy's ruling 2"
+y,north american,cuisine,north american,10,,"wb_facets_proposed.json, Andy's ruling 2"
+y,south indian,cuisine,south indian,10,,"wb_facets_proposed.json, Andy's ruling 2"
+y,sautéed,method,sauteed,10,,"new method value, not in RecipeNLG"
+n,passover,,,10,,
+y,jewish,cuisine,jewish,10,,"wb_facets_proposed.json, Andy's ruling 2"
+n,thanksgiving,,,10,,
+y,colombian,cuisine,colombian,10,,"wb_facets_proposed.json, Andy's ruling 2"
+y,jamaican,cuisine,jamaican,10,,"wb_facets_proposed.json, Andy's ruling 2"
+y,new zealand,cuisine,new zealand,9,,"wb_facets_proposed.json, Andy's ruling 2"
+y,israeli,cuisine,israeli,9,,"wb_facets_proposed.json, Andy's ruling 2"
+y,cornish,cuisine,cornish,9,,"wb_facets_proposed.json, Andy's ruling 2"
+n,household cyclopedia sauce,,,9,,
+n,expensive,,,8,,
+y,venezuelan,cuisine,venezuelan,8,,"wb_facets_proposed.json, Andy's ruling 2"
+y,danish,form,danish,8,,RecipeNLG already uses it as a dish form
+y,korean,cuisine,korean,8,,"wb_facets_proposed.json, Andy's ruling 2"
+y,jewish yemenite,cuisine,jewish yemenite,8,,"wb_facets_proposed.json, Andy's ruling 2"
+y,sylheti,cuisine,sylheti,8,,"wb_facets_proposed.json, Andy's ruling 2"
+y,tiv,cuisine,tiv,7,,"wb_facets_proposed.json, Andy's ruling 2"
+y,italian-american,cuisine,italian-american,7,,"wb_facets_proposed.json, Andy's ruling 2"
+y,bengali,cuisine,bengali,7,,"wb_facets_proposed.json, Andy's ruling 2"
+y,biscuit,form,biscuit,7,,RecipeNLG already uses it as a dish form
+y,senegalese,cuisine,senegalese,7,,"wb_facets_proposed.json, Andy's ruling 2"
+y,gibraltarian,cuisine,gibraltarian,7,,"wb_facets_proposed.json, Andy's ruling 2"
+y,finnish,cuisine,finnish,7,,"wb_facets_proposed.json, Andy's ruling 2"
+y,ghanaian,cuisine,ghanaian,7,ghanian,"wb_facets_proposed.json, Andy's ruling 2"
+y,dutch,cuisine,dutch,7,,"wb_facets_proposed.json, Andy's ruling 2"
+y,spread,form,spread,7,,RecipeNLG already uses it as a dish form
+y,efik,cuisine,efik,6,,"wb_facets_proposed.json, Andy's ruling 2"
+y,alsatian,cuisine,alsatian,6,,"wb_facets_proposed.json, Andy's ruling 2"
+y,cuban,cuisine,cuban,6,,"wb_facets_proposed.json, Andy's ruling 2"
+n,medium expensive,,,6,,
+y,punjabi,cuisine,punjabi,6,,"wb_facets_proposed.json, Andy's ruling 2"
+y,british,cuisine,british,6,,"wb_facets_proposed.json, Andy's ruling 2"
+y,european,cuisine,european,6,,"wb_facets_proposed.json, Andy's ruling 2"
+n,family heritage,,,6,,
+y,iranian,cuisine,iranian,6,,"wb_facets_proposed.json, Andy's ruling 2"
+y,malawian,cuisine,malawian,6,,"wb_facets_proposed.json, Andy's ruling 2"
+n,frozen,,,6,,
+y,trinidadian and tobagonian,cuisine,trinidadian and tobagonian,6,,"wb_facets_proposed.json, Andy's ruling 2"
+y,dinner,course,main course,6,,"ruling 3 (dinner->main course), ruling 4 (baking is an axis)"
+y,welsh,cuisine,welsh,6,,"wb_facets_proposed.json, Andy's ruling 2"
+y,romanian,cuisine,romanian,6,,"wb_facets_proposed.json, Andy's ruling 2"
+y,argentine,cuisine,argentine,5,,"wb_facets_proposed.json, Andy's ruling 2"
+n,easter,,,5,,
+n,public domain,,,5,,
+n,medium difficulty,,,5,,
+y,norwegian,cuisine,norwegian,5,,"wb_facets_proposed.json, Andy's ruling 2"
+y,belgian,cuisine,belgian,5,,"wb_facets_proposed.json, Andy's ruling 2"
+y,chadian,cuisine,chadian,5,,"wb_facets_proposed.json, Andy's ruling 2"
+y,moroccan,cuisine,moroccan,5,,"wb_facets_proposed.json, Andy's ruling 2"
+y,palestinian,cuisine,palestinian,4,,"wb_facets_proposed.json, Andy's ruling 2"
+n,sabbath,,,4,,
+n,bean,,,4,,
+y,tanzanian,cuisine,tanzanian,4,,"wb_facets_proposed.json, Andy's ruling 2"
+y,southeast asian,cuisine,southeast asian,4,,"wb_facets_proposed.json, Andy's ruling 2"
+y,nepali,cuisine,nepali,4,,"wb_facets_proposed.json, Andy's ruling 2"
+y,east asian,cuisine,east asian,4,,"wb_facets_proposed.json, Andy's ruling 2"
+y,lebanese,cuisine,lebanese,4,,"wb_facets_proposed.json, Andy's ruling 2"
+y,kenyan,cuisine,kenyan,4,,"wb_facets_proposed.json, Andy's ruling 2"
+y,portuguese,cuisine,portuguese,4,,"wb_facets_proposed.json, Andy's ruling 2"
+y,afghan,cuisine,afghan,3,,"wb_facets_proposed.json, Andy's ruling 2"
+y,snacks,course,snack,3,,"ruling 3 (dinner->main course), ruling 4 (baking is an axis)"
+y,sudanese,cuisine,sudanese,3,,"wb_facets_proposed.json, Andy's ruling 2"
+y,ukrainian,cuisine,ukrainian,3,,"wb_facets_proposed.json, Andy's ruling 2"
+y,somali,cuisine,somali,3,,"wb_facets_proposed.json, Andy's ruling 2"
+y,northern irish,cuisine,northern irish,3,,"wb_facets_proposed.json, Andy's ruling 2"
+y,south american,cuisine,south american,3,,"wb_facets_proposed.json, Andy's ruling 2"
+n,very easy,,,3,,
+n,shortening,,,3,,
+y,dominican,cuisine,dominican,3,,"wb_facets_proposed.json, Andy's ruling 2"
+y,togolese,cuisine,togolese,3,,"wb_facets_proposed.json, Andy's ruling 2"
+y,swiss,cuisine,swiss,3,,"wb_facets_proposed.json, Andy's ruling 2"
+y,surinamese,cuisine,surinamese,3,,"wb_facets_proposed.json, Andy's ruling 2"
+y,czech,cuisine,czech,3,,"wb_facets_proposed.json, Andy's ruling 2"
+y,zimbabwean,cuisine,zimbabwean,3,,"wb_facets_proposed.json, Andy's ruling 2"
+n,mozzarella,,,3,,
+y,pashtun,cuisine,pashtun,2,,"wb_facets_proposed.json, Andy's ruling 2"
+y,air fried,method,air fried,2,,"new method value, not in RecipeNLG"
+y,atkins,diet,atkins,2,,"new diet value, not in RecipeNLG"
+y,taiwanese,cuisine,taiwanese,2,,"wb_facets_proposed.json, Andy's ruling 2"
+y,tibetan,cuisine,tibetan,2,,"wb_facets_proposed.json, Andy's ruling 2"
+n,watermelon,,,2,,
+y,manx,cuisine,manx,2,,"wb_facets_proposed.json, Andy's ruling 2"
+y,chilean,cuisine,chilean,2,,"wb_facets_proposed.json, Andy's ruling 2"
+n,home canning,,,2,,
+y,lithuanian,cuisine,lithuanian,2,,"wb_facets_proposed.json, Andy's ruling 2"
+y,low-sodium,diet,low-sodium,2,,RecipeNLG already uses it as a diet
+y,hawaiian,cuisine,hawaiian,2,,"wb_facets_proposed.json, Andy's ruling 2"
+y,armenian,cuisine,armenian,2,,"wb_facets_proposed.json, Andy's ruling 2"
+y,maltese,cuisine,maltese,2,,"wb_facets_proposed.json, Andy's ruling 2"
+y,north african,cuisine,north african,2,,"wb_facets_proposed.json, Andy's ruling 2"
+n,parmesan,,,2,,
+y,poached,method,poached,2,,RecipeNLG already uses it as a method
+y,slovenian,cuisine,slovenian,2,,"wb_facets_proposed.json, Andy's ruling 2"
+y,serbian,cuisine,serbian,2,,"wb_facets_proposed.json, Andy's ruling 2"
+n,halloween,,,2,,
+n,tempeh,,,2,,
+y,sundanese,cuisine,sundanese,2,,"wb_facets_proposed.json, Andy's ruling 2"
+n,sago,,,1,,
+n,banana leaf,,,1,,
+n,ramadan,,,1,,
+y,sri lankan,cuisine,sri lankan,1,,"wb_facets_proposed.json, Andy's ruling 2"
+y,croatian,cuisine,croatian,1,,"wb_facets_proposed.json, Andy's ruling 2"
+n,difficult,,,1,,
+n,banana,,,1,,
+y,jordanian,cuisine,jordanian,1,,"wb_facets_proposed.json, Andy's ruling 2"
+n,douchi,,,1,,
+y,mongolian,cuisine,mongolian,1,,"wb_facets_proposed.json, Andy's ruling 2"
+y,creole,cuisine,creole,1,,"wb_facets_proposed.json, Andy's ruling 2"
+y,cape verdean,cuisine,cape verdean,1,,"wb_facets_proposed.json, Andy's ruling 2"
+n,trout,,,1,,
+y,iraqi,cuisine,iraqi,1,,"wb_facets_proposed.json, Andy's ruling 2"
+y,tunisian,cuisine,tunisian,1,,"wb_facets_proposed.json, Andy's ruling 2"
+n,eid ul-fitr,,,1,,
+n,italian seasoning,,,1,,
+y,cypriot,cuisine,cypriot,1,,"wb_facets_proposed.json, Andy's ruling 2"
+n,pet,,,1,,
+y,azerbaijani,cuisine,azerbaijani,1,,"wb_facets_proposed.json, Andy's ruling 2"
+y,estonian,cuisine,estonian,1,,"wb_facets_proposed.json, Andy's ruling 2"
+y,cambodian,cuisine,cambodian,1,,"wb_facets_proposed.json, Andy's ruling 2"
+n,nut,,,1,,
+n,tomato paste,,,1,,
+y,flan,form,flan,1,,RecipeNLG already uses it as a dish form
+y,congolese,cuisine,congolese,1,,"wb_facets_proposed.json, Andy's ruling 2"
+y,angolan,cuisine,angolan,1,,"wb_facets_proposed.json, Andy's ruling 2"
+y,cured,method,cured,1,,RecipeNLG already uses it as a method
+n,turtle,,,1,,
+n,tea,,,1,,
+y,pressure cooker,appliance,pressure-cooker,1,,"an appliance, not a method"
+y,georgian,cuisine,georgian,1,,"wb_facets_proposed.json, Andy's ruling 2"
+n,legume,,,1,,
+n,groundnut,,,1,,
+n,hanukkah,,,1,,
+n,nacho,,,1,,
+n,sesame leaf,,,1,,
+n,vegetable,,,1,,
+y,burmese,cuisine,burmese,1,,"wb_facets_proposed.json, Andy's ruling 2"
+n,currant,,,1,,
+n,psyllium,,,1,,
+y,panamanian,cuisine,panamanian,1,,"wb_facets_proposed.json, Andy's ruling 2"
+y,salvadoran,cuisine,salvadoran,1,,"wb_facets_proposed.json, Andy's ruling 2"
+y,icelandic,cuisine,icelandic,1,,"wb_facets_proposed.json, Andy's ruling 2"
+y,javanese,cuisine,javanese,1,,"wb_facets_proposed.json, Andy's ruling 2"
+y,bread,form,bread,1,,RecipeNLG already uses it as a dish form
+y,flatbread,form,flatbread,1,,RecipeNLG already uses it as a dish form
+y,cajun,cuisine,cajun,1,,"wb_facets_proposed.json, Andy's ruling 2"
+y,chili,form,chili,1,,RecipeNLG already uses it as a dish form
+n,aromatic ginger,,,1,,
+y,pie,form,pie,1,,RecipeNLG already uses it as a dish form
+n,seaweed,,,1,,
+y,kebab,form,kebab,1,,RecipeNLG already uses it as a dish form
+n,palm sugar,,,1,,
+y,mayonnaise,form,mayonnaise,1,,RecipeNLG already uses it as a dish form
+y,central american,cuisine,central american,1,,"wb_facets_proposed.json, Andy's ruling 2"
+y,trifle,form,trifle,1,,RecipeNLG already uses it as a dish form
+n,colby,,,1,,

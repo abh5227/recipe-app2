@@ -37,7 +37,8 @@ nothing.
 import json
 import re
 
-__all__ = ["Recipe", "read", "parse_page", "strip_markup", "CATEGORY_KINDS"]
+__all__ = ["Recipe", "read", "parse_page", "strip_markup", "CATEGORY_KINDS",
+           "recipes", "lines", "records", "titles", "assertions", "category_routes"]
 
 HEADING = re.compile(r"^(={2,6})\s*(.+?)\s*\1\s*$", re.M)
 LINK = re.compile(r"\[\[(?:[^\]|#]*?:)?([^\]|#]+)(?:#[^\]|]*)?(?:\|([^\]]*))?\]\]")
@@ -224,12 +225,126 @@ def parse_page(title, txt):
     )
 
 
-def read(path):
+def read(path, limit=10**9):
     """Yield a Recipe per page from a fetched {title: wikitext} JSON file."""
     blob = json.load(open(path))
     pages = blob.get("wikitext", blob)
-    for title, txt in pages.items():
+    for i, (title, txt) in enumerate(pages.items()):
+        if i >= limit:
+            return
         yield parse_page(title, txt)
+
+
+# ── the mining registry: this source, read the way every other source is read ──────────────────
+#
+# ⚠️ THIS EXISTED ONLY IN A SCRATCH SCRIPT AND THAT IS WHY IT IS HERE. The Wikibooks facets in the
+#    database were produced by a 127-line file in a temp directory, so the rows were real and
+#    nothing in the repository could make them again. Losing that directory meant losing the
+#    ability to re-mine this source, which is a worse state than never having mined it.
+#
+# ⚠️ STILL A READER. Everything below turns pages into tuples. It resolves no ingredient, opens no
+#    database and decides nothing about food. `assertions` reports what a Wikibooks editor SAID
+#    about a page, read off a committed vocabulary file, which is the same act as reading a
+#    Cuisine column out of a CSV.
+
+DUPLICATE_CATEGORY = "Duplicate recipes"
+ROMAN = re.compile(r"\s+(i{1,3}|iv|vi{0,3}|ix|x)$", re.I)
+_PAREN = re.compile(r"\([^)]*\)")
+_PUNCT = re.compile(r"[^\w\s]+")
+_ROUTES = None
+
+
+def category_routes(path=None):
+    """{category value: (facet, stored value)} from vocab/wikibooks-categories.csv, memoized.
+
+    ⚠️ A FILE RATHER THAN SIX LITERALS IN A SCRIPT, and three of those six used to be a query
+    against mined_dish_method/diet/form. A route that depends on what a DIFFERENT corpus happens
+    to hold today is not reproducible, so the lookup was replayed over the whole 265-value
+    inventory once and frozen. Measured before freezing: the answer is identical whether the
+    query sees RecipeNLG alone or every loaded source, so nothing was decided by the freeze.
+    """
+    global _ROUTES
+    if _ROUTES is None:
+        import csv as _csv
+        from pathlib import Path as _P
+        p = _P(path) if path else _P(__file__).resolve().parent / "vocab" / "wikibooks-categories.csv"
+        with p.open(newline="", encoding="utf-8") as fh:
+            rows = list(_csv.DictReader(l for l in fh if not l.startswith("#")))
+        _ROUTES = {r["value"]: (r["facet"], r["maps_to"])
+                   for r in rows if r["keep"] == "y" and r["facet"]}
+        _ROUTES["__merges__"] = {m: r["value"] for r in rows
+                                 for m in (r["merged_from"] or "").split(", ") if m}
+    return _ROUTES
+
+
+def _dedupe_key(name):
+    """⚠️ READER-LOCAL ON PURPOSE. The scratch script keyed this on dish_facets.specific_dish,
+    which would make a reader import the miner. Checked over all 21 flagged pages: folding the
+    parenthetical, the punctuation and a trailing roman numeral drops exactly the same 12 pages,
+    Cola II to V, Tabbouleh II and III and the rest."""
+    s = _PAREN.sub(" ", name).lower()
+    s = re.sub(r"\s+", " ", _PUNCT.sub(" ", s)).strip()
+    return ROMAN.sub("", s).strip()
+
+
+def recipes(path, limit=10**9):
+    """Usable pages, with Wikibooks' own duplicate flags honored. The base every reader fn uses.
+
+    ⚠️ RULING 7. 21 pages carry the `Duplicate recipes` category and they are the source saying
+    these are the same recipe twice. Counting all of them would put `Cola` in the corpus five
+    times, so the first spelling of each is kept and 12 pages are dropped."""
+    seen, drop = set(), set()
+    out = [r for r in read(path, limit) if r.usable]
+    for r in out:
+        if DUPLICATE_CATEGORY not in r.categories:
+            continue
+        k = _dedupe_key(r.name)
+        (drop.add(r.title) if k in seen else seen.add(k))
+    return [r for r in out if r.title not in drop]
+
+
+def lines(path, limit=10**9):
+    """Ingredient lines with the recipe boundary between them, what the occurrence and pairing
+    runs consume. The sentinel is imported lazily so this module still has no mining import."""
+    import mining_probe as _MP
+    for r in recipes(path, limit):
+        for nm in r.ingredients:
+            if nm and nm.strip():
+                yield nm.strip()
+        yield _MP.SENTINEL
+
+
+def records(path, limit=10**9):
+    """(title, [ingredient names]). ⚠️ THE PAGE NAME, NOT THE PAGE TITLE. `Cookbook:Awug` is a
+    namespace and a name, and the dish is the second half."""
+    for r in recipes(path, limit):
+        yield r.name, [nm.strip() for nm in r.ingredients if nm and nm.strip()]
+
+
+def titles(path, limit=10**9):
+    for r in recipes(path, limit):
+        yield r.name
+
+
+def assertions(path, limit=10**9):
+    """(title, facet, value) for what a Wikibooks editor categorized a page as.
+
+    ⚠️ ONLY THE `<X> recipes` SHAPE IS ROUTED. classify_category knows three shapes and the other
+    two are already covered: `Recipes using X` names an ingredient the ingredient list carries,
+    and `Recipes for X` names a form the title carries. Routing them again would double-count the
+    same evidence.
+    """
+    routes = category_routes()
+    merges = routes["__merges__"]
+    for r in recipes(path, limit):
+        for cat in r.categories:
+            kind, value = classify_category(cat)
+            if kind != "method":
+                continue
+            value = merges.get(value, value)
+            got = routes.get(value)
+            if got:
+                yield r.name, got[0], got[1]
 
 
 def classify_category(cat):
@@ -239,3 +354,9 @@ def classify_category(cat):
         if m:
             return kind, m.group(1).strip().lower()
     return "other", cat.strip().lower()
+
+
+import mining_probe as _MP_REGISTER          # noqa: E402  (registration is the last act)
+
+_MP_REGISTER.register_reader("wikibooks", lines=lines, records=records, titles=titles,
+                             assertions=assertions, slug="wikibooks")
