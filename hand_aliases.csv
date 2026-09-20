@@ -43,7 +43,6 @@ Q11571934,boar meat,wild boar meat,wikidata,high,Class A review 2026-09-16
 Q19952,bow-tie pasta,farfalle,wikidata,high,
 Q1429013,butter cream,buttercream,wikidata,high,
 Q550774,calamari,squid,wikidata,high,
-Q419693,calcium lactate,calcium DL-lactate,wikidata,high,Class A review 2026-09-16
 Q14625808,cardamon,cardamom,wikidata,high,
 Q7885904,cashew,cashew nut,wikidata,high,Class A review 2026-09-16
 Q178143,catsup,ketchup,wikidata,high,
@@ -122,7 +121,6 @@ Q2224510,passion fruit,passionfruit,wikidata,high,
 Q1119911,pecan,pecan nut,wikidata,high,Class A review 2026-09-16
 Q57998504,pepper paste,sweet pepper paste,wikidata,high,Class A review 2026-09-16
 Q16861000,pepperoncini,friggitello,wikidata,high,
-Q600262,perch,Perca,wikidata,high,
 Q20007,perciatelli,bucatini,wikidata,high,
 Q512580,peri-peri,piri piri,wikidata,high,
 Q1494260,pickled ginger,gari,wikidata,high,
@@ -147,11 +145,9 @@ Q189221,Roquefort,Roquefort cheese,wikidata,high,Class A review 2026-09-16
 Q170219,saki,sake,wikidata,high,
 Q177564,salsa fresca,pico de gallo,wikidata,high,
 Q1411808,sheep cheese,sheep milk cheese,wikidata,high,Class A review 2026-09-16
-Q59541,side,side order,wikidata,high,Class A review 2026-09-16
 Q192199,soymilk,soy milk,wikidata,high,
 Q158767,spelt,Triticum spelta,wikidata,high,
 Q181560,star fruit,carambola,wikidata,high,
-Q189211,straw,drinking straw,wikidata,high,Class A review 2026-09-16
 Q16131953,sumaq,sumac,wikidata,high,
 Q1040612,sweet bean sauce,tianmianjiang,wikidata,high,
 Q383389,tahina,tahini,wikidata,high,
@@ -184,3 +180,5 @@ Q4200953,turkey meat,turkey,wikidata,high,"Rename pass 2026-09-16. The demoted c
 Q3556748,rabbit meat,rabbit,wikidata,high,"Rename pass 2026-09-16. The demoted canonical, kept so a line saying 'rabbit meat' still reaches the row."
 Q123122627,sheep meat,sheep,wikidata,high,"Rename pass 2026-09-16. The demoted canonical, kept so a line saying 'sheep meat' still reaches the row."
 Q58173066,bison meat,bison,wikidata,high,"Rename pass 2026-09-16. The demoted canonical, kept so a line saying 'bison meat' still reaches the row."
+stir-fry-brown-sauce,brown sauce,stir-fry brown sauce,authored,authored,"The bare name American recipe writing uses. load_aliases refuses an alias colliding with another row's canonical, so this loads only once Q3474130 and Q17355541 are renamed."
+Q1062396,cocoa,cocoa powder,wikidata,high,"Wikidata lists cocoa, cacao and cocoa solids as aliases of this row. 49,560 corpus lines say cocoa or a form of it and mean the baking powder, against 7,336 that say cocoa powder. The name was freed by renaming the material node to cacao."
