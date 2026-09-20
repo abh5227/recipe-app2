@@ -298,6 +298,28 @@ DERIVE_ONLY = [
                  "docs/mining-decision.md. No recipe text is stored, ever.",
     },
     {
+        "source": "india_recipes", "dataset": "corpus",
+        "url": "https://www.kaggle.com/datasets/ramoliyafenil/dataset",
+        "license": "NOT ESTABLISHED, NOT REDISTRIBUTABLE. Apache 2.0 as stated by an "
+                   "individual uploader, which is a software license and not the "
+                   "uploader's to give.",
+        "attribution": "RAMOLIYA FENIL, via Kaggle.",
+        "probe_score": "89.0% of 70,227 ingredient lines resolve to a catalog row",
+        "decision_reason": "DERIVE ONLY, the same bucket as recipenlg and for the same reason. "
+                           "Apache 2.0 is a software license, chosen from a dropdown by an "
+                           "individual account, and a stated license from someone who may not "
+                           "have had standing is not more permissive than no license. All 5,938 "
+                           "rows carry a www.archanaskitchen.com URL, so this is one commercial "
+                           "site re-uploaded, which is the shape the rule was written for. "
+                           "Aggregate facts may be kept and no recipe text is stored. "
+                           "\u26a0 It raises the stake on the unreviewed position in section 4 "
+                           "of docs/mining-decision.md rather than resting on a new one.",
+        "notes": "5,938 recipes. Taken for the Cuisine column, which is stated rather than "
+                 "inferred and is populated on 100% of rows over 82 values, 34 of them "
+                 "sub-national Indian. TranslatedInstructions is never read. Mined as "
+                 "source_slug 'india'.",
+    },
+    {
         "source": "recipe1m", "dataset": "corpus",
         "url": "http://pic2recipe.csail.mit.edu/",
         "license": "NOT REDISTRIBUTABLE",

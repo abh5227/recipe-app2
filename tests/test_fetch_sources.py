@@ -589,15 +589,23 @@ def test_derive_only_sources_may_be_probed_but_never_redistributed(conn):
     """A derive_only source is readable for facts and unshippable as data."""
     rows = conn.execute(
         "SELECT * FROM source_catalogue WHERE status='derive_only'").fetchall()
-    assert {r["source"] for r in rows} == {"recipenlg", "recipe1m"}
+    assert {r["source"] for r in rows} == {"recipenlg", "recipe1m", "india_recipes"}
     for r in rows:
         assert "NOT REDISTRIBUTABLE" in r["license"].upper(), (
             f"{r['source']} is derive_only, which does not make its data shippable")
         assert r["decision_reason"], "a status change without a recorded reason is not a decision"
         assert "DERIVE ONLY" in r["decision_reason"].upper()
-        # coverage MAY now be measured, and has not been yet. The probe is the next phase, so
-        # this pins the current state rather than forbidding the measurement.
-        assert r["probe_score"] == "not measured"
+    # ⚠️ COVERAGE IS PINNED PER SOURCE, NOT PER STATUS, AND THAT IS THE CHANGE. This used to
+    #    demand "not measured" from every derive_only row, which read as a rule and was really a
+    #    snapshot: at the time neither corpus had been probed. india_recipes was probed before it
+    #    was registered, 89.0% of 70,227 lines, so a blanket pin would now forbid the measurement
+    #    the comment said was the next phase. The two unprobed sources keep their pin.
+    by_source = {r["source"]: r for r in rows}
+    assert by_source["recipenlg"]["probe_score"] == "not measured"
+    assert by_source["recipe1m"]["probe_score"] == "not measured"
+    assert "%" in by_source["india_recipes"]["probe_score"], (
+        "india_recipes was probed before it was registered. A registered probe_score that "
+        "carries no number is not a measurement.")
 
 
 def test_derive_only_sources_have_no_tables(conn):
