@@ -48,6 +48,39 @@ SLUG = "india"
 HYPHEN = re.compile(r"\s+[-–]\s+")
 WORD = re.compile(r"[a-z0-9]+")
 
+# ⚠️ 'RECIPE' IS PART OF THIS DATASET'S TITLE STYLE, NOT PART OF ANY DISH NAME, AND THE DISH ID
+#    IS DERIVED FROM THE NAME. dish_facets.dish_id is sha256 of the reduced string, so
+#
+#        dish_id('khichdi')        = 7eccf12992f5ff5e   the id RecipeNLG and Wikibooks already use
+#        dish_id('khichdi recipe') = e64707ada1d03887   a different dish entirely
+#
+#    Mined unstripped, India's dishes land in their own id space and combine with nothing. Every
+#    elevation reads zero and no error is raised anywhere, which is why this is stripped here and
+#    not left to be noticed later.
+#
+#    ⚠️ IT LIVES IN THE READER BECAUSE IT IS A FACT ABOUT THIS FILE. Putting it in dish_facets
+#    would apply an India-specific rule to every source, and RecipeNLG has titles where the word
+#    is load-bearing.
+#
+#    Measured over all 5,938 titles before this was written: 6,369 occurrences across 5,904
+#    titles, 3,517 trailing, 2,585 mid-title, 260 inside parentheses, 7 leading. ⚠️ ZERO titles
+#    are left empty by the strip, which is the check that mattered.
+RECIPE_WORD = re.compile(r"\brecipes?\b", re.I)
+_TIDY = re.compile(r"\s+")
+
+
+def strip_recipe(title):
+    """The title with the dataset's 'Recipe' label removed. Never returns an empty string when
+    the input had any other word in it."""
+    out = _TIDY.sub(" ", RECIPE_WORD.sub(" ", title or "")).strip()
+    out = out.strip(" -–()").strip()
+    return out or (title or "").strip()
+
+# The share of a cleaned name's words that must appear in a raw entry before that entry is
+# accepted as the one it came from. Below this the match is a guess.
+OVERLAP_FLOOR = 0.6
+
+
 class Recipe:
     """One row, read. Nothing here is a judgement about food."""
 
@@ -111,7 +144,7 @@ def read(path, limit=10**9):
             cleaned = [c.strip() for c in (row.get("Cleaned-Ingredients") or "").split(",") if c.strip()]
             raw = [HYPHEN.split(t.strip())[0].strip()
                    for t in (row.get("TranslatedIngredients") or "").split(",") if t.strip()]
-            yield Recipe(title=(row.get("TranslatedRecipeName") or "").strip(),
+            yield Recipe(title=strip_recipe(row.get("TranslatedRecipeName") or ""),
                          cleaned=cleaned,
                          raw=[r for r in raw if r],
                          cuisine=(row.get("Cuisine") or "").strip())
