@@ -237,3 +237,19 @@ curry-leaf,kadi patta,curry leaves,read,read,the Hindi name the india dataset wr
 kalonji,nigella,kalonji,read,read,"the English name. ⚠️ NOT pointed at black cumin, which Andy ruled botanically distinct.",
 kalonji,nigella seeds,kalonji,read,read,"the same, written with the form word.",
 Q61505177,gram lentil,lentil,read,read,"⚠️ the last 5 lines the gram whitelist left unresolved. It reached generic 'lentil' before the fix and now reaches nothing, so the alias restores exactly what it had.",
+en:beef-broth,beef stock,beef broth,read,read,stock and broth are one row here,wikibooks
+baking-soda,bicarbonate of soda,baking soda,read,read,the British name,wikibooks
+Q6598,cayenne,cayenne pepper,read,read,"the bare name, which the corpus uses for the ground spice",wikibooks
+en:chicken-broth,chicken stock,chicken broth,read,read,stock and broth are one row here,wikibooks
+Q10286140,corn flour,cornmeal,read,read,"⚠ British corn flour is CORNMEAL. India's scoped row sends the same two words to cornstarch, which is why both rows are scoped and neither is unscoped.",wikibooks
+Q8495,cow milk,milk,read,read,"plain milk, distinguished from the plant milks the corpus also names",wikibooks
+Q65522500,flat-leaf parsley,parsley,read,read,a cultivar of the same herb,wikibooks
+Q65523167,fresh coriander,cilantro,read,read,"⚠ the leaf, which is cilantro. The seed is a different row.",wikibooks
+Q20856764,ground coriander,coriander seed,read,read,"the seed, ground",wikibooks
+Q1849012,rice wine vinegar,rice vinegar,read,read,"the same vinegar, named at three words",wikibooks
+Q381350,semolina flour,semolina,read,read,semolina is already a flour,wikibooks
+Q3502834,superfine sugar,caster sugar,read,read,the US name for caster sugar,wikibooks
+en:vanilla-extract,vanilla essence,vanilla extract,read,read,the British name,wikibooks
+Q42366457,vegetable broth,vegetable stock,read,read,stock and broth are one row here,wikibooks
+heavy-cream,whipping cream,heavy cream,read,read,"⚠ reviewed and NOT creme fraiche. The unscoped class-B review refused this alias for the corpus at large, so it is scoped to the source that uses it this way.",wikibooks
+Q20856764,whole coriander,coriander seed,read,read,"the seed, whole",wikibooks
