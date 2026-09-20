@@ -245,7 +245,6 @@ Q10286140,corn flour,cornmeal,read,read,"⚠ British corn flour is CORNMEAL. Ind
 Q8495,cow milk,milk,read,read,"plain milk, distinguished from the plant milks the corpus also names",wikibooks
 Q65522500,flat-leaf parsley,parsley,read,read,a cultivar of the same herb,wikibooks
 Q65523167,fresh coriander,cilantro,read,read,"⚠ the leaf, which is cilantro. The seed is a different row.",wikibooks
-Q20856764,ground coriander,coriander seed,read,read,"the seed, ground",wikibooks
 Q1849012,rice wine vinegar,rice vinegar,read,read,"the same vinegar, named at three words",wikibooks
 Q381350,semolina flour,semolina,read,read,semolina is already a flour,wikibooks
 Q3502834,superfine sugar,caster sugar,read,read,the US name for caster sugar,wikibooks
@@ -253,3 +252,6 @@ en:vanilla-extract,vanilla essence,vanilla extract,read,read,the British name,wi
 Q42366457,vegetable broth,vegetable stock,read,read,stock and broth are one row here,wikibooks
 heavy-cream,whipping cream,heavy cream,read,read,"⚠ reviewed and NOT creme fraiche. The unscoped class-B review refused this alias for the corpus at large, so it is scoped to the source that uses it this way.",wikibooks
 Q20856764,whole coriander,coriander seed,read,read,"the seed, whole",wikibooks
+coriander-powder,ground coriander,coriander powder,read,read,"⚠ ground is its own ingredient, not the seed. Andy's ruling 2026-09-20, the same call the catalog makes for ground cinnamon. UNSCOPED because the ground spelling is 7x commoner than 'coriander powder' in RecipeNLG and the row was approved on both.",
+coriander-powder,coriander ground,coriander powder,read,read,"230 RecipeNLG instances. Reversed word order, which the form-strip path sends to cilantro without this row.",
+coriander-powder,powdered coriander,coriander powder,read,read,14 RecipeNLG instances.,
