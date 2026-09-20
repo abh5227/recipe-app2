@@ -433,6 +433,13 @@ def test_a_single_source_dish_reads_the_same_through_every_door():
         pytest.skip("no mined corpus on this machine")
     row = conn.execute("SELECT dish_id, dish, n FROM mined_dish GROUP BY dish_id "
                        "HAVING COUNT(*) = 1 ORDER BY SUM(n) DESC LIMIT 1").fetchone()
+    if row is None:
+        # ⚠️ live() GUARDS ON mined_pairings, WHICH SAYS NOTHING ABOUT mined_dish. A database can
+        #    hold 362,319 pairings and 0 dishes, and that is exactly what recipes.db is once the
+        #    mined_corpus migration lands and the dish tables are created empty. The sibling above
+        #    already skips on this and this one unpacked the None instead.
+        conn.close()
+        pytest.skip("no mined dishes on this machine")
     did, name, n = row
     combined = MC.dish(conn, did)
     per = MC.dish_sources(conn, did)
