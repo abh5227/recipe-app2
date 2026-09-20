@@ -86,3 +86,4 @@ relabel,strawberry-banana-smoothie,0,Q14458220,form_strip,phasec_release:form_st
 relabel,sweet-potato-and-onion-hash,0,Q37937,form_strip,phasec_release:form_strip:white,sweet potato,"white sweet potatoes, peeled and cut into medium dice"
 relabel,thai-tea-ice-cream-chatramues-thai-tea,9,Q216235,exact,phasec_release:exact,coconut oil,"coconut oil, optional"
 relabel,warm-squash-chickpea-salad-with-tahini,6,Q622350,exact,phasec_release:exact,red onion,"red onion, finely chopped"
+repoint,no-knead-bread,1,Q45422,repoint,repoint:instant-yeast-to-yeast,yeast,instant or rapid-rise yeast
