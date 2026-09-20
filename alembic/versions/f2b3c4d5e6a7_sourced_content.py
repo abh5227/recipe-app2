@@ -10,8 +10,8 @@ usable, and such a row MUST NOT render its image. Commons licences vary file by 
 reached by walking P279: subclass edges put the Vegetable article on onion and the Fruit article on
 tomato, which looks like a success and is not one. See migrations/044.
 
-Revision ID: c3d4e5f6a7b8
-Revises: b2c3d4e5f6a7
+Revision ID: f2b3c4d5e6a7
+Revises: f1a2b3c4d5e6
 Create Date: 2026-09-18 15:05:00.000000
 
 """
@@ -21,8 +21,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = 'c3d4e5f6a7b8'
-down_revision: Union[str, Sequence[str], None] = 'b2c3d4e5f6a7'
+revision: str = 'f2b3c4d5e6a7'
+down_revision: Union[str, Sequence[str], None] = 'f1a2b3c4d5e6'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

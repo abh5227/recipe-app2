@@ -454,6 +454,43 @@ def test_every_aggregate_table_holds_its_declared_floor():
         pytest.skip("no populated mined tables here")
 
 
+def test_alembic_revision_ids_are_unique_and_resolve_to_one_head():
+    """⚠️ THE GAP THAT LET THREE REVISIONS SHIP WITH IDS THAT WERE ALREADY TAKEN.
+
+    042 to 045 were written with sequential-looking hex ids, and three of them collided with
+    revisions that already existed: b2c3d4e5f6a7 was the social substage, c3d4e5f6a7b8 was
+    comments on feed posts, d4e5f6a7b8c9 was the recipe queue. Alembic resolved the tree to
+    FOUR heads and `alembic upgrade head` cannot run against more than one.
+
+    ⚠️ INVISIBLE TO EVERY OTHER TEST IN THE SUITE, which is the point of adding it. Nothing here
+    runs alembic, so the whole SQLite suite stayed green, a fresh clone stayed green, and the
+    failure surfaced only in the Postgres integration step where the schema is actually built
+    from these files. The test above counts tables across the two directories and a duplicate id
+    does not change that count.
+
+    Both halves are checked. Ids must be unique, and the tree must walk to a single head."""
+    import collections
+    import re as _re
+    versions = sorted((BASE / "alembic" / "versions").glob("*.py"))
+    assert versions, "no alembic revisions found"
+    pat = _re.compile(r"^revision(?::\s*str)?\s*=\s*['\"]([^'\"]+)", _re.M)
+    seen = collections.defaultdict(list)
+    for f in versions:
+        m = pat.search(f.read_text(encoding="utf-8"))
+        assert m, f"{f.name} declares no revision id"
+        seen[m.group(1)].append(f.name)
+    dupes = {r: fs for r, fs in seen.items() if len(fs) > 1}
+    assert not dupes, f"revision ids used more than once: {dupes}"
+
+    from alembic.config import Config
+    from alembic.script import ScriptDirectory
+    sd = ScriptDirectory.from_config(Config(str(BASE / "alembic.ini")))
+    heads = sd.get_heads()
+    assert len(heads) == 1, f"alembic resolves to {len(heads)} heads, not one: {heads}"
+    assert len(list(sd.walk_revisions())) == len(versions), (
+        "the chain does not reach every revision file")
+
+
 def test_every_sqlite_migration_has_an_alembic_revision():
     """⚠️ THE GAP THAT LET 038 SHIP WITHOUT ONE. 035, 036 and 037 each had a counterpart and 038
     did not, so eight tables existed in SQLite and would have been absent from Postgres. Nothing

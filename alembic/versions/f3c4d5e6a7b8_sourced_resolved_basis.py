@@ -14,8 +14,8 @@ the sense a cook means. See migrations/045.
 ⚠️ POSTGRES TAKES A NAMED CHECK AND SQLITE REBUILDS THE TABLE. The batch operation below does the
 right thing on both, which is why it is written as batch_alter_table rather than a raw ALTER.
 
-Revision ID: d4e5f6a7b8c9
-Revises: c3d4e5f6a7b8
+Revision ID: f3c4d5e6a7b8
+Revises: f2b3c4d5e6a7
 Create Date: 2026-09-18 23:30:00.000000
 
 """
@@ -25,8 +25,8 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = 'd4e5f6a7b8c9'
-down_revision: Union[str, Sequence[str], None] = 'c3d4e5f6a7b8'
+revision: str = 'f3c4d5e6a7b8'
+down_revision: Union[str, Sequence[str], None] = 'f2b3c4d5e6a7'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
