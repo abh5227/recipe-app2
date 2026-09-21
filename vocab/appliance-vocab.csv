@@ -3,7 +3,7 @@ y,crock-pot,add,,2971,11048,Crockpot Candy,Crock Pot Stew
 y,skillet,add,"⚠️ JUDGEMENT. 33% of the time it is the trailing noun, so a dish FORM. `Skillet Cookie`",2217,8244,Skillet Pasta,Skillet Runza
 y,microwave,add,,1783,6630,Microwave Fudge,Microwave Fudge
 y,slow-cooker,add,,1735,6452,Slow Cooker Yogurt,Slow Cooker Lasagna
-y,crockpot,add,,659,2451,Ham in Crockpot,Crockpot Pea Soup
+n,crockpot,add,"⚠ CUT 2026-09-20, redundant and actively harmful. crock-pot's pattern is crock[- ]?pots? and already matches this spelling, so both entries normalized to one _CANON key and APPLIANCE is a set: which spelling got stored depended on set iteration order, which Python randomizes per process. Measured: six fresh imports gave crockpot three times and crock-pot three times. Stage 5's recipenlg run and its wikibooks run disagreed, and 3 wikibooks rows fell under the combined floor as a result. The only colliding key in all four vocabularies.",659,2451,Ham in Crockpot,Crockpot Pea Soup
 y,bread-machine,add,,493,1833,Rye Bread (Bread Machine),Bread Machine Dinner Rolls
 y,grill,add,"⚠️ JUDGEMENT. the bare noun is the appliance, 418 against `grilled` at 8,689",418,1554,Meal On The Grill,Bacon On The Grill
 y,stovetop,add,,291,1082,Stove Top Pot Roast,Stovetop BBQ Chicken
