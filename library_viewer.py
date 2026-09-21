@@ -123,7 +123,7 @@ CSS = """
      unbounded column, so a bar drawn at 1800px stretched to 1,508px and the count landed
      1,299px from its own title. A table stops at its content width. A bar has no content
      width, so it needs one stated. The count shares it, which puts it on the right edge of
-     the bar it summarises instead of the right edge of the monitor. */
+     the bar it summarizes instead of the right edge of the monitor. */
   --chart:920px;
 }
 *{box-sizing:border-box;min-width:0}
@@ -224,10 +224,10 @@ section + section{border-top:1px solid var(--rule)}
 .chart{max-width:var(--chart)}
 .pgauge .track{height:26px}
 /* ⚠️ NOTHING HERE IS PLACED BY SEGMENT WIDTH. Drawing a percentage on its own segment, or
-   centred above it, fails on the small ones, and the failure was measured rather than guessed:
+   centered above it, fails on the small ones, and the failure was measured rather than guessed:
    1.2% needs 18px of type and its block is 11.5px, 0.7% needs 16px and has 7.3px, and the
    made-from 0.0% needs 13px and has 1.4px. Above the bar the same two labels overlap, their
-   centres 8.5px apart. One key per line with the figure in a fixed column makes 0.0% exactly as
+   centers 8.5px apart. One key per line with the figure in a fixed column makes 0.0% exactly as
    legible as 77.0%. Tabular mono, right-aligned, stacks the decimal points so the column reads
    as one scale. No rule between rows. The leader already carries the eye across. */
 .pgauge .keys{margin-top:11px}
@@ -4202,7 +4202,7 @@ def graph(lid):
 <p class=sub><span class=mono>{escape(lid)}</span> · {len(nb["category"])} category,
  {len(nb["parent"])} parent, {fmt(len(nb["child"]))} children, {fmt(len(nb["sibling"]))} siblings ·
  <a href="/i/{uq(lid)}">full detail</a></p>
-<p class=hint>Single-click a node to re-centre on it, double-click to open its page. Parents are
+<p class=hint>Single-click a node to re-center on it, double-click to open its page. Parents are
  deduped by row: a child can carry both a kind-of and a made-from edge to the same parent, which
  would otherwise draw two lines between one pair. Children are capped at 40 and siblings at 20.</p>
 <div id=net></div></section>
