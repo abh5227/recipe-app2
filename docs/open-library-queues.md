@@ -482,6 +482,59 @@ ever arrives, the floor should go back up rather than the junk staying forever.*
 That is the honest shape of it. The cost of being wrong is a larger table. The cost of cutting early
 is the regional dishes, and those do not come back.
 
+### ⚠️ The bet, scored. Two sources landed and the result is mixed in a useful way
+
+**Recorded 2026-09-21, after Stage 5 mined all three sources together.**
+
+All 11 dishes above, re-measured against live. **4 rose, 7 did not move, none fell and none was
+cut.**
+
+```
+dish                listed   rnlg   india   wikibooks   COMBINED
+────────────────────────────────────────────────────────────────
+agedashi tofu          9       9      .         1          10   rose
+beef bulgogi           9       9      .         .           9
+mongolian chicken      8       8      .         .           8
+cilantro chutney       8       8      .         .           8
+khichdi                5       5      1         1           7   rose
+toum                   6       6      .         1           7   rose
+larb                   5       5      .         .           5
+matar paneer           4       4      .         1           5   rose
+kuku paka              2       2      .         .           2
+mejadra                2       2      .         .           2
+chana chaat            2       2      .         .           2
+```
+
+⚠️ **Every RecipeNLG count reproduced the figure recorded here in September**, which is a check on
+the re-mine as much as on the floor.
+
+⚠️ **The mechanism limits how much elevation to expect, and it is worth stating plainly.** India
+names `khichdi` in **31** of its titles and contributes **1**. It names `matar paneer` in **4** and
+contributes **0**. Running the real reduction over those titles shows why:
+
+```
+Khichdi With Fresh Spices Recipe          -> 'khichdi'                the only bare one of 31
+Sabudana Khichdi Recipe With Vegetables   -> 'sabudana khichdi'
+Moong Dal Khichdi Recipe For Babies       -> 'moong dal khichdi'
+Malai Matar Paneer Recipe (...)           -> 'malai matar paneer'
+Aloo Matar Paneer Curry Recipe            -> 'aloo matar paneer curry'
+Matar Paneer Galette Recipe               -> 'matar paneer galette'
+```
+
+`dish_id` is the hash of the reduced dish string, so a qualified name is a different dish. **A
+regional source elevates the members of a dish family, not the family's base name**, and regional
+sources are the ones most likely to write qualified names.
+
+**The bet still pays, and it pays more narrowly than the section above implies.** khichdi rose
+across all three sources, which is the hook working exactly as designed. The counterintuitive half
+belongs in the record too: the source added for Indian dishes moved one of the three Indian dishes
+on this list, and **Wikibooks moved four, including both Indian ones.** A source's value here is
+not predicted by how well its subject matches the gap.
+
+⚠️ **This also puts a condition on the deferred junk query.** A dish still at `n = 2` in a single
+`source_slug` after N sources may be a real family member rather than a one-off. `sabudana khichdi`
+is exactly that shape, and cutting it would repeat the mistake the floor was lowered to avoid.
+
 ## 13. The class B alias review: refusals, pending items, and two queued categories
 
 **Recorded 2026-09-15.** Class B's top 150, ranked by corpus impact, was read one row at a time.
