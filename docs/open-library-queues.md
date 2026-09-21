@@ -1366,20 +1366,39 @@ yoruba, hausa, colombian and venezuelan: `Aadun (Nigerian Corn Flour with Palm O
 occurrences there, because that corpus writes `cornstarch` 82 times and `corn starch` 8 times
 outright. India's reading is the opposite one and is equally correct for India.
 
-⚠️ **`library_aliases` cannot hold both, and that was measured rather than assumed.**
+⚠️ **`library_aliases` could not hold both, and that was measured rather than assumed.**
 `linkage_matcher.load_catalog` appends every alias into one key per name, so two rows for
 `corn flour` would make `cat['corn flour']` hold two library_ids, the matcher would return
-AMBIGUOUS, and the name would resolve to **nothing in either source**. The table has no source
-column. For this pass the 23 Wikibooks aliases were injected through the matcher's own `decided`
-hook and live with the source's run instead, which is correct and does not scale. **Before India
-lands, `library_aliases` needs a nullable `source_slug`, where NULL means every source.**
+AMBIGUOUS, and the name would resolve to **nothing in either source**. The table had no source
+column. For that pass the 23 Wikibooks aliases were injected through the matcher's own `decided`
+hook and lived with the source's run instead, which was correct and did not scale.
 
-**The coriander guard refuses and then resolves nothing. 128 lines.** `ground coriander` 70,
+✅ **CLOSED by migration 047**, which added a nullable `source_slug` where NULL means every source.
+Live now stores both senses at once, which is the thing this note said was impossible:
+
+```
+corn flour  ->  Q3393961   cornstarch   source_slug 'india'
+corn flour  ->  Q10286140  cornmeal     source_slug 'wikibooks'
+```
+
+**The coriander guard refused and then resolved nothing. 128 lines.** `ground coriander` 70,
 `coriander powder` 19, `fresh coriander` 16. The matcher correctly refuses to send ground
-coriander to cilantro, since ground coriander is the seed, but it returns UNMATCHED rather than
-the seed row. The Wikibooks run points them at `Q20856764` by hand. The general fix belongs in
-`linkage_matcher.match`, where the blocked branch should fall through to the form-stripped target
-rather than giving up, and it predates Wikibooks.
+coriander to cilantro, but it returned UNMATCHED rather than a usable row.
+
+✅ **CLOSED by three unscoped aliases**, and the resolution corrected a wrong reading along the way.
+Ground coriander is **not** the seed. Andy ruled them separate rows, and both exist:
+
+```
+coriander-powder  'coriander powder'   <- ground coriander, coriander ground,
+Q20856764         'coriander seed'         powdered coriander   (all unscoped)
+```
+
+⚠️ An earlier commit in this same batch sent `ground coriander` to the **seed**, against the ruling
+the batch was applying. `3872fe9` corrects it. The row's reach went from 12.5% of the recipes it was
+approved on to 96.9%.
+
+The general fix in `linkage_matcher.match`, where the blocked branch should fall through to the
+form-stripped target rather than giving up, is **still open** and still predates Wikibooks.
 
 **Roman numerals past three survive dish reduction.** `dish_reduce.TAIL_NOISE` reads
 `(recipes?|i{1,3}|deluxe|supreme|style|from\s+scratch)$`, so it strips `I`, `II` and `III` and
@@ -1414,7 +1433,10 @@ alone, where the naive marginal is the Wikibooks count of 1 or 3 and the true co
 size. That was wrong. A small source produces the largest errors, because the pairs only it holds
 are exactly the ones whose marginals it cannot supply.
 
-**The copy is still not promoted to live.**
+✅ **Promoted 2026-09-20.** Live is `07603032` and carries all of the above. Live and the copy are
+identical on 48 of 52 tables, and the four that differ are user data and its counters. Stage 5
+re-mined all three sources together, so the lifts stored on live are combined lifts rather than
+RecipeNLG's.
 
 ## 24. Prompt injection, and the two thresholds where it starts to matter
 
