@@ -325,3 +325,40 @@ No corpus is downloaded. No parser is written. No table is created.
 
 The next phase acquires the corpus and probes coverage on a sample, and **stops there to report the
 number** before anything is built on it.
+
+## Where the mining materials live, and why none of them are committed
+
+**Recorded 2026-09-21.** The mined tables in `recipes.db` are derived from inputs that are **not in
+this repository and cannot be.** They sit at `Library/mining-materials/`, a sibling of the repo
+rather than a path inside it, so git cannot see them and no ignore rule mentions them.
+`git check-ignore` refuses with "outside repository".
+
+```
+12 files, 57.8 MB
+
+  rnlg_tally.json     25.6 MB   903,755 RecipeNLG dish strings. The routing tally a small
+                                source borrows, since a 3,774-recipe corpus cannot establish
+                                word frequencies of its own
+  india-data.csv      11.2 MB   the India corpus, 5,938 recipes
+  wb_full.json         8.4 MB   raw Wikibooks wikitext
+  wb_mined.json        4.9 MB   the Wikibooks intermediates
+  wb-dish-facets.json  2.6 MB
+  wb-pairings.json     2.3 MB
+  wb-occurrences.json, wb_facets_proposed.json, wb_unrouted.json
+  wbfetch.py, wbmine.py, wbrun.py   the scratch scripts the committed reader was rescued from
+```
+
+**Why none of it ships.** RecipeNLG and the India corpus are `derive_only`. Counts taken from them
+may be stored and their text may not, which is the rule [sourcing-tiers.md](sourcing-tiers.md)
+applies to any source whose license does not grant redistribution. The Wikibooks wikitext is CC
+BY-SA and could be redistributed under that license. It is left out for size rather than for
+licensing.
+
+**What losing the directory would cost.** `wbfetch.py` re-fetches the Wikibooks side from the live
+wiki, so that part is recoverable at the cost of a fetch and a re-mine. The RecipeNLG tally is
+regenerable from the RecipeNLG dataset, which is a separate download. ⚠️ **`india-data.csv` is the
+only file with no committed path back to it.**
+
+⚠️ **The derived tables do not depend on any of this at read time.** `recipes.db` carries the counts,
+and `wikibooks_reader.py` plus `vocab/wikibooks-categories.csv` carry the derivation that used to
+live only in a temp directory. The materials are needed to re-mine, not to serve.
