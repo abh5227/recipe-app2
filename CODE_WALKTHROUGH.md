@@ -8,6 +8,18 @@ dated change log at the bottom for exactly that).
 If you're returning after time away, read the "Big picture" section, then skim the
 reading order, then jump to whatever you're about to change.
 
+> ⚠️ **This tour predates the mining stack and does not cover it yet.** Last substantive
+> pass 2026-08-29. Everything below is still accurate about the code it describes, and
+> nothing in it is wrong. It is incomplete: 17 tracked modules that mine a recipe corpus
+> for facts get no mention at all. The readers (`india_reader.py`, `wikibooks_reader.py`),
+> the registry that loads them by dynamic import (`mining_probe.py`), the four run scripts
+> (`occurrence_run.py`, `pairing_run.py`, `dish_facet_run.py`, `substitution_run.py`), the
+> six loaders, the dish reduction (`dish_facets.py`, `dish_reduce.py`) and the
+> combine-on-read path (`mined_combine.py`) are all missing. **Writing that tour is
+> deferred to its own pass**, on the reasoning that a rushed and wrong tour costs more than
+> a recorded gap. Start from `docs/mining-decision.md` for the reasoning and
+> `docs/open-library-queues.md` for what the passes left open. *(Noted 2026-09-21.)*
+
 ---
 
 ## Big picture
