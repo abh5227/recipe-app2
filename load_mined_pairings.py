@@ -8,7 +8,7 @@ exist. Idempotent per source_slug, which is half the primary key.
 ⚠️ IT REFUSES AN ID THAT IS NOT A CATALOG ROW. The reducer only ever emits library_ids from the
 built catalog, so an orphan would mean the catalog moved under the pairs.
 """
-import argparse, json, sqlite3, sys
+import argparse, json, sqlite3
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent

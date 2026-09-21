@@ -10,7 +10,7 @@ corpus's rows alone, since source_slug is half the primary key.
 built catalog, so an orphan would mean the catalog moved under the counts. That is worth stopping
 for rather than storing.
 """
-import argparse, json, sqlite3, sys
+import argparse, json, sqlite3
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent

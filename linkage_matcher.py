@@ -22,7 +22,7 @@ coriander alone means cilantro) are artifact-independent, so they are reused rat
 Only their TARGET is re-confirmed against the built catalog, since a row's id can move. A line
 resolved by a prior decision is marked DECIDED and needs a spot-check, not a decision.
 """
-import argparse, collections, csv, re, sqlite3, sys, unicodedata
+import collections, csv, re, sqlite3, sys, unicodedata
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent

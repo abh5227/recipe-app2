@@ -36,7 +36,6 @@ decision needs no code.
 ⚠️ SHARE IS SUM(n) / SUM(n_dish), NEVER A MEAN OF TWO SHARES. n_dish is a per-source denominator.
 A dish with 900 recipes in one source at 90% and 100 in another at 10% is 82% combined, not 50%.
 """
-import sqlite3
 
 __all__ = ["corpus_n", "sources", "pairings", "occurrences", "dish_ingredient", "facet",
            "FACET_TABLES", "dish_view", "facet_view", "id_facet_view", "profile_view",

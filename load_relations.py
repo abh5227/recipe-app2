@@ -20,7 +20,7 @@ by re-deriving it.
 is a silent no-op, and Phase C showed how expensive those are: a fold with a wrong anchor did
 nothing, said nothing, and was caught only because a row count came back one higher than expected.
 """
-import csv, sqlite3, sys
+import csv, sqlite3
 
 DB = "recipes.db"
 HAND = "hand_links.csv"

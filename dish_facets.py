@@ -11,7 +11,7 @@ exception, which is why it is CLEANED here rather than trusted.
 carry a `keep` column Andy edited, and this reads that column. Retyping them into this file would
 let the two drift apart silently, which is the whole reason the review files exist.
 """
-import csv, hashlib, os, re, sys, unicodedata
+import csv, hashlib, os, re, sys
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, BASE_DIR)

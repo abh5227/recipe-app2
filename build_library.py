@@ -73,7 +73,7 @@ anchor it shares the most buckets with.
     and mean asafoetida. Ownership gives each entry the rows its own sources wrote, and
     the language column on every variation is what makes the split readable.
 """
-import collections, json, os, pickle, re, sqlite3, sys, unicodedata
+import collections, json, os, pickle, re, sqlite3, sys
 
 import csv
 

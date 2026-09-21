@@ -11,7 +11,6 @@ Run it directly with:  python3 migrate.py
 (build_db.py also calls it for you.)
 """
 import sqlite3
-import sys
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent

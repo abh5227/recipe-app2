@@ -19,7 +19,7 @@ every run, so a rejection kept anywhere else would come straight back.
 with a wrong anchor did nothing, said nothing, and was caught only because a count came back one
 higher than expected.
 """
-import argparse, csv, sqlite3, sys
+import argparse, csv, sqlite3
 from pathlib import Path
 
 BASE = Path(__file__).resolve().parent
