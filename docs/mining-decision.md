@@ -307,10 +307,15 @@ under-represents the cuisines the library exists to serve, which that document n
 Ethiopian and Peruvian among everything else. A row's absence from it is a fact about the corpus.
 
 There is a separate reason this matters less than it looks. The noise problem mining might seem to
-solve is already solvable without it. **2,261 of the 10,474 catalog rows, 21.6%, are separable on
-shape alone**, being 1,334 industrial descriptors of the "50-63% unsalted vegetable fat" kind, 888
-Latin binomials and 39 non-Latin-script rows. That is a sourcing problem with a known origin,
-concentrated in Open Food Facts at 17.8% of its rows. Mining is the wrong instrument for it.
+solve is already solvable without it. **2,261 of the catalog's 10,474 rows at the time, 21.6%, were
+separable on shape alone**, being 1,334 industrial descriptors of the "50-63% unsalted vegetable
+fat" kind, 888 Latin binomials and 39 non-Latin-script rows. That is a sourcing problem with a known
+origin, concentrated in Open Food Facts at 17.8% of its rows. Mining is the wrong instrument for it.
+
+⚠️ **Measured 2026-09-10, before the row cleanup, and left as the historical figure rather than
+re-derived.** The catalog is 10,020 rows now and the cleanup removed many of these rows outright, so
+both the count and the percentage are stale. The argument they support is unaffected, since it only
+needs the class to be large and shape-separable. Re-measure before reusing either number.
 
 **Mined facts arrive at `state='open'` and in their own tier, `mined`.** They are never folded into
 `cited`. A hand-read extension bulletin and a count over 2.2 million recipes are different kinds of

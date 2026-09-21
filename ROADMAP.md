@@ -930,9 +930,16 @@ The large data cluster.
 - **13f. Pantry match against the mined dish corpus (Phase 4 read-path, DESIGN INTENT).**
   ⚠️ **Not the same feature as 13b and the difference is the corpus.** 13b asks how much of one of
   *your* 298 recipes you can already make. 13f asks what the world cooks with what you have, ranked
-  over the **19,002 mined dish types** in `mined_dish`, and it answers for foods you have never
+  over the **159,609 mined dish types** in `mined_dish`, and it answers for foods you have never
   saved. The two want different UI and only 13f depends on the mining.
-  *Reads:* `mined_dish_ingredient (dish_id, library_id, n, n_dish)`, already loaded, 397,763 cells.
+  *Reads:* `mined_dish_ingredient (dish_id, library_id, n, n_dish, source_slug)`, already loaded,
+  1,212,059 cells over three sources. ⚠️ Read it through `mined_combine`, never directly. The
+  per-source rows must be summed rather than averaged.
+  ⚠️ **Every measured figure in 13f below was taken on RecipeNLG alone at the old dish floor of 10,
+  when `mined_dish` held 19,002 dishes.** They are left as the historical pair they were measured
+  as, rather than re-derived, and the ratios must not be rebased by swapping the denominator: 15,809
+  of 19,002 is 83%, and the same numerator against today's 159,609 would be a number nobody
+  measured. Re-measure the pair before reusing any of them.
   - **Why the share is the whole point.** The table stores how many recipes of a dish carry an
     ingredient, so `avocado` is 92% of a guacamole and 0.4% of a chicken salad. Ranking on raw
     containment, which is all a plain ingredient list supports, cannot tell those apart. The share
@@ -966,10 +973,13 @@ The large data cluster.
     the planner already uses it for a set of ingredients. **How heavily each factor weighs is a
     Phase 4 tuning choice and nothing in the schema commits to it.** See
     `previews/pantry-match-scoping.md` for the measurements behind every claim here.
-  - **Open design question:** which denominator. Dish-level (how many of the 19,002 dishes carry it)
-    and recipe-level (`mined_occurrences.n_recipes`, over 2,231,142 recipes) disagree sharply.
-    `salt` is 83% of dishes and 43% of recipes. The dish-level one matches the question being asked
-    and is the current recommendation, but it is a decision rather than a fact.
+  - **Open design question:** which denominator. Dish-level (how many of the 159,609 dishes carry
+    it) and recipe-level (`mined_occurrences.n_recipes`, over 2,240,854 recipes across three
+    sources) disagree sharply. `salt` was 83% of dishes and 43% of recipes when measured, at the
+    old dish floor of 10 and on RecipeNLG alone, and that pair is left as the historical figure
+    rather than re-derived. The gap between the two is the point and it is not in doubt. The
+    dish-level one matches the question being asked and is the current recommendation, but it is a
+    decision rather than a fact.
 - **Capstone view — "what can I cook tonight":** emerges from pantry (13b) + in-season (10c) +
   time (9b) + make-ahead (9d). Not new data, just a combined view.
 - **Cross-cutting:** match %, substitutes, in-season, and shopping-list subtraction work only
