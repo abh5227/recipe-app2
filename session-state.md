@@ -1,73 +1,82 @@
 # Session state
 
-Where the two databases stand, what is committed, and what is waiting. Written 2026-09-17.
+Where the two databases stand, what is committed, and what is waiting.
+Written 2026-09-17, rewritten 2026-09-21 after the promotion.
 
 ## The two databases
 
-**`recipes.db`, live, `07f8712c`. Not written to at any point in this work.**
+**`recipes.db`, live, `07603032`. Promoted 2026-09-20 from the copy.**
 
-**`recipes-preview.db`, the copy, `b049e501`. Gitignored, and the canonical build.**
+**`recipes-preview.db`, the copy, `73b7cee1`. Gitignored, and the source the promotion read.**
+
+⚠️ **They are now identical on 48 of their 52 tables**, hashed on full row content rather than
+compared on counts. The four differences are user data and the counters it moved.
 
 | | live | copy |
 |---|---|---|
-| `library_names` | 10,489 | **10,015** |
-| `library_relations` | 10,204 | **16,013** |
-| `kind_of` / `in_category` | 3,801 / 6,399 | **8,299** / 6,217 |
-| `made_from` / `part_of` | **4 / 0** | **1,458 / 39** |
-| `library_aliases` | 164 | 163, a different set |
-| `mined_dish` and its four child tables | **0** | 159,496 dishes, 1.36M cells |
-| `mined_occurrences` | 3,018 | 2,992 |
-| `mined_pairings` | 362,319 | 361,138 |
+| `library_names` | 10,020 | 10,020 |
+| `library_relations` | 15,907 | 15,907 |
+| `kind_of` / `in_category` | 8,708 / 5,589 | 8,708 / 5,589 |
+| `made_from` / `part_of` | 1,538 / 72 | 1,538 / 72 |
+| `library_aliases` | 246 | 246 |
+| `mined_dish` | 161,967 rows, 159,609 dish types | 161,967 |
+| `mined_dish_*` profile cells | 1,527,864 | 1,527,864 |
+| `mined_occurrences` | 4,744 | 4,744 |
+| `mined_pairings` | 446,801 | 446,801 |
+| `mined_corpus` | 3 sources, N 2,240,854 | 3 sources, N 2,240,854 |
+| `mined_substitution_candidates` | 4,964 | 4,964 |
 | `recipes` / `recipe_ingredients` | 299 / 3,563 | 299 / 3,563 |
-| `ingredients`, `cook_log`, `ratings` | 36 / 134 / 118 | 36 / 134 / 118 |
+| `ingredients` | **0**, retired by migration 046 | 0 |
+| `cook_log` / `ratings` | **135** / 118 | 134 / 118 |
 
-### On both
+### The four tables that differ
 
-The Tier 0 parent pass, meaning the `duck`, `quail`, `poultry` and `rambutan` renames, the Latin
-`kind_of` edges and the Tier 0 aliases. Migrations 040 and 041. All of Andy's own data.
+```
+cook_log            live 135   copy 134    live's own extra cook
+recipe_snapshots    live 303   copy 302    the snapshot of that edit
+schema_migrations   47 / 47                same rows, different applied_at
+sqlite_sequence     15 / 15                counters moved by the two rows above
+```
 
-### Copy only, heading toward promotion
+**Live is ahead only on the user data it was always ahead on.** Everything derived came across row
+for row.
 
-- The **dish facet extraction**. Live has zero rows in all five dish tables.
-- The **stage 1 web**, 1,458 `made_from` and 29 `part_of` edges. Live has 4 `made_from` and no
-  `part_of` at all.
-- The **five plain-word renames**. Live still reads `turkey meat`, `lamb meat`, `rabbit meat`,
-  `sheep meat` and `bison meat`. The copy reads `turkey`, `lamb`, `rabbit`, `sheep`, `bison`.
-- The **`goat` row**. Live does not have it.
-- The **whole row cleanup**, now 474 rows. Live still holds `PotatoEurope`, `drinking straw`,
-  `turpentine`, `Batomorphi`, `food ingredient` and the rest.
-- The **entire stage 2 web**, 4,553 edges over three passes. The multi-axis cheese hierarchy, the
-  corpus-present orphans and the world foods. Live has none of it.
-- The **`herb` row** and the 16 herbs under it. Live does not have it.
-- The alias table's **five demotion aliases**. Live carries the pre-rename promotion aliases
-  instead (`turkey` and `bison` as aliases), the copy carries `turkey meat` and `bison meat`.
+### The three mined sources
+
+```
+recipenlg-2020    2,231,142 recipes    3,065 occurrence rows
+india                 5,938 recipes      521 occurrence rows    derive_only
+wikibooks             3,774 recipes    1,158 occurrence rows
+```
+
+Stage 5 mined all three together, so the lifts stored on live are combined lifts rather than
+RecipeNLG's alone. `mined_combine` is the only correct way to read these tables, since the
+per-source rows must be summed rather than averaged.
 
 ## Reproducibility
 
-The copy rebuilds from the committed hand files exactly. Measured, not argued:
+The catalog rebuilds from the committed hand files exactly. Measured after the whole arc, not
+argued:
 
 ```
-verifying build 10,015    copy 10,015
-  in build but not in copy  0
-  in copy but not in build  0
-  canonical drift           0
-  folds refused             0
-  removals dangling         0
+library_names.csv now   f7acd87b   10,024 lines
+control rebuild         f7acd87b   10,024 lines   BYTE-IDENTICAL
+and it matches live's catalog: 10,020 rows, identical
 ```
 
-`build_library.build()` takes 27 seconds with `LIBRARY_NAMES_CSV` and `HAND_REMOVALS` pointed at
-scratch paths. The databases are gitignored. **What is committed is the code and the hand files
-that reproduce them**, which is why the commit is worth making before the promotion is decided.
+The databases are gitignored. **What is committed is the code and the hand files that reproduce
+them.**
 
 ## Hand files
 
 | File | Decisions |
 |---|---|
-| `hand_removals.csv` | 719, of which 495 drops, 166 variation trims, 58 folds |
-| `hand_links.csv` | 16,389 lines, carrying stage 1 plus all three stage 2 passes |
-| `hand_aliases.csv` | 167 |
-| `hand_renames.csv` | the Tier 0 four plus the five plain-word renames |
-| `authored_rows.csv` | 71 authored rows including `goat` and `herb` |
+| `hand_removals.csv` | 723, of which 496 drops, 166 variation trims, 61 folds |
+| `hand_links.csv` | 16,166 |
+| `hand_aliases.csv` | 246, now carrying a nullable `source_slug` |
+| `hand_renames.csv` | 57 |
+| `authored_rows.csv` | 80 |
+| `hand_repoints.csv` | 61 link decisions the matcher cannot reach |
 
 ⚠️ **Three hand files were silently converted to different line endings during this work, and it
 was caught before the push.** `hand_links.csv` and `hand_removals.csv` were rewritten from CRLF to
@@ -92,18 +101,26 @@ file has to preserve the endings it found.
 
 ## Suites
 
-1,296 Python passing, 154 JavaScript passing.
+1,328 Python passing, 154 JavaScript passing, 22 skipped.
 
 ⚠️ One standing failure, **pre-existing and unrelated**:
 `tests/test_mining_boundaries.py::test_a_catalog_canonical_is_food_unless_its_exact_form_is_listed`
-fails on `Miracle Whip`. It reads **live** `recipes.db`, which this work never touched, and it fails
-the same way on a clean checkout. `Miracle Whip` is an authored row with no source entry, so
-`hand_removals.csv` cannot reach it. It needs its own resolution.
+fails on `Miracle Whip`. It reads **live** `recipes.db` and fails the same way on a clean checkout.
+`Miracle Whip` is an authored row with no source entry, so `hand_removals.csv` cannot reach it. It
+needs its own resolution. ⚠️ It **skips** under the CI condition, where no `recipes.db` exists, so a
+failure of this test in CI would be a new problem rather than this one.
 
 ## Waiting
 
-- **Push is held.** Nothing has been pushed.
-- **Promotion of the copy to live** is undecided and is the large open question.
+- **Promotion is DONE.** Live carries the copy's derived work as of 2026-09-20.
+- **The cocoa re-link**, a live-data change, still needs its own dry-run. 22 of the 27 live link
+  disagreements have BETTER stored links, placed by `hand_repoints.csv` on purpose, so a blanket
+  re-link would downgrade them.
+- **3 `mined_dish_appliance` rows** carry the pre-fix crockpot vocabulary and self-heal on the next
+  mine. Left deliberately.
+- **The `to taste` parser gap**, 705 lines, still open. `salt to taste` is still UNMATCHED.
+- **The 4,964-row substitution queue** is loaded and unreviewed.
+- **`CODE_WALKTHROUGH.md` predates the mining stack** and its tour is deferred to its own pass.
 - **Stage 2 of the re-harvest**, 4,407 first-parent `kind_of` edges, scoped and read but not loaded.
   The read found it is a row-admission problem more than an edge-quality one, and the two
   highest-impact edges in it are backwards.
