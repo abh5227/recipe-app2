@@ -679,11 +679,16 @@ def classify_line(raw, section_hints=None):
     #    slash secondary, then dual-measure capture (a "(1 cup)" / "(250 g)" paren — grams = weight,
     #    secondary_measure = volume, name cleaned, either order). raw_text keeps the original.
     if amount:
-        unit, name = _lift_count_unit(unit, name)    # "1 clove garlic" -> clove + garlic
         name, slash_secondary = _strip_secondary_measure(name)
         name = _DANGLING_PAREN.sub("", name)         # drop a lone trailing orphan "("
         name = _strip_gram_paren(name, gram_paren)   # drop the harvested "(NNN g)" paren
         name, grams, secondary = _dual_measure(amount, value, unit, name, grams)
+        # ⚠️ LAST, ON THE CLEANED NAME, AND THE ORDER IS LOAD-BEARING. Run before the paren strips,
+        # this sees "sticks (226 grams) unsalted butter", finds no ingredient word straight after the
+        # noun and correctly declines — and then the paren is removed anyway, leaving the lift
+        # missed. 9 live rows were skipped that way. _dual_measure only tests for weight and volume
+        # units, and a counting noun is neither, so it reads the same unit either side of this.
+        unit, name = _lift_count_unit(unit, name)    # "1 clove garlic" -> clove + garlic
         res.update(amount=amount, value=value, unit=unit, name=name, range=rng)
         res["grams_harvested"] = grams
         res["secondary_measure"] = secondary or slash_secondary
