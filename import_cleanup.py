@@ -27,7 +27,7 @@ import re
 # compromise (ROADMAP: extract a shared public amounts.py).
 from stepscale import _NUM, _SCALE_UNIT, _UNI, _to_value, _normalize_unicode, _canon_amount
 
-from recipe_line_parser import MEASURE_ABBREV
+from recipe_line_parser import MEASURE_ABBREV, _is_all_modifier
 
 # ⚠️ THE LEADING UNIT IS A WIDER QUESTION THAN WHAT TO SCALE, and conflating the two was the bug.
 #    _SCALE_UNIT comes from stepscale and answers "which quantities does the CLIENT SCALE". It is
@@ -351,6 +351,58 @@ def parse_amount(line):
 # real count unit from irreducible trailing junk ("/ 1 kg", "+ 2 tbsp").
 _COUNTNOUN_RE = re.compile(r"^[A-Za-z][A-Za-z .\-]*$")
 
+# ⚠️ 'clove' IS A UNIT AND ALSO A FOOD, which is the whole difficulty. recipe_line_parser already
+#    carries that fact (its FOOD_UNIT set) because the same word broke name extraction there. This
+#    is the same problem one layer over: _LEAD_UNIT answers where the NAME begins, and it holds
+#    measures only, so "1 clove garlic" kept the unit in the name and stored "clove garlic".
+#
+#    NOT added to _LEAD_UNIT. That set feeds a regex with an optional unit group, so "10 cloves (or
+#    1/4 tsp ground cloves)" would match 'cloves' as the unit and leave "(or ...)" as the name,
+#    deleting the ingredient. The decision needs to see what FOLLOWS the word, so it is made here in
+#    plain Python where the guard is readable.
+#
+#    Deliberately clove/cloves ONLY. Every other counting noun (sprig, stalk, can, bunch, head,
+#    pinch, slice) has the same shape and its own over-trigger risk, and they are a separate call.
+_COUNT_UNIT_LEAD = re.compile(r"^(?P<u>cloves?)\b[\s,]+(?:of\s+)?(?P<rest>[A-Za-z].*)$", re.I)
+# The trailing form carries a prep clause as often as not ("2 garlic cloves, minced"), so the noun
+# is allowed a comma tail. `rest` is COMMA-FREE on purpose: without that, "10 cloves (or 1/4 tsp
+# ground cloves)" would match its SECOND 'cloves' and leave "cloves (or 1/4 tsp ground" as the name.
+_COUNT_UNIT_TRAIL = re.compile(r"^(?P<rest>[^,]+?)\s+(?P<u>cloves?)(?P<tail>\s*,.*)?$", re.I)
+
+
+def _lift_count_unit(unit, name):
+    """No unit matched and the name carries a counting noun -> move it to the unit.
+
+    Both word orders occur and both are in the live corpus: "2 cloves garlic" (the URL sources) and
+    "2 garlic cloves" (Paprika). Returns (unit, name) unchanged whenever the guard does not hold.
+
+    ⚠️ THE GUARD IS THE POINT. 'cloves' standing alone IS the spice, so it only becomes a unit when
+    a real ingredient word sits beside it:
+      "1 clove garlic (minced)"              -> clove  + "garlic (minced)"
+      "2 garlic cloves, minced"              -> cloves + "garlic, minced"
+      "10 cloves (or 1/4 tsp ground cloves)" -> unchanged, a paren is not an ingredient word
+      "5 whole cloves"                       -> unchanged, 'whole' is a modifier and names nothing
+      "2 Cloves"                             -> unchanged, nothing sits beside it
+    The trailing case leans on recipe_line_parser._is_all_modifier rather than a second word list,
+    so 'whole', 'ground' and 'large' are judged by the vocabulary that already proved itself there.
+    """
+    if unit or not name:
+        return unit, name
+    lead = _COUNT_UNIT_LEAD.match(name)
+    if lead:
+        rest = lead.group("rest").strip()
+        # The same modifier test the trailing branch runs, and it earns its place: "3 cloves, whole"
+        # otherwise became clove-the-unit with "whole" as the ingredient. No live line has that shape,
+        # so only an invented case caught it.
+        if rest and not _is_all_modifier(rest.lower()):
+            return lead.group("u"), rest
+    trail = _COUNT_UNIT_TRAIL.match(name)
+    if trail:
+        rest = trail.group("rest").strip(" ,")
+        if rest and not _is_all_modifier(rest.lower()):
+            return trail.group("u"), (rest + (trail.group("tail") or "")).strip()
+    return unit, name
+
 
 def _norm_ws(s):
     return re.sub(r"\s+", " ", s or "").strip()
@@ -602,6 +654,7 @@ def classify_line(raw, section_hints=None):
     #    slash secondary, then dual-measure capture (a "(1 cup)" / "(250 g)" paren — grams = weight,
     #    secondary_measure = volume, name cleaned, either order). raw_text keeps the original.
     if amount:
+        unit, name = _lift_count_unit(unit, name)    # "1 clove garlic" -> clove + garlic
         name, slash_secondary = _strip_secondary_measure(name)
         name = _DANGLING_PAREN.sub("", name)         # drop a lone trailing orphan "("
         name = _strip_gram_paren(name, gram_paren)   # drop the harvested "(NNN g)" paren

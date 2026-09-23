@@ -44,10 +44,37 @@ def test_empty_amount_keeps_whole_name():
     assert d["amount"] == "" and d["unit"] == "" and d["name"] == "Sea Salt"
 
 
-def test_count_word_stays_in_name():
-    # counts (cloves) are NOT measure units — they stay in the name (Confirmation 3)
+# ⚠️ REVERSES "Confirmation 3", which lived only as the comment on this test: "counts (cloves) are
+#    NOT measure units — they stay in the name". Nothing else in the repo recorded that decision and
+#    the code had already gone the other way where it could — split_qty's docstring documents
+#    `"4 cloves" -> ("4", "cloves")` and 39 live rows already store unit='cloves', written through
+#    the Paprika qty field. What stayed broken was the COMBINED line the URL importer reads, where
+#    "1 clove garlic" stored an ingredient called "clove garlic". Measured over every live line plus
+#    the fixture imports: 99 lines improve, 0 regress.
+def test_a_count_noun_beside_an_ingredient_becomes_the_unit():
     d = ic.classify_line("3 Garlic Cloves, peeled")
-    assert d["value"] == 3.0 and d["unit"] == "" and d["name"].startswith("Garlic Cloves")
+    assert d["value"] == 3.0 and d["unit"] == "Cloves" and d["name"] == "Garlic, peeled"
+
+
+def test_the_count_noun_is_lifted_in_either_word_order():
+    lead = ic.classify_line("1 clove garlic (minced)")
+    assert (lead["value"], lead["unit"], lead["name"]) == (1.0, "clove", "garlic (minced)")
+    trail = ic.classify_line("2 garlic cloves, minced")
+    assert (trail["value"], trail["unit"], trail["name"]) == (2.0, "cloves", "garlic, minced")
+
+
+@pytest.mark.parametrize("line,name", [
+    ("10 cloves (or 1/4 tsp ground cloves)", "cloves (or 1/4 tsp ground cloves)"),
+    ("5 whole cloves", "whole cloves"),          # 'whole' names nothing, so the clove IS the food
+    ("3 cloves, whole", "cloves, whole"),        # same, with the modifier behind a comma
+    ("2 Cloves", "Cloves"),                      # nothing beside it at all
+    ("3 cloves", "cloves"),
+])
+def test_a_clove_standing_alone_is_the_spice_and_keeps_the_name(line, name):
+    """⚠️ THE GUARD THE OLD DECISION WAS RIGHT ABOUT. 'clove' is a unit of garlic and also a spice,
+    so it only becomes a unit when a real ingredient word sits beside it."""
+    d = ic.classify_line(line)
+    assert d["unit"] == "" and d["name"] == name
 
 
 # ----------------------------------------------------------------- sections
