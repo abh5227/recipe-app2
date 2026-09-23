@@ -1759,13 +1759,23 @@ a:hover { color: var(--berry-lift); }
 /* The control block above the Ingredients heading: cook time (top) + serves (bottom) stacked on the
    left, the scale control on the right — vertically CENTERED against the two-line stack (not stretched).
    ½×/1×/2× are fixed CIRCLES (equal w/h) with a defined but soft border; custom× keeps its wider pill. */
-.above-ing { display: flex; align-items: center; gap: 22px; margin: 0 0 20px; }
+/* The time text and the scaler share this row and were competing for it. The scaler is a row of
+   FIXED-SIZE controls (4 x 42px + 3 x 9px gaps = 195px at rest, 215px once the custom pill is
+   committed or focused), so shrinking it does not make it smaller, it makes .scale-control's
+   flex-wrap drop the custom button onto a second row. The text is the fluid half, so the text gets
+   the slack: .scaler-col never shrinks, .meta-stack (min-width:0 below) absorbs and wraps.
+   flex-wrap here is the narrow-viewport escape: under roughly 195px of leftover width the scaler
+   drops BELOW the meta rather than crushing it. */
+.above-ing { display: flex; align-items: center; gap: 22px; margin: 0 0 20px; flex-wrap: wrap; }
+.scaler-col { flex: none; }
 .meta-stack { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 2px 0; min-width: 0; }
 /* The separator between Prep / Cook / Total, matching the editor's .ie-dot. margin rather than literal
    spaces so the gap survives however the parts are joined. The longest real line is 70 characters
    ("Prep 30 mins, plus 1 hour soaking · Cook 2 hours 25 mins, plus cooling"), so min-width:0 above
    lets the stack shrink and the line wrap instead of shoving the scaler off its row. */
-.meta-sep { opacity: 0.4; margin: 0 6px; }
+/* Spacing comes from the real spaces inside the span, NOT from a margin. A margin looks identical
+   and gives the browser nowhere to break, which forced the wrap inside a value instead. */
+.meta-sep { opacity: 0.4; }
 /* fixed-width icon column so both rows share a left edge AND their text aligns (fig icon 26px is the
    wider of the two — 15px clock left-aligns in the same 26px slot). */
 .meta-stack .meta-item { display: grid; grid-template-columns: 26px auto; align-items: center; justify-items: start; gap: 7px; }

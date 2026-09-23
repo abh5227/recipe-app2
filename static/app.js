@@ -1125,10 +1125,21 @@ function scaleMetaBlock(r) {
   // a total. Labeled parts instead, joined the way the editor's vitals line already joins them, so
   // reading and editing finally say the same thing. Measured: 112 of 300 show a time line at all,
   // 92 of those carry exactly two of the three.
+  // ⚠️ WHERE THIS LINE IS ALLOWED TO BREAK, which is the whole reason it reads badly otherwise.
+  // A time value is several words ("2 hr 45 min"), so the only thing stopping the wrap landing
+  // between a number and its unit is saying so. Two rules:
+  //   - a digit followed by a word is joined with a non-breaking space, so "45 min" and "2 hr" can
+  //     never split, and neither can the label from the value it labels.
+  //   - the separator carries REAL spaces. It used to get its spacing from a margin, which looks the
+  //     same and offers the browser no break opportunity at all, so the only place left to wrap was
+  //     inside a value. That is exactly how "min" ended up alone on its own line.
+  // The segments themselves stay breakable at their own commas, so a long one ("Cook 2 hours 25
+  // mins, plus cooling") still wraps instead of overflowing.
+  const bindUnits = (v) => v.replace(/(\d)\s+(?=[A-Za-z])/g, "$1\u00a0");
   const times = [["Prep", r.prep_time], ["Cook", r.cook_time], ["Total", r.total_time]]
     .filter(([, v]) => (v || "").trim())
-    .map(([label, v]) => `${label} <span class="meta-val">${esc(v.trim())}</span>`)
-    .join(`<span class="meta-sep">·</span>`);
+    .map(([label, v]) => `${label}\u00a0<span class="meta-val">${esc(bindUnits(v.trim()))}</span>`)
+    .join(`<span class="meta-sep"> · </span>`);
   if (times) stack.push(`<span class="meta-item">${META_CLOCK}<span>${times}</span></span>`);
   const base = servingsBase();
   if (base) stack.push(`<span class="meta-item">${META_FIG}<span>Serves <span class="serves-count meta-val">${formatAmount(base * view.scale)}</span></span></span>`);
