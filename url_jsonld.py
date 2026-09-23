@@ -29,6 +29,7 @@ import html as html_mod
 import json
 import re
 from typing import NamedTuple
+from urllib.parse import urljoin, urlsplit
 
 BLOCK_RE = re.compile(
     r'<script[^>]*\btype=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.S | re.I)
@@ -172,6 +173,45 @@ def yield_text(value):
     return text(value) if value not in (None, "") else ""
 
 
+def image_urls(value, base_url=""):
+    """Recipe.image -> the candidate urls, IN THE ORDER THE PAGE PUBLISHED THEM. No network.
+
+    Measured over all 14 fixtures. Nine carry a Recipe node and ALL NINE carry an image, so there is
+    no "usually absent" case to design around. The shapes:
+        ImageObject dict   3   allrecipes, kingarthurbaking, seriouseats
+        list of dict       2   bbcgoodfood (1 entry), cooking.nytimes (4 entries)
+        list of str        4   hot-thai-kitchen, minimalistbaker, recipetineats, thewoksoflife
+        bare str           0   never occurs, handled anyway because schema.org permits it
+    Every dict carries `url`. nytimes also carries contentUrl holding the same value, so contentUrl
+    is a fallback the standard allows and this corpus has never needed.
+
+    ⚠️ THE ORDER IS KEPT AND NOTHING IS CHOSEN HERE. A multi-entry list is one photograph at several
+    crops, so picking one is a question about SIZE, and size is only knowable by fetching and
+    decoding: kingarthurbaking declares width and height as null, and every list-of-string form
+    declares nothing at all. That choice belongs to url_image.pick_hero, which can measure. This
+    module stays pure.
+
+    A relative url is resolved against base_url, the FINAL url from the fetcher. No fixture publishes
+    one and schema.org does not forbid it, so resolving costs a line and removes a silent failure.
+    Anything still not http(s) is dropped rather than passed on, because a data: or file: value would
+    otherwise walk into the transport layer.
+    """
+    out = []
+    for item in (value if isinstance(value, list) else [value]):
+        if isinstance(item, list):                   # a nested list is malformed but cheap to flatten
+            item = item[0] if item else None
+        if isinstance(item, dict):
+            candidate = item.get("url") or item.get("contentUrl") or ""
+        else:
+            candidate = item or ""
+        if not isinstance(candidate, str) or not candidate.strip():
+            continue
+        candidate = urljoin(base_url, candidate.strip()) if base_url else candidate.strip()
+        if urlsplit(candidate).scheme in ("http", "https") and candidate not in out:
+            out.append(candidate)
+    return out
+
+
 def author_name(recipe, by_id):
     """The author's name, resolving an {"@id": ...} reference against the graph.
 
@@ -287,6 +327,9 @@ def read(page_html, url=""):
         "rating": 0,
         "uid": "",                               # Paprika's dedup key; a URL import has none
         "hash": "",
-        "images": [],                            # image handling is a later pass, as with Paprika
+        # The CANDIDATES, in the page's own order, never a choice between them. The hero is fetched
+        # after the recipe row is committed (app.import_commit -> url_image.attach_hero), so a dead
+        # or refused image url leaves a hero-less recipe instead of destroying a good import.
+        "images": image_urls(recipe.get("image"), url),
         "primary_photo": None,
     }

@@ -25,7 +25,8 @@ SLUG vs UID — two different jobs:
     the DB we SKIP it (this is how the 5 tagged seed twins are skipped on import).
 
 STILL SEPARATE LATER PASSES (not done here): library LINKAGE (ingredient_id stays NULL) and
-full IMAGE storage (image stays NULL — we don't extract photos[]).
+Paprika's photos[] (still unextracted). `image` stays NULL in the plan either way — the URL import's
+hero is fetched AFTER the commit (app._attach_imported_hero), deliberately outside this transaction.
 
 Run the DRY-RUN (writes nothing):  python3 import_write.py [--seed N] [--count 15]
 """
@@ -203,7 +204,11 @@ def plan_recipe(cleaned, uid_index, taken_slugs, now=None):
         "total_time": cleaned["times"]["total"] or None,
         "descr": cleaned["description"] or None,
         "notes": cleaned["notes"] or None,
-        "image": None,                                   # full image storage = separate pass
+        # ALWAYS NULL AT INSERT, and for the URL path that is the design rather than a gap: the hero
+        # is fetched AFTER this row is committed (app._attach_imported_hero -> url_image), so a dead
+        # or refused image url cannot take a good import down with it. Paprika's photos[] is still
+        # a separate pass.
+        "image": None,
         "uid": uid,
         "hash": cleaned["hash"] or None,
         "created_at": now,

@@ -16,6 +16,16 @@ import images
 import url_fetch
 import url_image
 
+_REAL_FETCH_IMAGE = url_image.fetch_image      # captured at import, before any fixture can patch it
+
+
+@pytest.fixture(autouse=True)
+def real_fetch_image(monkeypatch):
+    """This module is the one that TESTS fetch_image, so it opts out of conftest's network stub.
+    Nothing here reaches the network regardless: the guard refuses before a packet is sent, and
+    every other test injects its own fetcher."""
+    monkeypatch.setattr(url_image, "fetch_image", _REAL_FETCH_IMAGE)
+
 
 def jpeg(w, h):
     """Real bytes at a real size, so decoded_size reads pixels rather than a promise."""

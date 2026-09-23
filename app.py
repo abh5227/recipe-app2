@@ -46,6 +46,7 @@ import snapshot_headsync    # pure baseline TRANSFORM: keep the original's headi
 import import_write         # U4 preview: the PURE planner (plan_recipe) + db_state; the writer stays unused here
 import url_cascade          # U2: layered reader + provenance
 import url_fetch            # U0: the fetcher (network boundary; monkeypatched in tests)
+import url_image            # U3: the guarded hero-image fetch (after the commit, never inside it)
 
 # Anchor everything to this file's folder so the app runs from any directory.
 BASE_DIR = Path(__file__).resolve().parent
@@ -2272,6 +2273,37 @@ def read_url_or_refusal(url):
     return (read, got), None
 
 
+def _attach_imported_hero(rid, owner_id, candidates):
+    """Fetch the imported page's photo and make it this recipe's hero. NEVER RAISES.
+
+    ⚠️ CALLED AFTER THE COMMIT, AND THAT IS THE WHOLE DESIGN. import_commit's session ends with
+    "nothing above committed - a raise leaves NO row", which is right for the recipe and wrong for
+    its picture. The image sits on a third-party host, so it can answer 404, time out or be refused
+    long after the recipe itself is perfect. Inside that transaction a dead image url would throw
+    away a good import. Outside it, the same failure leaves the recipe hero-less, which is the state
+    most recipes are already in and which upload_recipe_image already fixes by hand.
+
+    The write below MIRRORS upload_recipe_image rather than only setting recipes.image, and that is
+    measured rather than tidy: all 120 existing heroes also carry a cook_photos row with the same
+    path (0 exceptions). is_hero derives from recipes.image == p.path across the album, so a hero
+    with no album row would be the first in the database to show on the card and be missing from the
+    album. "A photo is a photo" holds for a photo that arrived over the wire too.
+    """
+    def store(path):
+        with orm_session() as s:                             # its OWN short transaction, after the recipe's
+            next_pos = s.execute(
+                select(func.coalesce(func.max(CookPhoto.position), -1) + 1).where(CookPhoto.recipe_id == rid)
+            ).scalar_one()
+            s.execute(insert(CookPhoto.__table__).values(    # a COOK-LESS album row, as an upload makes
+                cook_log_id=None, recipe_id=rid, user_id=owner_id,
+                path=path, caption=None, added_at=now_utc(), position=next_pos,
+            ))
+            s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rid).values(image=path))
+            s.commit()                                       # DB updated ONLY after the file is on disk (S6)
+
+    return url_image.attach_hero(store, candidates)
+
+
 @app.route("/api/import/commit", methods=["POST"])
 def import_commit():
     """Import a URL into a REAL recipe and hand back its id, so the client can open it in the editor.
@@ -2315,8 +2347,12 @@ def import_commit():
         import_write.commit_plan(s, plan, owner_id=current_user.id, snapshot=False)
         rid = plan["recipe"]["id"]
         s.commit()                                   # nothing above committed — a raise leaves NO row
+    # The recipe is now durable. ONLY NOW is the network touched again for its photo, so every way
+    # that can fail (no image published, a dead url, a host that refuses, an address the guard
+    # blocks, bytes that are not an image) costs the picture and never the recipe.
+    hero = _attach_imported_hero(rid, current_user.id, cleaned["images"])
     return jsonify({"id": rid, "slug": rid, "duplicate": duplicate,
-                    "read_by": read.provenance["layer"]}), 201
+                    "read_by": read.provenance["layer"], "hero": hero.path or None}), 201
 
 
 if __name__ == "__main__":

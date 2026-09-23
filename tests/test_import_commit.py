@@ -20,6 +20,9 @@ import app          # noqa: E402
 import harness      # noqa: E402
 import import_write # noqa: E402
 import url_fetch    # noqa: E402
+import url_image    # noqa: E402
+
+_REAL_IMAGE_FETCH = url_image.fetch_image   # captured before conftest's no_image_network stub
 
 FIXTURES = pathlib.Path(__file__).parent / "fixtures" / "pages"
 MANIFEST = {r["domain"]: r for r in json.loads((FIXTURES / "manifest.json").read_text())}
@@ -292,3 +295,153 @@ def test_the_duplicate_warning_survives_url_variants(kitchen, monkeypatch):
         "bbcgoodfood.com", "http://www.bbcgoodfood.com/recipes/classic-lasagne/?utm_source=nl"))
     assert commit(kitchen, "http://www.bbcgoodfood.com/recipes/classic-lasagne/?utm_source=nl"
                   ).get_json()["duplicate"]["id"] == first["id"]
+
+
+# --------------------------------------------------------------------------- #
+# The hero, which is fetched AFTER the commit and never inside it
+# --------------------------------------------------------------------------- #
+def _jpeg(w, h):
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (w, h), (120, 70, 30)).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+def stub_image(monkeypatch, by_url=None, calls=None):
+    """Answer url_image.fetch_image from a dict. Anything unlisted is a 404, so a test states the
+    urls it expects to be asked for and nothing reaches the network."""
+    import url_image
+    by_url = by_url or {}
+
+    def fake(url, **kwargs):
+        if calls is not None:
+            calls.append(url)
+        value = by_url.get(url)
+        if value is None:
+            return url_fetch.Refused("HTTP_ERROR", "the image host refused the request (HTTP 404)", url, 404)
+        if isinstance(value, url_fetch.Refused):
+            return value
+        return url_image.FetchedImage(url, value, "image/jpeg")
+
+    monkeypatch.setattr(url_image, "fetch_image", fake)
+
+
+def test_a_real_import_lands_with_its_hero(kitchen, monkeypatch):
+    """The happy path. kingarthurbaking publishes one ImageObject at 1248x832, over the 800 bar, so
+    exactly one request is made and the recipe arrives with a picture."""
+    import url_jsonld
+    stub_fetch(monkeypatch, fetched("kingarthurbaking.com"))
+    url = MANIFEST["kingarthurbaking.com"]["url"]
+    candidates = url_jsonld.read(fetched("kingarthurbaking.com").html, url)["images"]
+    asked = []
+    stub_image(monkeypatch, {candidates[0]: _jpeg(1248, 832)}, calls=asked)
+
+    body = commit(kitchen, url).get_json()
+    assert body["hero"].startswith("images/cooks/")
+    assert asked == [candidates[0]]                      # stopped at the first, over the bar
+
+    stored = rows(kitchen, "SELECT image FROM recipes WHERE id=?", body["id"])[0][0]
+    assert stored == body["hero"]
+
+
+def test_the_imported_hero_is_also_an_album_row_like_every_other_hero(kitchen, monkeypatch):
+    """⚠️ MEASURED, NOT TIDY. All 120 heroes in the live database also carry a cook_photos row with
+    the same path, 0 exceptions, and is_hero derives from recipes.image == p.path across the album.
+    A hero with no album row would show on the card and be missing from the album."""
+    import url_jsonld
+    stub_fetch(monkeypatch, fetched("kingarthurbaking.com"))
+    url = MANIFEST["kingarthurbaking.com"]["url"]
+    candidates = url_jsonld.read(fetched("kingarthurbaking.com").html, url)["images"]
+    stub_image(monkeypatch, {candidates[0]: _jpeg(1248, 832)})
+
+    body = commit(kitchen, url).get_json()
+    album = rows(kitchen, "SELECT path, cook_log_id, position FROM cook_photos WHERE recipe_id=?", body["id"])
+    assert len(album) == 1
+    assert album[0][0] == body["hero"]
+    assert album[0][1] is None                           # cook-less, as an uploaded hero is
+    assert album[0][2] == 0
+
+
+def test_the_thumbnails_are_skipped_and_the_full_size_photo_is_stored(kitchen, monkeypatch):
+    """hot-thai-kitchen publishes 225x225, 260x195 and 320x180 before its 1200x1200. Bare [0] would
+    store a thumbnail against a LONG_EDGE of 1600."""
+    import url_jsonld
+    stub_fetch(monkeypatch, fetched("hot-thai-kitchen.com"))
+    url = MANIFEST["hot-thai-kitchen.com"]["url"]
+    candidates = url_jsonld.read(fetched("hot-thai-kitchen.com").html, url)["images"]
+    assert len(candidates) == 4
+    asked = []
+    stub_image(monkeypatch, dict(zip(candidates, [_jpeg(225, 225), _jpeg(260, 195),
+                                                  _jpeg(320, 180), _jpeg(1200, 1200)])), calls=asked)
+
+    body = commit(kitchen, url).get_json()
+    assert asked == candidates                           # all four, in the page's order
+
+    import images as images_mod
+    from PIL import Image
+    on_disk = images_mod.IMAGES_DIR / body["hero"][len("images/"):]
+    assert max(Image.open(on_disk).size) == 1200         # the full-size photo, not the 225 thumbnail
+
+
+@pytest.mark.parametrize("label,answer", [
+    ("the address guard blocks it", url_fetch.Refused(
+        "BLOCKED_ADDRESS", "that address is on a private network", "x")),
+    ("the host is gone", url_fetch.Refused("HTTP_ERROR", "HTTP 404", "x", 404)),
+    ("the bytes are not an image", b"%PDF-1.4 not a photograph"),
+])
+def test_a_failing_image_leaves_a_complete_recipe_rather_than_no_recipe(kitchen, monkeypatch,
+                                                                       label, answer):
+    """⚠️ THE REASON THE FETCH IS AFTER THE COMMIT. Every one of these happens on a third-party host,
+    long after the recipe itself is perfect. Inside the transaction each would destroy a good
+    import."""
+    import url_jsonld
+    stub_fetch(monkeypatch, fetched("kingarthurbaking.com"))
+    url = MANIFEST["kingarthurbaking.com"]["url"]
+    candidates = url_jsonld.read(fetched("kingarthurbaking.com").html, url)["images"]
+    stub_image(monkeypatch, {candidates[0]: answer})
+
+    response = commit(kitchen, url)
+    body = response.get_json()
+    assert response.status_code == 201, label
+    assert body["hero"] is None, label
+    rid = body["id"]
+    assert rows(kitchen, "SELECT image FROM recipes WHERE id=?", rid)[0][0] is None, label
+    assert rows(kitchen, "SELECT COUNT(*) FROM recipe_ingredients WHERE recipe_id=?", rid)[0][0] == 12, label
+    assert rows(kitchen, "SELECT COUNT(*) FROM recipe_steps WHERE recipe_id=?", rid)[0][0] > 0, label
+    assert rows(kitchen, "SELECT COUNT(*) FROM cook_photos WHERE recipe_id=?", rid)[0][0] == 0, label
+
+
+def test_a_page_publishing_no_image_imports_cleanly(kitchen, monkeypatch):
+    page = """<!doctype html><html><head><script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"Recipe","name":"Plain Lentils",
+     "recipeIngredient":["200 g lentils"],
+     "recipeInstructions":[{"@type":"HowToStep","text":"Simmer until soft."}]}
+    </script></head><body></body></html>"""
+    stub_fetch(monkeypatch, url_fetch.Fetched("https://example.test/lentils", page, "text/html", "utf-8"))
+    asked = []
+    stub_image(monkeypatch, {}, calls=asked)
+
+    body = commit(kitchen, "https://example.test/lentils").get_json()
+    assert body["hero"] is None
+    assert asked == []                                   # nothing to fetch, so nothing was fetched
+    assert rows(kitchen, "SELECT COUNT(*) FROM recipe_ingredients WHERE recipe_id=?", body["id"])[0][0] == 1
+
+
+def test_a_page_publishing_a_private_image_url_cannot_make_the_server_fetch_it(kitchen, monkeypatch):
+    """The recipe url is typed by the user. THIS url is published by the page, so the guard is what
+    stands between a pasted link and the server retrieving its own metadata endpoint."""
+    import url_image
+    page = """<!doctype html><html><head><script type="application/ld+json">
+    {"@context":"https://schema.org","@type":"Recipe","name":"Short Ribs",
+     "image":"http://169.254.169.254/latest/meta-data/iam/",
+     "recipeIngredient":["2 kg short ribs"],
+     "recipeInstructions":[{"@type":"HowToStep","text":"Braise."}]}
+    </script></head><body></body></html>"""
+    stub_fetch(monkeypatch, url_fetch.Fetched("https://example.test/ribs", page, "text/html", "utf-8"))
+    monkeypatch.setattr(url_image, "fetch_image", _REAL_IMAGE_FETCH)   # the REAL guard, not a stub
+
+    body = commit(kitchen, "https://example.test/ribs").get_json()
+    assert body["hero"] is None
+    assert rows(kitchen, "SELECT image FROM recipes WHERE id=?", body["id"])[0][0] is None
+    assert rows(kitchen, "SELECT COUNT(*) FROM recipe_ingredients WHERE recipe_id=?", body["id"])[0][0] == 1

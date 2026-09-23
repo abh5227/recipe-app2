@@ -213,7 +213,73 @@ def test_rating_is_always_zero_never_the_publishers_average():
 def test_uid_and_hash_are_empty_for_a_url_import():
     got = read("bbcgoodfood.com")
     assert got["uid"] == "" and got["hash"] == ""
-    assert got["images"] == [] and got["primary_photo"] is None and got["notes"] == ""
+    assert got["primary_photo"] is None and got["notes"] == ""
+
+
+# ----------------------------------------------------------------- the image
+# `images` used to be a hardcoded [] with "a later pass" beside it. It now carries the candidate
+# urls in the page's own order. NOTHING is chosen here — see image_urls' docstring and url_image.
+def test_every_readable_fixture_publishes_an_image():
+    """Nine of nine. There is no "usually absent" case to design around, which is also why there is
+    no og:image fallback: it would never fire."""
+    for domain in JSON_LD:
+        assert read(domain)["images"], f"{domain} lost its image"
+
+
+def test_the_order_the_page_published_is_the_order_that_comes_out():
+    """hot-thai-kitchen publishes three thumbnails before the full-size photo. Reordering here would
+    hide from url_image.pick_hero the one thing it needs to fix that."""
+    got = read("hot-thai-kitchen.com")["images"]
+    assert len(got) == 4
+    assert got[0].endswith("-225x225.jpg")
+    assert got[-1].endswith("gai-yang-bbq-chicken-new-sq-2.jpg")
+
+
+@pytest.mark.parametrize("domain,shape", [
+    ("kingarthurbaking.com", "a bare ImageObject dict"),
+    ("bbcgoodfood.com", "a list holding one dict"),
+    ("cooking.nytimes.com", "a list of four dicts"),
+    ("minimalistbaker.com", "a list holding one string"),
+    ("thewoksoflife.com", "a list of four strings"),
+])
+def test_all_four_published_shapes_yield_http_urls(domain, shape):
+    got = read(domain)["images"]
+    assert got, shape
+    assert all(u.startswith("https://") for u in got), shape
+
+
+def test_the_dict_form_prefers_url_and_falls_back_to_contentUrl():
+    """nytimes carries both, holding the same value. contentUrl alone is legal and unseen here."""
+    assert reader.image_urls({"@type": "ImageObject", "url": "https://a.test/1.jpg",
+                              "contentUrl": "https://a.test/2.jpg"}) == ["https://a.test/1.jpg"]
+    assert reader.image_urls({"@type": "ImageObject",
+                              "contentUrl": "https://a.test/2.jpg"}) == ["https://a.test/2.jpg"]
+
+
+def test_a_bare_string_is_accepted_though_no_fixture_publishes_one():
+    assert reader.image_urls("https://a.test/hero.jpg") == ["https://a.test/hero.jpg"]
+
+
+def test_a_relative_url_is_resolved_against_the_page():
+    assert reader.image_urls("/img/hero.jpg", "https://a.test/recipes/x") == ["https://a.test/img/hero.jpg"]
+
+
+@pytest.mark.parametrize("value", [None, "", [], {}, [None, ""], {"@type": "ImageObject"}])
+def test_an_absent_or_empty_image_yields_no_candidates_and_never_raises(value):
+    assert reader.image_urls(value) == []
+
+
+def test_values_that_are_not_web_urls_are_dropped_before_the_transport_layer():
+    """A data: or file: value would otherwise be handed to the fetcher. url_image refuses them too,
+    but a value the page chose should not reach it in the first place."""
+    assert reader.image_urls(["data:image/png;base64,iVBORw0KGgo=", "file:///etc/passwd",
+                              "javascript:alert(1)", "https://a.test/ok.jpg"]) == ["https://a.test/ok.jpg"]
+
+
+def test_duplicate_candidates_are_collapsed():
+    """recipetineats publishes the same file four times with different resize parameters. Identical
+    urls are worth dropping; differing ones are not, because they may differ in size."""
+    assert reader.image_urls(["https://a.test/x.jpg", "https://a.test/x.jpg"]) == ["https://a.test/x.jpg"]
 
 
 # ----------------------------------------------------------------- the seam
