@@ -1760,7 +1760,12 @@ a:hover { color: var(--berry-lift); }
    left, the scale control on the right — vertically CENTERED against the two-line stack (not stretched).
    ½×/1×/2× are fixed CIRCLES (equal w/h) with a defined but soft border; custom× keeps its wider pill. */
 .above-ing { display: flex; align-items: center; gap: 22px; margin: 0 0 20px; }
-.meta-stack { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 2px 0; }
+.meta-stack { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 2px 0; min-width: 0; }
+/* The separator between Prep / Cook / Total, matching the editor's .ie-dot. margin rather than literal
+   spaces so the gap survives however the parts are joined. The longest real line is 70 characters
+   ("Prep 30 mins, plus 1 hour soaking · Cook 2 hours 25 mins, plus cooling"), so min-width:0 above
+   lets the stack shrink and the line wrap instead of shoving the scaler off its row. */
+.meta-sep { opacity: 0.4; margin: 0 6px; }
 /* fixed-width icon column so both rows share a left edge AND their text aligns (fig icon 26px is the
    wider of the two — 15px clock left-aligns in the same 26px slot). */
 .meta-stack .meta-item { display: grid; grid-template-columns: 26px auto; align-items: center; justify-items: start; gap: 7px; }
