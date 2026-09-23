@@ -361,13 +361,38 @@ _COUNTNOUN_RE = re.compile(r"^[A-Za-z][A-Za-z .\-]*$")
 #    deleting the ingredient. The decision needs to see what FOLLOWS the word, so it is made here in
 #    plain Python where the guard is readable.
 #
-#    Deliberately clove/cloves ONLY. Every other counting noun (sprig, stalk, can, bunch, head,
-#    pinch, slice) has the same shape and its own over-trigger risk, and they are a separate call.
-_COUNT_UNIT_LEAD = re.compile(r"^(?P<u>cloves?)\b[\s,]+(?:of\s+)?(?P<rest>[A-Za-z].*)$", re.I)
+#    PLURAL BEFORE SINGULAR in the alternation, so "cloves" is never shadowed by "clove" leaving a
+#    stray "s". The irregular plurals are spelled out for the same reason a bare +s would be wrong:
+#    bunches, boxes, pinches.
+#
+#    ⚠️ 'dash' IS DELIBERATELY ABSENT. Every corpus line using it is "a dash of X" with no count, so
+#    it never reaches this rule, and admitting it only adds a word that is also a cooking verb.
+_COUNT_NOUNS = ("cloves", "clove", "sprigs", "sprig", "stalks", "stalk", "slices", "slice",
+                "pinches", "pinch", "bunches", "bunch", "sticks", "stick", "pieces", "piece",
+                "heads", "head", "jars", "jar", "bags", "bag", "boxes", "box", "ears", "ear",
+                "fillets", "fillet", "cans", "can", "bulbs", "bulb")
+_COUNT_ALT = "|".join(_COUNT_NOUNS)
+
+_COUNT_UNIT_LEAD = re.compile(
+    r"^(?P<u>" + _COUNT_ALT + r")\b[\s,]+(?:of\s+)?(?P<rest>[A-Za-z].*)$", re.I)
 # The trailing form carries a prep clause as often as not ("2 garlic cloves, minced"), so the noun
 # is allowed a comma tail. `rest` is COMMA-FREE on purpose: without that, "10 cloves (or 1/4 tsp
 # ground cloves)" would match its SECOND 'cloves' and leave "cloves (or 1/4 tsp ground" as the name.
-_COUNT_UNIT_TRAIL = re.compile(r"^(?P<rest>[^,]+?)\s+(?P<u>cloves?)(?P<tail>\s*,.*)?$", re.I)
+_COUNT_UNIT_TRAIL = re.compile(
+    r"^(?P<rest>[^,]+?)\s+(?P<u>" + _COUNT_ALT + r")(?P<tail>\s*,.*)?$", re.I)
+
+
+def _inside_parens(text, pos):
+    """Is `pos` inside a parenthetical? A count noun there is an ASIDE, not the count.
+
+    ⚠️ MEASURED, NOT PRECAUTIONARY. "3 scallions (cut into 2-inch long pieces, with the white and
+    green parts separated)" otherwise read its trailing 'pieces' as the unit, deleting the word from
+    a prep note and leaving "cut into 2-inch long,". The ingredient is scallions and the count is 3.
+    It is the only line in the corpus that does this, and the mechanical all-improvement check
+    passed it, because the name did shrink and does still name a food. Reading the 61 changed lines
+    is what caught it.
+    """
+    return text.count("(", 0, pos) > text.count(")", 0, pos)
 
 
 def _lift_count_unit(unit, name):
@@ -397,7 +422,7 @@ def _lift_count_unit(unit, name):
         if rest and not _is_all_modifier(rest.lower()):
             return lead.group("u"), rest
     trail = _COUNT_UNIT_TRAIL.match(name)
-    if trail:
+    if trail and not _inside_parens(name, trail.start("u")):
         rest = trail.group("rest").strip(" ,")
         if rest and not _is_all_modifier(rest.lower()):
             return trail.group("u"), (rest + (trail.group("tail") or "")).strip()

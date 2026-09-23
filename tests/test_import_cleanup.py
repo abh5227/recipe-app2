@@ -77,6 +77,45 @@ def test_a_clove_standing_alone_is_the_spice_and_keeps_the_name(line, name):
     assert d["unit"] == "" and d["name"] == name
 
 
+@pytest.mark.parametrize("line,unit,name", [
+    ("3 sprigs cilantro, chopped", "sprigs", "cilantro, chopped"),
+    ("3 Thyme Sprigs", "Sprigs", "Thyme"),
+    ("2 stalks celery, diced", "stalks", "celery, diced"),
+    ("4 celery stalks", "stalks", "celery"),
+    ("4 slices ginger", "slices", "ginger"),
+    ("1 pinch cayenne pepper", "pinch", "cayenne pepper"),
+    ("2 bunches flat-leaf parsley", "bunches", "flat-leaf parsley"),
+    ("1 cinnamon stick", "stick", "cinnamon"),
+    ("2 sticks unsalted butter", "sticks", "unsalted butter"),
+    ("1 head garlic", "head", "garlic"),
+    ("2 salmon fillets", "fillets", "salmon"),
+    ("1 fennel bulb, finely chopped", "bulb", "fennel, finely chopped"),
+    ("5 Ceylon or English breakfast tea bags", "bags", "Ceylon or English breakfast tea"),
+    ("1 Can Whole Peeled Tomatoes", "Can", "Whole Peeled Tomatoes"),
+    ("4 - 6 pieces of Parmesan rind (optional)", "pieces", "Parmesan rind (optional)"),
+])
+def test_the_other_counting_nouns_lift_the_same_way(line, unit, name):
+    d = ic.classify_line(line)
+    assert (d["unit"], d["name"]) == (unit, name)
+
+
+def test_a_counting_noun_inside_a_parenthetical_is_an_aside_not_the_count():
+    """⚠️ MEASURED, NOT PRECAUTIONARY. This is the one corpus line where the trailing rule grabbed a
+    word out of a prep note, reading 'pieces' as the unit and leaving "cut into 2-inch long,". The
+    ingredient is scallions and the count is 3. The mechanical all-improvement check passed it,
+    because the name did shrink and does still name a food."""
+    line = "3 scallions (cut into 2-inch long pieces, with the white and green parts separated)"
+    d = ic.classify_line(line)
+    assert d["unit"] == "" and d["name"].startswith("scallions (cut into 2-inch long pieces")
+
+
+@pytest.mark.parametrize("line", [
+    "4 whole sticks", "2 sticks", "1 large head", "3 slices", "2 pinches", "1 can", "2 bunches",
+])
+def test_a_counting_noun_with_nothing_beside_it_stays_the_ingredient(line):
+    assert ic.classify_line(line)["unit"] == ""
+
+
 # ----------------------------------------------------------------- sections
 def test_section_colon():
     assert ic.classify_line("SAUCE:")["kind"] == "section"
