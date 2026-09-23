@@ -247,3 +247,25 @@ def test_the_route_prefilter_still_does_not_resolve(dns):
 ])
 def test_blocked_literal_classifies_from_text_alone(host, expected):
     assert url_fetch.blocked_literal(host) == expected
+
+
+def test_an_unresolvable_redirect_target_says_so_rather_than_blaming_the_address(dns):
+    """The refusal is right either way and only the sentence changes. destination_refusal reports a
+    DNS failure as NETWORK_ERROR, and this handler treats every refusal as a blocked hop, so a host
+    that simply does not exist used to be described as "not a public address". That sent the reader
+    looking for a network policy instead of a typo."""
+    handler = url_fetch.GuardedRedirectHandler(allow_private=False)
+    with pytest.raises(Exception) as exc:
+        handler.redirect_request(None, None, 302, "Found", {}, "http://no-such-host.invalid/x")
+    assert "redirected to no-such-host.invalid" in str(exc.value)
+    assert "could not be resolved" in str(exc.value)
+    assert "not a public address" not in str(exc.value)     # the claim that was not true
+
+
+def test_a_genuinely_private_hop_still_says_not_a_public_address(dns):
+    """The other branch is unchanged: an address we CAN find and will not retrieve."""
+    dns["sneaky.test"] = ["10.1.2.3"]
+    handler = url_fetch.GuardedRedirectHandler(allow_private=False)
+    with pytest.raises(Exception) as exc:
+        handler.redirect_request(None, None, 302, "Found", {}, "http://sneaky.test/x")
+    assert "is not a public address" in str(exc.value)

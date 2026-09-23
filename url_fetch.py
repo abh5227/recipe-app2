@@ -179,8 +179,17 @@ class GuardedRedirectHandler(urllib.request.HTTPRedirectHandler):
             if refusal:
                 # Distinct from BLOCKED_ADDRESS on purpose: the user's URL was fine and the SITE sent
                 # them somewhere it shouldn't. Blaming the pasted link would be false.
+                #
+                # Two reasons reach here and they are not the same fact. A non-public address is one
+                # we CAN find and will not retrieve. A name that does not resolve is one we cannot
+                # find at all, and destination_refusal reports that as NETWORK_ERROR. Both are
+                # refused, and the refusal is right either way, so this is wording and not behavior.
+                # Saying "is not a public address" about a host that simply does not exist sends the
+                # reader looking for a network policy instead of a typo.
                 where = urlsplit(newurl).hostname or newurl
-                raise _BlockedRedirect(f"the page redirected to {where}, which is not a public address")
+                why = ("could not be resolved" if refusal[0] == "NETWORK_ERROR"
+                       else "is not a public address")
+                raise _BlockedRedirect(f"the page redirected to {where}, which {why}")
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
