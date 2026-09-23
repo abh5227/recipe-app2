@@ -46,6 +46,12 @@ let INGREDIENT_LIST = [];
 // Make text safe to drop into HTML. If a recipe name contained "<" or "&", the
 // browser might treat it as code/markup; this swaps those characters for their
 // harmless display versions. Every piece of data we insert goes through this.
+// Display-only whitespace hygiene for the pre-wrap prose blocks (.dek / .notes). The stored value
+// keeps its INTERNAL line structure, which is the whole point of pre-wrap, but leading and trailing
+// blanks would become visible dead space now that they are no longer collapsed by HTML. Measured on
+// the live data: 6 descr and 12 notes values carry trailing whitespace. Nothing is written back.
+const proseText = (s) => String(s ?? "").trim();
+
 function esc(s) {
   return String(s ?? "").replace(/[&<>"]/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])
@@ -1643,13 +1649,18 @@ function paintRecipe() {
   const owner = (data.is_editable && !editing)
     ? `<div class="owner-actions">${ownerActionsHTML(data.recipe, data.is_mine)}</div>` : "";
 
+  // Reading-view prose, trimmed for the pre-wrap blocks. Edit mode is untouched: its textareas
+  // round-trip the stored value byte-for-byte, so saving cannot rewrite what was never changed.
+  const dek = proseText(r.descr);
+  const note = proseText(r.notes);
+
   const mastheadInner = editing
     ? mastheadEditHTML(r)
     : `${photoSlot ? `<div class="photo-reserve" aria-hidden="true"></div>` : ""}
         ${bylineHTML(r)}
         <h1 class="recipe-title">${esc(r.name)}${data.is_test ? ` <span class="test-badge">Test</span>` : ""}</h1>
         ${tagsHTML(r)}
-        ${r.descr ? `<div class="headnote"><p class="dek clamped">${esc(r.descr)}</p><button class="dek-more" data-dek-toggle hidden>more</button></div>` : ""}`;
+        ${dek ? `<div class="headnote"><p class="dek clamped">${esc(dek)}</p><button class="dek-more" data-dek-toggle hidden>more</button></div>` : ""}`;
 
   const vitalsInner = editing
     ? `${vitalsEditHTML(r)}<div class="stats cook-block locked" data-rid="${esc(r.id)}" aria-disabled="true">${statsInner(data.stats)}</div>`
@@ -1684,7 +1695,7 @@ function paintRecipe() {
             <h2 class="col-title">Method</h2>
             <ol class="steps" id="steps-list">${steps}</ol>
             ${editing ? stepAddersHTML() : ""}
-            ${editing ? ieNoteHTML(r) : (r.notes ? `<div class="notes"><strong>Note.</strong> ${esc(r.notes)}</div>` : "")}
+            ${editing ? ieNoteHTML(r) : (note ? `<div class="notes"><strong>Note.</strong> ${esc(note)}</div>` : "")}
           </section>
         </div>
         ${editing ? "" : albumSectionHTML(data)}

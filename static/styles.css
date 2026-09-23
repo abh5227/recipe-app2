@@ -439,6 +439,12 @@ a:hover { color: var(--berry-lift); }
   font-family: var(--font-serif); font-style: italic; font-weight: 400;
   font-size: var(--fs-headnote); line-height: 1.7; color: var(--ink-soft);   /* airier for long descriptions */
   margin: 0;
+  /* The paragraph breaks the writer typed are STORED and were being thrown away here: HTML collapses
+     a newline to a space, so 27 of 126 descriptions read as one block on the page while the editor's
+     textarea showed them correctly. pre-wrap honors the breaks and still wraps long lines normally.
+     The clamp above counts VISUAL lines, so a broken description clamps sooner and setupHeadnote's
+     scrollHeight test offers "more" exactly as it already did. */
+  white-space: pre-wrap;
 }
 .dek.clamped {
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden;
@@ -1178,6 +1184,14 @@ a:hover { color: var(--berry-lift); }
   font-family: var(--font-mono); font-size: 13px; color: var(--green);
   border: 1px solid var(--green); border-radius: 50%;
 }
+/* The reading step body. It was an inert wrapper, which is why a line break inside a step vanished:
+   HTML collapsed it and the step read as one run-on paragraph. Only 1 of 2,367 stored steps carries a
+   break today, so this changes almost nothing NOW. It matters because the break is what separates an
+   inline section header ("AIR FRYER OPTION:") from the instruction under it, and because a later
+   importer pass will stop flattening the publisher's line structure at parse time. Edit mode does not
+   use .step-body (it mounts .step-editor-host), so this is reading-view only. */
+.step-body { white-space: pre-wrap; }
+
 .steps li.group {
   font-family: var(--font-mono); font-size: 12px; font-weight: 600;
   letter-spacing: 0.1em; text-transform: uppercase; color: var(--green);
@@ -1263,6 +1277,7 @@ a:hover { color: var(--berry-lift); }
   margin-top: 26px; padding: 16px 18px;
   background: var(--card); border: 1px solid var(--line);
   border-radius: 10px; font-size: 15px; color: var(--ink-soft);
+  white-space: pre-wrap;   /* as .dek: 43 of 108 notes carry breaks the page was collapsing */
 }
 .notes strong { color: var(--ink); }
 .hint {
