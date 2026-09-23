@@ -9,7 +9,34 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # make harness importable
 
 import pytest
+import netguard
 from harness import make_kitchen
+
+# Installed at IMPORT, not in a fixture, so the guard covers collection-time code too. See
+# tests/netguard.py for what it blocks, what it deliberately does not, and the defect that caused it.
+netguard.install()
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "network: this test genuinely needs the open internet. Nothing in the suite uses it. "
+        "Adding it is a visible, reviewable choice — see tests/netguard.py.",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _no_outbound_network(request):
+    """Every test runs with the network shut off unless it asks for it by name.
+
+    This is the wall behind the per-test transport stubs. A stub protects the door it is nailed to,
+    and url_image.fetch_image proved that a second door can be added without anyone noticing: 10
+    commit tests were retrieving real photos from real recipe sites while their own docstring said
+    NO NETWORK, and the suite stayed green.
+    """
+    netguard.set_allowed(request.node.get_closest_marker("network") is not None)
+    yield
+    netguard.set_allowed(False)
 
 
 @pytest.fixture
