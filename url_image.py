@@ -217,7 +217,16 @@ def attach_hero(set_hero, urls, *, allow_private=False, fetcher=None):
     if not urls:
         return HeroResult("", "NO_IMAGE", "the page's recipe carried no image")
 
-    picked = pick_hero(urls, allow_private=allow_private, fetcher=fetcher)
+    try:
+        picked = pick_hero(urls, allow_private=allow_private, fetcher=fetcher)
+    except Exception as exc:
+        # ⚠️ NOT BELT AND BRACES. urllib does not wrap everything it can raise: h.getresponse() sits
+        # OUTSIDE its own try/except, so a host that answers with a malformed status line arrives as
+        # http.client.BadStatusLine, which is neither OSError nor ValueError and so walks straight
+        # through fetch_image's handlers. Measured against a socket that answers "GARBAGE" rather
+        # than reasoned about. By the time this runs the recipe is already committed, so anything
+        # escaping here is a 500 served for an import that went perfectly.
+        return HeroResult("", "FETCH_FAILED", f"{type(exc).__name__}: {exc}")
     if isinstance(picked, Refused):
         return HeroResult("", picked.code, picked.detail)
 

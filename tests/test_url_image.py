@@ -209,3 +209,38 @@ def test_attach_hero_never_raises_when_the_bytes_are_not_an_image(tmp_path, monk
 def test_attach_hero_with_no_candidates_is_a_quiet_NO_IMAGE():
     got = url_image.attach_hero(lambda p: None, [])
     assert got.code == "NO_IMAGE" and got.path == ""
+
+
+def test_attach_hero_survives_a_host_that_answers_with_garbage(tmp_path, monkeypatch):
+    """⚠️ MEASURED, NOT IMAGINED. urllib leaves h.getresponse() outside its own try/except, so a
+    malformed status line arrives as http.client.BadStatusLine, which is neither OSError nor
+    ValueError and so passes through every handler in fetch_image. The recipe is committed before
+    this runs, so an escape here is a 500 on a good import."""
+    import socket
+    import threading
+
+    monkeypatch.setattr(images, "IMAGES_DIR", Path(tmp_path) / "images")
+    srv = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(1)
+
+    def serve():
+        try:
+            conn, _ = srv.accept()
+            conn.recv(4096)
+            conn.sendall(b"GARBAGE NOT A STATUS LINE\r\n\r\n")
+            conn.close()
+        except OSError:
+            pass
+
+    threading.Thread(target=serve, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{srv.getsockname()[1]}/hero.jpg"
+        got = url_image.attach_hero(lambda p: None, [url],
+                                    allow_private=True,
+                                    fetcher=lambda u: _REAL_FETCH_IMAGE(u, allow_private=True, timeout=5))
+        assert got.path == "" and got.code == "FETCH_FAILED"
+        assert "BadStatusLine" in got.detail
+    finally:
+        srv.close()
