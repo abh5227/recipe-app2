@@ -38,6 +38,7 @@ import random
 import re
 import sqlite3
 import unicodedata
+import urllib.parse
 import zipfile
 from collections import Counter
 from pathlib import Path
@@ -48,7 +49,8 @@ import snapshot_serialize  # single-source snapshot FORMAT — the original-base
 
 import import_cleanup as cleanup
 import paprika_native_reader as reader
-from models import CookLog, Recipe, RecipeIngredient, RecipeSnapshot, RecipeStep, ImportFlag, User
+from models import (CookLog, Recipe, RecipeIngredient, RecipeSnapshot, RecipeStep, ImportFlag,
+                    SourceRating, User)
 
 BASE_DIR = Path(__file__).resolve().parent
 DB = BASE_DIR / "recipes.db"
@@ -104,6 +106,14 @@ def _category_text(categories):
     trailing space)."""
     cats = [c.strip() for c in categories if c and c.strip()]
     return " · ".join(cats) if cats else None
+
+
+def _source_host(url):
+    """The publisher's host, for display beside a snapshot ('kingarthurbaking.com said 4.7'). A bare
+    host reads better than a full url in a one-line credit, and the url is stored alongside it anyway
+    for anyone who needs to go back to the page. 'www.' is dropped as noise."""
+    host = urllib.parse.urlsplit(url or "").hostname or ""
+    return host[4:] if host.startswith("www.") else (host or None)
 
 
 # Half stars (migration 048). Mirrors app.RATING_STEPS; import_write must not depend on app.
@@ -230,6 +240,9 @@ def plan_recipe(cleaned, uid_index, taken_slugs, now=None):
         "ingredients": ing_rows,
         "steps": _step_rows(cleaned),
         "rating": _rating_row(cleaned["rating"]),
+        # The publisher's number, carried as the reader found it. Written to its own table by
+        # commit_plan, never near the cook's verdict.
+        "source_rating": cleaned.get("source_rating"),
         "recipe_flags": cleaned["recipe_flags"],
         "review_flags": line_flags + recipe_flag_rows,
     }
@@ -320,6 +333,16 @@ def commit_plan(executor, plan, owner_id=None, snapshot=True):
         executor.execute(insert(CookLog.__table__).values(
             recipe_id=r["id"], user_id=owner_id, cooked_on=r["created_at"][:10],
             source="rating-inferred", rating=plan["rating"], rated_at=r["created_at"]))
+    # ⚠️ A DATED OBSERVATION OF ONE WEB PAGE, and it is stored apart from everything above. The
+    # timestamp is part of the claim rather than metadata beside it: "the page said 4.96 on this
+    # date", never "this recipe is 4.96". Nothing reads this back into a rating yet, by design.
+    sr = plan.get("source_rating")
+    if sr:
+        executor.execute(insert(SourceRating.__table__).values(
+            recipe_id=r["id"], value=sr["value"], rating_count=sr["count"],
+            scale=sr["scale"], scale_assumed=1 if sr["scale_assumed"] else 0,
+            source_url=r["source_url"], source_name=_source_host(r["source_url"]),
+            captured_at=r["created_at"]))
     for fl in plan["review_flags"]:
         executor.execute(insert(ImportFlag.__table__).values(recipe_id=r["id"], **fl))
     return True

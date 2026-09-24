@@ -20,7 +20,8 @@ MANIFEST = {r["domain"]: r for r in json.loads((FIXTURES / "manifest.json").read
 # the seam's contract — import_cleanup.clean_recipe consumes exactly these
 KEYS = {"name", "ingredient_lines", "directions", "servings_raw", "source", "source_url",
         "categories", "description", "prep_time", "cook_time", "total_time", "notes",
-        "rating", "uid", "hash", "images", "primary_photo"}
+        "rating", "uid", "hash", "images", "primary_photo",
+        "source_rating"}   # migration 048: the publisher's number, kept apart from "rating"
 
 JSON_LD = sorted(d for d, r in MANIFEST.items() if r["case"] == "json-ld")
 NO_RECIPE = sorted(d for d, r in MANIFEST.items() if r["case"] != "json-ld")
@@ -59,7 +60,7 @@ def test_the_trap_fixture_really_contains_the_entity():
 def test_every_jsonld_fixture_reads(domain):
     got = read(domain)
     assert not isinstance(got, reader.Refused), f"{domain}: {got}"
-    assert set(got) == KEYS                                   # exactly the 17, no more, no fewer
+    assert set(got) == KEYS                                   # exactly the 18, no more, no fewer
     assert got["name"] and got["ingredient_lines"] and got["directions"]
     assert got["source_url"] == MANIFEST[domain]["url"]       # the final url, carried through
 
@@ -315,3 +316,50 @@ def test_the_reader_touches_no_network():
         assert read("allrecipes.com")["name"]
     finally:
         socket.socket = real
+
+
+# ---------------------------------------------------------------- the publisher's number (item 9)
+# ⚠️ THIS IS NOT THE COOK'S RATING. It is a dated observation of one web page, stored apart in
+# recipe_source_ratings. The reader's "rating": 0 is unchanged and these tests pin that it stays 0.
+
+def test_source_rating_is_read_but_never_becomes_the_cooks_rating():
+    """Eight of the nine Recipe fixtures publish one, and reading it must not touch `rating`."""
+    carried = {d: read(d)["source_rating"] for d in JSON_LD if isinstance(read(d), dict)}
+    with_rating = {d: v for d, v in carried.items() if v}
+    assert len(with_rating) == 8
+    assert set(carried) - set(with_rating) == {"bbcgoodfood.com"}   # its Recipe node has none
+    for d in JSON_LD:
+        assert read(d)["rating"] == 0        # the cook's verdict is untouched on every single one
+
+
+def test_source_rating_coerces_the_published_type():
+    """⚠️ Publishers send BOTH '4.70' and 5, so a reader that trusts the type gets one of them wrong."""
+    assert reader.source_rating({"ratingValue": "4.70", "ratingCount": "885"})["value"] == 4.7
+    assert reader.source_rating({"ratingValue": 5, "ratingCount": 1972})["value"] == 5.0
+    assert reader.source_rating({"ratingValue": "4.70"})["count"] is None
+    assert reader.source_rating({"ratingCount": "10"}) is None        # no value -> no observation
+    assert reader.source_rating({"ratingValue": "n/a"}) is None
+    assert reader.source_rating(None) is None and reader.source_rating("4.5") is None
+
+
+def test_the_five_point_scale_is_recorded_as_an_assumption():
+    """⚠️ bestRating is absent from all 8. A 9.2 out of 10 stored as 9.2 out of 5 is a false claim,
+    so the guess is carried with the number rather than silently applied."""
+    assumed = reader.source_rating({"ratingValue": "4.5"})
+    assert assumed["scale"] == 5.0 and assumed["scale_assumed"] is True
+    stated = reader.source_rating({"ratingValue": "9.2", "bestRating": "10"})
+    assert stated["scale"] == 10.0 and stated["scale_assumed"] is False
+    for d in JSON_LD:
+        got = read(d)
+        if isinstance(got, dict) and got["source_rating"]:
+            assert got["source_rating"]["scale_assumed"] is True   # true for every real fixture
+
+
+def test_rating_count_wins_over_review_count():
+    """recipetineats publishes 2,124 ratings and 6 reviews for the same dish. Reading the smaller
+    one understates the audience by a factor of 350."""
+    both = reader.source_rating({"ratingValue": "4.96", "ratingCount": "2124", "reviewCount": "6"})
+    assert both["count"] == 2124
+    assert read("recipetineats.com")["source_rating"]["count"] == 2124
+    only_reviews = reader.source_rating({"ratingValue": "4", "reviewCount": "12"})
+    assert only_reviews["count"] == 12        # reviewCount is the fallback, not a competitor

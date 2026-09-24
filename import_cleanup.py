@@ -762,6 +762,10 @@ def clean_recipe(norm):
         "ingredients": ings,
         "directions": directions,
         "images": norm["images"],
+        # The publisher's number, carried STRAIGHT THROUGH untouched. ⚠️ It is not cleaned, not
+        # rounded and not compared with "rating" above, which stays the cook's own verdict. A reader
+        # that does not supply it (Paprika) leaves this None and nothing downstream writes a row.
+        "source_rating": norm.get("source_rating"),
         "recipe_flags": flags,
         "review_count": sum(1 for i in ings if i["kind"] == "flagged"),
     }

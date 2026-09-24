@@ -50,7 +50,7 @@ def test_jsonld_fixtures_read_and_carry_their_provenance(domain):
 def test_the_normalized_dict_is_passed_through_untouched():
     """Provenance rides ALONGSIDE the seam. The cascade must not add an 18th key — the dict is the
     reader->cleanup contract, and clean_recipe has no use for how it was obtained."""
-    from test_url_jsonld import KEYS               # the same 17 the reader emits
+    from test_url_jsonld import KEYS               # the same 18 the reader emits
     assert set(run("bbcgoodfood.com").normalized) == KEYS
 
 

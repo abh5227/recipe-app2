@@ -490,3 +490,40 @@ def test_import_populates_quantity_unit():
     assert (olive["qty"], olive["quantity"], olive["unit"]) == ("2 tbsp", "2", "tbsp")
     salt = next(r for r in rows if r["raw_text"] == "salt")  # no amount -> all None (no qty)
     assert (salt["qty"], salt["quantity"], salt["unit"]) == (None, None, None)
+
+
+# ----------------------------------------------- the publisher's number, stored apart (item 9)
+
+def test_source_rating_writes_its_own_row_and_never_a_cook(kitchen):
+    """⚠️ A publisher's average and a cook's verdict must not meet. The snapshot lands in
+    recipe_source_ratings with its scale and its date; cook_log stays empty because nobody cooked it."""
+    c = _cleaned(name="Snapshot Dish", uid="SNAP-UID", source_url="https://www.kingarthurbaking.com/r/x",
+                 ingredient_lines=["1 cup flour"], directions=["Mix."],
+                 source_rating={"value": 4.7, "count": 885, "scale": 5.0, "scale_assumed": True})
+    plan = _plan(c)
+    rid = plan["recipe"]["id"]
+    import app
+    with app.orm_session() as s:
+        assert iw.commit_plan(s, plan) is True
+        s.commit()
+    with kitchen.conn() as conn:
+        row = conn.execute("SELECT * FROM recipe_source_ratings WHERE recipe_id=?", (rid,)).fetchone()
+        assert (row["value"], row["rating_count"], row["scale"]) == (4.7, 885, 5.0)
+        assert row["scale_assumed"] == 1                      # bestRating was absent -> a guess
+        assert row["source_name"] == "kingarthurbaking.com"   # 'www.' dropped as noise
+        assert row["captured_at"] == plan["recipe"]["created_at"]
+        # the dish was never cooked, so there is no verdict anywhere
+        assert conn.execute("SELECT COUNT(*) FROM cook_log WHERE recipe_id=?", (rid,)).fetchone()[0] == 0
+
+
+def test_no_source_rating_writes_no_row(kitchen):
+    """Paprika supplies none, so the common path must write nothing rather than a zero row."""
+    plan = _plan(_cleaned(name="No Snapshot", uid="NOSNAP-UID",
+                          ingredient_lines=["1 cup flour"], directions=["Mix."]))
+    import app
+    with app.orm_session() as s:
+        iw.commit_plan(s, plan)
+        s.commit()
+    with kitchen.conn() as conn:
+        assert conn.execute("SELECT COUNT(*) FROM recipe_source_ratings WHERE recipe_id=?",
+                            (plan["recipe"]["id"],)).fetchone()[0] == 0

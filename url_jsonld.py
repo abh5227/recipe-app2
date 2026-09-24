@@ -173,6 +173,66 @@ def yield_text(value):
     return text(value) if value not in (None, "") else ""
 
 
+def _number(value):
+    """A JSON-LD numeric field -> float, or None. Publishers send both '4.70' and 5, so a reader that
+    trusts the type gets one of them wrong. A comma decimal ('4,7') is left to fail rather than
+    guessed at, since 1,234 and 1,2 cannot be told apart without knowing the locale."""
+    if isinstance(value, bool) or value is None:
+        return None
+    try:
+        return float(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def source_rating(value):
+    """Recipe.aggregateRating -> what the page claimed about its own reception, or None. No network.
+
+    ⚠️ THIS IS NOT THE COOK'S RATING AND MUST NEVER BECOME ONE. See the "rating": 0 comment below,
+    which still stands. This is a dated observation of one web page, stored apart in
+    recipe_source_ratings and never averaged with a verdict on a cooking.
+
+    Measured over all 14 fixtures. Nine yield a Recipe and EIGHT of those carry aggregateRating on
+    the Recipe node. Values as published:
+        allrecipes        '5'        30
+        cooking.nytimes    5       1972          ⚠️ the only one that sends a NUMBER, not a string
+        hot-thai-kitchen  '5'        17
+        kingarthurbaking  '4.70'    885
+        minimalistbaker   '4.84'    186
+        recipetineats     '4.96'   2124          ⚠️ also carries reviewCount '6' — see below
+        seriouseats       '4.5'      29
+        thewoksoflife     '5'        17
+
+    ⚠️ bestRating IS ABSENT FROM ALL EIGHT, so the 5-point scale is an assumption in every real case
+    this corpus contains. scale_assumed carries that, because a 9.2 from a 10-point source stored as
+    9.2 out of 5 is a false claim and the display needs to know not to make it. bbcgoodfood, the one
+    Recipe node with no rating, does carry a bestRating on a NON-Recipe node elsewhere on the page,
+    which is not this function's business and is why nothing here searches outside the recipe.
+
+    ratingCount is preferred over reviewCount, and recipetineats is why that ordering is not
+    arbitrary: it publishes 2,124 ratings and 6 reviews for the same dish. They measure different
+    things, ratings given against reviews written, and reading the smaller one understates the
+    audience by a factor of 350.
+    """
+    if isinstance(value, list):
+        value = value[0] if value else None
+    if not isinstance(value, dict):
+        return None
+    rating = _number(value.get("ratingValue"))
+    if rating is None:
+        return None
+    best = _number(value.get("bestRating"))
+    count = _number(value.get("ratingCount"))
+    if count is None:
+        count = _number(value.get("reviewCount"))
+    return {
+        "value": rating,
+        "count": int(count) if count is not None else None,
+        "scale": best if best is not None else 5.0,
+        "scale_assumed": best is None,
+    }
+
+
 def image_urls(value, base_url=""):
     """Recipe.image -> the candidate urls, IN THE ORDER THE PAGE PUBLISHED THEM. No network.
 
@@ -331,5 +391,8 @@ def read(page_html, url=""):
         # after the recipe row is committed (app.import_commit -> url_image.attach_hero), so a dead
         # or refused image url leaves a hero-less recipe instead of destroying a good import.
         "images": image_urls(recipe.get("image"), url),
+        # The publisher's number, kept STRICTLY apart from "rating" above. Captured on import and
+        # stored in recipe_source_ratings, which has no path back into a cook's verdict.
+        "source_rating": source_rating(recipe.get("aggregateRating")),
         "primary_photo": None,
     }
