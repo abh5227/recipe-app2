@@ -34,6 +34,17 @@ from urllib.parse import urljoin, urlsplit
 BLOCK_RE = re.compile(
     r'<script[^>]*\btype=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.S | re.I)
 TAG_RE = re.compile(r"<[^>]+>")
+# ⚠️ TAG_RE ALONE DESTROYS THE PARAGRAPHING, one line BEFORE the whitespace collapse people notice.
+#    It replaces every tag with a space, so a publisher who marks a break with <br> or closes a <p>
+#    has that break turned into a space and there is nothing left for a later fix to recover. These
+#    two run FIRST in rich_text, converting the boundary to the character that survives.
+BR_RE = re.compile(r"<br\s*/?>", re.I)
+BLOCK_END_RE = re.compile(
+    r"</(?:p|div|li|ul|ol|h[1-6]|blockquote|section|article|tr|figure|pre)\s*>", re.I)
+# Every run of horizontal whitespace, newlines EXCLUDED. `\s` would take the newline with it, which
+# is the whole thing rich_text exists to keep.
+HSPACE_RE = re.compile(r"[^\S\n]+")
+BLANKS_RE = re.compile(r"\n{3,}")
 ISO_RE = re.compile(
     r"P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:([\d.]+)S)?)?\Z", re.I)
 
@@ -60,6 +71,34 @@ def text(value):
     out = TAG_RE.sub(" ", str(value))
     out = html_mod.unescape(out)                 # on the VALUE — never on the <script> body
     return re.sub(r"\s+", " ", out.replace("\xa0", " ")).strip()
+
+
+def rich_text(value):
+    r"""A JSON-LD string value -> display text WITH its line breaks kept.
+
+    text() above is right for a name, an author or an ingredient line, which are single-line values
+    where collapsing is what you want. It is wrong for the two values a writer paragraphs: the
+    description, and a step whose text carries its own structure ("Add the glaze while cooking.\n\n
+    AIR FRYER OPTION:\nShake off excess marinade and …"). Those read as one block on the page.
+
+    ⚠️ BOTH LOSSES MOVE TOGETHER OR NEITHER DOES. The \s+ collapse is the visible one, and the tag
+    strip above it is the one that matters more, since it turns <br> into a space before the
+    collapse is ever reached. Fixing only the collapse recovers nothing from a publisher who marks
+    breaks in HTML, which is most of them.
+
+    A break becomes "\n", a closed block becomes "\n\n", runs of spaces and tabs still collapse,
+    and consecutive blank lines are capped at one. Nothing else changes, so a value with no
+    structure in it comes back exactly as text() would have returned it.
+    """
+    if value is None:
+        return ""
+    out = BR_RE.sub("\n", str(value))
+    out = BLOCK_END_RE.sub("\n\n", out)
+    out = TAG_RE.sub(" ", out)
+    out = html_mod.unescape(out)                 # on the VALUE — never on the <script> body
+    out = HSPACE_RE.sub(" ", out.replace("\xa0", " "))
+    out = "\n".join(line.strip() for line in out.split("\n"))
+    return BLANKS_RE.sub("\n\n", out).strip()
 
 
 # --------------------------------------------------------------------------- #
@@ -317,7 +356,10 @@ def directions(instructions):
                 for child in node.get("itemListElement") or []:
                     add(child)
             else:
-                line = text(node.get("text") or node.get("name"))
+                # ⚠️ rich_text HERE AND text() ON THE SECTION NAME ABOVE. A HowToStep's text is the
+                #    one step value a publisher paragraphs. A section NAME is a heading and stays on
+                #    one line, which is also what the appended colon assumes.
+                line = rich_text(node.get("text") or node.get("name"))
                 if line:
                     lines.append(line)
 
@@ -370,7 +412,9 @@ def read(page_html, url=""):
         "source_url": url,                       # the FINAL url after redirects — also the dedup key
         "categories": list(dict.fromkeys(terms(recipe.get("recipeCategory"))
                                          + terms(recipe.get("recipeCuisine")))),
-        "description": text(recipe.get("description")),
+        # The writer's paragraphing is kept. .dek already renders with white-space: pre-wrap, so a
+        # stored break reaches the page. See rich_text.
+        "description": rich_text(recipe.get("description")),
         "prep_time": duration_text(recipe.get("prepTime")),
         "cook_time": duration_text(recipe.get("cookTime")),
         "total_time": duration_text(recipe.get("totalTime")),

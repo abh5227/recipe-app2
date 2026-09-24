@@ -363,3 +363,61 @@ def test_rating_count_wins_over_review_count():
     assert read("recipetineats.com")["source_rating"]["count"] == 2124
     only_reviews = reader.source_rating({"ratingValue": "4", "reviewCount": "12"})
     assert only_reviews["count"] == 12        # reviewCount is the fallback, not a competitor
+
+
+# --------------------------------------------------------------------------- #
+# rich_text: the writer's line breaks survive the read
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("raw,want", [
+    ("Line one.<br>Line two.", "Line one.\nLine two."),
+    ("Line one.<br/>Line two.", "Line one.\nLine two."),
+    ("<p>Para one.</p><p>Para two.</p>", "Para one.\n\nPara two."),
+    ("Step A.\n\nAIR FRYER OPTION:\nShake off excess.",
+     "Step A.\n\nAIR FRYER OPTION:\nShake off excess."),
+])
+def test_rich_text_keeps_the_break_that_text_collapses(raw, want):
+    """⚠️ TWO LOSSES, AND THE TAG STRIP IS THE ONE THAT MATTERS MORE. It runs BEFORE the whitespace
+    collapse and turns <br> into a space, so fixing only the collapse recovers nothing from a
+    publisher who marks breaks in HTML. These cases fail if either half is left behind."""
+    assert reader.rich_text(raw) == want
+    assert "\n" not in reader.text(raw)          # the single-line reader is unchanged
+
+
+@pytest.mark.parametrize("raw", ["One line only.", "a    b\tc", "<b>bold</b> and plain"])
+def test_rich_text_matches_text_when_there_is_no_structure(raw):
+    """A value with nothing to keep comes back exactly as before, which is what makes this safe to
+    point at description without auditing every publisher."""
+    assert reader.rich_text(raw) == reader.text(raw)
+
+
+def test_runs_of_blank_lines_are_capped_at_one():
+    assert reader.rich_text("<p>A</p>\n\n\n\n<p>B</p>") == "A\n\nB"
+
+
+def test_horizontal_whitespace_still_collapses_inside_a_line():
+    assert reader.rich_text("A    b\tc\nD     e") == "A b c\nD e"
+
+
+def test_rich_text_handles_none_and_empty():
+    assert reader.rich_text(None) == "" and reader.rich_text("") == ""
+
+
+@pytest.mark.parametrize("domain", JSON_LD)
+def test_no_committed_fixture_changes_under_rich_text(domain):
+    """⚠️ MEASURED, AND IT IS THE POINT OF THE TEST. Not one of the nine fixtures carries a <br>, a
+    </p> or a literal newline in its description or its instructions, so this is a forward fix with
+    nothing to backfill. The test pins that: if a fixture is ever replaced with a page that DOES
+    paragraph, this goes red and the new behavior gets looked at rather than assumed."""
+    got = read(domain)
+    assert "\n" not in got["description"]
+    assert not [s for s in got["directions"] if "\n" in s]
+
+
+def test_a_section_name_stays_on_one_line():
+    """The HowToSection NAME keeps text(), not rich_text. It is a heading, and the appended colon
+    assumes one line."""
+    instructions = [{"@type": "HowToSection", "name": "Make the sauce<br>quickly",
+                     "itemListElement": [{"@type": "HowToStep", "text": "A.<br>B."}]}]
+    lines = reader.directions(instructions)
+    assert lines[0] == "Make the sauce quickly:"
+    assert lines[1] == "A.\nB."
