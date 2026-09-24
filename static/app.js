@@ -1730,7 +1730,7 @@ async function renderRecipe(rid) {
   albumReorder = null;   // 3d-iii: leaving reorder mode on any repaint (defensive; commit/cancel already clear it)
   const data = await api("/api/recipes/" + encodeURIComponent(rid));
   view = { slug: rid, data, scale: 1,
-           pendingRating: null, undoneCook: null, editMode: false, draft: null, dirty: false };
+           undoneCook: null, editMode: false, draft: null, dirty: false };
   app.className = "page recipe-view";
   setCookCount(app, data.stats.cook_count);   // reserved R2 wear signal on the recipe root
 
@@ -3482,14 +3482,12 @@ document.addEventListener("click", (e) => {
       return;
     }
     if (e.target.closest("[data-cook]")) {   // one-click log stays instant; then offer the photo chip (3b-iii)
-      if (view) view.pendingRating = null;
       updateStats(stats, `/api/recipes/${rid}/cooked`, {}).then((s) => {
         if (s && s.cook_log_id != null) offerCookPhotoChip(stats, stats.dataset.rid, s.cook_log_id);
       });
       return;
     }
     if (e.target.closest("[data-uncook]")) {
-      if (view) view.pendingRating = null;
       (async () => {
         const { ok, data } = await sendJSON("POST", `/api/recipes/${rid}/uncook`, {});
         if (!ok) return;
