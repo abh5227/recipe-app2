@@ -628,6 +628,96 @@ def parse_servings(raw):
     return None
 
 
+# --------------------------------------------------------------------------- #
+# Times
+# --------------------------------------------------------------------------- #
+# The unit words a publisher actually writes, mapped to the two the app shows. Measured over the
+# 218 stored times: min 102, mins 56, minutes 44, hr 16, hour 7, hours 3, hrs 1. Bare 'm' and 'h'
+# are not in the live data and are admitted because a publisher who writes them means the same
+# thing and there is no competing reading in a time column.
+_TIME_UNITS = {"min": "min", "mins": "min", "minute": "min", "minutes": "min", "m": "min",
+               "hr": "hr", "hrs": "hr", "hour": "hr", "hours": "hr", "h": "hr"}
+# One "N unit" segment, with an optional range on the number. The unit is captured LOOSELY as any
+# word, so a non-time word ("1 cup" in a time column) is read and then REFUSED rather than being
+# skipped past to find a time later in the string.
+_TIME_SEG_RE = re.compile(
+    r"(?P<lo>\d+(?:\.\d+)?)"
+    r"(?:\s*(?:to|[-–—])\s*(?P<hi>\d+(?:\.\d+)?))?"
+    r"\s*(?P<unit>[A-Za-z]+)\.?", re.I)
+# What may sit between two segments of one duration: whitespace, a comma, an "and".
+_TIME_JOIN_RE = re.compile(r"[\s,]*(?:and\s+)?", re.I)
+_TIME_NOTE_LEAD_RE = re.compile(r"^[\s,;:—–-]+")
+
+
+def _time_seg(m, unit):
+    """One matched segment as the app writes it. A range keeps BOTH ends and an en dash."""
+    hi = m.group("hi")
+    return f"{m.group('lo')}\u2013{hi} {unit}" if hi else f"{m.group('lo')} {unit}"
+
+
+def _time_in_note(note):
+    """Normalize any duration INSIDE a trailing note, leaving every other word alone."""
+    def rep(m):
+        unit = _TIME_UNITS.get(m.group("unit").lower())
+        return _time_seg(m, unit) if unit else m.group(0)
+    return _TIME_SEG_RE.sub(rep, note)
+
+
+def normalize_time(raw):
+    """A stored or imported time string -> the one form the app writes. NEVER a guess.
+
+    The canonical form is what url_jsonld.duration_text already produces from ISO-8601, so an
+    imported page and a hand-typed value finally read the same: "20 min", "1 hr 15 min".
+
+      "10 mins" / "10 minutes" / "15mins"     -> "10 min" / "10 min" / "15 min"
+      "1 hour" / "2 hrs" / "1 hr, 30 min"     -> "1 hr" / "2 hr" / "1 hr 30 min"
+      "15-20 minutes"                         -> "15–20 min"
+      "35 min (plus 1–3 hr marinating)"       -> "35 min · plus 1–3 hr marinating"
+      "30 mins, plus 1 hour soaking"          -> "30 min · plus 1 hr soaking"
+      "20 minutes additional time"            -> "20 min · additional time"
+
+    ⚠️ A RANGE STAYS A RANGE. Collapsing "15-20 minutes" to its upper end is what duration_text
+    does to an ISO Duration range, and that is a different case: there the publisher gave two
+    machine values for ONE column and one had to be chosen. Here the author wrote a range in words
+    and it is the answer, so narrowing it would be inventing precision.
+
+    ⚠️ THE NOTE IS KEPT, NEVER DROPPED. "plus 1 hr soaking" is the difference between a dish you
+    can start at six and one you cannot. Only the number is normalized, and the note keeps its own
+    words. The separator is the app's existing " · ".
+
+    ⚠️ ANYTHING UNREADABLE COMES BACK EXACTLY AS STORED. A time column holding "1 cup" is returned
+    as "1 cup" rather than blanked or guessed at, so a wrong value stays visible and fixable
+    instead of disappearing. Measured: 2 of the 218 stored times are not times, and both are fixed
+    by hand rather than by this function.
+
+    ⚠️ IT DOES NOT REWRITE STORED TEXT. The import path runs it on the way in, the reading view
+    runs its JS mirror on the way out (static/timefmt.js, held to this one by
+    tests/js/timefmt-sync.test.js over a shared case table), and the editor shows the raw stored
+    value so a save can never normalize behind the cook's back.
+    """
+    s = (raw or "").strip()
+    if not s:
+        return s
+    parts, pos = [], 0
+    while pos < len(s):
+        probe = _TIME_JOIN_RE.match(s, pos).end() if parts else pos
+        m = _TIME_SEG_RE.match(s, probe)
+        if not m:
+            break
+        unit = _TIME_UNITS.get(m.group("unit").lower())
+        if not unit:
+            break
+        parts.append(_time_seg(m, unit))
+        pos = m.end()
+    if not parts:
+        return s
+    note = _TIME_NOTE_LEAD_RE.sub("", s[pos:].strip())
+    if note.startswith("(") and note.endswith(")"):
+        note = note[1:-1].strip()
+    duration = " ".join(parts)
+    return f"{duration} · {_time_in_note(note)}" if note else duration
+
+
 def classify_step(text):
     """A direction line -> (is_heading, clean_text). Heading if colon-terminated / ALL-CAPS
     (is_section) OR ending in a trailing dash ("prepare your pan -"); the trailing dash is
@@ -829,7 +919,11 @@ def clean_recipe(norm):
         "categories": norm["categories"], "source": norm["source"],
         "source_url": norm["source_url"], "notes": norm["notes"],
         "description": norm["description"], "rating": norm["rating"],
-        "times": {"prep": norm["prep_time"], "cook": norm["cook_time"], "total": norm["total_time"]},
+        # Normalized ON THE WAY IN, so a new import stores the one form. Nothing already stored is
+        # touched by this, and an unreadable value passes through exactly as the publisher wrote it.
+        "times": {"prep": normalize_time(norm["prep_time"]),
+                  "cook": normalize_time(norm["cook_time"]),
+                  "total": normalize_time(norm["total_time"])},
         "ingredients": ings,
         "directions": directions,
         "images": norm["images"],

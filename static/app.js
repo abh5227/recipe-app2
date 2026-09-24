@@ -8,6 +8,7 @@ import { nonEmptySteps, focusIndexAfterRemove, writeStepField } from "./step-row
 import { insertIndexFor } from "./row-insert.js";
 import { removedInsertIndex } from "./annotation-place.js";
 import { wordDiffParts } from "./word-diff.js";
+import { normalizeTime } from "./timefmt.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
 import { browseList, cardTags, monthYear } from "./browse.js";
@@ -1206,12 +1207,16 @@ function scaleMetaBlock(r) {
   //   - the separator carries REAL spaces. It used to get its spacing from a margin, which looks the
   //     same and offers the browser no break opportunity at all, so the only place left to wrap was
   //     inside a value. That is exactly how "min" ended up alone on its own line.
-  // The segments themselves stay breakable at their own commas, so a long one ("Cook 2 hours 25
-  // mins, plus cooling") still wraps instead of overflowing.
+  // The segments themselves stay breakable, so a long one ("Cook 2 hr 25 min · plus cooling")
+  // still wraps at its separator instead of overflowing.
+  // ⚠️ NORMALIZED HERE, ON THE WAY OUT, AND THE STORED TEXT IS NEVER REWRITTEN. 40 of the 63
+  // distinct stored spellings are some other way of writing the same duration ("10 min", "10 mins",
+  // "10 minutes"), and normalizing on save would edit a cook's own words on their behalf. The
+  // editor below deliberately shows the raw value for the same reason. See static/timefmt.js.
   const bindUnits = (v) => v.replace(/(\d)\s+(?=[A-Za-z])/g, "$1\u00a0");
   const times = [["Prep", r.prep_time], ["Cook", r.cook_time], ["Total", r.total_time]]
     .filter(([, v]) => (v || "").trim())
-    .map(([label, v]) => `${label}\u00a0<span class="meta-val">${esc(bindUnits(v.trim()))}</span>`)
+    .map(([label, v]) => `${label}\u00a0<span class="meta-val">${esc(bindUnits(normalizeTime(v)))}</span>`)
     .join(`<span class="meta-sep"> · </span>`);
   if (times) stack.push(`<span class="meta-item">${META_CLOCK}<span>${times}</span></span>`);
   const base = servingsBase();

@@ -4,6 +4,9 @@ Tests the PARSE-vs-FLAG boundaries, because a wrong STRUCTURE silently corrupts 
 recipes: the failure mode must be "flagged a line," never "structured it wrong." Heaviest
 emphasis on the decline points — the grams confidence guard, section ambiguity, the risky
 multiplier/each patterns, and the servings traps."""
+import json
+import pathlib
+
 import pytest
 
 import import_cleanup as ic
@@ -984,3 +987,77 @@ def test_single_measure_gram_paren_forms_unchanged(line, grams, name, secondary)
     assert d["grams_harvested"] == grams
     assert d["name"] == name
     assert d["secondary_measure"] == secondary
+
+
+# --------------------------------------------------------------------------- #
+# normalize_time
+# --------------------------------------------------------------------------- #
+# ⚠️ THE TABLE IS THE LIVE CORPUS, NOT A HANDFUL OF INVENTED STRINGS. tests/fixtures/time-cases.json
+#    was generated from all 63 distinct spellings the 218 stored times actually use, plus the edge
+#    cases neither corpus happens to hold. tests/js/timefmt-sync.test.js asserts static/timefmt.js
+#    against the SAME file, so the two implementations cannot drift apart silently.
+TIME_CASES = json.loads(
+    (pathlib.Path(__file__).parent / "fixtures" / "time-cases.json").read_text(encoding="utf-8"))
+
+
+def test_the_time_case_table_covers_the_real_corpus():
+    assert len(TIME_CASES) >= 63
+
+
+@pytest.mark.parametrize("case", TIME_CASES, ids=lambda c: c["in"] or "<empty>")
+def test_normalize_time_over_every_stored_spelling(case):
+    assert ic.normalize_time(case["in"]) == case["out"]
+
+
+@pytest.mark.parametrize("raw,want", [
+    ("10 mins", "10 min"), ("10 minutes", "10 min"), ("15mins", "15 min"),
+    ("1 hour", "1 hr"), ("2 hrs", "1 hr".replace("1", "2")), ("1 hours", "1 hr"),
+    ("1 hr, 30 min", "1 hr 30 min"), ("8 hr, 20 min", "8 hr 20 min"),
+    ("1 hour 10 minutes", "1 hr 10 min"),
+])
+def test_the_unit_words_publishers_use_map_to_the_two_the_app_shows(raw, want):
+    assert ic.normalize_time(raw) == want
+
+
+def test_a_range_stays_a_range():
+    """⚠️ NOT THE duration_text RULE. That one takes the upper end of an ISO Duration range, where
+    the publisher gave two machine values for one column and one had to be chosen. An author who
+    wrote a range in words meant the range, so narrowing it would invent precision."""
+    assert ic.normalize_time("15-20 minutes") == "15–20 min"
+
+
+@pytest.mark.parametrize("raw,want", [
+    ("35 min (plus 1–3 hr marinating)", "35 min · plus 1–3 hr marinating"),
+    ("30 mins, plus 1 hour soaking", "30 min · plus 1 hr soaking"),
+    ("20 minutes additional time", "20 min · additional time"),
+    ("2 hours 25 mins, plus cooling", "2 hr 25 min · plus cooling"),
+    ("40 min (plus 2 hr+ marinating)", "40 min · plus 2 hr+ marinating"),
+])
+def test_a_trailing_note_is_kept_and_its_own_durations_normalized(raw, want):
+    """'plus 1 hr soaking' is the difference between a dish you can start at six and one you
+    cannot. The number is normalized and the note keeps its own words."""
+    assert ic.normalize_time(raw) == want
+
+
+@pytest.mark.parametrize("junk", ["1 cup", "to taste", "whenever", "--", "overnight"])
+def test_an_unreadable_value_is_returned_exactly_as_stored(junk):
+    """⚠️ NEVER BLANKED AND NEVER GUESSED AT. A time column holding '1 cup' stays visible and
+    fixable. Two of the 218 stored times are not times, and both are fixed by hand."""
+    assert ic.normalize_time(junk) == junk
+
+
+def test_normalize_time_handles_none_and_empty():
+    assert ic.normalize_time(None) == "" and ic.normalize_time("   ") == ""
+
+
+def test_a_new_import_stores_the_normalized_time():
+    """The normalizer runs on the way IN as well as on the way out, so a fresh import and an
+    already-stored row finally read the same."""
+    cleaned = ic.clean_recipe({
+        "name": "T", "ingredient_lines": ["1 large egg"], "directions": ["Do it."],
+        "servings_raw": "2", "source": "url", "source_url": "https://example.test/t",
+        "categories": [], "description": "", "notes": "", "rating": None, "uid": "t-1",
+        "hash": "h", "images": [], "primary_photo": None, "source_rating": None,
+        "prep_time": "10 mins", "cook_time": "1 hour", "total_time": "",
+    })
+    assert cleaned["times"] == {"prep": "10 min", "cook": "1 hr", "total": ""}
