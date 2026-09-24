@@ -2263,3 +2263,82 @@ a.fn-item:hover { background: rgba(255,252,244,.10); }
   .feed-surround { flex-direction: row; flex-wrap: wrap; }
   .feed-surround .fs-card { flex: 1 1 240px; }
 }
+
+/* ── The photo album overlay + lightbox (items 6 + 7) ─────────────────────────────────────────
+   The overlay is the backdate-modal shape on the SHARED .scrim (z 40 / 50). The lightbox sits
+   ABOVE both at z 60 with its own backdrop, because it opens FROM the overlay and closing it has
+   to return you to the grid rather than to the page. */
+.album-overlay {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -46%);
+  width: min(880px, 96vw); max-height: 92vh; overflow-y: auto; z-index: 50;
+  background: var(--card); border: 1px solid var(--paper-edge); border-radius: 16px;
+  box-shadow: 0 18px 54px rgba(31,42,32,0.24); padding: 32px 36px 28px;
+  opacity: 0; transition: opacity .22s ease, transform .26s cubic-bezier(.2,.7,.2,1);
+}
+.album-overlay.open { opacity: 1; transform: translate(-50%, -50%); }
+.album-overlay[hidden] { display: none; }
+.ao-title { margin: 0 0 4px; font-size: 25px; font-weight: 600; }
+.ao-hint { margin: 0 0 20px; color: var(--ink-soft); font-style: italic; font-size: 14.5px; }
+.ao-empty { margin: 0; color: var(--ink-soft); font-style: italic; }
+
+/* A plain responsive grid, NOT the inline album's masonry. The overlay is a working surface for
+   picking and managing, where an even grid scans faster than ragged native heights. */
+.ao-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 18px; }
+.ao-grid .album-photo { position: relative; margin: 0; width: auto; }
+.ao-grid .album-photo .ph {
+  width: 100%; aspect-ratio: 1 / 1; object-fit: cover; display: block;
+  border-radius: 3px; cursor: zoom-in;
+}
+.ao-grid .album-photo.is-hero { outline: 2px solid var(--amber); outline-offset: 3px; border-radius: 4px; }
+/* ⚠️ THE ⋮ STAYS VISIBLE HERE, unlike the inline album where it is hover-revealed to keep the page
+   calm. The overlay is the MANAGEMENT surface and its own hint points at that menu, so hiding the
+   control it tells you to use is a worse trade than a little visual noise. */
+.ao-grid .album-photo .pm-btn { opacity: 1; }
+.ao-actions { display: flex; align-items: center; gap: 12px; margin-top: 22px; }
+.ao-status { font-family: var(--font-sans); font-size: 13px; color: var(--ink-soft); }
+.ao-input { display: none; }
+
+/* The hero Polaroid is a door to the album now, so it says so on hover. */
+.polaroid-hero img.photo[data-album-open] { cursor: zoom-in; }
+.polaroid-hero img.photo[data-album-open]:focus-visible { outline: 2px solid var(--berry); outline-offset: 3px; }
+/* The inline Album tiles open the lightbox too (item 7). */
+.album-grid .album-photo .ph { cursor: zoom-in; }
+
+.lightbox {
+  position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center;
+  gap: 8px; padding: 28px; background: rgba(20,26,21,0.86);
+  opacity: 0; transition: opacity .2s ease;
+}
+.lightbox.open { opacity: 1; }
+.lightbox[hidden] { display: none; }
+.lb-figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 14px; max-width: 100%; }
+.lb-img {
+  max-width: min(1100px, 86vw); max-height: 78vh; object-fit: contain; display: block;
+  border-radius: 4px; box-shadow: 0 22px 60px rgba(0,0,0,0.5); background: var(--card);
+}
+.lb-meta {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: center;
+  font-family: var(--font-sans); font-size: 13.5px; color: rgba(255,255,255,0.86);
+}
+.lb-count { opacity: .6; font-variant-numeric: tabular-nums; }
+.lb-x {
+  position: absolute; top: 18px; right: 22px; z-index: 1;
+  background: none; border: none; color: rgba(255,255,255,0.8); font-size: 34px; line-height: 1;
+  cursor: pointer; padding: 4px 10px;
+}
+.lb-x:hover { color: #fff; }
+.lb-nav {
+  flex: none; background: rgba(255,255,255,0.08); border: none; color: rgba(255,255,255,0.85);
+  font-size: 30px; line-height: 1; cursor: pointer; padding: 18px 14px; border-radius: 8px;
+  transition: background .15s, color .15s;
+}
+.lb-nav:hover { background: rgba(255,255,255,0.18); color: #fff; }
+.lb-nav[hidden] { display: none; }
+.lb-meta .btn.sm:disabled { opacity: .55; cursor: default; }
+
+@media (max-width: 640px) {
+  .album-overlay { padding: 24px 18px 20px; width: 96vw; }
+  .ao-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 12px; }
+  .lightbox { padding: 12px; gap: 2px; }
+  .lb-nav { padding: 14px 8px; font-size: 24px; }
+}

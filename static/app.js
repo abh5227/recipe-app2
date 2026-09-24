@@ -1275,7 +1275,11 @@ function dishPhoto(r, editable, photos) {
     // byte the original filled Polaroid — no affordance. The <img> onerror degradation is preserved verbatim.
     const editHook   = editable ? " polaroid-filled" : "";
     const editAttr   = editable ? " data-upload-zone" : "";
-    const updatePill = editable ? `<button class="update-photo" type="button" aria-label="Update photo">Update photo</button>` : "";
+    // ⚠️ THE PILL SAYS "Photos" NOW, AND IT NO LONGER OPENS THE FILE PICKER. "Update photo" described
+    // neither what it did nor what happened: it added a photo to the album and promoted it, leaving
+    // the old one in place, so nothing was ever updated. It opens the album overlay, where adding,
+    // choosing the hero, captioning and deleting all live.
+    const updatePill = editable ? `<button class="update-photo" type="button" data-album-open aria-label="All photos">Photos</button>` : "";
     const fileInput  = editable ? `<input class="photo-input" type="file" accept="image/*" tabindex="-1" aria-hidden="true">` : "";
     // Stage B: an editable recipe's broken hero <img> degrades to the empty upload zone (bound in
     // wirePhotoUpload) — so NO inline collapse here. A NON-editable broken image still collapses inline.
@@ -1291,7 +1295,8 @@ function dishPhoto(r, editable, photos) {
     ${clipSvg("back")}
     <div class="edge-contact"></div>
     <figure class="polaroid-wrap"><span class="polaroid">
-      <img class="photo" src="/${esc(r.image)}" alt="${esc(r.name)}" loading="lazy"${brokenCollapse}>
+      <img class="photo" src="/${esc(r.image)}" alt="${esc(r.name)}" loading="lazy"
+           data-album-open role="button" tabindex="0"${brokenCollapse}>
       ${updatePill}
       <span class="strip">${capHTML}</span>
     </span></figure>
@@ -1449,13 +1454,144 @@ function openCaptionEdit(fig) {
   const ta = strip.querySelector("[data-cap-input]");
   if (ta) { ta.focus(); ta.setSelectionRange(ta.value.length, ta.value.length); }
 }
-async function promotePhoto(id, rid) { const { ok } = await sendJSON("POST", `/api/photos/${id}/promote`, {}); if (ok) renderRecipe(rid); }
-async function deletePhoto(id, rid)  { const { ok } = await sendJSON("DELETE", `/api/photos/${id}`, null);     if (ok) renderRecipe(rid); }
+// ⚠️ These three end in afterPhotoChange, NOT renderRecipe. The overlay and the lightbox live
+// outside #app, so a bare repaint leaves them on screen showing the state before the action.
+async function promotePhoto(id, rid) { const { ok } = await sendJSON("POST", `/api/photos/${id}/promote`, {}); if (ok) await afterPhotoChange(rid); }
+async function deletePhoto(id, rid)  { const { ok } = await sendJSON("DELETE", `/api/photos/${id}`, null);     if (ok) await afterPhotoChange(rid); }
 async function saveCaption(fig, rid) {
   const ta = fig.querySelector("[data-cap-input]");
   const { ok } = await sendJSON("PATCH", `/api/photos/${fig.dataset.photoId}`, { caption: ta ? ta.value.trim() : "" });
-  if (ok) renderRecipe(rid);                               // blank clears it (server allows blank)
+  if (ok) await afterPhotoChange(rid);                     // blank clears it (server allows blank)
 }
+// ── The photo album overlay + lightbox (items 6 + 7) ─────────────────────────────────────────
+// ⚠️ THE OVERLAY RENDERS albumPhotoHTML VERBATIM. It is the same component the inline Album section
+// uses, so the ★ Hero badge, the per-photo ⋮ menu and its three actions are shared rather than
+// reimplemented. handleAlbumPhotoAction is delegated on document, so those menus already work inside
+// the overlay with no extra wiring. The only thing the overlay adds is the container.
+const albumOverlay = document.querySelector(".album-overlay");
+const lightbox = document.querySelector(".lightbox");
+let albumTrigger = null;    // what opened the overlay (focus returns there)
+let lbIndex = -1;           // the photo the lightbox is showing, as an index into view.data.photos
+
+const albumPhotos = () => (view && view.data && view.data.photos) || [];
+
+function renderAlbumOverlay() {
+  if (!albumOverlay || albumOverlay.hidden) return;
+  const grid = albumOverlay.querySelector("[data-ao-grid]");
+  const hint = albumOverlay.querySelector("[data-ao-hint]");
+  const photos = albumPhotos();
+  const canManage = !!(view && view.data && view.data.is_mine);
+  grid.innerHTML = photos.length
+    ? photos.map((ph) => albumPhotoHTML(ph, canManage)).join("")
+    : `<p class="ao-empty">No photos yet. Add one to get started.</p>`;
+  hint.textContent = photos.length
+    ? "Click a photo to see it large. The ⋮ menu sets the hero, edits a caption or deletes."
+    : "";
+  albumOverlay.querySelector("[data-ao-add]").hidden = !canManage;
+}
+
+function openAlbumOverlay(trigger) {
+  if (!albumOverlay) return;
+  albumTrigger = trigger || null;
+  albumOverlay.querySelector("[data-ao-status]").textContent = "";
+  albumOverlay.hidden = false;
+  scrim.hidden = false;
+  renderAlbumOverlay();
+  requestAnimationFrame(() => { scrim.classList.add("open"); albumOverlay.classList.add("open"); });
+  albumOverlay.querySelector("[data-album-close]").focus();
+}
+
+function closeAlbumOverlay() {
+  if (!albumOverlay || albumOverlay.hidden) return;
+  closePhotoMenu();
+  scrim.classList.remove("open");
+  albumOverlay.classList.remove("open");
+  setTimeout(() => { scrim.hidden = true; albumOverlay.hidden = true; }, 260);
+  if (albumTrigger && document.contains(albumTrigger)) albumTrigger.focus();
+}
+
+// ⚠️ EVERY PHOTO ACTION REPAINTS THE PAGE, AND THE OVERLAY LIVES OUTSIDE #app. promotePhoto,
+// deletePhoto and saveCaption all end in renderRecipe, which rebuilds #app and leaves the overlay
+// standing with stale contents. This re-renders it from the refreshed view.data, and keeps the
+// lightbox honest too: a deleted photo must not stay on screen.
+async function afterPhotoChange(rid) {
+  await renderRecipe(rid);
+  renderAlbumOverlay();
+  if (lightbox && !lightbox.hidden) {
+    const photos = albumPhotos();
+    if (!photos.length) closeLightbox();
+    else showLightbox(Math.min(lbIndex, photos.length - 1));
+  }
+}
+
+// ---- the lightbox ----------------------------------------------------------------------------
+function showLightbox(index) {
+  const photos = albumPhotos();
+  if (!photos.length) return;
+  // Wrap at both ends: with two photos, "next" that dead-ends on the second is a worse answer than
+  // coming back round, and there is no scroll position to lose.
+  lbIndex = (index + photos.length) % photos.length;
+  const ph = photos[lbIndex];
+  lightbox.querySelector("[data-lb-img]").src = `/${ph.path}`;
+  const where = ph.cooked_on ? formatFullDate(ph.cooked_on) : "";
+  const cap = ph.caption || "";
+  lightbox.querySelector("[data-lb-where]").textContent = [where, cap].filter(Boolean).join(" · ");
+  lightbox.querySelector("[data-lb-count]").textContent =
+    photos.length > 1 ? `${lbIndex + 1} of ${photos.length}` : "";
+  const heroBtn = lightbox.querySelector("[data-lb-hero]");
+  const canManage = !!(view && view.data && view.data.is_mine);
+  heroBtn.hidden = !canManage;
+  heroBtn.disabled = !!ph.is_hero;
+  heroBtn.innerHTML = ph.is_hero ? "&#9733; Already the hero" : "&#9733; Set as hero";
+  heroBtn.dataset.photoId = ph.id;
+  // Paging is pointless with one photo, and two dead arrows read as broken rather than absent.
+  lightbox.querySelectorAll(".lb-nav").forEach((b) => { b.hidden = photos.length < 2; });
+}
+
+function openLightbox(photoId) {
+  if (!lightbox) return;
+  const idx = albumPhotos().findIndex((p) => String(p.id) === String(photoId));
+  if (idx < 0) return;
+  lightbox.hidden = false;
+  showLightbox(idx);
+  requestAnimationFrame(() => lightbox.classList.add("open"));
+  lightbox.querySelector("[data-lb-close]").focus();
+}
+
+function closeLightbox() {
+  if (!lightbox || lightbox.hidden) return;
+  lightbox.classList.remove("open");
+  setTimeout(() => { lightbox.hidden = true; lightbox.querySelector("[data-lb-img]").src = ""; }, 200);
+  lbIndex = -1;
+  // Return to whatever is underneath: the overlay if it is open, else the trigger in the page.
+  if (albumOverlay && !albumOverlay.hidden) albumOverlay.querySelector("[data-album-close]").focus();
+}
+
+// ---- adding a photo from the overlay -----------------------------------------------------------
+// ⚠️ POSTS TO /photos, NOT /image. /image ALWAYS promotes, which would silently steal the hero every
+// time you added a picture. /photos promotes only when the recipe has no hero yet, which is right for
+// a first photo and right to leave alone for a twelfth.
+async function albumOverlayUpload(files) {
+  const rid = view && view.slug;
+  const list = Array.from(files || []).filter(Boolean);
+  const status = albumOverlay.querySelector("[data-ao-status]");
+  if (!rid || !list.length) { status.textContent = ""; return; }
+  status.textContent = `Adding ${list.length > 1 ? list.length + " photos" : "photo"}…`;
+  const results = await Promise.allSettled(list.map((file) => {
+    const fd = new FormData();
+    fd.append("image", file);              // no cook_log_id -> a standalone album photo (no date)
+    return fetch(`/api/recipes/${encodeURIComponent(rid)}/photos`,
+                 { method: "POST", credentials: "same-origin", body: fd }).then((r) => r.status);
+  }));
+  if (results.some((r) => r.status === "fulfilled" && r.value === 401)) { showAuth(); return; }
+  const ok = results.filter((r) => r.status === "fulfilled" && r.value >= 200 && r.value < 300).length;
+  const bad = results.length - ok;
+  if (ok) await afterPhotoChange(rid);
+  status.textContent = bad
+    ? (ok ? `Added ${ok}. ${bad} couldn’t be added.` : "Couldn’t add that. JPEG, PNG, WebP or HEIC.")
+    : "";
+}
+
 // Delegated handler — returns true if it owned the click. Wired into the main document click listener.
 function handleAlbumPhotoAction(e) {
   const rid = view ? view.slug : null;
@@ -1473,6 +1609,13 @@ function handleAlbumPhotoAction(e) {
     if (p) fig.querySelector(".strip").innerHTML = albumStripInner(p); return true; }   // revert, no network
   if (e.target.closest("[data-del-confirm]")) { deletePhoto(fig.dataset.photoId, rid); return true; }
   if (e.target.closest("[data-del-cancel]"))  { const dc = e.target.closest(".del-confirm"); if (dc) dc.remove(); return true; }
+  // ⚠️ A TAP VIEWS, IT DOES NOT SET THE HERO. Last, so every menu target above wins over it, and
+  // scoped to the image itself so a click on the caption strip or a blank part of the figure does
+  // nothing. One rule, both surfaces: the overlay grid and the inline Album tiles (item 7).
+  if (e.target.closest("img.ph") && !fig.querySelector(".cap-edit") && !fig.querySelector(".del-confirm")) {
+    openLightbox(fig.dataset.photoId);
+    return true;
+  }
   return false;
 }
 
@@ -1871,11 +2014,14 @@ function wirePhotoUpload() {
     renderRecipe(rid);                          // 200 -> re-pull by the SAME key + full repaint; the new photo fills the real Polaroid
   };
 
-  // Trigger + "Try again" — SHARED. Trigger is the empty zone or the filled "Update photo" pill; err-retry
-  // returns to rest without opening the picker (filled: removes the error overlay -> the photo shows again).
+  // Trigger + "Try again". ⚠️ THE FILLED POLAROID NO LONGER OPENS THE PICKER ON CLICK. Its pill opens
+  // the album overlay instead (data-album-open), and adding from there goes to /photos so it cannot
+  // steal the hero. The EMPTY zone still picks straight to /image, which is right: a recipe with no
+  // hero should get one from its first photo. Drag-and-drop onto a filled Polaroid is left alone —
+  // dropping a picture ON the hero is an unambiguous "put this here", and it still goes to /image.
   wrap.addEventListener("click", (e) => {
     if (e.target.closest(".err-retry")) { rest(); return; }
-    if (e.target.closest(filled ? ".update-photo" : ".upload-zone")) input.click();
+    if (!filled && e.target.closest(".upload-zone")) input.click();
   });
   if (!filled) {   // the empty zone is a role=button; the filled pill is a native <button> (keyboard built in)
     wrap.querySelector(".upload-zone").addEventListener("keydown", (e) => {
@@ -3416,6 +3562,10 @@ document.addEventListener("click", (e) => {
   if (ccAttach) { cookChipAttach(ccAttach); return; }
 
   // 3c: per-photo album ⋮ menu + make-hero / edit-caption / delete (acts on data-photo-id, refresh via renderRecipe)
+  // The hero Polaroid and its "Photos" pill both open the album overlay (item 6). One hook, so the
+  // picture and the label cannot drift apart.
+  const albumOpen = e.target.closest("[data-album-open]");
+  if (albumOpen) { openAlbumOverlay(albumOpen); return; }
   if (handleAlbumPhotoAction(e)) return;
 
   // 3d-iii: album reorder mode — enter / Done (commit via 3d-ii) / Cancel (discard)
@@ -3576,7 +3726,30 @@ closeBtn.addEventListener("click", closePanel);
 scrim.addEventListener("click", () => {
   if (!panel.hidden) closePanel();
   else if (backdateModal && !backdateModal.hidden) closeBackdate();
+  else if (albumOverlay && !albumOverlay.hidden) closeAlbumOverlay();
 });
+
+// ---- the album overlay + lightbox, wired once (both containers persist in the markup) ----------
+if (albumOverlay) {
+  albumOverlay.querySelector("[data-album-close]").addEventListener("click", closeAlbumOverlay);
+  const aoInput = albumOverlay.querySelector(".ao-input");
+  albumOverlay.querySelector("[data-ao-add]").addEventListener("click", () => aoInput.click());
+  aoInput.addEventListener("change", () => { albumOverlayUpload(aoInput.files); aoInput.value = ""; });
+}
+if (lightbox) {
+  lightbox.querySelector("[data-lb-close]").addEventListener("click", closeLightbox);
+  lightbox.querySelector("[data-lb-prev]").addEventListener("click", () => showLightbox(lbIndex - 1));
+  lightbox.querySelector("[data-lb-next]").addEventListener("click", () => showLightbox(lbIndex + 1));
+  lightbox.querySelector("[data-lb-hero]").addEventListener("click", (e) => {
+    const id = e.currentTarget.dataset.photoId;
+    if (id) promotePhoto(id, view && view.slug);   // reuses the existing promote route
+  });
+  // Clicking the dark surround closes, the photo itself does not — the commonest way to dismiss a
+  // lightbox, and clicking the picture you just opened should not throw it away.
+  lightbox.addEventListener("click", (e) => {
+    if (e.target === lightbox || e.target.classList.contains("lb-figure")) closeLightbox();
+  });
+}
 backdateModal.querySelector("[data-backdate-close]").addEventListener("click", closeBackdate);
 backdateModal.querySelector("[data-backdate-log]").addEventListener("click", submitBackdate);
 // The log-cook box's stars. Clicking the step it already sits on clears it, the same gesture the
@@ -3600,6 +3773,20 @@ document.addEventListener("change", (e) => {
   }
 });
 document.addEventListener("keydown", (e) => {
+  // ⚠️ THE LIGHTBOX IS CHECKED FIRST because it sits ON TOP of the album overlay. Escape must peel
+  // one layer, not both, or dismissing a photo also throws away the grid behind it.
+  // The hero image is role="button" tabindex="0", so it answers the keyboard like the pill does.
+  if ((e.key === "Enter" || e.key === " ") && e.target.matches && e.target.matches("img[data-album-open]")) {
+    e.preventDefault();
+    openAlbumOverlay(e.target);
+    return;
+  }
+  if (e.key === "Escape" && lightbox && !lightbox.hidden) { closeLightbox(); return; }
+  if (lightbox && !lightbox.hidden && (e.key === "ArrowLeft" || e.key === "ArrowRight")) {
+    showLightbox(lbIndex + (e.key === "ArrowRight" ? 1 : -1));
+    return;
+  }
+  if (e.key === "Escape" && albumOverlay && !albumOverlay.hidden) { closeAlbumOverlay(); return; }
   if (e.key === "Escape" && backdateModal && !backdateModal.hidden) {
     if (bdYearPopClose) { bdYearPopClose(); return; }   // first Escape closes the year popover…
     closeBackdate(); return;                             // …a second closes the modal

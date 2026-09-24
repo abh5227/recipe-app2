@@ -55,6 +55,39 @@
     </div>
   </aside>
 
+  <!-- The photo album overlay (items 6 + 7). Centered on the shared .scrim, the backdate-modal
+       pattern. The grid inside is rendered by app.js from view.data.photos and reuses albumPhotoHTML
+       verbatim, so the ★ Hero badge and the per-photo ⋮ menu are the SAME components the inline
+       Album section uses — not a second implementation that can drift from it. -->
+  <div class="album-overlay" role="dialog" aria-modal="true" aria-labelledby="ao-title" hidden>
+    <button class="panel-close" data-album-close aria-label="Close">&times;</button>
+    <h2 class="ao-title" id="ao-title">Photos</h2>
+    <p class="ao-hint" data-ao-hint></p>
+    <div class="ao-grid" data-ao-grid></div>
+    <div class="ao-actions">
+      <button class="btn alt" data-ao-add>Add photo</button>
+      <span class="ao-status" data-ao-status aria-live="polite"></span>
+    </div>
+    <input class="ao-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true">
+  </div>
+
+  <!-- The lightbox (item 7) — the one genuinely new piece. A SECOND layer above the album overlay
+       rather than a replacement for it, so closing the lightbox returns you to the grid you opened
+       it from. It carries its own backdrop (the shared .scrim is already spent on the overlay). -->
+  <div class="lightbox" role="dialog" aria-modal="true" aria-label="Photo" hidden>
+    <button class="lb-x" data-lb-close aria-label="Close photo">&times;</button>
+    <button class="lb-nav prev" data-lb-prev aria-label="Previous photo">&#8249;</button>
+    <figure class="lb-figure">
+      <img class="lb-img" data-lb-img alt="">
+      <figcaption class="lb-meta">
+        <span class="lb-where" data-lb-where></span>
+        <span class="lb-count" data-lb-count></span>
+        <button class="btn sm" data-lb-hero>&#9733; Set as hero</button>
+      </figcaption>
+    </figure>
+    <button class="lb-nav next" data-lb-next aria-label="Next photo">&#8250;</button>
+  </div>
+
   <!-- Backdate-a-cook modal (centered on the shared .scrim; filled/wired by app.js) -->
   <div class="backdate-modal" role="dialog" aria-modal="true" aria-labelledby="bd-title" hidden>
     <button class="panel-close" data-backdate-close aria-label="Close">&times;</button>
