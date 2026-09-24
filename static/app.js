@@ -173,9 +173,10 @@ function starsReadHTML(rating, ratedCooks) {
 // Interactive: ten hit targets laid over the stars, one per half step.
 // ⚠️ HALF A STAR IS ABOUT 13px WIDE, which is under the ~44px a finger wants, and there is no way
 // around that while a half-star has to be clickable at the size a star is drawn. What can be fixed
-// is the other axis and the feedback: the row is 38px tall so the target is 13x38 rather than
-// 13x13, the glyphs are drawn larger than the read-only ones, and hovering fills to exactly the
-// value under the cursor, so the value is visible BEFORE the click commits it.
+// is the other axis and the feedback: the hit row is 40px tall so each target is 13x40 rather than
+// 13x13, and hovering fills to exactly the value under the cursor, so the value is visible BEFORE
+// the click commits it. The glyphs are the SAME size as the read-only average, so the block does
+// not resize the moment a second cook turns the one into the other.
 function starsInputHTML(value) {
   let hits = "";
   for (let i = 1; i <= RATING_MAX * 2; i++) {
@@ -183,7 +184,7 @@ function starsInputHTML(value) {
     hits += `<button type="button" class="star-hit" data-rate="${v}" tabindex="${i % 2 ? -1 : 0}"
       aria-label="${v} star${v === 1 ? "" : "s"}"></button>`;
   }
-  return `<span class="starfill starfill-lg">
+  return `<span class="starfill">
       ${starFillHTML(value || 0)}
       <span class="star-hits">${hits}</span>
     </span>`;
@@ -194,26 +195,38 @@ function starsInputHTML(value) {
 // stand out at a glance for later correction. Returns HTML; the dynamic date is escaped.
 function cookSummary(stats) {
   if (!stats.cook_count) return "Not cooked yet";
-  const times = stats.cook_count === 1 ? "once" : `${stats.cook_count} times`;
   const last = formatDate(stats.last_cooked);
-  const line1 = `<span class="cook-times">Cooked ${times}</span>`;
-  if (!last) return line1;                             // cooked but no date -> just the count line
-  const dateClause = stats.last_cooked_provisional
+  const dateClause = !last ? "" : (stats.last_cooked_provisional
     ? `<span class="approx">~ ${esc(last)}</span>`     // provisional (import-seeded) date, kept soft
-    : esc(last);
+    : esc(last));
+  // ⚠️ ONE COOK SAYS ITS DATE ONCE. "Cooked once" above "Last cooked 14 Mar" is the same fact told
+  // twice, and "last" means nothing when there is no earlier one.
+  if (stats.cook_count === 1) {
+    return last ? `<span class="cook-times">Cooked ${dateClause}</span>` : `<span class="cook-times">Cooked once</span>`;
+  }
+  const line1 = `<span class="cook-times">Cooked ${stats.cook_count} times</span>`;
+  if (!last) return line1;                             // cooked but no date -> just the count line
   return `${line1}<span class="cook-last">Last cooked ${dateClause}</span>`;   // two stacked lines, no separator
 }
 
-// The inner contents of the stats bar (re-rendered after each change). Three rating states:
-//   • cooked            -> stars to the committed rating + the cook-summary; a star click rates directly.
-//   • uncooked + unrated -> outline stars + a quiet "Log a cook to rate" hint.
-//   • pending-confirm    -> a star was clicked while uncooked: stars held at the chosen rating + an
-//     inline "Mark cooked & rate?" confirm (the cook-gate). Yes -> cooked-and-rated; Cancel -> back.
+// The inner contents of the stats bar (re-rendered after each change). THE RATING APPEARS ONCE, and
+// which form it takes depends on how much there is to say:
+//   • no cooks    -> no stars at all, just the nudge. An empty star row invites a click that the
+//                    model has nowhere to put, since a verdict belongs to a cooking.
+//   • ONE cook    -> ONE EDITABLE row. There is exactly one verdict, so the average IS it, and
+//                    showing a read-only average above an editable copy was the same number twice.
+//   • MANY cooks  -> the read-only average and what it averages over. Rating an individual cooking
+//                    from here would need a row per cook, which is DEFERRED to the cook journal.
 function statsInner(stats) {
-  // ⚠️ THESE STARS NO LONGER TAKE A CLICK. They are the recipe's average and there is nothing at the
-  // recipe level to set, so the old cook-gate confirm ("a star was clicked while uncooked -> Mark
-  // cooked & rate?") has no trigger and is gone with it. Rating happens where a cooking does: in the
-  // log-cook box, or on a row of the cook log below.
+  const many = stats.cook_count > 1;
+  let ratingRow = "";
+  if (stats.cook_count === 1 && stats.last_cook_id != null) {
+    ratingRow = `<div class="rating rating-input" data-cook-stars role="group" aria-label="Your rating"
+      data-cook-id="${stats.last_cook_id}" data-rating="${stats.rating == null ? "" : stats.rating}"
+      >${starsInputHTML(stats.rating)}</div>`;
+  } else if (many) {
+    ratingRow = `<div class="rating rating-read">${starsReadHTML(stats.rating, stats.rated_cooks)}</div>`;
+  }
   let middle = "";
   if (stats.cook_count) {
     middle = `<p class="cook-summary">${cookSummary(stats)}</p>`;
@@ -232,11 +245,10 @@ function statsInner(stats) {
   } else if (stats.cook_count) {
     undoControls = `<button class="btn ghost sm" data-uncook>Undo</button>`;
   }
-  // The soft inset cook block: the average, the summary, the per-cook log, then the buttons.
+  // The soft inset cook block: the rating (once), the summary, then the buttons.
   return `
-    <div class="rating rating-read">${starsReadHTML(stats.rating, stats.rated_cooks)}</div>
+    ${ratingRow}
     ${middle}
-    <div class="cook-log" data-cook-log hidden></div>
     <span class="cook-actions">
       <button class="btn" data-cook>Cooked it</button>
       <button class="btn alt" data-backdate-open title="Log a cook on a past date">Log a past cook</button>
@@ -244,57 +256,24 @@ function statsInner(stats) {
     </span>`;
 }
 
-// ── The cook log: one row per cooking, each with its own verdict ─────────────────────────────
-// This is where a rating is SET on a cook that already happened. The top stars are the average and
-// take no input, so without this list the only way to rate would be at log time, and a verdict you
-// only form the next morning would have nowhere to go.
-function cookRowHTML(c) {
-  const when = formatDate(c.cooked_on) || c.cooked_on;
-  // A non-'app' source is a seeded or inferred date rather than a confirmed one — the same ~/.approx
-  // family the cook summary uses, so an unconfirmed date reads as unconfirmed here too.
-  const date = c.source && c.source !== "app"
-    ? `<span class="approx">~ ${esc(when)}</span>` : esc(when);
-  return `<li class="cook-row" data-cook-id="${c.cook_log_id}" data-rating="${c.rating == null ? "" : c.rating}">
-      <span class="cook-row-date">${date}</span>
-      <div class="rating rating-input" data-cook-stars role="group"
-           aria-label="Your rating for the cook on ${esc(when)}">${starsInputHTML(c.rating)}</div>
-      <input type="text" class="cook-row-caption" data-cook-caption maxlength="60"
-             value="${esc(c.caption || "")}" placeholder="add a note"
-             aria-label="A note about the cook on ${esc(when)}">
-    </li>`;
-}
+// ⚠️ THE PER-COOK ROW LIST IS DEFERRED, NOT LOST. Each cooking already stores its own rating and
+// note (migration 048), and GET /api/cooks?recipe=<id> already returns them. What is not built is
+// the surface: a list of every cooking with its own stars and note belongs in the cook journal,
+// where a cooking is the subject. On the recipe page it repeated the rating and the date the block
+// above already showed. The route that writes one cooking's verdict stays, because the single-cook
+// stars use it.
 
-// Write one cooking's verdict or note. The response is the RECIPE's stats, because changing a cook
-// moves the average, so the block above the list is re-rendered from it — and the list is re-rendered
-// from the row we already have rather than re-fetched, so a caption being typed is not yanked away.
-async function patchCook(statsEl, row, body) {
-  const id = row.dataset.cookId;
+// Write one cooking's verdict. Only reachable while a recipe has exactly ONE cook, where that
+// cooking's verdict and the recipe's number are the same thing.
+async function patchCook(holder, body) {
+  const id = holder.dataset.cookId;
   const { ok, data } = await sendJSON("PATCH", `/api/cooks/${encodeURIComponent(id)}`, body);
   if (!ok) return;
   if (view && view.data) view.data.stats = data;
-  if ("rating" in body) {
-    row.dataset.rating = body.rating == null ? "" : String(body.rating);
-    const holder = row.querySelector("[data-cook-stars]");
-    if (holder) holder.innerHTML = starsInputHTML(body.rating);
-  }
-  const read = statsEl.querySelector(".rating-read");
-  if (read) read.innerHTML = starsReadHTML(data.rating, data.rated_cooks);
-}
-
-// Load (or reload) the open recipe's cook log into the stats block.
-async function renderCookLog(statsEl, rid) {
-  const box = statsEl ? statsEl.querySelector("[data-cook-log]") : null;
-  if (!box) return;
-  let cooks = [];
-  try {
-    cooks = await api(`/api/cooks?recipe=${encodeURIComponent(rid)}`);
-  } catch {
-    box.setAttribute("hidden", "");   // a failed load leaves the rest of the page working
-    return;
-  }
-  if (!cooks.length) { box.setAttribute("hidden", ""); box.innerHTML = ""; return; }
-  box.removeAttribute("hidden");
-  box.innerHTML = `<ul class="cook-log-list">${cooks.map(cookRowHTML).join("")}</ul>`;
+  // Repaint the stars in place rather than re-rendering the whole block: statsInner would rebuild
+  // the buttons under the cursor, which drops the hover state mid-gesture.
+  holder.dataset.rating = body.rating == null ? "" : String(body.rating);
+  holder.innerHTML = starsInputHTML(body.rating);
 }
 
 // Today's date as YYYY-MM-DD in LOCAL time — used for the backdate input's `max` guard.
@@ -319,7 +298,6 @@ async function updateStats(el, path, body) {
     if (view && view.data) view.data.stats = s;   // keep cached stats fresh so the cook-gate reads the new cook_count
     el.innerHTML = statsInner(s);
     setCookCount(app, s.cook_count);   // sync the reserved wear signal from the refreshed stats
-    if (el.dataset.rid) renderCookLog(el, el.dataset.rid);   // the rows changed with the cook count
     return s;   // 3b-iii: expose the response (incl. cook_log_id) so "Cooked it" can offer the photo chip
   } catch (_) {
     /* leave the bar as-is if the write fails */
@@ -1823,8 +1801,6 @@ function paintRecipe() {
     else setupHeadnote();
     wirePhotoUpload();   // Stage 3: the editable Polaroid becomes an upload/replace surface (no-op otherwise)
     wireAlbumUpload();   // Stage 4 (3b-i): the album add-tile becomes a multi-file upload surface (no-op if none)
-    const statsEl = app.querySelector(".stats[data-rid]");
-    if (statsEl) renderCookLog(statsEl, statsEl.dataset.rid);   // one row per cooking, each rateable
     const albumGrid = app.querySelector(".album-grid.masonry");
     if (albumGrid) { layoutAlbum(albumGrid); bindAlbumResize(); }   // aspect-matched masonry (order-preserving columns)
   }
@@ -3471,14 +3447,13 @@ document.addEventListener("click", (e) => {
     if (view && view.editMode) return;   // cook/rate is disabled while editing (stats shown locked)
     const rid = encodeURIComponent(stats.dataset.rid);
     const cookCount = (view && view.data.stats) ? view.data.stats.cook_count : 0;
-    // A star click rates ONE COOKING, so it only means anything inside a cook-log row. The top
-    // stars are the average and carry no [data-rate] target at all.
-    const rate = e.target.closest(".cook-row [data-rate]");
+    // A star click rates ONE COOKING, and the stars only take a click when there IS exactly one.
+    // The read-only average carries no [data-rate] target at all.
+    const rate = e.target.closest("[data-cook-stars] [data-rate]");
     if (rate) {
-      const row = rate.closest(".cook-row");
-      // Clicking the step a cook already sits on CLEARS it, which is the only way back to unrated.
-      const next = nextRating(row.dataset.rating, rate.dataset.rate);
-      patchCook(stats, row, { rating: next });
+      const holder = rate.closest("[data-cook-stars]");
+      // Clicking the step a cook already sits on CLEARS it, the only way back to unrated.
+      patchCook(holder, { rating: nextRating(holder.dataset.rating, rate.dataset.rate) });
       return;
     }
     if (e.target.closest("[data-cook]")) {   // one-click log stays instant; then offer the photo chip (3b-iii)
@@ -3823,18 +3798,8 @@ document.addEventListener("mouseout", (e) => {
   const holder = e.target.closest(".rating-input");
   if (!holder || holder.contains(e.relatedTarget)) return;   // ignore star->star moves; clear on a real leave
   holder.classList.remove("previewing");
-  const row = holder.closest(".cook-row");
-  previewFill(holder, row ? Number(row.dataset.rating || 0) : bdRating || 0);
-});
-
-// A cook's note commits on change (blur or Enter), never per keystroke — a PATCH per character would
-// race itself and the 60-char cap is enforced server-side anyway.
-document.addEventListener("change", (e) => {
-  const cap = e.target.closest(".cook-row [data-cook-caption]");
-  if (!cap) return;
-  const row = cap.closest(".cook-row");
-  const stats = row.closest(".stats");
-  if (stats) patchCook(stats, row, { caption: cap.value });
+  // restore the committed value: the single-cook stars carry it, the log-cook box holds it in state
+  previewFill(holder, holder.dataset.cookId ? Number(holder.dataset.rating || 0) : bdRating || 0);
 });
 
 // Dirty-state navigation guard: route() rebuilds `view` from a fresh fetch on any hash change (the

@@ -1011,7 +1011,11 @@ a:hover { color: var(--berry-lift); }
    outline stars sit in normal flow and set the width; five gold ones are absolutely positioned over
    them and clipped by an inline width. letter-spacing must match on both layers or the two rows of
    glyphs drift apart and the clip lands mid-gap. */
-.starfill { position: relative; display: inline-block; line-height: 1; white-space: nowrap; font-size: 20px; letter-spacing: 1px; }
+/* ⚠️ ONE SIZE FOR BOTH MODES. The editable row and the read-only average are never on screen
+   together (one cook shows one, several show the other), so a size difference would only show up as
+   the block jumping the moment a second cook is logged. 22px keeps the half-star hit target as wide
+   as it can be without the stars shouting. */
+.starfill { position: relative; display: inline-block; line-height: 1; white-space: nowrap; font-size: 22px; letter-spacing: 1px; }
 .starfill-empty { color: var(--line); }
 .starfill-on {
   position: absolute; left: 0; top: 0; overflow: hidden;
@@ -1024,10 +1028,9 @@ a:hover { color: var(--berry-lift); }
 
 /* The interactive widget. Ten hit targets laid over the glyphs, one per half step. ⚠️ Half a star is
    ~13px wide and no arrangement changes that while halves must be clickable at the size a star is
-   drawn — so the fix is the OTHER axis: a 38px-tall row makes each target 13x38, and the hover fill
+   drawn — so the fix is the OTHER axis: a 40px-tall row makes each target 13x40, and the hover fill
    shows the value before the click commits it. */
-.starfill-lg { font-size: 26px; }
-.star-hits { position: absolute; inset: -9px 0; display: flex; }
+.star-hits { position: absolute; inset: -10px 0; display: flex; }
 .star-hit {
   flex: 1 1 0; min-width: 0; padding: 0; border: none; background: none; cursor: pointer;
   border-radius: 3px;
@@ -1035,22 +1038,6 @@ a:hover { color: var(--berry-lift); }
 .star-hit:focus-visible { outline: 2px solid var(--berry); outline-offset: 1px; }
 .rating-input { cursor: pointer; }
 .rating-input.previewing .starfill-on { transition: none; }   /* follow the cursor, do not chase it */
-
-/* The per-cook log: one row per cooking, each carrying its own verdict and note. */
-.cook-log-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
-.cook-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 3px 0; }
-.cook-row-date {
-  font-family: var(--font-sans); font-size: 12.5px; color: var(--ink-soft);
-  min-width: 84px; flex: none; font-variant-numeric: tabular-nums;
-}
-.cook-row-date .approx { opacity: .8; font-style: italic; }
-.cook-row-caption {
-  flex: 1 1 140px; min-width: 0; background: none; border: none; border-bottom: 1px solid transparent;
-  font-family: var(--font-sans); font-size: 12.5px; color: var(--ink-soft); padding: 2px 0;
-}
-.cook-row-caption::placeholder { opacity: .45; font-style: italic; }
-.cook-row-caption:hover { border-bottom-color: var(--line); }
-.cook-row-caption:focus { outline: none; border-bottom-color: var(--berry); color: var(--ink); }
 
 /* Rating + note inside the log-cook box. */
 .bd-verdict { display: flex; flex-direction: column; gap: 8px; margin: 14px 0 0; }
