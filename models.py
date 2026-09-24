@@ -14,7 +14,7 @@ import os
 from pathlib import Path
 
 from sqlalchemy import (
-    CheckConstraint, Column, Float, ForeignKey, Index, Integer, Table, Text,
+    CheckConstraint, Column, Float, ForeignKey, Index, Integer, Numeric, Table, Text,
     UniqueConstraint, create_engine, text,
 )
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
@@ -117,6 +117,10 @@ class Rating(Base):
 
 
 class CookLog(Base):
+    """One logged cooking. ⚠️ THE RATING LIVES HERE, NOT ON THE RECIPE (migration 048). A rating is a
+    verdict on ONE COOKING, so each cook carries its own, and the recipe's headline number is the
+    AVERAGE of its rated cooks (computed in the query, never stored). The old `ratings` table is frozen
+    and unread — do not add reads or writes to it. Input is per-cook; display is the average."""
     __tablename__ = "cook_log"
     id = Column(Integer, primary_key=True)
     recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
@@ -125,8 +129,19 @@ class CookLog(Base):
     # Rescoping R1: who logged this cook. NULLABLE add only (R2 backfills existing → me; new cooks set
     # current_user). Reference FK (no cascade). No PK change here (cook_log keeps its own id PK).
     user_id = Column(Integer, ForeignKey("users.id"))
+    # Migration 048. NULL = this cook is unrated, and an unrated cook is EXCLUDED from the average
+    # rather than counted as zero. Half steps only; the CHECK is an explicit IN-list because the
+    # arithmetic form relies on rounding that differs between SQLite and Postgres.
+    rating = Column(Numeric(2, 1))
+    # The verdict's timestamp, SEPARATE from cooked_on: when it was rated, not when it was cooked.
+    rated_at = Column(Text)
+    # A short note on this cooking (<=60 chars, matching COOK_PHOTO_CAPTION_MAX). The per-PHOTO
+    # caption on cook_photos is a different field and is untouched.
+    caption = Column(Text)
     __table_args__ = (
         Index("idx_cook_log_recipe", "recipe_id"),
+        CheckConstraint("rating IS NULL OR rating IN (0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5)"),
+        CheckConstraint("caption IS NULL OR LENGTH(caption) <= 60"),
         {"sqlite_autoincrement": True},
     )
 
@@ -362,6 +377,37 @@ class CookPhoto(Base):
         Index("idx_cook_photos_recipe", "recipe_id"),      # per-recipe album query
         Index("idx_cook_photos_cook_log", "cook_log_id"),  # per-cook lookup
         Index("idx_cook_photos_recipe_position", "recipe_id", "position"),  # per-recipe album ORDER BY position (3d-i)
+        {"sqlite_autoincrement": True},
+    )
+
+
+class SourceRating(Base):
+    """What ONE WEB PAGE said about its own reception, on the day it was imported (migration 048).
+
+    ⚠️ THIS IS NOT ANDY'S RATING AND NEVER AVERAGES WITH IT. The cook-gated verdict lives on
+    CookLog.rating; this records a publisher's number as a dated observation. url_jsonld.py keeps
+    "rating": 0 on import and that comment stands. See ROADMAP.md "Source rating snapshot".
+
+    ⚠️ THE TIMESTAMP IS PART OF THE CLAIM. The stored fact is "the page said 4.7 on this date", never
+    "this recipe is 4.7". A row read without captured_at is a different and false claim.
+
+    Several rows per recipe is the POINT, not an accident — a re-import records a second observation
+    instead of destroying the first — so this carries a surrogate id PK. scale_assumed is 1 whenever
+    the page stated no bestRating, which is every real case measured so far (7 of 7 fixtures), because
+    a 9.2 from a 10-point source stored as 9.2 out of 5 would be a false claim. int-boolean (0/1),
+    the is_heading/is_admin idiom. Queried with explicit select() — no relationship() (house style)."""
+    __tablename__ = "recipe_source_ratings"
+    id = Column(Integer, primary_key=True)
+    recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+    value = Column(Numeric(4, 2), nullable=False)
+    rating_count = Column(Integer)
+    scale = Column(Numeric(4, 2), nullable=False, server_default=text("5"))
+    scale_assumed = Column(Integer, nullable=False, server_default=text("1"))
+    source_url = Column(Text)
+    source_name = Column(Text)
+    captured_at = Column(Text, nullable=False)
+    __table_args__ = (
+        Index("idx_recipe_source_ratings_recipe", "recipe_id"),
         {"sqlite_autoincrement": True},
     )
 
