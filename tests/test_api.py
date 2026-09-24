@@ -225,10 +225,60 @@ def test_seed_recipe_is_read_only(kitchen):
 
 
 def test_rating(kitchen):
-    ok = kitchen.client.post("/api/recipes/gai-yang/rating", json={"rating": 4})
+    """Migration 048: a rating is a verdict on ONE COOKING. POST /rating is gone — you log a cook
+    with a rating, or you rate a cook already in the log."""
+    cl = kitchen.client
+    ok = cl.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 4})
     assert ok.status_code == 200
     assert ok.get_json()["rating"] == 4
-    assert kitchen.client.post("/api/recipes/gai-yang/rating", json={"rating": 9}).status_code == 400
+    assert cl.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 9}).status_code == 400
+    assert cl.post("/api/recipes/gai-yang/rating", json={"rating": 4}).status_code == 404   # route gone entirely
+
+
+def test_half_stars_round_trip(kitchen):
+    """Half steps are stored and returned as halves, and a quarter is refused."""
+    cl = kitchen.client
+    assert cl.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 4.5}).get_json()["rating"] == 4.5
+    assert cl.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 4.25}).status_code == 400
+    assert cl.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 0}).status_code == 400
+    # ⚠️ bool is an int subclass — True must not import as one star
+    assert cl.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": True}).status_code == 400
+
+
+def test_headline_is_the_average_of_rated_cooks(kitchen):
+    """Two cooks rated 5 and 4 read as 4.5. An UNRATED cook is excluded, never counted as zero."""
+    cl = kitchen.client
+    cl.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 5})
+    cl.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 4})
+    stats = cl.post("/api/recipes/gai-yang/cooked", json={}).get_json()          # a third cook, unrated
+    assert stats["cook_count"] == 3 and stats["rated_cooks"] == 2
+    assert stats["rating"] == 4.5
+    assert cl.get("/api/recipes/gai-yang").get_json()["stats"]["rating"] == 4.5
+
+
+def test_rate_a_cook_already_in_the_log(kitchen):
+    """The stars on a cook-log row. PATCH /api/cooks/<id> sets or clears ONE cooking's verdict."""
+    cl = kitchen.client
+    first = cl.post("/api/recipes/gai-yang/cooked", json={}).get_json()["cook_log_id"]
+    rated = cl.patch(f"/api/cooks/{first}", json={"rating": 3.5}).get_json()
+    assert rated["rating"] == 3.5 and rated["rated_cooks"] == 1
+    # an explicit null CLEARS it, and the recipe goes back to unrated
+    cleared = cl.patch(f"/api/cooks/{first}", json={"rating": None}).get_json()
+    assert cleared["rating"] is None and cleared["rated_cooks"] == 0
+    assert cl.patch(f"/api/cooks/{first}", json={"rating": 2.25}).status_code == 400
+    assert cl.patch("/api/cooks/999999", json={"rating": 3}).status_code == 404
+
+
+def test_caption_a_cook(kitchen):
+    """Item 12. The caption rides on the cook, not on a photo of it."""
+    cl = kitchen.client
+    cid = cl.post("/api/recipes/gai-yang/cooked", json={"caption": "too much chili"}).get_json()["cook_log_id"]
+    assert cl.get("/api/cooks").get_json()[0]["caption"] == "too much chili"
+    # absent key leaves the caption alone; rating a cook must not wipe its note
+    cl.patch(f"/api/cooks/{cid}", json={"rating": 4})
+    assert cl.get("/api/cooks").get_json()[0]["caption"] == "too much chili"
+    assert cl.patch(f"/api/cooks/{cid}", json={"caption": "x" * 61}).status_code == 400
+    assert cl.patch(f"/api/cooks/{cid}", json={}).status_code == 400
 
 
 def test_cook_log(kitchen):
@@ -304,12 +354,26 @@ def test_undo_to_zero_clears_rating(kitchen):
     assert s["cook_count"] == 0 and s["rating"] is None
 
 
-def test_undo_with_cooks_remaining_keeps_rating(kitchen):
-    # two cooks + a rating; undo one -> still cooked, rating stands
-    kitchen.client.post("/api/recipes/gai-yang/cooked", json={})
-    kitchen.client.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 4})
-    s = kitchen.client.post("/api/recipes/gai-yang/uncook", json={}).get_json()
-    assert s["cook_count"] == 1 and s["rating"] == 4
+def test_undoing_an_unrated_cook_leaves_the_average_alone(kitchen):
+    """⚠️ THIS TEST CHANGED SHAPE WITH MIGRATION 048. It used to read "the rating is the recipe's, so
+    it survives while any cook remains". A verdict now belongs to one cooking, so what survives an
+    undo is every OTHER cook's verdict. Undoing an unrated cook cannot move the average at all."""
+    cl = kitchen.client
+    cl.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 4})   # rated
+    cl.post("/api/recipes/gai-yang/cooked", json={})                        # unrated, and undone below
+    s = cl.post("/api/recipes/gai-yang/uncook", json={}).get_json()
+    assert s["cook_count"] == 1 and s["rating"] == 4 and s["rated_cooks"] == 1
+    assert s["undone"]["cleared_rating"] is None                            # that cook had no verdict
+
+
+def test_undoing_a_rated_cook_takes_its_verdict_with_it(kitchen):
+    """The other half: the average recomputes over what is left, rather than the row being orphaned."""
+    cl = kitchen.client
+    cl.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 2})
+    cl.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 4})   # average 3
+    assert cl.get("/api/recipes/gai-yang").get_json()["stats"]["rating"] == 3
+    s = cl.post("/api/recipes/gai-yang/uncook", json={}).get_json()         # removes the 4
+    assert s["cook_count"] == 1 and s["rating"] == 2 and s["undone"]["cleared_rating"] == 4
 
 
 def test_uncook_nonexistent_is_404(kitchen):
@@ -317,17 +381,18 @@ def test_uncook_nonexistent_is_404(kitchen):
 
 
 def test_uncook_reports_removed_cook_and_cleared_rating(kitchen):
-    # undo the only cook + its rating -> response reports exactly what it removed (for a redo)
-    kitchen.client.post("/api/recipes/gai-yang/cooked", json={"date": "2024-05-01"})
-    kitchen.client.post("/api/recipes/gai-yang/rating", json={"rating": 5})
+    # undo the only cook -> response reports exactly what it removed, so a redo can put it all back
+    kitchen.client.post("/api/recipes/gai-yang/cooked",
+                        json={"date": "2024-05-01", "rating": 5, "caption": "the good one"})
     u = kitchen.client.post("/api/recipes/gai-yang/uncook", json={}).get_json()["undone"]
-    assert u["cooked_on"] == "2024-05-01" and u["source"] == "app" and u["cleared_rating"] == 5
+    assert u["cooked_on"] == "2024-05-01" and u["source"] == "app"
+    assert u["cleared_rating"] == 5 and u["caption"] == "the good one"
 
 
-def test_uncook_undone_no_cleared_rating_when_cooks_remain(kitchen):
-    # a second cook + rating; undo one -> rating survived, so cleared_rating is None
-    kitchen.client.post("/api/recipes/gai-yang/cooked", json={})
+def test_uncook_undone_reports_no_rating_for_an_unrated_cook(kitchen):
+    # cleared_rating reports THAT COOK's verdict, and an unrated cook has none
     kitchen.client.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 4})
+    kitchen.client.post("/api/recipes/gai-yang/cooked", json={})
     u = kitchen.client.post("/api/recipes/gai-yang/uncook", json={}).get_json()["undone"]
     assert u["source"] == "app" and u["cleared_rating"] is None
 
@@ -352,16 +417,17 @@ def test_redo_restores_rating_only_when_given(kitchen):
     assert s2["cook_count"] == 1 and s2["rating"] is None
 
 
-def test_undo_then_redo_round_trips_cook_and_rating(kitchen):
-    # the full one-shot: cook+rate -> uncook (clears both) -> redo the reported cook -> both restored
-    kitchen.client.post("/api/recipes/gai-yang/cooked", json={"date": "2024-05-01"})
-    kitchen.client.post("/api/recipes/gai-yang/rating", json={"rating": 5})
-    u = kitchen.client.post("/api/recipes/gai-yang/uncook", json={}).get_json()
+def test_undo_then_redo_round_trips_the_whole_cook(kitchen):
+    # the full one-shot: cook+rate+caption -> uncook -> redo what was reported -> all three restored
+    cl = kitchen.client
+    cl.post("/api/recipes/gai-yang/cooked", json={"date": "2024-05-01", "rating": 4.5, "caption": "salty"})
+    u = cl.post("/api/recipes/gai-yang/uncook", json={}).get_json()
     assert u["cook_count"] == 0 and u["rating"] is None
     body = {"cooked_on": u["undone"]["cooked_on"], "source": u["undone"]["source"],
-            "rating": u["undone"]["cleared_rating"]}
-    s = kitchen.client.post("/api/recipes/gai-yang/redo-cook", json=body).get_json()
-    assert s["cook_count"] == 1 and s["rating"] == 5
+            "rating": u["undone"]["cleared_rating"], "caption": u["undone"]["caption"]}
+    s = cl.post("/api/recipes/gai-yang/redo-cook", json=body).get_json()
+    assert s["cook_count"] == 1 and s["rating"] == 4.5
+    assert cl.get("/api/cooks").get_json()[0]["caption"] == "salty"
 
 
 def test_redo_bad_source_400_inserts_nothing(kitchen):
@@ -386,48 +452,44 @@ def test_redo_malformed_date_400_inserts_nothing(kitchen):
 
 
 def test_multi_cook_undo_redo_round_trip(kitchen):
-    # the full multi-cook cycle: the "cooks remain -> keep rating" branch + the undo->redo relay.
+    """The full multi-cook cycle, now that each cook holds its own verdict. Two cooks rated 5 and 3
+    average 4; undoing the 3 leaves 5; redoing it brings the average back to 4."""
     cl = kitchen.client
-    cl.post("/api/recipes/gai-yang/cooked", json={"date": "2024-05-01"})
-    cl.post("/api/recipes/gai-yang/cooked", json={"date": "2024-05-02"})
-    cl.post("/api/recipes/gai-yang/rating", json={"rating": 5})            # 2 cooks + a rating
-    # undo once: a cook is removed but one remains -> rating SURVIVES, cleared_rating is None
+    cl.post("/api/recipes/gai-yang/cooked", json={"date": "2024-05-01", "rating": 5})
+    cl.post("/api/recipes/gai-yang/cooked", json={"date": "2024-05-02", "rating": 3})
+    assert cl.get("/api/recipes/gai-yang").get_json()["stats"]["rating"] == 4
     u1 = cl.post("/api/recipes/gai-yang/uncook", json={}).get_json()
-    assert u1["cook_count"] == 1 and u1["rating"] == 5
-    assert u1["undone"]["cleared_rating"] is None
-    # undo again: back to 0 cooks -> rating cleared, and its value reported for a redo
-    u2 = cl.post("/api/recipes/gai-yang/uncook", json={}).get_json()
-    assert u2["cook_count"] == 0 and u2["rating"] is None
-    assert u2["undone"]["cleared_rating"] == 5
-    # redo, relaying exactly what the client would (the cook + the cleared rating) -> both restored
-    body = {"cooked_on": u2["undone"]["cooked_on"], "source": u2["undone"]["source"],
-            "rating": u2["undone"]["cleared_rating"]}
+    assert u1["cook_count"] == 1 and u1["rating"] == 5           # the 3 left with its cook
+    assert u1["undone"]["cleared_rating"] == 3
+    body = {"cooked_on": u1["undone"]["cooked_on"], "source": u1["undone"]["source"],
+            "rating": u1["undone"]["cleared_rating"]}
     s = cl.post("/api/recipes/gai-yang/redo-cook", json=body).get_json()
-    assert s["cook_count"] == 1 and s["rating"] == 5
+    assert s["cook_count"] == 2 and s["rating"] == 4 and s["rated_cooks"] == 2
 
 
-def test_set_rating_does_not_gate_on_cook_count(kitchen):
-    # set_rating is NOT cook-gated: you CAN rate a never-cooked recipe, and it persists.
-    # (The "rating only while cooked" invariant is UI + undo-clear, not a server guard.)
+def test_a_rating_cannot_exist_without_a_cooking(kitchen):
+    """⚠️ THE OPPOSITE OF WHAT THIS TEST USED TO PIN, and the change is the point of migration 048.
+    The old POST /rating was explicitly NOT cook-gated, so the server could record a verdict on a dish
+    nobody had cooked. A rating now lives ON a cook row, so an uncooked recipe has nowhere to put one
+    and the orphan case is impossible rather than merely unused."""
     cl = kitchen.client
     assert kitchen.count("cook_log", "recipe_id='gai-yang'") == 0
-    s = cl.post("/api/recipes/gai-yang/rating", json={"rating": 3}).get_json()
-    assert s["cook_count"] == 0 and s["rating"] == 3
-    assert kitchen.count("ratings", "recipe_id='gai-yang'") == 1        # persisted despite zero cooks
-    assert kitchen.client.get("/api/recipes/gai-yang").get_json()["stats"]["rating"] == 3
+    assert cl.post("/api/recipes/gai-yang/rating", json={"rating": 3}).status_code == 404   # no such route
+    assert cl.get("/api/recipes/gai-yang").get_json()["stats"]["rating"] is None
+    # the only way in creates the cooking and the verdict together, in one transaction
+    s = cl.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 3}).get_json()
+    assert s["cook_count"] == 1 and s["rating"] == 3
+    assert kitchen.count("cook_log", "recipe_id='gai-yang' AND rating IS NOT NULL") == 1
 
 
 def test_deleting_recipe_clears_its_stats(kitchen):
-    # deletion relies on ON DELETE CASCADE to remove the recipe's rating + cook history
+    # deletion relies on ON DELETE CASCADE to remove the cook history, which now CARRIES the rating
     cl = kitchen.client
     cl.post("/api/recipes", json={"name": "Temp", "ingredients": [{"qty": "1", "text": "x"}], "steps": ["go"]})
-    cl.post("/api/recipes/temp/rating", json={"rating": 5})
-    cl.post("/api/recipes/temp/cooked", json={})
-    assert kitchen.count("ratings", "recipe_id='temp'") == 1
-    assert kitchen.count("cook_log", "recipe_id='temp'") == 1
+    cl.post("/api/recipes/temp/cooked-and-rated", json={"rating": 5})
+    assert kitchen.count("cook_log", "recipe_id='temp' AND rating IS NOT NULL") == 1
 
     assert cl.delete("/api/recipes/temp").status_code == 200
-    assert kitchen.count("ratings", "recipe_id='temp'") == 0
     assert kitchen.count("cook_log", "recipe_id='temp'") == 0
     assert kitchen.fk_orphans() == []
 

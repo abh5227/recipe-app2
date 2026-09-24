@@ -361,8 +361,8 @@ class CookPhoto(Base):
     of a join through cook_log; its own cascade keeps it consistent. recipe_id is Text to match recipes.id
     (Text). user_id -> users(id) is a reference FK (no ondelete, matching recipe_queue.user_id) — the interim
     multi-user-shaped rule: present from day one though single-user now, set to current_user at insert. path
-    is the stored image path (build 2 fills it via save_cook_photo); caption is optional (<=100 chars,
-    app-enforced later). Surrogate id PK (a photo is a first-class row; no natural key). added_at = now_utc().
+    is the stored image path (build 2 fills it via save_cook_photo); caption is optional (<=60 chars,
+    app-enforced by clean_caption/COOK_PHOTO_CAPTION_MAX). Surrogate id PK (a photo is a first-class row; no natural key). added_at = now_utc().
     Queried with explicit select() — no relationship() (house style)."""
     __tablename__ = "cook_photos"
     id = Column(Integer, primary_key=True)
@@ -370,7 +370,7 @@ class CookPhoto(Base):
     recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)        # denormalized
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)             # who added it (no cascade)
     path = Column(Text, nullable=False)                                           # stored image path (build 2)
-    caption = Column(Text)                                                        # optional (<=100 chars)
+    caption = Column(Text)                                                        # optional (<=60 chars)
     added_at = Column(Text, nullable=False)                                       # now_utc(): when added
     position = Column(Integer)          # stored album order (3d-i, migration 027); nullable until seeded/set on insert
     __table_args__ = (

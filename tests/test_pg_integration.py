@@ -66,12 +66,29 @@ def _count(engine, sql, **params):
 
 # ---- 1. UPSERTS (the known dialect target) -------------------------------------------------------
 
-def test_rating_upsert_in_place(pg):
-    """ON CONFLICT(recipe_id): set then re-set updates in place — one row, no duplicate."""
+def test_rating_updates_one_cook_in_place(pg):
+    """Migration 048 replaced the ratings upsert with an UPDATE on the cook. Re-rating the same
+    cooking moves its verdict rather than adding a row, and the half step survives numeric(2,1)."""
     c = pg.client
-    assert c.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 5}).get_json()["rating"] == 5
-    assert c.post("/api/recipes/gai-yang/rating", json={"rating": 3}).get_json()["rating"] == 3
-    assert _count(pg.engine, "SELECT COUNT(*) FROM ratings WHERE recipe_id='gai-yang'") == 1
+    first = c.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 5}).get_json()
+    assert first["rating"] == 5
+    cid = first["cook_log_id"]
+    assert c.patch(f"/api/cooks/{cid}", json={"rating": 3.5}).get_json()["rating"] == 3.5
+    assert _count(pg.engine, "SELECT COUNT(*) FROM cook_log WHERE recipe_id='gai-yang'") == 1
+    assert _count(pg.engine, "SELECT COUNT(*) FROM ratings WHERE recipe_id='gai-yang'") == 0
+
+
+def test_the_average_is_a_json_number_not_a_decimal(pg):
+    """⚠️ A PG-ONLY TRAP. AVG over numeric returns Decimal, which jsonify cannot serialize, so an
+    uncoerced average is a 500 on Postgres and a correct float on SQLite. Both read paths are pinned
+    because they compute the average in different places (ORM func.avg, and raw SQL in the list)."""
+    c = pg.client
+    c.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 4})
+    c.post("/api/recipes/gai-yang/cooked-and-rated", json={"rating": 5})
+    stats = c.get("/api/recipes/gai-yang").get_json()["stats"]
+    assert stats["rating"] == 4.5 and isinstance(stats["rating"], float)
+    listed = next(r for r in c.get("/api/recipes").get_json() if r["id"] == "gai-yang")
+    assert listed["rating"] == 4.5 and isinstance(listed["rating"], float)
 
 
 # ---- 2. LIST ORDERING (collation — differs SQLite↔PG) --------------------------------------------
@@ -111,9 +128,8 @@ def test_the_pg_seed_gives_every_ingredient_its_own_concept(pg):
 
 def test_recipe_stats_aggregations(pg):
     c = pg.client
-    c.post("/api/recipes/gai-yang/cooked", json={"date": "2024-05-01"})
-    c.post("/api/recipes/gai-yang/cooked", json={"date": "2024-06-15"})
-    c.post("/api/recipes/gai-yang/rating", json={"rating": 4})
+    c.post("/api/recipes/gai-yang/cooked", json={"date": "2024-05-01", "rating": 4})
+    c.post("/api/recipes/gai-yang/cooked", json={"date": "2024-06-15"})   # unrated -> excluded from AVG
     stats = c.get("/api/recipes/gai-yang").get_json()["stats"]
     assert stats["cook_count"] == 2
     assert stats["last_cooked"] == "2024-06-15"                                 # MAX over text-date cooked_on
@@ -129,7 +145,7 @@ def test_delete_cascade_pg_native(pg):
     rid = c.post("/api/recipes", json={"name": "PG Cascade", "is_test": True,
                  "ingredients": [{"qty": "1", "text": "x"}], "steps": ["go"]}).get_json()["id"]
     c.post(f"/api/recipes/{rid}/cooked-and-rated", json={"rating": 5})
-    kids = ["recipe_ingredients", "recipe_steps", "cook_log", "ratings"]
+    kids = ["recipe_ingredients", "recipe_steps", "cook_log"]   # the verdict rides on cook_log now
     before = {t: _count(pg.engine, f"SELECT COUNT(*) FROM {t} WHERE recipe_id=:r", r=rid) for t in kids}
     assert c.delete(f"/api/recipes/{rid}").status_code == 200
     after = {t: _count(pg.engine, f"SELECT COUNT(*) FROM {t} WHERE recipe_id=:r", r=rid) for t in kids}
@@ -152,24 +168,38 @@ def test_sequence_after_insert(pg):
 # ---- 6. per-user cook/rating scoping — the cross-bleed pin (rescoping R4, consideration #3) -------
 
 def test_undo_cook_rating_is_per_user_no_cross_bleed(pg):
-    """MY undo (cooks -> 0) must drop only MY rating, never another user's on the same recipe. The
-    single-user harness can't catch this — it needs two users. Sharpest isolation of the rating-delete
-    cross-bleed: user B RATES the recipe without cooking it (0 cooks); user A cooks once then undoes.
-    With the R4 user-filter, A's undo drops only A's (absent) rating; the old unscoped
-    delete(Rating).where(recipe_id) would wipe B's rating too."""
+    """MY undo must never touch another user's verdict on the same recipe. The single-user harness
+    can't catch this — it needs two users.
+
+    ⚠️ THE SETUP CHANGED WITH MIGRATION 048 AND THE GUARANTEE DID NOT. B used to rate WITHOUT cooking,
+    which is no longer expressible, so B now cooks and rates that cooking. A's undo removes A's own
+    cook row; the old unscoped delete(Rating).where(recipe_id) would have wiped B's verdict too."""
     a_id = harness.ensure_test_user()                                 # the harness user (pg.client is A)
     b_id = harness.ensure_test_user(email="userb@test.local")         # a 2nd user
     ca = pg.client
     cb = app.app.test_client()
     harness.login_test_client(cb, b_id)
     rid = "gai-yang"
-    assert cb.post(f"/api/recipes/{rid}/rating", json={"rating": 3}).status_code == 200   # B rates, does NOT cook
-    assert ca.post(f"/api/recipes/{rid}/cooked", json={}).status_code == 200              # A cooks once (no rating)
+    assert cb.post(f"/api/recipes/{rid}/cooked-and-rated", json={"rating": 3}).status_code == 200
+    assert ca.post(f"/api/recipes/{rid}/cooked", json={}).status_code == 200              # A cooks, no verdict
     assert ca.post(f"/api/recipes/{rid}/uncook").status_code == 200                       # A undoes -> A's cooks 0
-    b_rating = _count(pg.engine, "SELECT rating FROM ratings WHERE recipe_id=:r AND user_id=:u", r=rid, u=b_id)
-    a_ratings = _count(pg.engine, "SELECT COUNT(*) FROM ratings WHERE recipe_id=:r AND user_id=:u", r=rid, u=a_id)
-    assert b_rating == 3      # B's rating SURVIVES A's undo (the cross-bleed would have deleted it)
-    assert a_ratings == 0     # A never rated; A's undo-to-0 only ever touches A's own layer
+    b_rating = _count(pg.engine,
+                      "SELECT rating FROM cook_log WHERE recipe_id=:r AND user_id=:u", r=rid, u=b_id)
+    a_cooks = _count(pg.engine,
+                     "SELECT COUNT(*) FROM cook_log WHERE recipe_id=:r AND user_id=:u", r=rid, u=a_id)
+    assert b_rating == 3      # B's verdict SURVIVES A's undo (the cross-bleed would have deleted it)
+    assert a_cooks == 0       # A's undo only ever touches A's own layer
+
+
+def test_one_user_cannot_rate_anothers_cooking(pg):
+    """The same guarantee on the new write path. PATCH /api/cooks/<id> is cook-owner gated, so the
+    route that rates a cook in the log cannot reach across users."""
+    b_id = harness.ensure_test_user(email="userb@test.local")
+    cb = app.app.test_client()
+    harness.login_test_client(cb, b_id)
+    a_cook = pg.client.post("/api/recipes/gai-yang/cooked", json={}).get_json()["cook_log_id"]
+    assert cb.patch(f"/api/cooks/{a_cook}", json={"rating": 1}).status_code == 403
+    assert _count(pg.engine, "SELECT COUNT(*) FROM cook_log WHERE id=:i AND rating IS NULL", i=a_cook) == 1
 
 
 def test_reads_are_user_scoped(pg):
@@ -180,11 +210,9 @@ def test_reads_are_user_scoped(pg):
     cb = app.app.test_client()
     harness.login_test_client(cb, b_id)
     rid = "gai-yang"
-    ca.post(f"/api/recipes/{rid}/cooked", json={"date": "2024-01-01"})
-    ca.post(f"/api/recipes/{rid}/cooked", json={"date": "2024-02-02"})
-    ca.post(f"/api/recipes/{rid}/rating", json={"rating": 4})
-    cb.post(f"/api/recipes/{rid}/cooked", json={"date": "2024-03-03"})
-    cb.post(f"/api/recipes/{rid}/rating", json={"rating": 2})
+    ca.post(f"/api/recipes/{rid}/cooked", json={"date": "2024-01-01", "rating": 4})
+    ca.post(f"/api/recipes/{rid}/cooked", json={"date": "2024-02-02"})   # unrated -> A's average stays 4
+    cb.post(f"/api/recipes/{rid}/cooked", json={"date": "2024-03-03", "rating": 2})
     # get_recipe: each sees their OWN stats
     sa = ca.get(f"/api/recipes/{rid}").get_json()["stats"]
     sb = cb.get(f"/api/recipes/{rid}").get_json()["stats"]
@@ -421,9 +449,13 @@ def test_import_commit_plan_writes_all_six_tables_pg(pg):
     assert snaps[0]["created_at"] == plan["recipe"]["created_at"]
     assert '"name":"PG Import Dish"' in snaps[0]["content"]
 
-    # 5. ratings — carried with the import owner (rescoping R3: ratings.user_id is NOT NULL)
-    rats = _fetch(pg.engine, "SELECT rating, user_id FROM ratings WHERE recipe_id=:r", r=rid)
-    assert [(x["rating"], x["user_id"]) for x in rats] == [(3, owner)]
+    # 5. the imported rating — carried on a COOK, with the import owner (migration 048). A rating
+    #    means the dish was cooked, so the import records that cooking rather than leaving a verdict
+    #    with nothing behind it. 'rating-inferred' marks the date as provisional.
+    cooks = _fetch(pg.engine, "SELECT rating, user_id, source, cooked_on FROM cook_log WHERE recipe_id=:r", r=rid)
+    assert [(float(x["rating"]), x["user_id"], x["source"]) for x in cooks] == [(3.0, owner, "rating-inferred")]
+    assert cooks[0]["cooked_on"] == plan["recipe"]["created_at"][:10]
+    assert _fetch(pg.engine, "SELECT * FROM ratings WHERE recipe_id=:r", r=rid) == []
 
     # 6. import_flags — a LINE flag carries its line's position; recipe-level flags carry NULL
     flags = _fetch(pg.engine, "SELECT position, flag, reason FROM import_flags WHERE recipe_id=:r", r=rid)

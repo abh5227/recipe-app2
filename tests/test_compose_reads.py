@@ -45,7 +45,9 @@ def test_cooks_lists_my_cooks_newest_first_with_ids(kitchen):
     cooks = a.get("/api/cooks").get_json()
     assert [c["cooked_on"] for c in cooks] == ["2021-06-15", "2020-01-01"]   # newest-first
     top = cooks[0]
-    assert set(top) == {"cook_log_id", "recipe_id", "recipe_name", "image", "cooked_on"}
+    # migration 048: a cook carries its own verdict and note, so the picker row shows them
+    assert set(top) == {"cook_log_id", "recipe_id", "recipe_name", "image", "cooked_on",
+                        "rating", "caption"}
     assert isinstance(top["cook_log_id"], int)     # the id that lets the client POST /api/shares {cook_log_id}
     assert top["recipe_id"] == rid
     assert top["recipe_name"] == "Bulgogi"

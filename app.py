@@ -34,7 +34,9 @@ from import_cleanup import clean_recipe, split_qty   # shared qty->quantity+unit
 from models import (
     Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
     LibraryName,         # the id -> canonical lookup the library search reads (migration 029)
-    Rating, CookLog, CookPhoto, RecipeSnapshot, User, Friendship, SharedPost, Comment, RecipeQueue,
+    # ⚠️ Rating (the `ratings` table) is INTENTIONALLY NOT IMPORTED. Migration 048 froze it: the
+    # verdict lives on CookLog.rating now. Re-importing it here is how a stray read gets written.
+    CookLog, CookPhoto, RecipeSnapshot, User, Friendship, SharedPost, Comment, RecipeQueue,
     ImportFlag,          # U5: the imported_via provenance row, and the gate on baseline-at-first-save
     ingredient_weights,
 )
@@ -223,8 +225,9 @@ def ingredient_slug(name):
 
 
 def recipe_stats(s, rid, user_id):
-    """Derive THIS user's cooking stats for a recipe from the log + ratings tables (rescoping R5:
-    per-user — MY cook_count, MY last_cooked, MY rating). cook_count and last_cooked are computed,
+    """Derive THIS user's cooking stats for a recipe from the cook log alone (rescoping R5: per-user
+    — MY cook_count, MY last_cooked, MY rating). Migration 048 made the log the single source: the
+    rating is the AVERAGE of my rated cooks, so nothing here reads the frozen ratings table. cook_count and last_cooked are computed,
     never stored, so they can't drift. last_cooked_provisional flags that the most-recent cook is
     provisional — ANY non-app cook source (e.g. 'paprika-import', 'rating-inferred'), i.e. a
     seeded/inferred date rather than a confirmed app-logged cook — so the UI can mark it (the
@@ -236,19 +239,29 @@ def recipe_stats(s, rid, user_id):
     count = s.scalar(select(func.count()).select_from(CookLog)
                      .where(CookLog.recipe_id == rid, CookLog.user_id == user_id))
     last = s.execute(
-        select(CookLog.cooked_on, CookLog.source)
+        select(CookLog.id, CookLog.cooked_on, CookLog.source)
         .where(CookLog.recipe_id == rid, CookLog.user_id == user_id)
         .order_by(CookLog.cooked_on.desc(), CookLog.id.desc())
         .limit(1)
     ).first()
-    rating_row = s.execute(
-        select(Rating.rating).where(Rating.recipe_id == rid, Rating.user_id == user_id)
+    last_id = last.id if last else None
+    # Migration 048: the headline is the AVERAGE of this user's RATED cooks. An unrated cook is
+    # EXCLUDED, never counted as zero, so logging a cook you haven't judged cannot drag the number
+    # down. No rated cooks -> None -> "Unrated", the same empty state as before.
+    rated = s.execute(
+        select(func.avg(CookLog.rating), func.count(CookLog.rating))
+        .where(CookLog.recipe_id == rid, CookLog.user_id == user_id, CookLog.rating.isnot(None))
     ).first()
+    average, rated_count = (rated[0], rated[1]) if rated else (None, 0)
     return {
         "cook_count": count,
         "last_cooked": last.cooked_on if last else None,                     # None if never cooked
         "last_cooked_provisional": bool(last and last.source != "app"),
-        "rating": rating_row.rating if rating_row else None,
+        "rating": float(average) if average is not None else None,
+        # How many cooks the average is over, so the display can say so rather than presenting one
+        # cook's verdict and an average over nine as the same kind of number.
+        "rated_cooks": rated_count,
+        "last_cook_id": last_id,
     }
 
 
@@ -261,17 +274,34 @@ def dialect_insert(s, table):
     return ins(table)
 
 
-def upsert_rating(s, rid, user_id, rating):
-    """Set-or-replace THIS user's rating of a recipe, stamping rated_on with a Python UTC timestamp
-    (dialect-neutral now_utc()). Shared by the 3 rating writers (set_rating, redo_cook, log_cook_and_rate).
-    Rescoping R3: the conflict target is the composite PK (recipe_id, user_id) — one rating per (recipe,
-    user) — and user_id is supplied (it's NOT NULL). Callers pass current_user.id. (Broader write-scoping
-    of cooks + owner is R4; this is the minimal change to keep rating writes working under the new PK.)"""
-    stmt = dialect_insert(s, Rating).values(recipe_id=rid, user_id=user_id, rating=rating, rated_on=now_utc())
-    s.execute(stmt.on_conflict_do_update(
-        index_elements=[Rating.recipe_id, Rating.user_id],
-        set_={"rating": stmt.excluded.rating, "rated_on": stmt.excluded.rated_on},
-    ))
+# Half stars (migration 048). The whole set, written out, because it is also what the CHECK holds and
+# the two must not drift. 0.5 is the floor: a zero-star rating and an unrated cook would look the same
+# on screen, and NULL already means unrated.
+RATING_STEPS = (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0)
+
+
+def clean_rating(raw, *, allow_none=True):
+    """Normalize + validate a per-cook rating. Returns (rating_or_None, error).
+
+    ⚠️ int AND float BOTH ARRIVE. JSON sends 4 for a whole star and 4.5 for a half, so a guard written
+    as isinstance(x, float) rejects every whole rating and one written as isinstance(x, int) rejects
+    every half. bool is excluded explicitly, since it is an int subclass and True would pass as 1."""
+    if raw is None:
+        return (None, None) if allow_none else (None, "rating is required")
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None, "rating must be a number"
+    value = float(raw)
+    if value not in RATING_STEPS:
+        return None, "rating must be a whole or half star from 0.5 to 5"
+    return value, None
+
+
+def set_cook_rating(s, cook_log_id, rating):
+    """Write a verdict onto ONE cooking. The rating and its timestamp move together: a rating with no
+    rated_at cannot be told apart from one made the day of the cook, and clearing one must clear both."""
+    s.execute(update(CookLog.__table__)
+              .where(CookLog.__table__.c.id == cook_log_id)
+              .values(rating=rating, rated_at=now_utc() if rating is not None else None))
 
 
 def _promote_library_row(s, library_id, known):
@@ -657,6 +687,9 @@ def font_file(filename):
 def list_recipes():
     # Per-recipe rating/cook_count/last_cooked are correlated scalar subqueries, kept as verbatim SQL via
     # text() (identical rating→NULL / COUNT→0 / MAX→NULL empty semantics + sort on both dialects).
+    # Migration 048: rating is now AVG over this user's RATED cooks, not a lookup in the frozen ratings
+    # table. AVG over no rows is NULL on both dialects, which is the same "unrated" the client already
+    # renders, so the empty case needs no special handling.
     # Rescoping R5: each subquery is scoped to the current user via the :uid BINDPARAM (never string-
     # interpolated) — so the list shows MY rating and MY cook stats. The recipe rows themselves are NOT
     # owner-filtered (FROM recipes r, unchanged) — EVERY recipe still appears; only the personal-layer
@@ -665,7 +698,10 @@ def list_recipes():
         rows = s.execute(text(
             """SELECT r.id, r.name, r.author, r.category, r.servings,
                       r.prep_time, r.cook_time, r.total_time, r.image, r.created_at, r.source, r.owner,
-                      (SELECT rating FROM ratings WHERE recipe_id = r.id AND user_id = :uid)          AS rating,
+                      (SELECT AVG(rating) FROM cook_log
+                        WHERE recipe_id = r.id AND user_id = :uid AND rating IS NOT NULL)            AS rating,
+                      (SELECT COUNT(rating) FROM cook_log
+                        WHERE recipe_id = r.id AND user_id = :uid AND rating IS NOT NULL)            AS rated_cooks,
                       (SELECT COUNT(*) FROM cook_log WHERE recipe_id = r.id AND user_id = :uid)       AS cook_count,
                       (SELECT MAX(cooked_on) FROM cook_log WHERE recipe_id = r.id AND user_id = :uid) AS last_cooked,
                       (SELECT COUNT(*) FROM recipe_queue WHERE recipe_id = r.id AND user_id = :uid)   AS queued_count
@@ -683,6 +719,10 @@ def list_recipes():
         owner = d.pop("owner")
         d["is_mine"] = owner == current_user.id
         d["is_queued"] = bool(d.pop("queued_count"))
+        # ⚠️ AVG OVER numeric RETURNS Decimal ON POSTGRES, and jsonify cannot serialize one, so this
+        # is a 500 rather than a wrong number. SQLite hands back a float and the cast is a no-op
+        # there, which is exactly why the dual-dialect suite is what catches it.
+        d["rating"] = float(d["rating"]) if d["rating"] is not None else None
         out.append(d)
     return jsonify(out)
 
@@ -1005,9 +1045,9 @@ def _unique_copy_id(s, base_name):
 @app.route("/api/recipes/<rid>/copy", methods=["POST"])
 def copy_recipe(rid):
     """Duplicate a recipe's CONTENT into a new recipe, resetting the accruing layer to zero.
-    `is_test` picks the tier (test vs app). The copy starts with no cooks and no rating for free:
-    cook_count/last_cooked are DERIVED from cook_log and rating lives in the ratings table — we
-    copy neither. Content (incl. import-harvested grams/secondary_measure) is carried by a direct
+    `is_test` picks the tier (test vs app). The copy starts with no cooks and no rating for free,
+    and migration 048 made that a single fact rather than two: cook_count, last_cooked AND the rating
+    all derive from cook_log, which is not copied. Content (incl. import-harvested grams/secondary_measure) is carried by a direct
     row-copy; uid/hash are import identity and left NULL (uid is UNIQUE-indexed — copying it throws)."""
     is_test = bool((request.get_json(silent=True) or {}).get("is_test"))   # thin, self-contained flag
     with orm_session() as s:
@@ -1317,7 +1357,8 @@ def list_cooks():
     I'm proud of."""
     with orm_session() as s:
         rows = s.execute(
-            select(CookLog.id, CookLog.recipe_id, CookLog.cooked_on, Recipe.name, Recipe.image)
+            select(CookLog.id, CookLog.recipe_id, CookLog.cooked_on, CookLog.rating, CookLog.caption,
+                   Recipe.name, Recipe.image)
             .join(Recipe, Recipe.id == CookLog.recipe_id)
             .where(CookLog.user_id == current_user.id)
             .order_by(CookLog.cooked_on.desc(), CookLog.id.desc())   # newest cook first (id tiebreak, as recipe_stats)
@@ -1329,6 +1370,8 @@ def list_cooks():
             "recipe_name": r.name,
             "image": r.image,
             "cooked_on": r.cooked_on,
+            "rating": float(r.rating) if r.rating is not None else None,
+            "caption": r.caption,
         }
         for r in rows
     ])
@@ -1348,14 +1391,23 @@ def log_cook(rid):
             return jsonify({"error": "date must be a real date in YYYY-MM-DD form"}), 400
         if supplied > datetime.date.today():
             return jsonify({"error": "cook date cannot be in the future"}), 400
+    # Migration 048: the log-cook box rates and captions the cook it is logging, in the same write.
+    # Both are optional — logging a cook you have no verdict on is the ordinary case.
+    rating, rate_err = clean_rating(payload.get("rating"))
+    if rate_err:
+        return jsonify({"error": rate_err}), 400
+    caption, cap_err = clean_caption(payload.get("caption"))
+    if cap_err:
+        return jsonify({"error": cap_err}), 400
     with orm_session() as s:
         if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
         cl = CookLog.__table__
+        fields = {"recipe_id": rid, "user_id": current_user.id, "rating": rating, "caption": caption,
+                  "rated_at": now_utc() if rating is not None else None}
         if cooked_on:
-            res = s.execute(insert(cl).values(recipe_id=rid, user_id=current_user.id, cooked_on=cooked_on))
-        else:
-            res = s.execute(insert(cl).values(recipe_id=rid, user_id=current_user.id))   # cooked_on omitted -> DB default date('now')
+            fields["cooked_on"] = cooked_on          # else omitted -> DB default date('now')
+        res = s.execute(insert(cl).values(**fields))
         cook_log_id = res.inserted_primary_key[0]   # returned so the client can attach a photo to THIS cook (2b)
         snapshot_recipe(s, rid, cook_log_id, "cook")   # change-tracking stage 1: capture the recipe-state cooked
         stats = recipe_stats(s, rid, current_user.id)
@@ -1365,10 +1417,13 @@ def log_cook(rid):
 
 @app.route("/api/recipes/<rid>/uncook", methods=["POST"])
 def undo_cook(rid):
-    """Remove the most recent cook entry — for fixing an accidental tap. If this returns the recipe
-    to uncooked (cook_count -> 0), also clear its rating in the same transaction, so we never leave
-    an uncooked-but-rated recipe (the inconsistency the cook-gate prevents). If other cooks remain,
-    the rating stands — you've still cooked it."""
+    """Remove the most recent cook entry — for fixing an accidental tap.
+
+    ⚠️ MIGRATION 048 MADE THIS SIMPLER, AND THE OLD SPECIAL CASE IS GONE ON PURPOSE. The rating used to
+    live on the recipe, so undoing the last cook had to work out whether to delete a separate ratings
+    row and hand the value back for a redo. A verdict now lives ON the cook row, so deleting the cook
+    takes its rating with it and the remaining cooks keep theirs untouched. `cleared_rating` survives
+    in the undo payload for one reason only, which is that the redo needs the value to put back."""
     with orm_session() as s:
         if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
@@ -1376,7 +1431,7 @@ def undo_cook(rid):
         # Without the user filter, my undo would drop ANOTHER user's rating on the same recipe (the
         # consideration-#3 cross-bleed). recipes stay visible to all, but the personal layer is per-user.
         last = s.execute(
-            select(CookLog.id, CookLog.cooked_on, CookLog.source)
+            select(CookLog.id, CookLog.cooked_on, CookLog.source, CookLog.rating, CookLog.caption)
             .where(CookLog.recipe_id == rid, CookLog.user_id == current_user.id)
             .order_by(CookLog.id.desc()).limit(1)
         ).first()
@@ -1387,25 +1442,21 @@ def undo_cook(rid):
             s.execute(delete(CookLog).where(CookLog.id == last.id))   # cascade-deletes this cook's cook_photos ROWS
             clear_hero_if_matches(s, rid, photo_paths)   # 2c: the recipe SURVIVES the undo, so a hero pointing at
                                                          # a vanished photo must be cleared (POINT/linked)
-            remaining = s.scalar(   # MY cooks remaining, counted AFTER the delete — drop MY rating iff 0
-                select(func.count()).select_from(CookLog)
-                .where(CookLog.recipe_id == rid, CookLog.user_id == current_user.id)
-            )
-            cleared_rating = None
-            if remaining == 0:
-                rr = s.execute(select(Rating.rating)
-                               .where(Rating.recipe_id == rid, Rating.user_id == current_user.id)).first()
-                cleared_rating = rr.rating if rr else None
-                s.execute(delete(Rating)   # back to uncooked (for ME) -> drop MY rating, never anyone else's
-                          .where(Rating.recipe_id == rid, Rating.user_id == current_user.id))
-            undone = {"cooked_on": last.cooked_on, "source": last.source, "cleared_rating": cleared_rating}
+            # The verdict left with the row. Carried back only so redo_cook can restore this exact cook.
+            undone = {"cooked_on": last.cooked_on, "source": last.source,
+                      "cleared_rating": float(last.rating) if last.rating is not None else None,
+                      "caption": last.caption}
         stats = recipe_stats(s, rid, current_user.id)
         s.commit()
     unlink_unreferenced(photo_paths)   # 2c: AFTER commit, unlink the cascade-orphaned files (copy-share guarded)
     return jsonify({**stats, "undone": undone})
 
 
-COOK_SOURCES = ("app", "paprika-import", "rating-inferred")
+# ⚠️ EVERY SOURCE THE LOG ACTUALLY HOLDS, not just the ones a route writes. redo_cook validates a
+# restored cook against this tuple, so a source missing here makes undo-then-redo fail on a cook that
+# is sitting in the database. 'demo-seed' (5 rows) and 'demo-2b' (2 rows) were missing and did exactly
+# that. Any non-'app' source still reads as provisional (see recipe_stats).
+COOK_SOURCES = ("app", "paprika-import", "rating-inferred", "demo-seed", "demo-2b")
 
 
 @app.route("/api/recipes/<rid>/redo-cook", methods=["POST"])
@@ -1413,12 +1464,17 @@ def redo_cook(rid):
     """Restore a cook that /uncook just removed — the SAME cooked_on and source (not a new
     today's cook), and optionally re-set a rating the undo cleared. Makes the redo arrow a
     faithful one-shot reversal of that specific undo. /cooked and /uncook are unchanged.
-    All client-supplied inputs are validated (real non-future date; known source; rating in
-    range) and nothing is written on bad input."""
+    All client-supplied inputs are validated (real non-future date, known source, rating on a
+    half step) and nothing is written on bad input."""
     payload = request.get_json(silent=True) or {}
     cooked_on = payload.get("cooked_on")
     source = payload.get("source")
-    rating = payload.get("rating")   # optional: only when the undo cleared a rating
+    rating, rate_err = clean_rating(payload.get("rating"))   # optional: only when the undo cleared one
+    if rate_err:
+        return jsonify({"error": rate_err}), 400
+    caption, cap_err = clean_caption(payload.get("caption"))
+    if cap_err:
+        return jsonify({"error": cap_err}), 400
     try:
         restored = datetime.date.fromisoformat(cooked_on) if cooked_on else None
     except (ValueError, TypeError):
@@ -1429,52 +1485,87 @@ def redo_cook(rid):
         return jsonify({"error": "cook date cannot be in the future"}), 400
     if source not in COOK_SOURCES:
         return jsonify({"error": "unknown cook source"}), 400
-    if rating is not None and rating not in (1, 2, 3, 4, 5):
-        return jsonify({"error": "rating must be an integer from 1 to 5"}), 400
     with orm_session() as s:
         if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
-        res = s.execute(insert(CookLog.__table__).values(recipe_id=rid, user_id=current_user.id, cooked_on=cooked_on, source=source))
+        # The verdict and the note are restored ON the new row, so the redo brings back the whole cook
+        # rather than the date alone.
+        res = s.execute(insert(CookLog.__table__).values(
+            recipe_id=rid, user_id=current_user.id, cooked_on=cooked_on, source=source,
+            rating=rating, caption=caption, rated_at=now_utc() if rating is not None else None))
         # change-tracking stage 1: a redo is a NEW cook row -> its own snapshot of the CURRENT recipe-state
         snapshot_recipe(s, rid, res.inserted_primary_key[0], "cook")
-        if rating is not None:
-            upsert_rating(s, rid, current_user.id, rating)
         stats = recipe_stats(s, rid, current_user.id)
         s.commit()
     return jsonify(stats)
 
 
-@app.route("/api/recipes/<rid>/rating", methods=["POST"])
-def set_rating(rid):
-    """Set (or change) your 1-5 rating for a recipe."""
+# ⚠️ POST /api/recipes/<rid>/rating IS GONE, DELIBERATELY. It set one rating for a whole recipe and
+# was explicitly not cook-gated, which is what left the server able to record a verdict on a dish
+# nobody had cooked. A rating is now a property of one cooking, so there is no recipe-level thing to
+# set. The two ways in are logging a cook with a rating, and rating a cook already in the log
+# (PATCH /api/cooks/<id> below). The recipe's number is read-only everywhere and is an average.
+
+
+@app.route("/api/cooks/<int:cook_log_id>", methods=["PATCH"])
+def edit_cook(cook_log_id):
+    """Rate or caption ONE cooking (JSON {rating, caption}), which is how the stars on a cook-log row
+    write. Cook-owner gated (cook_log.user_id == current_user), mirroring edit_cook_photo.
+
+    ⚠️ ABSENT AND NULL MEAN DIFFERENT THINGS HERE, and conflating them would make it impossible to
+    un-rate a cook. A key that is absent leaves that field alone, so rating a cook does not wipe its
+    caption. A key sent explicitly as null CLEARS that field. Returns the recipe's stats, since
+    changing one cook's verdict moves the recipe's average."""
     payload = request.get_json(silent=True) or {}
-    rating = payload.get("rating")
-    if rating not in (1, 2, 3, 4, 5):
-        return jsonify({"error": "rating must be an integer from 1 to 5"}), 400
     with orm_session() as s:
-        if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
-            return jsonify({"error": "recipe not found"}), 404
-        upsert_rating(s, rid, current_user.id, rating)   # NOT cook-gated: rating an uncooked recipe is allowed (as before)
-        stats = recipe_stats(s, rid, current_user.id)
+        cook = s.get(CookLog, cook_log_id)
+        if cook is None:
+            return jsonify({"error": "cook not found"}), 404
+        if cook.user_id != current_user.id:
+            return jsonify({"error": "not your cook"}), 403
+        values = {}
+        if "rating" in payload:
+            rating, err = clean_rating(payload["rating"])
+            if err:
+                return jsonify({"error": err}), 400
+            values["rating"] = rating
+            values["rated_at"] = now_utc() if rating is not None else None
+        if "caption" in payload:
+            caption, err = clean_caption(payload["caption"])
+            if err:
+                return jsonify({"error": err}), 400
+            values["caption"] = caption
+        if not values:
+            return jsonify({"error": "nothing to change — send a rating or a caption"}), 400
+        s.execute(update(CookLog.__table__).where(CookLog.__table__.c.id == cook_log_id).values(**values))
+        stats = recipe_stats(s, cook.recipe_id, current_user.id)
         s.commit()
-    return jsonify(stats)
+    return jsonify({**stats, "cook_log_id": cook_log_id})
 
 
 @app.route("/api/recipes/<rid>/cooked-and-rated", methods=["POST"])
 def log_cook_and_rate(rid):
-    """Atomically log a cook (today; source defaults to 'app' — a real confirmed cook) AND set the
-    rating, in one transaction. The cook-gated 'Mark cooked & rate?' path; returns recipe_stats."""
+    """Atomically log a cook (today; source defaults to 'app' — a real confirmed cook) AND rate it, in
+    one transaction. Returns recipe_stats.
+
+    ⚠️ THE RATING LANDS ON THE COOK THIS CREATES, not on the recipe (migration 048). The rating is
+    REQUIRED here, which is what separates this route from /cooked — a caller with no verdict to
+    record is logging a cook, not rating one."""
     payload = request.get_json(silent=True) or {}
-    rating = payload.get("rating")
-    if rating not in (1, 2, 3, 4, 5):
-        return jsonify({"error": "rating must be an integer from 1 to 5"}), 400
+    rating, rate_err = clean_rating(payload.get("rating"), allow_none=False)
+    if rate_err:
+        return jsonify({"error": rate_err}), 400
+    caption, cap_err = clean_caption(payload.get("caption"))
+    if cap_err:
+        return jsonify({"error": cap_err}), 400
     with orm_session() as s:
         if s.scalar(select(Recipe.id).where(Recipe.id == rid)) is None:
             return jsonify({"error": "recipe not found"}), 404
-        res = s.execute(insert(CookLog.__table__).values(recipe_id=rid, user_id=current_user.id))   # today's cook, source default 'app'
+        res = s.execute(insert(CookLog.__table__).values(   # today's cook, source default 'app'
+            recipe_id=rid, user_id=current_user.id,
+            rating=rating, caption=caption, rated_at=now_utc()))
         cook_log_id = res.inserted_primary_key[0]   # returned for at-log-time photo attach (2b), like log_cook
         snapshot_recipe(s, rid, cook_log_id, "cook")   # change-tracking stage 1: capture the recipe-state cooked
-        upsert_rating(s, rid, current_user.id, rating)
         stats = recipe_stats(s, rid, current_user.id)
         s.commit()
     return jsonify({**stats, "cook_log_id": cook_log_id})
@@ -1665,7 +1756,7 @@ def reorder_cook_photos(rid):
 # backfilled stage 1). Login-gated by default (NOT in PUBLIC_ENDPOINTS); current_user is ALWAYS the
 # actor. A want-to-make queue is for recipes you MEAN to cook — including OTHERS' — so queueing is NOT
 # owner-restricted (unlike sharing): any visible recipe is queueable. Mirrors list_cooks (read) /
-# upsert_rating (idempotent add) / undo_cook (recipe_id-keyed remove) verbatim in idiom.
+# the cook routes (idempotent add / recipe_id-keyed remove) verbatim in idiom.
 
 @app.route("/api/queue")
 def list_queue():

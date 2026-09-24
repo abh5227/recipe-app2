@@ -189,8 +189,14 @@ def test_commit_writes_all_tables(kitchen):
         assert conn.execute(
             "SELECT COUNT(*) FROM recipe_steps WHERE recipe_id='acqua-pazza'"
         ).fetchone()[0] == 2
+        # ⚠️ An imported rating now rides on a COOK, not a recipe-level ratings row. A rating means
+        # the dish was cooked, so the import records that cooking; 'rating-inferred' marks the date
+        # as provisional. This is what keeps a verdict from existing with nothing behind it.
+        cook = conn.execute(
+            "SELECT rating, source FROM cook_log WHERE recipe_id='acqua-pazza'").fetchone()
+        assert cook["rating"] == 4 and cook["source"] == "rating-inferred"
         assert conn.execute(
-            "SELECT rating FROM ratings WHERE recipe_id='acqua-pazza'").fetchone()[0] == 4
+            "SELECT COUNT(*) FROM ratings WHERE recipe_id='acqua-pazza'").fetchone()[0] == 0
         assert conn.execute(
             "SELECT COUNT(*) FROM import_flags WHERE recipe_id='acqua-pazza'"
         ).fetchone()[0] >= 1

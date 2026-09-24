@@ -5,7 +5,7 @@ core's output) into database rows, with uid-dedup and a review queue.
 PIPELINE:  paprika_native_reader (source -> normalized shape)
         -> import_cleanup        (normalized -> structured/flagged)
         -> THIS                  (structured/flagged -> recipes / recipe_ingredients /
-                                  recipe_steps / ratings / import_flags)
+                                  recipe_steps / cook_log / import_flags)
 
 Imported recipes are source='app', so they live alongside the seed recipes and SURVIVE
 every rebuild (build_db only ever rebuilds source='seed').
@@ -20,7 +20,7 @@ Two halves, kept apart on purpose:
 
 SLUG vs UID — two different jobs:
   - slug = recipes.id, the human-readable PRIMARY KEY minted from the title; every child row
-    (ingredients, steps, ratings, flags) references it. Collisions get -2/-3/....
+    (ingredients, steps, cooks, flags) references it. Collisions get -2/-3/....
   - uid  = the SEPARATE dedup key (the source's stable id). If a recipe's uid is already in
     the DB we SKIP it (this is how the 5 tagged seed twins are skipped on import).
 
@@ -48,7 +48,7 @@ import snapshot_serialize  # single-source snapshot FORMAT — the original-base
 
 import import_cleanup as cleanup
 import paprika_native_reader as reader
-from models import Rating, Recipe, RecipeIngredient, RecipeSnapshot, RecipeStep, ImportFlag, User
+from models import CookLog, Recipe, RecipeIngredient, RecipeSnapshot, RecipeStep, ImportFlag, User
 
 BASE_DIR = Path(__file__).resolve().parent
 DB = BASE_DIR / "recipes.db"
@@ -106,10 +106,20 @@ def _category_text(categories):
     return " · ".join(cats) if cats else None
 
 
+# Half stars (migration 048). Mirrors app.RATING_STEPS; import_write must not depend on app.
+_RATING_STEPS = (0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0)
+
+
 def _rating_row(rating):
-    """1–5 -> that value; 0 ('unrated' in Paprika) or missing -> None, so no ratings row is
-    written and the CHECK(rating BETWEEN 1 AND 5) is never violated."""
-    return rating if isinstance(rating, int) and 1 <= rating <= 5 else None
+    """A rating on a half step -> that value as a float; 0 ('unrated' in Paprika) or missing -> None,
+    so no cook is written and the CHECK is never violated.
+
+    ⚠️ bool IS EXCLUDED EXPLICITLY because it is an int subclass, so True would otherwise import as
+    one star. Paprika sends whole integers, and floats are accepted so a later source carrying halves
+    needs no change here."""
+    if isinstance(rating, bool) or not isinstance(rating, (int, float)):
+        return None
+    return float(rating) if float(rating) in _RATING_STEPS else None
 
 
 def _ingredient_row(pos, line):
@@ -229,8 +239,8 @@ def plan_recipe(cleaned, uid_index, taken_slugs, now=None):
 # The ONLY writer (used by the real import run, NOT by the dry-run)
 # --------------------------------------------------------------------------- #
 def resolve_owner(executor, email=None):
-    """Resolve the owner user id for an import (rescoping R3: ratings.user_id is NOT NULL, so imported
-    ratings need an owner). Explicit email wins (error if unknown); else the SOLE user (error if 0 or >1
+    """Resolve the owner user id for an import (rescoping R3: an imported rating rides on a cook_log
+    row, which carries a user). Explicit email wins (error if unknown); else the SOLE user (error if 0 or >1
     — pass --owner-email). Mirrors scripts/backfill_rescoping.py's resolution.
 
     `executor` is anything with .execute() — a SQLAlchemy Session OR Connection (see commit_plan)."""
@@ -300,9 +310,16 @@ def commit_plan(executor, plan, owner_id=None, snapshot=True):
             recipe_id=r["id"], cook_log_id=None, user_id=owner_id, reason="original",
             content=snapshot_serialize.content_blob(r, plan["ingredients"], plan["steps"]),
             created_at=r["created_at"]))
+    # ⚠️ AN IMPORTED RATING GETS A COOK TO HANG ON, and that is the whole of the fix. This used to
+    # insert a recipe-level ratings row with no cook behind it, which is how 107 verdicts ended up
+    # needing a hand-written repair later. A rating means the dish WAS cooked, so the import records
+    # that cooking. source='rating-inferred' marks the date as provisional (recipe_stats renders any
+    # non-'app' source with the approximate treatment), because the source tells us it was cooked but
+    # not when. The date is the recipe's own import timestamp, the nearest honest stand-in available.
     if plan["rating"] is not None:
-        executor.execute(insert(Rating.__table__).values(
-            recipe_id=r["id"], user_id=owner_id, rating=plan["rating"]))
+        executor.execute(insert(CookLog.__table__).values(
+            recipe_id=r["id"], user_id=owner_id, cooked_on=r["created_at"][:10],
+            source="rating-inferred", rating=plan["rating"], rated_at=r["created_at"]))
     for fl in plan["review_flags"]:
         executor.execute(insert(ImportFlag.__table__).values(recipe_id=r["id"], **fl))
     return True
@@ -469,7 +486,7 @@ def print_plan(plan, index):
     print("       step rows : %d (%d heading)%s"
           % (len(steps), len(sh), ("  -> " + " | ".join(sh)) if sh else ""))
     print("       rating    : %s" % ("no row (0 / unrated)" if plan["rating"] is None
-                                      else "%d  -> ratings row" % plan["rating"]))
+                                      else "%s  -> a rating-inferred cook" % plan["rating"]))
     if plan["recipe_flags"]:
         print("       INCOMPLETE: %s" % ", ".join(plan["recipe_flags"]))
     if plan["review_flags"]:
@@ -489,7 +506,7 @@ def _print_dry_summary(plans):
     print("  ingredient rows  : %d" % sum(len(p["ingredients"]) for p in writes))
     print("  step rows        : %d" % sum(len(p["steps"]) for p in writes))
     print("  review-queue rows: %d" % sum(len(p["review_flags"]) for p in writes))
-    print("  ratings rows     : %d" % sum(1 for p in writes if p["rating"] is not None))
+    print("  rated cooks      : %d" % sum(1 for p in writes if p["rating"] is not None))
     incomplete = [p["recipe"]["name"] for p in writes if p["recipe_flags"]]
     print("  incomplete (written + flagged): %s" % (incomplete or "none"))
     print("\n(nothing written — this was a dry run.)")
