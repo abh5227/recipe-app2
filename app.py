@@ -1354,13 +1354,19 @@ def list_cooks():
     the feed compose modal's cook picker. Joins cook_log -> recipes for the name/image. Scoped STRICTLY
     to my own cooks (default-deny — never another user's; login-gated by the before_request allowlist).
     Exposing MY OWN cook_log_id is what lets the client POST /api/shares {cook_log_id} to share a cook
-    I'm proud of."""
+    I'm proud of.
+
+    ?recipe=<id> narrows it to one recipe, which is what the recipe page's cook log reads. The filter
+    is ADDITIVE and the user scope is not negotiable by it — a recipe filter still only ever returns
+    my own cooks."""
+    only = request.args.get("recipe")
     with orm_session() as s:
         rows = s.execute(
             select(CookLog.id, CookLog.recipe_id, CookLog.cooked_on, CookLog.rating, CookLog.caption,
-                   Recipe.name, Recipe.image)
+                   CookLog.source, Recipe.name, Recipe.image)
             .join(Recipe, Recipe.id == CookLog.recipe_id)
-            .where(CookLog.user_id == current_user.id)
+            .where(CookLog.user_id == current_user.id,
+                   *( [CookLog.recipe_id == only] if only else [] ))
             .order_by(CookLog.cooked_on.desc(), CookLog.id.desc())   # newest cook first (id tiebreak, as recipe_stats)
         ).all()
     return jsonify([
@@ -1372,6 +1378,7 @@ def list_cooks():
             "cooked_on": r.cooked_on,
             "rating": float(r.rating) if r.rating is not None else None,
             "caption": r.caption,
+            "source": r.source,                 # non-'app' reads as a provisional date (the ~ treatment)
         }
         for r in rows
     ])

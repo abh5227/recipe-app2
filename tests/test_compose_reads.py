@@ -47,7 +47,7 @@ def test_cooks_lists_my_cooks_newest_first_with_ids(kitchen):
     top = cooks[0]
     # migration 048: a cook carries its own verdict and note, so the picker row shows them
     assert set(top) == {"cook_log_id", "recipe_id", "recipe_name", "image", "cooked_on",
-                        "rating", "caption"}
+                        "rating", "caption", "source"}
     assert isinstance(top["cook_log_id"], int)     # the id that lets the client POST /api/shares {cook_log_id}
     assert top["recipe_id"] == rid
     assert top["recipe_name"] == "Bulgogi"
@@ -87,3 +87,17 @@ def test_recipes_is_mine_owned_vs_other(kitchen):
     assert rows[theirs]["is_mine"] is False
     assert "owner" not in rows[mine]        # least-exposure: the raw owner id is never leaked
     assert "owner" not in rows[theirs]
+
+
+def test_cooks_can_be_narrowed_to_one_recipe(kitchen):
+    """?recipe=<id> is what the recipe page's cook log reads. ⚠️ The filter is additive and never
+    widens the user scope: it still returns only my own cooks."""
+    a = kitchen.client
+    one = _own_recipe(a, "Bulgogi")
+    two = _own_recipe(a, "Laksa")
+    _cook(a, one, "2020-01-01")
+    _cook(a, two, "2021-02-02")
+    mine = a.get(f"/api/cooks?recipe={one}").get_json()
+    assert [c["recipe_id"] for c in mine] == [one]
+    assert len(a.get("/api/cooks").get_json()) == 2          # unfiltered still returns both
+    assert a.get("/api/cooks?recipe=no-such-recipe").get_json() == []

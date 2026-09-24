@@ -408,10 +408,18 @@ a:hover { color: var(--berry-lift); }
   color: var(--ink-pen); display: inline-block; transform: rotate(-0.7deg);
 }
 .home-view .rc-hw.dim { opacity: .62; transform: rotate(-0.4deg); }
+/* The card's rating is the same clipped-fill renderer as the recipe page, kept in the annotation
+   hand. It used to be a plain ★-repeat string, which could not draw a fraction — and silently drew
+   FOUR stars with no remainder when the value was 4.5. */
 .home-view .rc-hwstars {
-  font-family: "Kalam", "Caveat", cursive; color: var(--ink-pen); font-size: 14px;
-  letter-spacing: 1.5px; display: inline-block; transform: rotate(-0.7deg);
+  font-family: "Kalam", "Caveat", cursive; color: var(--ink-pen);
+  display: inline-flex; align-items: center; gap: 5px; transform: rotate(-0.7deg);
 }
+.home-view .rc-hwstars .starfill { font-size: 14px; letter-spacing: 1.5px; }
+.home-view .rc-hwstars .starfill-empty { color: var(--ink-pen); opacity: .3; }
+.home-view .rc-hwstars .starfill-on { color: var(--ink-pen); opacity: .92; }
+.home-view .rc-hwstars .rating-num { font-family: inherit; font-size: 15px; color: var(--ink-pen); opacity: .85; }
+.home-view .rc-hwstars .rating-over { display: none; }   /* the card has no room for the denominator */
 .home-view .rc-hwnum { font-family: "Kalam", "Caveat", cursive; font-size: 17px; }
 /* the last-cooked date, shown ONLY in "Last cooked" sort. Same hand, stepped back a little so the
    count still leads. */
@@ -998,19 +1006,67 @@ a:hover { color: var(--berry-lift); }
   border-radius: 12px; padding: 20px 22px;   /* "more defined" (B): crisper border + subtle warm fill */
 }
 .cook-redo { display: inline-flex; gap: 6px; }  /* the Undo / Redo text pair — shown only in the post-undo window */
-.rating { display: inline-flex; gap: 2px; }
-.star {
-  font: inherit;   /* use the design font, not the UA <button> system-sans (the ★ glyph leak) */
-  background: none; border: none; cursor: pointer; padding: 0 1px;
-  font-size: 20px; line-height: 1; color: var(--line);   /* set rating reads as "set", not shouting */
-  transition: color .12s, transform .12s;
+.rating { display: inline-flex; align-items: center; gap: 7px; }
+/* ⚠️ THE FILL IS A CLIPPED OVERLAY, which is what lets an arbitrary fraction render at all. Five
+   outline stars sit in normal flow and set the width; five gold ones are absolutely positioned over
+   them and clipped by an inline width. letter-spacing must match on both layers or the two rows of
+   glyphs drift apart and the clip lands mid-gap. */
+.starfill { position: relative; display: inline-block; line-height: 1; white-space: nowrap; font-size: 20px; letter-spacing: 1px; }
+.starfill-empty { color: var(--line); }
+.starfill-on {
+  position: absolute; left: 0; top: 0; overflow: hidden;
+  color: var(--amber); opacity: 0.92; white-space: nowrap; letter-spacing: inherit;
+  transition: width .12s ease-out;
 }
-.star.on { color: var(--amber); opacity: 0.92; }
-/* hover-preview: while hovering the rating, stars read outline by default and 1..N fill gold */
-.rating.previewing .star { color: var(--line); }
-.rating.previewing .star.preview { color: var(--amber); }
-.star:hover { transform: scale(1.15); color: var(--amber); }
-.star:focus-visible { outline: 2px solid var(--berry); outline-offset: 2px; border-radius: 3px; }
+.rating-num { font-family: var(--font-sans); font-size: 14px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+.rating-over { font-family: var(--font-sans); font-size: 12px; color: var(--ink-soft); opacity: .75; }
+.rate-none { font-family: var(--font-sans); font-size: 13px; color: var(--ink-soft); font-style: italic; opacity: .8; }
+
+/* The interactive widget. Ten hit targets laid over the glyphs, one per half step. ⚠️ Half a star is
+   ~13px wide and no arrangement changes that while halves must be clickable at the size a star is
+   drawn — so the fix is the OTHER axis: a 38px-tall row makes each target 13x38, and the hover fill
+   shows the value before the click commits it. */
+.starfill-lg { font-size: 26px; }
+.star-hits { position: absolute; inset: -9px 0; display: flex; }
+.star-hit {
+  flex: 1 1 0; min-width: 0; padding: 0; border: none; background: none; cursor: pointer;
+  border-radius: 3px;
+}
+.star-hit:focus-visible { outline: 2px solid var(--berry); outline-offset: 1px; }
+.rating-input { cursor: pointer; }
+.rating-input.previewing .starfill-on { transition: none; }   /* follow the cursor, do not chase it */
+
+/* The per-cook log: one row per cooking, each carrying its own verdict and note. */
+.cook-log-list { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.cook-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 3px 0; }
+.cook-row-date {
+  font-family: var(--font-sans); font-size: 12.5px; color: var(--ink-soft);
+  min-width: 84px; flex: none; font-variant-numeric: tabular-nums;
+}
+.cook-row-date .approx { opacity: .8; font-style: italic; }
+.cook-row-caption {
+  flex: 1 1 140px; min-width: 0; background: none; border: none; border-bottom: 1px solid transparent;
+  font-family: var(--font-sans); font-size: 12.5px; color: var(--ink-soft); padding: 2px 0;
+}
+.cook-row-caption::placeholder { opacity: .45; font-style: italic; }
+.cook-row-caption:hover { border-bottom-color: var(--line); }
+.cook-row-caption:focus { outline: none; border-bottom-color: var(--berry); color: var(--ink); }
+
+/* Rating + note inside the log-cook box. */
+.bd-verdict { display: flex; flex-direction: column; gap: 8px; margin: 14px 0 0; }
+.bd-rate { display: flex; align-items: center; gap: 10px; }
+.bd-lbl { font-family: var(--font-sans); font-size: 13.5px; color: var(--ink-soft); }
+.bd-clear {
+  font-family: var(--font-sans); font-size: 12px; color: var(--ink-soft);
+  background: none; border: none; cursor: pointer; text-decoration: underline; opacity: .7;
+}
+.bd-clear:hover { opacity: 1; }
+.bd-caption {
+  font-family: var(--font-sans); font-size: 13.5px; padding: 7px 10px;
+  border: 1px solid var(--line); border-radius: 6px; background: var(--card); color: var(--ink);
+}
+.bd-caption::placeholder { opacity: .5; font-style: italic; }
+.bd-caption:focus { outline: none; border-color: var(--berry); }
 .cook-summary { display: flex; flex-direction: column; gap: 2px; margin: 0; font-family: var(--font-sans); font-size: 12.5px; letter-spacing: 0.01em; color: var(--ink-soft); }   /* history recedes: smaller + lighter, sans */
 .cook-summary .approx { opacity: 0.8; font-style: italic; }   /* provisional (import-seeded) cook date — unconfirmed, reuses the ~/.approx family */
 .rate-hint { font-family: var(--font-sans); color: var(--ink-soft); font-size: 13px; font-style: italic; }   /* uncooked + unrated: a quiet nudge */

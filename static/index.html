@@ -77,6 +77,18 @@
         <input class="bd-photo-input" type="file" accept="image/*" multiple tabindex="-1" aria-hidden="true">
       </div>
     </div>
+    <!-- Items 11 + 12: the verdict and the note belong to THIS cooking, so they are captured with it
+         rather than set on the recipe afterwards. Both optional — logging a cook you have no opinion
+         about is the ordinary case. app.js fills .bd-stars with the interactive half-step renderer. -->
+    <div class="bd-verdict">
+      <div class="bd-rate">
+        <span class="bd-lbl">How was it?</span>
+        <div class="rating rating-input" data-bd-stars role="group" aria-label="Rate this cook"></div>
+        <button class="bd-clear" type="button" data-bd-rate-clear hidden>clear</button>
+      </div>
+      <input type="text" class="bd-caption" data-bd-caption maxlength="60"
+             placeholder="a note about this cook (optional)" aria-label="A note about this cook">
+    </div>
     <div class="bd-actions">
       <button class="btn alt" data-backdate-log>Log this cook</button>
       <span class="bd-error" data-bd-error aria-live="polite"></span>
