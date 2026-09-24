@@ -217,7 +217,15 @@ adding a source never touches the hard logic.
 - *Cleanup-core concerns, exercised at scale on import: cross-reference the
   ingredient-name-cleanup / amount-structure / data-capture / provenance notes (top).*
 
-**Source rating snapshot. A design note, not scheduled. Recorded 2026-09-16.**
+**Source rating snapshot. ✅ CAPTURE BUILT 2026-09-24 (migration 048). Design note recorded 2026-09-16.**
+
+⚠️ **Storage only. Nothing renders it yet, and that is deliberate.** `url_jsonld.source_rating`
+reads `aggregateRating` on import and `recipe_source_ratings` holds it with its scale, its source
+url and its date. The display is where the warning below bites, so it gets its own preview round
+rather than riding along with the capture. Measured at build time: of the 14 fixtures, nine yield a
+Recipe and eight of those carry a rating, and `bestRating` is absent from all eight, so
+`scale_assumed` is 1 in every real case. The open question the note leaves, fourth tier against
+fourth axis, is still open and still belongs in `docs/sourcing-tiers.md`.
 
 On a URL import, capture what the source page said about its own reception at that moment:
 *"4.6 stars, 1,200 reviews on allrecipes, recovered 2026-09-16."* A point-in-time snapshot, never
