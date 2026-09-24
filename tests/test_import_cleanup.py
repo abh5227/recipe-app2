@@ -77,6 +77,97 @@ def test_a_clove_standing_alone_is_the_spice_and_keeps_the_name(line, name):
     assert d["unit"] == "" and d["name"] == name
 
 
+# --------------------------------------------------------------------------- #
+# A size word is part of the MEASUREMENT
+# --------------------------------------------------------------------------- #
+# ⚠️ ANDY'S CALL, AND IT REVERSES WHAT previews/parser-library-scoping.md PROPOSED. That report read
+#    the 180 live rows storing unit='large' / 'small bunch' / 'large cloves' as a defect to undo. They
+#    are deliberate. "1 large egg" is one egg of a stated size, so the size is what the count counts
+#    and it belongs beside the number. This suite pins the parser to the stored rows, not the reverse.
+#    Measured over all 3,349 live lines: 204 change, 120 improve, 84 neutral, 0 worse.
+@pytest.mark.parametrize("line,qty_unit,name", [
+    ("1 large egg", "large", "egg"),
+    ("4 medium Roma tomatoes, seeded", "medium", "Roma tomatoes, seeded"),
+    ("1 small red onion (finely chopped)", "small", "red onion (finely chopped)"),
+])
+def test_a_size_word_with_no_counting_noun_is_the_whole_unit(line, qty_unit, name):
+    d = ic.classify_line(line)
+    assert d["unit"] == qty_unit and d["name"] == name
+
+
+@pytest.mark.parametrize("line,unit,name", [
+    # The noun TRAILS the food, so the count is lifted first and the size joins it afterwards.
+    ("1 medium garlic clove", "medium clove", "garlic"),
+    ("5 medium garlic cloves, smashed", "medium cloves", "garlic, smashed"),
+    ("1 large lemongrass stalk, white part only", "large stalk", "lemongrass, white part only"),
+    # The noun LEADS, so _COUNT_UNIT_LEAD takes size and noun together in one match.
+    ("1 large head of cauliflower, cut into steaks", "large head", "cauliflower, cut into steaks"),
+    ("2 small bunches parsley", "small bunches", "parsley"),
+])
+def test_a_size_word_combines_with_a_counting_noun_in_either_word_order(line, unit, name):
+    d = ic.classify_line(line)
+    assert d["unit"] == unit and d["name"] == name
+
+
+@pytest.mark.parametrize("line,unit,name", [
+    ("2 handfuls baby spinach", "handfuls", "baby spinach"),
+    ("4 large handfuls baby spinach", "large handfuls", "baby spinach"),
+    ("1 package firm tofu, drained", "package", "firm tofu, drained"),
+    ("2 packages frozen spinach", "packages", "frozen spinach"),
+    ("1 tin chopped tomatoes", "tin", "chopped tomatoes"),
+    ("2 tins coconut milk", "tins", "coconut milk"),
+])
+def test_the_counting_nouns_added_with_the_size_rule(line, unit, name):
+    """handful and package each already held live rows in the unit column that no rule admitted.
+    'tin' is the British spelling of 'can', which the rule has always taken."""
+    d = ic.classify_line(line)
+    assert d["unit"] == unit and d["name"] == name
+
+
+@pytest.mark.parametrize("line,name", [
+    ("2 lemons", "lemons"),              # a plain food noun is not a unit
+    ("3 shallots, sliced", "shallots, sliced"),
+    ("1 onion chopped", "onion chopped"),
+])
+def test_an_ordinary_trailing_word_never_becomes_the_unit(line, name):
+    """⚠️ THE split_qty HARDENING, FROM THE OTHER SIDE. _COUNTNOUN_RE used to accept ANY letters-only
+    word, which is a test of shape where the question is one of membership. Only the two closed sets
+    reach the unit column now."""
+    d = ic.classify_line(line)
+    assert d["unit"] == "" and d["name"] == name
+    assert ic.split_qty("2 lemons") == ("2 lemons", "")
+
+
+def test_a_size_word_is_refused_when_nothing_but_modifiers_follows_it():
+    """The same guard the counting noun has. 'large' with no food after it measures nothing."""
+    d = ic.classify_line("1 large, chopped")
+    assert d["unit"] == "" and d["name"] == "large, chopped"
+
+
+def test_a_measure_already_present_is_never_prefixed_with_a_size_word():
+    d = ic.classify_line("1 cup large diced onion")
+    assert d["unit"] == "cup" and d["name"] == "large diced onion"
+
+
+@pytest.mark.parametrize("line,unit,name", [
+    ("small bunch of flatleaf parsley (finely chopped)", "small bunch",
+     "flatleaf parsley (finely chopped)"),
+    ("Pinch of salt", "Pinch", "salt"),
+    ("garlic cloves, minced", "cloves", "garlic, minced"),
+])
+def test_an_amount_less_line_that_opens_with_a_measurement_reads_it(line, unit, name):
+    """A missing COUNT is a different state from an unreadable line, and the flag exists for the
+    second one. 46 live lines move out of the review queue this way."""
+    d = ic.classify_line(line)
+    assert d["kind"] == "ingredient" and d["unit"] == unit and d["name"] == name
+
+
+def test_a_heading_that_carries_a_size_word_is_still_a_heading():
+    """⚠️ WHY THE MEASUREMENT BLOCK RUNS AFTER THE SECTION BLOCKS. The colon settles it."""
+    d = ic.classify_line("Large Bowl:")
+    assert d["kind"] == "section" and d["unit"] == ""
+
+
 @pytest.mark.parametrize("line,unit,name", [
     ("3 sprigs cilantro, chopped", "sprigs", "cilantro, chopped"),
     ("3 Thyme Sprigs", "Sprigs", "Thyme"),
@@ -857,7 +948,9 @@ def test_prose_in_the_paren_still_declines(line):
     # NO weight in the paren -> the new path is never reached; name and fields untouched.
     ("1 cup coffee (light roast)", "coffee (light roast)"),
     ("2 tbsp soy sauce (low sodium)", "soy sauce (low sodium)"),
-    ("1 large bundle kale (loosely chopped or torn)", "large bundle kale (loosely chopped or torn)"),
+    # ⚠️ 'large' MOVED TO THE UNIT with the size-word rule, and this case is still about the PAREN.
+    #    'bundle' is not a counting noun here (it is not in _COUNT_NOUNS) so it stays in the name.
+    ("1 large bundle kale (loosely chopped or torn)", "bundle kale (loosely chopped or torn)"),
 ])
 def test_paren_with_no_weight_is_untouched(line, name):
     d = ic.classify_line(line)

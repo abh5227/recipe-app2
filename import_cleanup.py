@@ -346,11 +346,6 @@ def parse_amount(line):
     return amount, value, unit, name, None
 
 
-# A count-noun / size descriptor left after a leading number ("cloves", "large", "medium head",
-# "large handfuls"): letters + spaces/hyphens only, no digits/operators/slashes. Distinguishes a
-# real count unit from irreducible trailing junk ("/ 1 kg", "+ 2 tbsp").
-_COUNTNOUN_RE = re.compile(r"^[A-Za-z][A-Za-z .\-]*$")
-
 # ⚠️ 'clove' IS A UNIT AND ALSO A FOOD, which is the whole difficulty. recipe_line_parser already
 #    carries that fact (its FOOD_UNIT set) because the same word broke name extraction there. This
 #    is the same problem one layer over: _LEAD_UNIT answers where the NAME begins, and it holds
@@ -370,16 +365,53 @@ _COUNTNOUN_RE = re.compile(r"^[A-Za-z][A-Za-z .\-]*$")
 _COUNT_NOUNS = ("cloves", "clove", "sprigs", "sprig", "stalks", "stalk", "slices", "slice",
                 "pinches", "pinch", "bunches", "bunch", "sticks", "stick", "pieces", "piece",
                 "heads", "head", "jars", "jar", "bags", "bag", "boxes", "box", "ears", "ear",
-                "fillets", "fillet", "cans", "can", "bulbs", "bulb")
+                "fillets", "fillet", "cans", "can", "bulbs", "bulb",
+                # Added with the size-word rule. 'handful' and 'package' each already held live
+                # rows in the unit column that no rule here admitted, and 'tin' is the British
+                # spelling of 'can', which has been admitted since the rule was written.
+                "handfuls", "handful", "packages", "package", "tins", "tin")
 _COUNT_ALT = "|".join(_COUNT_NOUNS)
 
+# ⚠️ A SIZE WORD IS PART OF THE MEASUREMENT, NOT THE FOOD. "1 large egg" is one egg of a stated
+#    size, and the size is what the count is counting, so it belongs beside the number and never in
+#    the name. It combines with a counting noun when both are present ("1 large head of
+#    cauliflower" measures in large heads) and stands alone when one is not ("1 large egg").
+#    The three words are a closed set. The ingredient library holds 0 rows for any of them, so
+#    there is nothing to look up and nothing that can drift.
+_SIZE_WORDS = ("small", "medium", "large")
+_SIZE_ALT = "|".join(_SIZE_WORDS)
+
+# An OPTIONAL size word in front of the counting noun, so "small bunch of parsley" reads its whole
+# unit in one match instead of leaving 'small' behind at the head of the name.
 _COUNT_UNIT_LEAD = re.compile(
-    r"^(?P<u>" + _COUNT_ALT + r")\b[\s,]+(?:of\s+)?(?P<rest>[A-Za-z].*)$", re.I)
+    r"^(?P<u>(?:(?:" + _SIZE_ALT + r")\s+)?(?:" + _COUNT_ALT + r"))\b[\s,]+(?:of\s+)?"
+    r"(?P<rest>[A-Za-z].*)$", re.I)
 # The trailing form carries a prep clause as often as not ("2 garlic cloves, minced"), so the noun
 # is allowed a comma tail. `rest` is COMMA-FREE on purpose: without that, "10 cloves (or 1/4 tsp
 # ground cloves)" would match its SECOND 'cloves' and leave "cloves (or 1/4 tsp ground" as the name.
 _COUNT_UNIT_TRAIL = re.compile(
     r"^(?P<rest>[^,]+?)\s+(?P<u>" + _COUNT_ALT + r")(?P<tail>\s*,.*)?$", re.I)
+
+# The size word on its own, for a line with no counting noun ("1 large egg") and for the trailing
+# form, where the noun is lifted first and the size is left at the head of the name:
+# "1 medium garlic clove" reaches clove + "medium garlic", then "medium clove" + "garlic".
+_SIZE_LEAD_RE = re.compile(r"^(?P<size>" + _SIZE_ALT + r")\b[\s,]+(?P<rest>[A-Za-z].*)$", re.I)
+
+# A count-noun / size descriptor left after a leading number ("cloves", "large", "medium head",
+# "large handfuls"). Distinguishes a real count unit both from irreducible trailing junk
+# ("/ 1 kg", "+ 2 tbsp") and from an ordinary word that names part of the food.
+#
+# ⚠️ IT USED TO BE `^[A-Za-z][A-Za-z .\-]*$`, ANY letters-only trailing word. That is a test of
+#    SHAPE where the question is one of MEMBERSHIP, so it could not tell a unit from a noun and
+#    admitted whatever a line happened to trail with. Restricting it to the two closed sets is the
+#    whole rule now. Measured over live data before the change: 89 of the 459 distinct stored qty
+#    values reach this branch, and all 89 still match, so no stored split moves.
+#
+# ⚠️ IT IS DEFINED HERE, NOT BESIDE parse_amount WHERE IT USED TO SIT, because it now reads
+#    _SIZE_ALT and _COUNT_ALT and has to follow them.
+_COUNTNOUN_RE = re.compile(
+    r"^(?:(?:" + _SIZE_ALT + r")|(?:(?:" + _SIZE_ALT + r")\s+)?(?:" + _COUNT_ALT + r"))\.?$",
+    re.I)
 
 
 def _inside_parens(text, pos):
@@ -410,6 +442,11 @@ def _lift_count_unit(unit, name):
       "2 Cloves"                             -> unchanged, nothing sits beside it
     The trailing case leans on recipe_line_parser._is_all_modifier rather than a second word list,
     so 'whole', 'ground' and 'large' are judged by the vocabulary that already proved itself there.
+
+    ⚠️ A SIZE WORD IS LIFTED TOO, AND IT IS LIFTED LAST, so it can join a noun the trailing branch
+    has already taken. "1 medium garlic clove" reaches clove + "medium garlic" and then becomes
+    "medium clove" + "garlic". The leading branch needs no second step, because there the size word
+    sits in front of the noun where _COUNT_UNIT_LEAD already reads it.
     """
     if unit or not name:
         return unit, name
@@ -425,8 +462,28 @@ def _lift_count_unit(unit, name):
     if trail and not _inside_parens(name, trail.start("u")):
         rest = trail.group("rest").strip(" ,")
         if rest and not _is_all_modifier(rest.lower()):
-            return trail.group("u"), (rest + (trail.group("tail") or "")).strip()
-    return unit, name
+            return _lift_size_word(trail.group("u"),
+                                   (rest + (trail.group("tail") or "")).strip())
+    return _lift_size_word(unit, name)
+
+
+def _lift_size_word(unit, name):
+    """A size word at the head of the name joins the unit, in front of any counting noun.
+
+    ⚠️ THE SAME GUARD AS THE COUNTING NOUN, FOR THE SAME REASON. 'large' with nothing but modifier
+    words after it names no food, so "1 large, chopped" keeps its name rather than being read as a
+    measurement of nothing. The guard is what stops the rule emptying a name it cannot replace.
+
+    ⚠️ NEVER RUNS WHEN A MEASURE IS ALREADY PRESENT. Its only caller returns early on a non-empty
+    unit, so "1 cup large diced onion" keeps 'cup' and can never become 'large cup'.
+    """
+    m = _SIZE_LEAD_RE.match(name or "")
+    if not m:
+        return unit, name
+    rest = m.group("rest").strip()
+    if not rest or _is_all_modifier(rest.lower()):
+        return unit, name
+    return f"{m.group('size')} {unit}".strip(), rest
 
 
 def _norm_ws(s):
@@ -721,7 +778,21 @@ def classify_line(raw, section_hints=None):
         res["flag_reason"] = "no amount, matches section pattern — treated as section header, confirm"
         return res
 
-    # 4. No amount, not a clear section -> ambiguous; suggest (never decide).
+    # 3c. No amount, but the line OPENS with a measurement ("small bunch of flatleaf parsley",
+    #     "Pinch of salt"). The unit is there and only the COUNT is missing, which is a different
+    #     state from not knowing what the line is, and the flag below exists for the second one.
+    #
+    #     ⚠️ AFTER THE SECTION BLOCKS, NEVER BEFORE THEM. "Large Bowl:" carries a size word, and the
+    #     colon is what settles it. Run first, this would read that heading as an ingredient
+    #     measured in large bowls.
+    lifted_unit, lifted_name = _lift_count_unit("", line)
+    if lifted_unit:
+        res.update(unit=lifted_unit, name=lifted_name)
+        res["has_alternative"] = bool(_ALT_RE.search(lifted_name))
+        res["has_prep_note"] = bool(_PREP.search(lifted_name))
+        return res
+
+    # 4. No amount, no measurement, not a clear section -> ambiguous; suggest (never decide).
     res["kind"] = "flagged"
     res["flags"].append("ambiguous_section")
     low = line.lower()
