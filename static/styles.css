@@ -1812,10 +1812,19 @@ a:hover { color: var(--berry-lift); }
 .above-ing { display: flex; align-items: center; gap: 22px; margin: 0 0 20px; flex-wrap: wrap; }
 .scaler-col { flex: none; }
 .meta-stack { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 2px 0; min-width: 0; }
-/* The separator between Prep / Cook / Total, matching the editor's .ie-dot. margin rather than literal
-   spaces so the gap survives however the parts are joined. The longest real line is 70 characters
-   ("Prep 30 mins, plus 1 hour soaking · Cook 2 hours 25 mins, plus cooling"), so min-width:0 above
-   lets the stack shrink and the line wrap instead of shoving the scaler off its row. */
+/* This stack is quiet metadata beside the title and it was inheriting --fs-body, the same size as
+   the method text it sits above. One step down the existing scale, to --fs-headnote. BOTH rows move
+   together: the clock row and the serves row share the 26px icon column and a left edge, so sizing
+   one alone would set the two out of register with each other. */
+.meta-stack { font-size: var(--fs-headnote); }
+/* A note ("plus 1 hr soaking") qualifies the duration in front of it rather than standing beside it.
+   .meta-val carries the 600 that makes the figure land and the note keeps the inherited 400, so the
+   parentheses and the weight say the same thing twice. */
+.meta-note { font-weight: 400; }
+/* The separator between Prep / Cook / Total, matching the editor's .ie-dot. It now means ONLY that,
+   since a note is parenthesized rather than joined with the same dot. The longest real line is 65
+   characters ("Prep 30 min (plus 1 hr soaking) · Cook 2 hr 25 min (plus cooling)"), so min-width:0
+   above lets the stack shrink and the line wrap instead of shoving the scaler off its row. */
 /* Spacing comes from the real spaces inside the span, NOT from a margin. A margin looks identical
    and gives the browser nowhere to break, which forced the wrap inside a value instead. */
 .meta-sep { opacity: 0.4; }

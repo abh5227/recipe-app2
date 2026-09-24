@@ -672,9 +672,9 @@ def normalize_time(raw):
       "10 mins" / "10 minutes" / "15mins"     -> "10 min" / "10 min" / "15 min"
       "1 hour" / "2 hrs" / "1 hr, 30 min"     -> "1 hr" / "2 hr" / "1 hr 30 min"
       "15-20 minutes"                         -> "15–20 min"
-      "35 min (plus 1–3 hr marinating)"       -> "35 min · plus 1–3 hr marinating"
-      "30 mins, plus 1 hour soaking"          -> "30 min · plus 1 hr soaking"
-      "20 minutes additional time"            -> "20 min · additional time"
+      "35 min (plus 1–3 hr marinating)"       -> "35 min (plus 1–3 hr marinating)"
+      "30 mins, plus 1 hour soaking"          -> "30 min (plus 1 hr soaking)"
+      "20 minutes additional time"            -> "20 min (additional time)"
 
     ⚠️ A RANGE STAYS A RANGE. Collapsing "15-20 minutes" to its upper end is what duration_text
     does to an ISO Duration range, and that is a different case: there the publisher gave two
@@ -683,7 +683,15 @@ def normalize_time(raw):
 
     ⚠️ THE NOTE IS KEPT, NEVER DROPPED. "plus 1 hr soaking" is the difference between a dish you
     can start at six and one you cannot. Only the number is normalized, and the note keeps its own
-    words. The separator is the app's existing " · ".
+    words.
+
+    ⚠️ THE NOTE IS PARENTHESIZED, AND THE MIDDLE DOT IS NOT USED HERE. The reading view joins Prep,
+    Cook and Total with " · ", so a note carrying the same divider made a four-part line out of two
+    facts: "Prep 30 min · plus 1 hr soaking · Cook 2 hr 25 min · plus cooling". Parentheses say
+    subordinate where the dot said sibling, and they leave the dot meaning one thing.
+
+    Parenthesizing is idempotent. A note that ARRIVES wrapped has its parens stripped and put back,
+    so running this over its own output changes nothing.
 
     ⚠️ ANYTHING UNREADABLE COMES BACK EXACTLY AS STORED. A time column holding "1 cup" is returned
     as "1 cup" rather than blanked or guessed at, so a wrong value stays visible and fixable
@@ -715,7 +723,7 @@ def normalize_time(raw):
     if note.startswith("(") and note.endswith(")"):
         note = note[1:-1].strip()
     duration = " ".join(parts)
-    return f"{duration} · {_time_in_note(note)}" if note else duration
+    return f"{duration} ({_time_in_note(note)})" if note else duration
 
 
 def classify_step(text):

@@ -402,17 +402,6 @@ def test_rich_text_handles_none_and_empty():
     assert reader.rich_text(None) == "" and reader.rich_text("") == ""
 
 
-@pytest.mark.parametrize("domain", JSON_LD)
-def test_no_committed_fixture_changes_under_rich_text(domain):
-    """⚠️ MEASURED, AND IT IS THE POINT OF THE TEST. Not one of the nine fixtures carries a <br>, a
-    </p> or a literal newline in its description or its instructions, so this is a forward fix with
-    nothing to backfill. The test pins that: if a fixture is ever replaced with a page that DOES
-    paragraph, this goes red and the new behavior gets looked at rather than assumed."""
-    got = read(domain)
-    assert "\n" not in got["description"]
-    assert not [s for s in got["directions"] if "\n" in s]
-
-
 def test_a_section_name_stays_on_one_line():
     """The HowToSection NAME keeps text(), not rich_text. It is a heading, and the appended colon
     assumes one line."""

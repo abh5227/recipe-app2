@@ -1001,7 +1001,9 @@ TIME_CASES = json.loads(
 
 
 def test_the_time_case_table_covers_the_real_corpus():
-    assert len(TIME_CASES) >= 63
+    """61 distinct spellings are stored, down from 63 once the two junk values were cleared, plus
+    the edge cases and the already-parenthesized forms no stored row happens to hold."""
+    assert len(TIME_CASES) >= 61
 
 
 @pytest.mark.parametrize("case", TIME_CASES, ids=lambda c: c["in"] or "<empty>")
@@ -1027,16 +1029,27 @@ def test_a_range_stays_a_range():
 
 
 @pytest.mark.parametrize("raw,want", [
-    ("35 min (plus 1–3 hr marinating)", "35 min · plus 1–3 hr marinating"),
-    ("30 mins, plus 1 hour soaking", "30 min · plus 1 hr soaking"),
-    ("20 minutes additional time", "20 min · additional time"),
-    ("2 hours 25 mins, plus cooling", "2 hr 25 min · plus cooling"),
-    ("40 min (plus 2 hr+ marinating)", "40 min · plus 2 hr+ marinating"),
+    ("35 min (plus 1–3 hr marinating)", "35 min (plus 1–3 hr marinating)"),
+    ("30 mins, plus 1 hour soaking", "30 min (plus 1 hr soaking)"),
+    ("20 minutes additional time", "20 min (additional time)"),
+    ("2 hours 25 mins, plus cooling", "2 hr 25 min (plus cooling)"),
+    ("40 min (plus 2 hr+ marinating)", "40 min (plus 2 hr+ marinating)"),
 ])
 def test_a_trailing_note_is_kept_and_its_own_durations_normalized(raw, want):
     """'plus 1 hr soaking' is the difference between a dish you can start at six and one you
-    cannot. The number is normalized and the note keeps its own words."""
+    cannot. The number is normalized and the note keeps its own words.
+
+    ⚠️ PARENTHESES, NOT THE MIDDLE DOT. The reading view joins Prep, Cook and Total with " · ", so a
+    note carrying the same divider made a four-part line out of two facts. Parentheses say
+    subordinate where the dot says sibling, and they leave the dot meaning one thing."""
     assert ic.normalize_time(raw) == want
+
+
+@pytest.mark.parametrize("case", TIME_CASES, ids=lambda c: c["in"] or "<empty>")
+def test_normalize_time_is_idempotent(case):
+    """Running it over its own output changes nothing. A note that arrives already wrapped has its
+    parens stripped and put back, which is what makes re-normalizing a stored value safe."""
+    assert ic.normalize_time(case["out"]) == case["out"]
 
 
 @pytest.mark.parametrize("junk", ["1 cup", "to taste", "whenever", "--", "overnight"])

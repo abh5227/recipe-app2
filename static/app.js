@@ -8,7 +8,7 @@ import { nonEmptySteps, focusIndexAfterRemove, writeStepField } from "./step-row
 import { insertIndexFor } from "./row-insert.js";
 import { removedInsertIndex } from "./annotation-place.js";
 import { wordDiffParts } from "./word-diff.js";
-import { normalizeTime } from "./timefmt.js";
+import { timeParts } from "./timefmt.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
 import { browseList, cardTags, monthYear } from "./browse.js";
@@ -1216,7 +1216,13 @@ function scaleMetaBlock(r) {
   const bindUnits = (v) => v.replace(/(\d)\s+(?=[A-Za-z])/g, "$1\u00a0");
   const times = [["Prep", r.prep_time], ["Cook", r.cook_time], ["Total", r.total_time]]
     .filter(([, v]) => (v || "").trim())
-    .map(([label, v]) => `${label}\u00a0<span class="meta-val">${esc(bindUnits(normalizeTime(v)))}</span>`)
+    .map(([label, v]) => {
+      // The note is its own span so it can stay at the inherited 400 while .meta-val carries the
+      // 600 that makes the figure land. The parentheses and the weight then say the same thing.
+      const { value, note } = timeParts(v);
+      const tail = note ? `<span class="meta-note"> (${esc(bindUnits(note))})</span>` : "";
+      return `${label}\u00a0<span class="meta-val">${esc(bindUnits(value))}</span>${tail}`;
+    })
     .join(`<span class="meta-sep"> · </span>`);
   if (times) stack.push(`<span class="meta-item">${META_CLOCK}<span>${times}</span></span>`);
   const base = servingsBase();

@@ -36,11 +36,20 @@ function timeInNote(note) {
 }
 
 // "10 mins" -> "10 min". "1 hr, 30 min" -> "1 hr 30 min". "15-20 minutes" -> "15–20 min".
-// "30 mins, plus 1 hour soaking" -> "30 min · plus 1 hr soaking".
+// "30 mins, plus 1 hour soaking" -> "30 min (plus 1 hr soaking)".
+//
+// ⚠️ THE NOTE IS PARENTHESIZED AND NEVER CARRIES THE MIDDLE DOT. The line above joins Prep, Cook
+// and Total with " · ", so a note using the same divider turned two facts into a four-part line.
+// The dot separates siblings. Parentheses mark what is subordinate.
+//
 // Anything unreadable comes back EXACTLY as given. Never blanked, never guessed at.
-export function normalizeTime(raw) {
+// The duration and its note, separately, so the reading view can give each its own weight. The
+// note is subordinate to the number it qualifies, and a single string cannot say that.
+// normalizeTime below is this function's two halves joined, so the cross-language contract the
+// sync test asserts is unchanged.
+export function timeParts(raw) {
   const s = String(raw == null ? "" : raw).trim();
-  if (!s) return s;
+  if (!s) return { value: s, note: "" };
   const parts = [];
   let pos = 0;
   while (pos < s.length) {
@@ -54,9 +63,13 @@ export function normalizeTime(raw) {
     parts.push(seg(m[1], m[2], unit));
     pos = SEG.lastIndex;
   }
-  if (!parts.length) return s;
+  if (!parts.length) return { value: s, note: "" };
   let note = s.slice(pos).trim().replace(NOTE_LEAD, "");
   if (note.startsWith("(") && note.endsWith(")")) note = note.slice(1, -1).trim();
-  const duration = parts.join(" ");
-  return note ? `${duration} · ${timeInNote(note)}` : duration;
+  return { value: parts.join(" "), note: note ? timeInNote(note) : "" };
+}
+
+export function normalizeTime(raw) {
+  const { value, note } = timeParts(raw);
+  return note ? `${value} (${note})` : value;
 }
