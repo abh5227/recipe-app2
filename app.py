@@ -542,12 +542,32 @@ class _Carry:
                 return o
         return None
 
-    def take(self, qty, name):
-        """(stored row, exact?) for the first unconsumed match, or (None, False)."""
-        o = self._first_free(self.exact.get(_preserve_key(qty, name), []))
-        if o is not None:
-            return o, True
-        return self._first_free(self.by_name.get(_name_key(name), [])), False
+    def plan(self, lines):
+        """Resolve every incoming line to the stored row it replaces. `lines` is
+        [(qty, name) or None for a heading], aligned to the payload. Returns the same
+        length, each entry (stored row, exact?) or None.
+
+        ⚠️ THE TIERS ARE TWO PASSES OVER THE WHOLE RECIPE, never one pass per row. A line that
+        matches only by NAME must not consume a stored row that some LATER line matches exactly.
+        Resolving row by row, inserting "1 pinch salt" above an untouched "1 tsp salt" and
+        "2 tbsp salt" did exactly that: the pinch row fell to the name tier and took the dough
+        salt's raw_text and link, the dough row then took the brine's, and the brine row lost its
+        link and its line. Two untouched rows corrupted by adding a third above them.
+        """
+        held = [None] * len(lines)
+        for i, ln in enumerate(lines):                      # pass 1: every EXACT match, in order
+            if ln is None:
+                continue
+            o = self._first_free(self.exact.get(_preserve_key(ln[0], ln[1]), []))
+            if o is not None:
+                held[i] = (o, True)
+        for i, ln in enumerate(lines):                      # pass 2: NAME only, over what is left
+            if ln is None or held[i] is not None:
+                continue
+            o = self._first_free(self.by_name.get(_name_key(ln[1]), []))
+            if o is not None:
+                held[i] = (o, False)
+        return held
 
     def take_heading(self, text):
         return self._first_free(self.headings.get(_name_key(text), []))
@@ -596,9 +616,24 @@ def write_recipe_rows(s, rid, clean, preserve=None):
     s.execute(delete(ri).where(ri.c.recipe_id == rid))
     s.execute(delete(rs).where(rs.c.recipe_id == rid))
 
-    for pos, row in enumerate(clean["ingredients"]):
+    # Resolve every line's (qty, name) BEFORE writing any of them, so the carry can run its EXACT
+    # tier over the whole recipe before a NAME-only match consumes a row. See _Carry.plan.
+    prepared = []
+    for row in clean["ingredients"]:
         row = row or {}
         if row.get("heading"):
+            prepared.append((row, None))
+            continue
+        linked = row.get("item")
+        text = (row.get("label") or row["item"]) if linked else (row.get("text", "") or "")
+        # Hybrid: recombine qty from explicit parts (Stage-4 editor) or derive the split from the
+        # authored qty (Stage 3).
+        prepared.append((row, (_row_qty_parts(row), linked, text)))
+    held_for = (carry.plan([None if p[1] is None else (p[1][0][0], p[1][2]) for p in prepared])
+                if carry else [None] * len(prepared))
+
+    for pos, (row, parts) in enumerate(prepared):
+        if parts is None:
             # A heading carries only its text, and its `note` exists purely so a no-edit save is
             # byte-identical (2 live heading rows hold '' where a fresh insert would write NULL).
             held = carry.take_heading(row["heading"]) if carry else None
@@ -607,13 +642,9 @@ def write_recipe_rows(s, rid, clean, preserve=None):
                                         note=held["note"] if held else None))
             continue
 
-        linked = row.get("item")
-        text = (row.get("label") or row["item"]) if linked else (row.get("text", "") or "")
-        # Hybrid: recombine qty from explicit parts (Stage-4 editor) or derive the split from the
-        # authored qty (Stage 3).
-        qty, quantity, unit = _row_qty_parts(row)
+        (qty, quantity, unit), linked, text = parts
         note_in = row.get("note") or ""
-        held, exact = carry.take(qty, text) if carry else (None, False)
+        held, exact = held_for[pos] or (None, False)
 
         if held is not None:
             raw_text = held["raw_text"]

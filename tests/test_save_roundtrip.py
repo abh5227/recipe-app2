@@ -265,3 +265,29 @@ def test_reorder_insert_and_delete_leave_every_surviving_row_intact(kitchen):
     # and the reorder really did happen, so the rows above were matched across a move
     assert after["25 g (0.9 oz) guajillo chillies, dried"]["position"] != \
            before["25 g (0.9 oz) guajillo chillies, dried"]["position"]
+
+
+def test_an_inserted_row_cannot_steal_a_line_a_later_row_matches_exactly(kitchen):
+    """⚠️ THE TIERS RUN OVER THE WHOLE RECIPE, EXACT first, never one pass per row.
+
+    The fixture's two water rows are told apart only by their amount. Insert a third water row
+    with an amount neither of them has, and a row-by-row carry resolves the new row FIRST: it
+    misses the exact tier, falls to the name tier, and consumes the "3 tbsp" row's stored line
+    and link. The "3 tbsp" row then takes the "2 tbsp" row's, and the "2 tbsp" row is left with
+    nothing. One insertion, two untouched rows corrupted, and a brand new row wearing another
+    line's link. Salt for the dough and salt for the brine is the same shape."""
+    rid = _seed(kitchen)
+    rows = copy.deepcopy(FIX["rows"])
+    rows.insert(5, {"shape": "new", "row": {}, "payload":
+                    {"quantity": "1", "unit": "cup", "text": "water", "note": ""}})
+    assert _save(kitchen, rid, rows=rows).status_code == 200
+
+    water = [r for r in _rows(kitchen, rid) if r["raw_text"] == "water"]
+    assert len(water) == 3
+    fresh = [r for r in water if r["qty"] == "1 cup"][0]
+    assert fresh["catalog_id"] is None                   # the new row is a NEW row
+    assert fresh["link_rule"] is None
+    kept = {r["qty"]: r for r in water if r["qty"] != "1 cup"}
+    assert kept["3 tbsp"]["link_rule"] == "exact"        # each stored row stayed on its own line
+    assert kept["2 tbsp"]["link_rule"] == "form_strip:cold"
+    assert all(r["catalog_id"] == "water" for r in kept.values())
