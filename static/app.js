@@ -1,14 +1,14 @@
 "use strict";
 
 import {
-  formatAmount, group, scaleQty, abbrevUnits, canonicalizeUnit, amountText, weightText, toUnicodeFractions,
+  formatAmount, group, canonicalizeUnit, amountText, weightText,
 } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
 import { nonEmptySteps, focusIndexAfterRemove, writeStepField } from "./step-row.js";
 import { insertIndexFor } from "./row-insert.js";
 import { removedInsertIndex } from "./annotation-place.js";
 import { wordDiffParts } from "./word-diff.js";
-import { editedAmountParts, removedAmountText } from "./annotation-amount.js";
+import { editedAmountParts, removedAmountText, stepSpanTexts } from "./annotation-amount.js";
 import { timeParts } from "./timefmt.js";
 import { ingToPayload, stepToPayload } from "./save-payload.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
@@ -1018,6 +1018,16 @@ function rerenderServings() {
   if (el && base) el.textContent = formatAmount(base * view.scale);
 }
 
+// A step's body: the tagged spans rendered, with the scalable ones at view.scale (stepSpanTexts,
+// pure + tested) and the plain ones linkified. One place, so an added step and an ordinary step
+// cannot drift apart on which numbers move.
+function stepBodyHTML(row) {
+  const spans = (row.spans && row.spans.length) ? row.spans : [{ t: "plain", text: row.text }];
+  return stepSpanTexts(spans, view.scale)
+    .map((s) => (s.t === "scale" ? `<span class="step-qty">${esc(s.text)}</span>` : linkify(s.text)))
+    .join("");
+}
+
 // Render a step. Non-heading steps arrive as tagged spans (Phase 1d): "scale" spans are
 // rescaled live with the 1a scaler (so they format identically to the ingredient list);
 // "plain" spans are linkified (and may contain [[ingredient]] links). Falls back to raw
@@ -1028,14 +1038,17 @@ function renderStepRow(row, ann) {
   // against printed prose announces itself; see the .step-add note in styles.css); a reworded step ->
   // the struck original + the Kalam correction. Both are plain prose (no scaling/abbreviation — that's
   // amount-only).
-  if (ann && ann.added) return `<li class="step"><div class="step-body"><span class="step-add">${esc(row.text)}</span></div></li>`;
+  // ⚠️ AN ADDED STEP GOES THROUGH THE SPAN PATH, exactly like an unedited one, so its quantities
+  //    move with the factor. It used to render row.text raw, which froze "add 1 tbsp oil" at its
+  //    printed amount inside a doubled recipe.
+  if (ann && ann.added) return `<li class="step"><div class="step-body"><span class="step-add">${stepBodyHTML(row)}</span></div></li>`;
+  // ⚠️ A REWORDED STEP IS DELIBERATELY NOT SCALED, and this is the one gap left open. The word diff
+  //    needs two raw strings, and only the CURRENT text has tagged spans, so scaling the pair means
+  //    running the scaler over raw prose. Measured on the corpus's one reworded step, that turns
+  //    "simmer for 4-6 minutes" into "8-12 minutes" at 2x. Doubling a cooking time is worse than
+  //    leaving a quantity unscaled, so it waits for a tagger that can mark the baseline too.
   if (ann && ann.mod) return `<li class="step"><div class="step-body">${wordDiffHTML(ann.mod.from, ann.mod.to)}</div></li>`;
-  const spans = row.spans || [{ t: "plain", text: row.text }];
-  const html = spans
-    .map((s) => (s.t === "scale"
-      ? `<span class="step-qty">${esc(toUnicodeFractions(abbrevUnits(scaleQty(s.text, view.scale))))}</span>`
-      : linkify(s.text)))
-    .join("");
+  const html = stepBodyHTML(row);
   // .step-body wraps the step content inside li.step — the reserved attach point for future
   // per-step photos and R2 step-notes. Inert in R1 (a bare block that fills the same box).
   return `<li class="step"><div class="step-body">${html}</div></li>`;
