@@ -380,9 +380,12 @@ def _promote_library_row(s, library_id, known):
     return slug, canonical, None
 
 
-def resolve_recipe_payload(s, payload):
+def resolve_recipe_payload(s, payload, standing_step_links=frozenset()):
     """Return (clean, error). Validates a payload and RESOLVES its ingredient links, CREATING an
     ingredients row when a line names a library entry that has not been promoted yet.
+
+    `standing_step_links` are the [[key]]s the recipe's stored steps ALREADY carry. They are let
+    through even when nothing in `ingredients` answers to them. See the step loop below.
 
     ⚠️ THIS FUNCTION WRITES. It was called validate_recipe_payload and it was renamed when add-on-save
     gave it a create path, because a reader of create_recipe should not have to open a function named
@@ -443,11 +446,21 @@ def resolve_recipe_payload(s, payload):
                 row["label"] = canonical
         resolved.append(row)
 
+    # ⚠️ A LINK THE RECIPE ALREADY CARRIES IS NOT A TYPO, AND REFUSING IT LOCKS THE RECIPE.
+    #    The gate exists to catch a key the user just typed that names nothing. It was also
+    #    refusing keys that were written long ago and whose target has since gone, which made five
+    #    recipes unsaveable: aloo-gobhi, bulgogi-bowls, gai-yang, mussakhan and no-knead-bread all
+    #    link to ingredients that migration 046 removed when it emptied the table. Every save of
+    #    those five returned 400 and there was no way to edit them at all.
+    #
+    #    Letting a standing link through changes nothing on the page. linkify renders [[key|label]]
+    #    as a button from the TEXT alone and never checks that the key resolves, so a step reads
+    #    identically either way. The step text is stored verbatim, so nothing about it moves.
     for step in steps:
         text = step if isinstance(step, str) else (step or {}).get("heading", "")
         for m in re.finditer(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]", text or ""):
             key = m.group(1).strip()
-            if key not in known:
+            if key not in known and key not in standing_step_links:
                 return None, f"a step links to '{key}', which isn't in your library"
     return {"name": name, "ingredients": resolved, "steps": steps}, None
 
@@ -1004,7 +1017,13 @@ def update_recipe(rid):
             return jsonify({"error": "this recipe is from seed.py and is read-only here — edit it in seed.py"}), 403
         if row.owner != current_user.id:                     # default-deny: only the owner may edit
             return jsonify({"error": "not your recipe"}), 403
-        clean, err = resolve_recipe_payload(s, payload)
+        # The [[key]]s this recipe's steps already carry. An edit may keep them even if nothing in
+        # `ingredients` answers to them any more, and may not introduce a NEW one that names nothing.
+        standing = set()
+        for (body,) in s.execute(select(RecipeStep.body).where(RecipeStep.recipe_id == rid)):
+            standing.update(m.group(1).strip()
+                            for m in re.finditer(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]", body or ""))
+        clean, err = resolve_recipe_payload(s, payload, standing)
         if err:
             return jsonify({"error": err}), 400
         s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rid).values(

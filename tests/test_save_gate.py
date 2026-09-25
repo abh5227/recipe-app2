@@ -427,3 +427,66 @@ def test_an_explicit_label_still_wins(kitchen):
     with kitchen.conn() as c:
         assert c.execute("SELECT label FROM recipe_ingredients WHERE recipe_id=?",
                          (rid,)).fetchone()["label"] == "fresh tagliatelle"
+
+
+# --- a link whose target has gone must not lock the recipe -------------------------------------
+# ⚠️ FIVE LIVE RECIPES COULD NOT BE SAVED AT ALL. aloo-gobhi, bulgogi-bowls, gai-yang, mussakhan and
+#    no-knead-bread carry [[key]] links written when `ingredients` still held rows. Migration 046
+#    emptied that table, so every save of those five returned
+#    400 "a step links to 'spinach', which isn't in your library" and there was no way to edit them.
+#    The gate is for a key the user just TYPED. A key the recipe already carries is not a typo.
+
+GHOST = "ghost_herb"      # an id no fixture recipe links to, so removing it breaks no other row
+
+
+def _with_step_link(kitchen, steps):
+    """A recipe whose stored steps carry [[GHOST]], with nothing in `ingredients` answering to it."""
+    with kitchen.conn() as c:
+        c.execute("INSERT INTO ingredients (id, name, source, concept) VALUES (?,?,'app','')",
+                  (GHOST, "ghost herb"))
+        c.commit()
+    rid = _create(kitchen, ingredients=[{"qty": "1", "text": "water"}],
+                  steps=steps).get_json()["id"]
+    with kitchen.conn() as c:                      # the target goes, exactly as migration 046 did it
+        c.execute("DELETE FROM ingredients WHERE id=?", (GHOST,))
+        c.commit()
+    return rid
+
+
+def test_a_step_link_whose_target_is_gone_does_not_block_the_save(kitchen):
+    rid = _with_step_link(kitchen, [f"Add the [[{GHOST}]] and stir."])
+    r = kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Linked", "ingredients": [{"quantity": "1", "unit": "", "text": "water", "note": ""}],
+        "steps": [f"Add the [[{GHOST}]] and stir."]})
+    assert r.status_code == 200
+
+
+def test_the_step_text_is_stored_verbatim_so_the_page_reads_the_same(kitchen):
+    """linkify builds its button from the TEXT and never checks that the key resolves, so the step
+    renders identically whether or not an ingredients row answers to it. Nothing may rewrite it."""
+    rid = _with_step_link(kitchen, [f"Add the [[{GHOST}|baby spinach]] and stir."])
+    with kitchen.conn() as c:
+        before = c.execute("SELECT text FROM recipe_steps WHERE recipe_id=?", (rid,)).fetchone()["text"]
+    kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Linked", "ingredients": [{"quantity": "1", "unit": "", "text": "water", "note": ""}],
+        "steps": [before]})
+    with kitchen.conn() as c:
+        assert c.execute("SELECT text FROM recipe_steps WHERE recipe_id=?", (rid,)).fetchone()["text"] == before
+
+
+def test_a_NEW_step_link_that_names_nothing_is_still_refused(kitchen):
+    """The gate keeps its job. Only a key the recipe ALREADY carries is let through."""
+    rid = _with_step_link(kitchen, [f"Add the [[{GHOST}]] and stir."])
+    r = kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Linked", "ingredients": [{"quantity": "1", "unit": "", "text": "water", "note": ""}],
+        "steps": [f"Add the [[{GHOST}]] and the [[rutabaga]]."]})
+    assert r.status_code == 400
+    assert r.get_json()["error"] == "a step links to 'rutabaga', which isn't in your library"
+
+
+def test_a_standing_link_in_a_step_HEADING_is_also_let_through(kitchen):
+    rid = _with_step_link(kitchen, [{"heading": f"The [[{GHOST}]] stage"}, "Stir."])
+    r = kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Linked", "ingredients": [{"quantity": "1", "unit": "", "text": "water", "note": ""}],
+        "steps": [{"heading": f"The [[{GHOST}]] stage"}, "Stir."]})
+    assert r.status_code == 200
