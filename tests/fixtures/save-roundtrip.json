@@ -1,0 +1,317 @@
+{
+ "note": "Captured from static/save-payload.js. Regenerate with scripts/gen_save_roundtrip.mjs.",
+ "rows": [
+  {
+   "shape": "heading",
+   "row": {
+    "position": 0,
+    "is_heading": 1,
+    "qty": null,
+    "quantity": null,
+    "unit": null,
+    "ingredient_id": null,
+    "label": null,
+    "note": "",
+    "raw_text": "FOR THE SAUCE:",
+    "grams": null,
+    "secondary_measure": null,
+    "catalog_id": null,
+    "link_confidence": null,
+    "link_rule": null,
+    "link_matched": null
+   },
+   "payload": {
+    "heading": "FOR THE SAUCE:"
+   }
+  },
+  {
+   "shape": "unlinked with a label, raw_text longer (the imported shape)",
+   "row": {
+    "position": 1,
+    "is_heading": 0,
+    "qty": "25 g",
+    "quantity": "25",
+    "unit": "g",
+    "ingredient_id": null,
+    "label": "guajillo chillies, dried",
+    "note": null,
+    "raw_text": "25 g (0.9 oz) guajillo chillies, dried",
+    "grams": 25,
+    "secondary_measure": null,
+    "catalog_id": "en:guajillo-chili",
+    "link_confidence": "exact",
+    "link_rule": "exact",
+    "link_matched": "guajillo chili"
+   },
+   "payload": {
+    "quantity": "25",
+    "unit": "g",
+    "text": "guajillo chillies, dried",
+    "note": ""
+   }
+  },
+  {
+   "shape": "unlinked with a NULL label (the Paprika shape)",
+   "row": {
+    "position": 2,
+    "is_heading": 0,
+    "qty": "2 tbsp",
+    "quantity": "2",
+    "unit": "tbsp",
+    "ingredient_id": null,
+    "label": null,
+    "note": null,
+    "raw_text": "extra virgin olive oil",
+    "grams": null,
+    "secondary_measure": null,
+    "catalog_id": "Q93165",
+    "link_confidence": "exact",
+    "link_rule": "exact",
+    "link_matched": "olive oil"
+   },
+   "payload": {
+    "quantity": "2",
+    "unit": "tbsp",
+    "text": "extra virgin olive oil",
+    "note": ""
+   }
+  },
+  {
+   "shape": "unit the client canonicalizes (teaspoon -> tsp)",
+   "row": {
+    "position": 3,
+    "is_heading": 0,
+    "qty": "1 teaspoon",
+    "quantity": "1",
+    "unit": "teaspoon",
+    "ingredient_id": null,
+    "label": null,
+    "note": null,
+    "raw_text": "kosher salt",
+    "grams": 6,
+    "secondary_measure": null,
+    "catalog_id": "Q4116639",
+    "link_confidence": "exact",
+    "link_rule": "exact",
+    "link_matched": "kosher salt"
+   },
+   "payload": {
+    "quantity": "1",
+    "unit": "tsp",
+    "text": "kosher salt",
+    "note": ""
+   }
+  },
+  {
+   "shape": "a note row",
+   "row": {
+    "position": 4,
+    "is_heading": 0,
+    "qty": "2 tbsp",
+    "quantity": "2",
+    "unit": "tbsp",
+    "ingredient_id": null,
+    "label": "soy sauce",
+    "note": "all-purpose or light",
+    "raw_text": "2 tbsp soy sauceall-purpose or light",
+    "grams": null,
+    "secondary_measure": null,
+    "catalog_id": null,
+    "link_confidence": null,
+    "link_rule": null,
+    "link_matched": null
+   },
+   "payload": {
+    "quantity": "2",
+    "unit": "tbsp",
+    "text": "soy sauce",
+    "note": "all-purpose or light"
+   }
+  },
+  {
+   "shape": "duplicate name, different qty",
+   "row": {
+    "position": 5,
+    "is_heading": 0,
+    "qty": "3 tbsp",
+    "quantity": "3",
+    "unit": "tbsp",
+    "ingredient_id": null,
+    "label": null,
+    "note": null,
+    "raw_text": "water",
+    "grams": null,
+    "secondary_measure": null,
+    "catalog_id": "water",
+    "link_confidence": "exact",
+    "link_rule": "exact",
+    "link_matched": "water"
+   },
+   "payload": {
+    "quantity": "3",
+    "unit": "tbsp",
+    "text": "water",
+    "note": ""
+   }
+  },
+  {
+   "shape": "duplicate name, different qty (the second)",
+   "row": {
+    "position": 6,
+    "is_heading": 0,
+    "qty": "2 tbsp",
+    "quantity": "2",
+    "unit": "tbsp",
+    "ingredient_id": null,
+    "label": null,
+    "note": null,
+    "raw_text": "water",
+    "grams": null,
+    "secondary_measure": null,
+    "catalog_id": "water",
+    "link_confidence": "form_strip",
+    "link_rule": "form_strip:cold",
+    "link_matched": "water"
+   },
+   "payload": {
+    "quantity": "2",
+    "unit": "tbsp",
+    "text": "water",
+    "note": ""
+   }
+  },
+  {
+   "shape": "duplicate name AND qty (the full key collides)",
+   "row": {
+    "position": 7,
+    "is_heading": 0,
+    "qty": "1 cup",
+    "quantity": "1",
+    "unit": "cup",
+    "ingredient_id": null,
+    "label": null,
+    "note": null,
+    "raw_text": "flour",
+    "grams": 120,
+    "secondary_measure": "1 cup",
+    "catalog_id": "Q95388739",
+    "link_confidence": "exact",
+    "link_rule": "exact",
+    "link_matched": "all purpose flour"
+   },
+   "payload": {
+    "quantity": "1",
+    "unit": "cup",
+    "text": "flour",
+    "note": ""
+   }
+  },
+  {
+   "shape": "duplicate name AND qty (the second)",
+   "row": {
+    "position": 8,
+    "is_heading": 0,
+    "qty": "1 cup",
+    "quantity": "1",
+    "unit": "cup",
+    "ingredient_id": null,
+    "label": null,
+    "note": null,
+    "raw_text": "flour",
+    "grams": 120,
+    "secondary_measure": "1 cup",
+    "catalog_id": "Q95388739",
+    "link_confidence": "exact",
+    "link_rule": "exact",
+    "link_matched": "all purpose flour"
+   },
+   "payload": {
+    "quantity": "1",
+    "unit": "cup",
+    "text": "flour",
+    "note": ""
+   }
+  },
+  {
+   "shape": "linked to a library ingredient",
+   "row": {
+    "position": 9,
+    "is_heading": 0,
+    "qty": "200 g",
+    "quantity": "200",
+    "unit": "g",
+    "ingredient_id": "egg_pasta",
+    "label": "egg pasta",
+    "note": null,
+    "raw_text": "200 g fresh egg pasta, cut into ribbons",
+    "grams": 200,
+    "secondary_measure": null,
+    "catalog_id": "en:egg-pasta",
+    "link_confidence": "exact",
+    "link_rule": "exact",
+    "link_matched": "egg pasta"
+   },
+   "payload": {
+    "quantity": "200",
+    "unit": "g",
+    "item": "egg_pasta",
+    "label": "egg pasta",
+    "note": ""
+   }
+  },
+  {
+   "shape": "trailing space in the name",
+   "row": {
+    "position": 10,
+    "is_heading": 0,
+    "qty": "1 tbsp",
+    "quantity": "1",
+    "unit": "tbsp",
+    "ingredient_id": null,
+    "label": "onion, finely grated ",
+    "note": "~1/4 onion",
+    "raw_text": "1 tbsp onion, finely grated ~1/4 onion",
+    "grams": null,
+    "secondary_measure": null,
+    "catalog_id": null,
+    "link_confidence": null,
+    "link_rule": null,
+    "link_matched": null
+   },
+   "payload": {
+    "quantity": "1",
+    "unit": "tbsp",
+    "text": "onion, finely grated ",
+    "note": "~1/4 onion"
+   }
+  }
+ ],
+ "steps": [
+  {
+   "row": {
+    "position": 0,
+    "is_heading": 1,
+    "text": "MAKE THE SAUCE"
+   },
+   "payload": {
+    "heading": "MAKE THE SAUCE"
+   }
+  },
+  {
+   "row": {
+    "position": 1,
+    "is_heading": 0,
+    "text": "Whisk it."
+   },
+   "payload": "Whisk it."
+  },
+  {
+   "row": {
+    "position": 2,
+    "is_heading": 0,
+    "text": "Rest.\n\nAIR FRYER OPTION:\nShake off excess."
+   },
+   "payload": "Rest.\n\nAIR FRYER OPTION:\nShake off excess."
+  }
+ ]
+}

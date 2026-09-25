@@ -9,6 +9,7 @@ import { insertIndexFor } from "./row-insert.js";
 import { removedInsertIndex } from "./annotation-place.js";
 import { wordDiffParts } from "./word-diff.js";
 import { timeParts } from "./timefmt.js";
+import { ingToPayload, stepToPayload } from "./save-payload.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
 import { browseList, cardTags, monthYear } from "./browse.js";
@@ -2736,19 +2737,9 @@ function markDirty() {
   if (ind) ind.hidden = false;
 }
 
-// Convert the draft (DB row shape) back into the PUT payload shape write_recipe_rows expects. Stage 1
-// sends ingredients/steps through unchanged; the scalar fields carry the edits.
-function ingToPayload(x) {
-  const oneLine = (v) => (v || "").replace(/[\r\n]+/g, " ");   // name is a .ie-line (soft-wrap only) — no hard newlines
-  if (x.is_heading) return { heading: oneLine(x.heading || x.label || x.raw_text) };   // dedicated field, back-compat fallbacks
-  // Stage 4 (B): send the STRUCTURED parts — quantity + canonical unit. The server (sub-step A's IF
-  // branch) recombines qty = quantity + " " + unit, so qty is omitted. Authority is now quantity+unit.
-  const quantity = oneLine(x.quantity);
-  const unit = canonicalizeUnit(x.unit);
-  if (x.ingredient_id) return { quantity, unit, item: x.ingredient_id, label: oneLine(x.label || x.raw_text), note: x.note || "" };
-  return { quantity, unit, text: oneLine(x.label || x.raw_text), note: x.note || "" };
-}
-function stepToPayload(x) { return x.is_heading ? { heading: x.text || "" } : (x.text || ""); }
+// Convert the draft (DB row shape) back into the PUT payload shape write_recipe_rows expects.
+// Both builders now live in ./save-payload.js so the round-trip fixture can be captured from the
+// real thing rather than from a hand-written copy. The wire format is unchanged.
 function draftPayload() {
   const r = view.draft.recipe;
   const t = (v) => (v == null ? "" : String(v).trim());
