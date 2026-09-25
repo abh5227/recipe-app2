@@ -8,6 +8,7 @@ import { nonEmptySteps, focusIndexAfterRemove, writeStepField } from "./step-row
 import { insertIndexFor } from "./row-insert.js";
 import { removedInsertIndex } from "./annotation-place.js";
 import { wordDiffParts } from "./word-diff.js";
+import { editedAmountParts, removedAmountText } from "./annotation-amount.js";
 import { timeParts } from "./timefmt.js";
 import { ingToPayload, stepToPayload } from "./save-payload.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
@@ -783,6 +784,17 @@ function ledgerCells(qty, gramsPerMl, inlineStyle) {
          `</span>`;
 }
 
+// The amount-cell for a row whose AMOUNT was edited: the struck original over the ink correction,
+// with the same gram sub-line an unedited row gets. The numbers come from annotation-amount.js
+// (pure, tested); this is only the markup, so every value is esc()'d in one place.
+function editedAmountCell(from, to, gramsPerMl, inlineStyle) {
+  const p = editedAmountParts(from, to, gramsPerMl, view.scale);
+  return `<span class="amount-cell">` +
+         `<span class="qty"><span class="was">${esc(p.was)}</span><span class="fix">${esc(p.fix)}</span></span>` +
+         (p.weight ? figCell("weight", p.weight, inlineStyle) : "") +
+         `</span>`;
+}
+
 // The recipe's serving count as a number, if its servings text contains one.
 function servingsBase() {
   const sv = view && view.data.recipe.servings;
@@ -876,15 +888,15 @@ function insertRemovedRows(items, removed, buildHTML) {
 }
 
 // A struck REMOVED ingredient, synthesized from the entry (the row is gone from the current data, so
-// there is nothing to map over). `text` is the RAW combined "qty label" line and `label` is the name, so
-// the qty is what precedes the label; it renders through amountText(_, 1) to match the abbreviated
-// ledger display (the entry's text is unabbreviated). Same .amount-cell/.qty + .iname structure as a
-// live row, so it sits in the ledger grid; .was gives it the shared 1px strike.
+// there is nothing to map over). `text` is the RAW combined "qty label" line and `label` is the name,
+// so the amount is whatever precedes the name (removedAmountText, pure + tested). It renders
+// abbreviated like the ledger, and ⚠️ AT view.scale: a struck row is still a row of this recipe, and
+// it used to hold its printed amount while everything around it doubled. Same .amount-cell/.qty +
+// .iname structure as a live row, so it sits in the ledger grid; .was gives it the shared 1px strike.
 function removedIngredientRow(e) {
   const text = String(e.text || "");
   const label = String(e.label || "");
-  const qty = (label && text.endsWith(label)) ? text.slice(0, text.length - label.length).trim() : "";
-  const shown = qty ? amountText(qty, 1) : "";
+  const shown = removedAmountText(text, label, view.scale);
   return `<li class="removed">` +
     `<span class="amount-cell"><span class="qty">${shown ? `<span class="was">${esc(shown)}</span>` : ""}</span></span>` +
     `<span class="iname"><span class="was">${esc(label || text)}</span></span></li>`;
@@ -933,10 +945,12 @@ function plainRow(row, ann) {
   // Added ingredient: the whole current line in the hand ink, "+"-prefixed (see li.added CSS).
   if (ann && ann.added) return `<li class="added">${ledgerCells(row.qty, row.grams_per_ml)}<span class="iname">${lineBodyHTML(row)}</span></li>`;
   const amt = ann && ann.amount, nm = ann && ann.name;
-  // Amount edit stacks the struck ABBREVIATED original over the Kalam ink value INSIDE the 5rem cell
-  // (li.edited); amountText(_, 1) abbreviates the authored amounts exactly like the ledger.
+  // Amount edit stacks the struck original over the Kalam ink value INSIDE the 5rem cell (li.edited).
+  // ⚠️ BOTH HALVES RENDER AT view.scale, like every other row. They used to render at a hardcoded 1,
+  //    so an edited row stayed at its printed amount while the rows around it doubled. The gram
+  //    sub-line comes back with them: an edited row is still a ledger row and keeps the column.
   const amountCell = amt
-    ? `<span class="amount-cell"><span class="qty"><span class="was">${esc(amountText(amt.from, 1))}</span><span class="fix">${esc(amountText(amt.to, 1))}</span></span></span>`
+    ? editedAmountCell(amt.from, amt.to, row.grams_per_ml)
     : ledgerCells(row.qty, row.grams_per_ml);
   let iname;
   if (nm && amt) {
