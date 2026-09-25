@@ -1464,6 +1464,22 @@ worth knowing before they bite. None of the *data* limitations occur in the curr
   before-reference a keyboard "move up/down" would produce). Doing the two editor lists now and the
   album later would mean designing the same interaction twice and leaving the album inconsistent.
 
+- **Two same-name rows can still swap their line and their link, and only durable row identity
+  fixes it.** The save deletes and reinserts every ingredient row, so `write_recipe_rows` has to
+  re-derive which stored row each incoming line replaces. `_Carry` does that on `(qty, name)`
+  first and on the name alone second, two passes over the whole recipe (`6a90532`), which is what
+  stops an inserted row consuming a line a later row matches exactly. **One case the key cannot
+  reach:** edit one duplicate's amount to equal another's and both incoming lines carry an
+  IDENTICAL key, so whichever comes first takes the earlier stored row. Salt for the dough
+  becoming `2 tbsp` when salt for the brine already reads `2 tbsp` swaps their `raw_text` and
+  their four linkage columns. Nothing in the payload separates them at that point, since the
+  client sends no row id. Measured on live: 17 of 297 recipes repeat the full `(qty, name)` key
+  over 50 rows and **all 25 colliding keys carry byte-identical values**, so a swap today changes
+  nothing a reader or a rebuild would see. ⚠️ **This is option C's scope, not the key's.** Option C
+  is "update in place with stable row ids", which replaces the re-derivation with an id the client
+  round-trips, and it closes this case by construction. Until then the exposure grows with every
+  duplicate-name recipe that gains a link a rebuild cannot reproduce.
+
 - **Lowercase ingredient section-headers — narrow detection + flag, not silent auto-classify.**
   Bare lowercase headers (e.g. "crust", "filling") are promoted to section headings only via a
   NARROW signal — a common-section-word list plus a same-recipe step-section mirror — and every
