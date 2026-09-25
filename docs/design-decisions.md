@@ -1575,6 +1575,47 @@ when `section` is `None` (no preceding heading) or the section was since renamed
 neighbor** (simpler + clearer for duplicate-heavy recipes). Pure function + tests only — no render (O-c-1),
 no schema, no snapshot-format change; **stage-4 materialization inherits position + section for free.**
 
+## The Paprika restore, and why correcting the 'original' baselines was a one-off
+
+Until `e7835cb` every save rewrote `raw_text` with the displayed name, so "2 tbsp extra virgin olive
+oil" became "extra virgin olive oil" and the amount fell out of the stored source line. 373 rows
+across 31 recipes were already damaged (`previews/save-path-scoping.md`).
+`scripts/restore_from_paprika.py` puts the archive line back on the 300 the archive can reach and
+sets `label` to the row's current display text, so `label || raw_text` resolves to the string it
+already did.
+
+**It also corrected 261 `reason='original'` baselines, and that needs its own justification, since
+O-a above deliberately refused to derive a baseline from the archive.** That refusal stands. O-a
+rejected re-deriving the WHOLE baseline, where roughly 85% of the archive-versus-current diff is
+systematic post-import noise the archive predates: unit abbreviation, the qty/unit split,
+name-to-unit extraction, heading promotion, note extraction. Every one of those is left exactly as
+it stands. This moves two columns, `raw_text` and `label`, and only on rows whose source line a bug
+had truncated.
+
+The baselines needed correcting at all because O-a's premise had quietly stopped holding.
+`backfill_original_snapshots.py` captured each recipe's CURRENT content as its baseline, which was
+right while `original == current` and is what let O-c skip field filtering entirely. For these 31
+recipes the rows it captured were already damaged, so the baseline recorded the damage as the
+original. The archive is the only surviving record of what those lines said, which makes it the true
+original for this one field and nothing else.
+
+Three things bound it.
+
+- **Display-neutral.** `snapshot_diff._ing_name` resolves a line as `label || raw_text`, the same
+  expression the reading view uses. Both columns move together and that string does not, so no
+  annotation moves. Measured rather than argued: `_recipe_annotations` is identical on 29 of 29
+  affected recipes, 8 of them carrying real annotations.
+- **A baseline keeps its OWN text.** `label` comes from the baseline's own `label || raw_text`, not
+  the live row's, so an edit made since the baseline stays visible in the crossed-out view. 8 rows
+  hold a post-baseline edit or a reorder and were left alone for that reason, `bulgogi-bowls[1]`
+  reading "to wilt the spinach" where the archive reads "to wilt baby spinach".
+- **It cannot recur.** The save no longer rebuilds `raw_text`, so no new row can be stripped this
+  way, and the script is idempotent (a second run writes nothing and leaves the file hash
+  unchanged).
+
+Every changed row is recorded in `docs/data-repairs/`, before and after. The archive is gitignored
+at 235 MB, so those two CSVs are the durable record rather than the script.
+
 ## O-c-1 — the annotation render (shipped, CI-green through `147c5a5`)
 
 The R2 **handwritten edit treatment** (above) made real: the recipe page now renders
