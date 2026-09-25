@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 from weights import build_index, match_weight
 from stepscale import api_spans
 from import_cleanup import clean_recipe, split_qty   # shared qty->quantity+unit split (backfill/seed/import use it too)
+from units import canon_unit_str   # the Python mirror of scaler.js canonicalizeUnit, for the carry key
 # SQLAlchemy migration (Stage 1 complete): the entire serve path queries through orm_session() below —
 # reads, writes, and the 5 SQLite-dialect upserts. Build-time modules (build_db/import/migrate) keep
 # their own raw sqlite3 connections (out of Stage 1 scope). Stage 2 swaps the engine to Postgres
@@ -451,13 +452,92 @@ def resolve_recipe_payload(s, payload):
     return {"name": name, "ingredients": resolved, "steps": steps}, None
 
 
+# Everything a stored ingredient row carries that the client never sends back. A save that does not
+# re-apply these DESTROYS them, which is what previews/save-path-scoping.md measured: a no-edit save
+# was clearing label, overwriting raw_text with the displayed label and wiping all four linkage
+# columns on every row of the recipe, 2,767 links over 293 recipes one save away from gone.
+CARRIED = ("raw_text", "label", "note", "qty", "quantity", "unit",
+           "catalog_id", "link_confidence", "link_rule", "link_matched",
+           "grams", "secondary_measure")
+
+
+def _name_key(name):
+    """The display name, normalized for matching. Whitespace is COLLAPSED, not just trimmed,
+    because the client sends every field through oneLine() and a stored name with a double space
+    would otherwise never match itself."""
+    return " ".join((name or "").split()).lower()
+
+
 def _preserve_key(qty, name):
-    """Match key for carrying import-harvested grams/secondary_measure across an edit. Light and
-    predictable on purpose: trim + lowercase ONLY, on the quantity and the line's display name
-    (its label, or raw_text when there's no label) — keyed identically on both sides. It does NOT
-    strip units or fold fractions, so " 1 Cup " matches "1 cup" but "1 cup" != "1 c" (a unit change
-    is a real change). `note` is deliberately excluded, so a note-only edit keeps the weight."""
-    return ((qty or "").strip().lower(), (name or "").strip().lower())
+    """Match key for carrying a stored row's own columns across an edit. The amount and the line's
+    display name (its label, or raw_text when there's no label), keyed identically on both sides.
+    `note` is deliberately excluded, so a note-only edit keeps the weight.
+
+    ⚠️ THE AMOUNT IS COMPARED THROUGH units.canon_unit_str, BECAUSE THE CLIENT REWRITES IT. The
+    editor sends every unit through scaler.js canonicalizeUnit, so a row stored as "1 teaspoon"
+    comes back as "1 tsp" on a save that changed nothing. Measured on live data: 1,157 of 3,349
+    rows are rewritten that way and 66 of them carry a harvested weight. Comparing the raw strings
+    made every one of those a key MISS, which silently cleared the weight on an untouched line.
+    canon_unit_str is the Python mirror of that client function, held to it by
+    tests/js/unit-abbrev-sync.test.js, so both sides collapse "1 teaspoon", "1 Teaspoon" and
+    "1 tsp" to one key. It changes representation only and never a number.
+
+    It still does NOT fold fractions, so "1 cup" != "1 c" and a real amount change is a real one."""
+    return (canon_unit_str(qty or ""), _name_key(name))
+
+
+class _Carry:
+    """Match each incoming row to the stored row it replaces, and hand back what that row carried.
+
+    ⚠️ TWO TIERS, AND THEY CARRY DIFFERENT THINGS.
+      EXACT  (qty, name) unchanged  -> the row is untouched. Everything carries, grams included,
+                                       and qty/quantity/unit carry VERBATIM so a no-edit save is
+                                       byte-identical rather than merely equivalent.
+      NAME   only the qty changed   -> the line still names the same food, so raw_text and the
+                                       links carry. grams and secondary_measure do NOT: a harvested
+                                       weight belongs to the amount it was harvested from, which is
+                                       the rule test_edit_preserves_unchanged_harvested_grams pins.
+
+    The name tier is an EXTENSION of the key previews/save-path-scoping.md proposed, added because
+    the brief's own rule is that a row the user did not edit keeps everything. Changing "2 tbsp" to
+    "3 tbsp" does not edit the ingredient, and dropping its link there would be the same class of
+    silent loss this whole change exists to stop.
+
+    ⚠️ ONE STORED ROW IS CONSUMED AT MOST ONCE, in order of appearance. Measured on live data:
+    57 of 297 recipes (19%) repeat an ingredient NAME and 17 (6%) repeat the full (qty, name) key,
+    25 keys over 50 rows. Without the consume-once rule those 50 rows would all carry the FIRST
+    match's values. They happen to be byte-identical today, so nothing is visibly wrong yet, which
+    is exactly the kind of latent many-to-one this guards against.
+    """
+
+    def __init__(self, stored):
+        self.exact, self.by_name, self.headings = {}, {}, {}
+        self.used = set()
+        for o in stored:
+            if o["is_heading"]:
+                self.headings.setdefault(_name_key(o["raw_text"]), []).append(o)
+                continue
+            name = o["label"] or o["raw_text"]
+            self.exact.setdefault(_preserve_key(o["qty"], name), []).append(o)
+            self.by_name.setdefault(_name_key(name), []).append(o)
+
+    def _first_free(self, bucket):
+        while bucket:
+            o = bucket.pop(0)
+            if o["id"] not in self.used:
+                self.used.add(o["id"])
+                return o
+        return None
+
+    def take(self, qty, name):
+        """(stored row, exact?) for the first unconsumed match, or (None, False)."""
+        o = self._first_free(self.exact.get(_preserve_key(qty, name), []))
+        if o is not None:
+            return o, True
+        return self._first_free(self.by_name.get(_name_key(name), [])), False
+
+    def take_heading(self, text):
+        return self._first_free(self.headings.get(_name_key(text), []))
 
 
 def _row_qty_parts(row):
@@ -480,13 +560,25 @@ def _row_qty_parts(row):
 def write_recipe_rows(s, rid, clean, preserve=None):
     """(Re)write a recipe's ingredient lines and steps from a validated payload.
 
-    `preserve` (edit path only) maps a line's _preserve_key -> (grams, secondary_measure),
-    snapshotted from the rows about to be replaced, so an UNCHANGED line keeps its import-harvested
-    weight; a changed or new line (key absent) gets NULL — exactly as on create, which passes none.
+    `preserve` (edit path only) is a _Carry built from the rows about to be replaced. A line the
+    user did not touch is matched to the stored row it replaces and gets EVERYTHING that row was
+    carrying back. On create there is nothing to match against, so every row is new.
+
+    ⚠️ raw_text MEANS "THE LINE AS IT CAME IN" AND IS NEVER REBUILT. It used to be recomputed as
+    f"{qty} {label}{note}" on the linked branch and set to the displayed text on the other, which
+    is how "25 g (0.9 oz) guajillo chillies" became "(0.9 oz) guajillo chillies" on a save that
+    changed nothing. The source line is the one thing a re-parse can still be run against, so it
+    survives every edit that does not replace it.
+
+    ⚠️ AN EDITED LINE IS A NEW LINE, AND DROPPING ITS LINK IS DELIBERATE. label and raw_text both
+    become the typed text and the four linkage columns go to NULL. An unlinked line renders exactly
+    as it reads; a wrongly linked one shows another ingredient's prose, safety flags and allergen
+    warnings under the wrong name. The old line is still in the reason='original' snapshot, and
+    build_links.py rebuilds a dropped link from committed files.
 
     Stage 1c: runs on the caller's ORM session `s` (Core delete/insert on the same tables, exact
     column-for-column parity with the prior raw SQL); the caller commits."""
-    preserve = preserve or {}
+    carry = preserve
     ri, rs = RecipeIngredient.__table__, RecipeStep.__table__
     s.execute(delete(ri).where(ri.c.recipe_id == rid))
     s.execute(delete(rs).where(rs.c.recipe_id == rid))
@@ -494,29 +586,47 @@ def write_recipe_rows(s, rid, clean, preserve=None):
     for pos, row in enumerate(clean["ingredients"]):
         row = row or {}
         if row.get("heading"):
-            s.execute(insert(ri).values(recipe_id=rid, position=pos, is_heading=1, raw_text=row["heading"]))
-        elif row.get("item"):
-            label = row.get("label") or row["item"]
-            note = row.get("note") or ""
-            # Hybrid: recombine qty from explicit parts (Stage-4 editor) or derive the split from the
-            # authored qty (Stage 3). preserve/raw_text key off the RESOLVED qty (a recombined change
-            # correctly misses the preserve map, clearing stale grams).
-            qty, quantity, unit = _row_qty_parts(row)
-            grams, secondary = preserve.get(_preserve_key(qty, label), (None, None))
-            s.execute(insert(ri).values(
-                recipe_id=rid, position=pos, qty=qty, quantity=quantity, unit=unit,
-                ingredient_id=row["item"], label=label, note=note,
-                raw_text=f"{qty} {label}{note}".strip(), grams=grams, secondary_measure=secondary,
-            ))
+            # A heading carries only its text, and its `note` exists purely so a no-edit save is
+            # byte-identical (2 live heading rows hold '' where a fresh insert would write NULL).
+            held = carry.take_heading(row["heading"]) if carry else None
+            s.execute(insert(ri).values(recipe_id=rid, position=pos, is_heading=1,
+                                        raw_text=row["heading"],
+                                        note=held["note"] if held else None))
+            continue
+
+        linked = row.get("item")
+        text = (row.get("label") or row["item"]) if linked else (row.get("text", "") or "")
+        # Hybrid: recombine qty from explicit parts (Stage-4 editor) or derive the split from the
+        # authored qty (Stage 3).
+        qty, quantity, unit = _row_qty_parts(row)
+        note_in = row.get("note") or ""
+        held, exact = carry.take(qty, text) if carry else (None, False)
+
+        if held is not None:
+            raw_text = held["raw_text"]
+            label = held["label"] if not linked else (held["label"] or text)
+            # A note-only edit must not look like a no-op, and an unchanged note must not drift
+            # between NULL and ''. Equivalent -> keep the stored spelling. Different -> take the edit.
+            note = held["note"] if (held["note"] or "") == note_in else (note_in or None)
+            if exact:                                   # nothing about the amount moved
+                qty, quantity, unit = held["qty"], held["quantity"], held["unit"]
+            links = (held["catalog_id"], held["link_confidence"],
+                     held["link_rule"], held["link_matched"])
+            grams, secondary = (held["grams"], held["secondary_measure"]) if exact else (None, None)
         else:
-            text_val = row.get("text", "") or ""
-            note = row.get("note") or ""
-            qty, quantity, unit = _row_qty_parts(row)   # hybrid: recombine from parts, or derive from qty
-            grams, secondary = preserve.get(_preserve_key(qty, text_val), (None, None))
-            s.execute(insert(ri).values(
-                recipe_id=rid, position=pos, qty=qty, quantity=quantity, unit=unit,
-                raw_text=text_val, note=note, grams=grams, secondary_measure=secondary,
-            ))
+            raw_text = text                             # a new line: the typed text IS the source line
+            label = text
+            note = note_in or None
+            links = (None, None, None, None)
+            grams, secondary = None, None
+
+        s.execute(insert(ri).values(
+            recipe_id=rid, position=pos, qty=qty, quantity=quantity, unit=unit,
+            ingredient_id=linked or None, label=label, note=note, raw_text=raw_text,
+            grams=grams, secondary_measure=secondary,
+            catalog_id=links[0], link_confidence=links[1],
+            link_rule=links[2], link_matched=links[3],
+        ))
 
     for pos, step in enumerate(clean["steps"]):
         if isinstance(step, dict) and step.get("heading"):
@@ -903,16 +1013,15 @@ def update_recipe(rid):
             cook_time=payload.get("cook_time"), total_time=payload.get("total_time"), descr=payload.get("descr"),
             notes=payload.get("notes"), image=payload.get("image"),
         ))
-        # Preserve import-harvested grams/secondary_measure across the edit: snapshot the rows
-        # about to be replaced, keyed by (qty, name); write_recipe_rows re-applies them to the
-        # UNCHANGED lines (a changed qty/name, or a new line, gets NULL — see write_recipe_rows).
-        preserve = {}
-        for o in s.execute(select(
-            RecipeIngredient.qty, RecipeIngredient.label, RecipeIngredient.raw_text,
-            RecipeIngredient.grams, RecipeIngredient.secondary_measure,
-        ).where(RecipeIngredient.recipe_id == rid, RecipeIngredient.is_heading == 0)).mappings():
-            if o["grams"] is not None or o["secondary_measure"] is not None:
-                preserve[_preserve_key(o["qty"], o["label"] or o["raw_text"])] = (o["grams"], o["secondary_measure"])
+        # Snapshot the rows about to be replaced so write_recipe_rows can hand each surviving line
+        # back everything it was carrying: raw_text, label, note, the amount, the four linkage
+        # columns and the harvested weight. A line the user actually edited matches nothing and is
+        # written as new. See _Carry for the two tiers and why they carry different things.
+        preserve = _Carry(s.execute(
+            select(RecipeIngredient.__table__)
+            .where(RecipeIngredient.recipe_id == rid)
+            .order_by(RecipeIngredient.position, RecipeIngredient.id)
+        ).mappings().all())
         write_recipe_rows(s, rid, clean, preserve)
         # U5: an imported recipe is written with NO reason='original' baseline, because it arrives as
         # the publisher wrote it and the user is about to fix the parse errors. THIS save is the first

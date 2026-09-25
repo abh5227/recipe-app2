@@ -415,7 +415,9 @@ def test_a_promoted_line_with_no_label_reads_as_the_canonical(kitchen):
                         "WHERE recipe_id=?", (rid,)).fetchone()
     assert row["ingredient_id"] == "egg_pasta"          # the id still uses underscores
     assert row["label"] == "egg pasta"                  # what the page shows does not
-    assert row["raw_text"] == "200g egg pasta"
+    # ⚠️ raw_text no longer synthesizes "{qty} {label}". It means "the line as it came in", and a
+    #    row the client just created has no earlier line, so its text is its source line.
+    assert row["raw_text"] == "egg pasta"
 
 
 def test_an_explicit_label_still_wins(kitchen):

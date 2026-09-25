@@ -200,9 +200,20 @@ class RecipeIngredient(Base):
     secondary_measure = Column(Text)
     quantity = Column(Text)
     unit = Column(Text)
+    # ⚠️ THE FOUR LINKAGE COLUMNS WERE IN THE DATABASE AND NOT IN THIS MODEL. Migration 033 and
+    #    Alembic revision b4c5d6e7f8a9 added them, and nothing here declared them, so every ORM
+    #    write silently omitted all four. That is half of why a no-edit save wiped 2,767 links:
+    #    write_recipe_rows could not have carried a column the mapper did not know about.
+    #    catalog_id is deliberately NOT a ForeignKey, for migration 030's reason (a dangling link
+    #    degrades a lookup and breaks no page, which is the safe direction).
+    catalog_id = Column(Text)
+    link_confidence = Column(Text)
+    link_rule = Column(Text)
+    link_matched = Column(Text)
     __table_args__ = (
         Index("idx_ri_ingredient", "ingredient_id"),
         Index("idx_ri_recipe", "recipe_id"),
+        Index("idx_ri_catalog", "catalog_id"),
         {"sqlite_autoincrement": True},
     )
 

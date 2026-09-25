@@ -182,9 +182,12 @@ def test_edit_preserves_unchanged_harvested_grams(kitchen):
         "steps": ["mix"],
     }).get_json()["id"]
     with kitchen.conn() as c:
-        # guard the premise: the seeded lines really are plain (label NULL, name in raw_text)
-        rows = c.execute("SELECT label FROM recipe_ingredients WHERE recipe_id=?", (rid,)).fetchall()
-        assert all(r["label"] is None for r in rows)
+        # guard the premise: the seeded lines really are plain, with the name in raw_text.
+        # ⚠️ label is now SET on a new row too (it used to stay NULL on this branch), so the key's
+        #    label||raw_text resolves to the same string either way and this still exercises the
+        #    name half of it. A NULL-label row is covered by the round-trip fixture instead.
+        rows = c.execute("SELECT label, raw_text FROM recipe_ingredients WHERE recipe_id=?", (rid,)).fetchall()
+        assert all(r["label"] == r["raw_text"] for r in rows)
         c.execute("UPDATE recipe_ingredients SET grams=120.0, secondary_measure='1 cup' WHERE recipe_id=? AND raw_text='flour'", (rid,))
         c.execute("UPDATE recipe_ingredients SET grams=50.0 WHERE recipe_id=? AND raw_text='cocoa'", (rid,))
         c.execute("UPDATE recipe_ingredients SET grams=480.0 WHERE recipe_id=? AND raw_text='milk'", (rid,))
@@ -735,9 +738,12 @@ def test_else_branch_still_derives_from_qty_when_no_parts(kitchen):
     assert (i["qty"], i["quantity"], i["unit"]) == ("2 tablespoons", "2", "tablespoons")   # derived, qty untouched
 
 
-def test_if_branch_recombined_qty_flows_into_raw_text(kitchen):
-    """A linked row synthesizes raw_text = "{qty} {label}{note}"; with explicit parts, the RECOMBINED
-    qty must flow into it correctly (raw_text stays valid)."""
+def test_a_new_row_stores_the_typed_text_as_its_own_source_line(kitchen):
+    """⚠️ REVERSES "a linked row synthesizes raw_text = {qty} {label}{note}". That rebuild is what
+    turned "2 ¼ cups (282 g) all-purpose flour" into "2 ¼ cups all-purpose flour" on a save that
+    changed nothing, because anything in the source line that was not the qty, the label or the
+    note simply fell out. raw_text now means "the line as it came in" and is never recomputed.
+    A row the client types has no earlier source line, so its text IS its source line."""
     rid = kitchen.client.post("/api/recipes", json={
         "name": "Raw text",
         "ingredients": [{"quantity": "2", "unit": "cups", "item": "carrot", "label": "carrots"}],
@@ -745,7 +751,8 @@ def test_if_branch_recombined_qty_flows_into_raw_text(kitchen):
     }).get_json()["id"]
     i = kitchen.client.get(f"/api/recipes/{rid}").get_json()["ingredients"][0]
     assert i["qty"] == "2 cups"
-    assert i["raw_text"] == "2 cups carrots"
+    assert i["raw_text"] == "carrots"
+    assert i["label"] == "carrots"
 
 
 # --- recipe write gates: TIER and OWNERSHIP are independent -------------------------------------
