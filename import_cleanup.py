@@ -435,6 +435,22 @@ def _inside_parens(text, pos):
     return text.count("(", 0, pos) > text.count(")", 0, pos)
 
 
+# ⚠️ THE COUNTING WORD IS PART OF THE FOOD HERE, not a measurement of it. A cinnamon stick is
+# whole bark that you fish out of the pot; 'cinnamon' standing alone reads as the ground spice,
+# which is a different ingredient used a different way. The shipped library agrees and holds them
+# as separate rows, 'cinnamon stick' (Q30038886) and 'cinnamon' (Q28165).
+#
+# Measured over the 229 live lines where a counting word is lifted, this is the only phrase whose
+# lift changes WHICH FOOD the line names and which is settled. Two more were found and are NOT
+# here, pending a ruling: 'fennel bulb' (1 line, and 'fennel' alone is ambiguous between the bulb
+# and the seed) and 'salmon fillet' (1 line, where a fillet reads more like a cut than a food).
+# Everything else the scan turned up is a genuine measurement: a clove of garlic, a stalk of
+# celery, a stick of butter, a slice of ginger, a head of cauliflower.
+_IDENTITY_COMPOUNDS = ("cinnamon stick",)
+_IDENTITY_RE = re.compile(
+    r"\b(?:" + "|".join(re.escape(p) for p in _IDENTITY_COMPOUNDS) + r")s?\b", re.I)
+
+
 def _lift_count_unit(unit, name):
     """No unit matched and the name carries a counting noun -> move it to the unit.
 
@@ -457,6 +473,11 @@ def _lift_count_unit(unit, name):
     sits in front of the noun where _COUNT_UNIT_LEAD already reads it.
     """
     if unit or not name:
+        return unit, name
+    # ⚠️ THE FOOD KEEPS ITS COUNTING WORD when the two together name something the bare food does
+    #    not. See _IDENTITY_COMPOUNDS. This runs before BOTH branches and before the size lift, so
+    #    "2 inch cinnamon stick" and "1 Chinese cinnamon stick" are held whole as well.
+    if _IDENTITY_RE.search(name):
         return unit, name
     lead = _COUNT_UNIT_LEAD.match(name)
     if lead:

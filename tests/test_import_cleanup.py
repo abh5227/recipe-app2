@@ -179,7 +179,6 @@ def test_a_heading_that_carries_a_size_word_is_still_a_heading():
     ("4 slices ginger", "slices", "ginger"),
     ("1 pinch cayenne pepper", "pinch", "cayenne pepper"),
     ("2 bunches flat-leaf parsley", "bunches", "flat-leaf parsley"),
-    ("1 cinnamon stick", "stick", "cinnamon"),
     ("2 sticks unsalted butter", "sticks", "unsalted butter"),
     ("1 head garlic", "head", "garlic"),
     ("2 salmon fillets", "fillets", "salmon"),
@@ -191,6 +190,33 @@ def test_a_heading_that_carries_a_size_word_is_still_a_heading():
 def test_the_other_counting_nouns_lift_the_same_way(line, unit, name):
     d = ic.classify_line(line)
     assert (d["unit"], d["name"]) == (unit, name)
+
+
+def test_a_cinnamon_stick_keeps_its_stick():
+    """⚠️ REVERSES "1 cinnamon stick" -> stick + "cinnamon", which this file asserted until now.
+
+    The counting word is part of the FOOD here, not a measurement of it. A cinnamon stick is whole
+    bark you fish out of the pot, and 'cinnamon' standing alone reads as the ground spice, which is
+    a different ingredient used a different way. The shipped library agrees and holds them as two
+    rows, 'cinnamon stick' (Q30038886) and 'cinnamon' (Q28165), so the lift also moved the line's
+    catalog link onto the wrong food.
+
+    All four live shapes are held, including the three whose names are already mangled, because the
+    guard tests the text rather than a tidy name."""
+    for line in ("1 cinnamon stick", "2 inch cinnamon stick", "1 Chinese cinnamon stick",
+                 "One 2-inch piece cinnamon stick", "2 cinnamon sticks"):
+        d = ic.classify_line(line)
+        assert d["unit"] == "", f"{line!r} lifted {d['unit']!r}"
+        assert "cinnamon stick" in d["name"].lower(), f"{line!r} -> {d['name']!r}"
+
+
+def test_the_compound_guard_is_narrow_and_leaves_real_measurements_alone():
+    """The guard names one phrase. Everything the scan read as a genuine measurement still lifts:
+    a clove of garlic, a stalk of celery, a stick of BUTTER, a slice of ginger, a head of garlic."""
+    for line, unit in (("5 garlic cloves", "cloves"), ("2 stalks celery", "stalks"),
+                       ("2 sticks unsalted butter", "sticks"), ("4 slices ginger", "slices"),
+                       ("1 head garlic", "head")):
+        assert ic.classify_line(line)["unit"] == unit, line
 
 
 def test_a_counting_noun_inside_a_parenthetical_is_an_aside_not_the_count():
