@@ -229,6 +229,14 @@ CLEANUP_RULES = (
     # first paren), so it needs no rule of its own.
     ("cleaned_double_paren", re.compile(r"\(\s*\(([^()]*)\)\s*\)"), r"(\1)",
      "collapsed a doubled parenthesis — publisher artifact"),
+
+    # A space in front of a comma or semicolon ("onion , roughly sliced"). recipetineats writes the
+    # prep clause as its own field and joins it with a separator that keeps the leading space, so the
+    # parsed NAME carries it and the reading view prints "onion , roughly sliced". 77 lines over 24
+    # recipes. ⚠️ The source line is untouched: raw_text stores `raw`, and only the text the parser
+    # reads comes through here.
+    ("cleaned_space_before_comma", re.compile(r"[ \t]+([,;])"), r"\1",
+     "removed a space before a comma — publisher artifact"),
 )
 
 # flag -> reason, for the writer's flag-row builder (import_write._line_flag_rows).
