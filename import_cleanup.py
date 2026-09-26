@@ -802,8 +802,17 @@ def _parse_canned(line):
     return None
 
 
-def classify_line(raw, section_hints=None):
-    """Turn one raw ingredient line into a structured-or-flagged record."""
+def classify_line(raw, section_hints=None, has_stored_amount=False):
+    """Turn one raw ingredient line into a structured-or-flagged record.
+
+    ⚠️ has_stored_amount IS FOR RE-READING A STORED ROW, never for a fresh import. A row that
+    already holds an amount in its qty column is an ingredient whatever its text looks like, so the
+    NARROW section guess (block 3b) is skipped for it. Without it, re-reading the amount-less text
+    the old save left behind promoted 7 live rows to headings and they would have vanished from the
+    list: 'maple syrup', 'oyster sauce', 'light soy sauce', 'dark soy sauce', 'Worcestershire
+    sauce'. Block 3 is untouched, so a colon-terminated or ALL-CAPS heading is still a heading
+    whatever the row holds, and no stored heading can be demoted because a heading never carries a
+    qty (import_write._ingredient_row writes None for one)."""
     # Publisher artifacts are repaired BEFORE anything reads the line, so every downstream rule
     # (amount parse, gram harvest, section detection) sees well-formed text rather than each having
     # to tolerate the malformation. `raw` keeps the original for raw_text — see CLEANUP_RULES.
@@ -878,7 +887,7 @@ def classify_line(raw, section_hints=None):
 
     # 3b. No amount; matches a NARROW section signal (a common section word, or a same-recipe
     #     step-section mirror) -> treat as a section header, but FLAG it for confirmation.
-    if _is_section_candidate(line, section_hints):
+    if not has_stored_amount and _is_section_candidate(line, section_hints):
         res["kind"] = "section"
         res["flags"].append("section_suggested")
         res["flag_reason"] = "no amount, matches section pattern — treated as section header, confirm"
