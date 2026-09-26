@@ -235,8 +235,13 @@ CLEANUP_RULES = (
     # parsed NAME carries it and the reading view prints "onion , roughly sliced". 77 lines over 24
     # recipes. ⚠️ The source line is untouched: raw_text stores `raw`, and only the text the parser
     # reads comes through here.
+    # ⚠️ THE COLLAPSE IS PART OF THE SAME RULE, not a second one. "butter, , melted" is one artifact
+    # with a space in the middle of it; repairing only the space leaves "butter,, melted", which is
+    # worse than what it started with. Applied to the running result, so the two fire in order.
     ("cleaned_space_before_comma", re.compile(r"[ \t]+([,;])"), r"\1",
      "removed a space before a comma — publisher artifact"),
+    ("cleaned_double_comma", re.compile(r"([,;])\s*[,;]+"), r"\1",
+     "collapsed a doubled comma — publisher artifact"),
 )
 
 # flag -> reason, for the writer's flag-row builder (import_write._line_flag_rows).
@@ -440,13 +445,17 @@ def _inside_parens(text, pos):
 # which is a different ingredient used a different way. The shipped library agrees and holds them
 # as separate rows, 'cinnamon stick' (Q30038886) and 'cinnamon' (Q28165).
 #
-# Measured over the 229 live lines where a counting word is lifted, this is the only phrase whose
-# lift changes WHICH FOOD the line names and which is settled. Two more were found and are NOT
-# here, pending a ruling: 'fennel bulb' (1 line, and 'fennel' alone is ambiguous between the bulb
-# and the seed) and 'salmon fillet' (1 line, where a fillet reads more like a cut than a food).
-# Everything else the scan turned up is a genuine measurement: a clove of garlic, a stalk of
-# celery, a stick of butter, a slice of ginger, a head of cauliflower.
-_IDENTITY_COMPOUNDS = ("cinnamon stick",)
+# 'fennel bulb' is here for the same reason. The bulb is the vegetable and 'fennel' standing alone
+# is as likely to mean the seed, which is a spice. The library holds all three: 'Fennel',
+# 'fennel bulb', 'fennel seeds'.
+#
+# Measured over the 229 live lines where a counting word is lifted, these are the only two phrases
+# whose lift changes WHICH FOOD the line names. Two more were read and deliberately LEFT as
+# measurements: 'salmon fillet' (a fillet is a cut, and "2 fillets" is how you buy them) and
+# 'lemongrass stalk' (no competing form exists, so a stalk is the measure). Everything else the
+# scan turned up is a genuine measurement: a clove of garlic, a stalk of celery, a stick of butter,
+# a slice of ginger, a head of cauliflower.
+_IDENTITY_COMPOUNDS = ("cinnamon stick", "fennel bulb")
 _IDENTITY_RE = re.compile(
     r"\b(?:" + "|".join(re.escape(p) for p in _IDENTITY_COMPOUNDS) + r")s?\b", re.I)
 

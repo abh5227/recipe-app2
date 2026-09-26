@@ -182,7 +182,6 @@ def test_a_heading_that_carries_a_size_word_is_still_a_heading():
     ("2 sticks unsalted butter", "sticks", "unsalted butter"),
     ("1 head garlic", "head", "garlic"),
     ("2 salmon fillets", "fillets", "salmon"),
-    ("1 fennel bulb, finely chopped", "bulb", "fennel, finely chopped"),
     ("5 Ceylon or English breakfast tea bags", "bags", "Ceylon or English breakfast tea"),
     ("1 Can Whole Peeled Tomatoes", "Can", "Whole Peeled Tomatoes"),
     ("4 - 6 pieces of Parmesan rind (optional)", "pieces", "Parmesan rind (optional)"),
@@ -190,6 +189,29 @@ def test_a_heading_that_carries_a_size_word_is_still_a_heading():
 def test_the_other_counting_nouns_lift_the_same_way(line, unit, name):
     d = ic.classify_line(line)
     assert (d["unit"], d["name"]) == (unit, name)
+
+
+def test_a_fennel_bulb_keeps_its_bulb():
+    """⚠️ REVERSES "1 fennel bulb" -> bulb + "fennel", which this file asserted until now.
+
+    The bulb is the vegetable. 'fennel' standing alone is as likely to mean the seed, which is a
+    spice used a different way, and the library holds all three rows: 'Fennel', 'fennel bulb',
+    'fennel seeds'. A line that says bulb has told you which one it means, so the word stays."""
+    for line in ("1 fennel bulb, finely chopped", "2 fennel bulbs"):
+        d = ic.classify_line(line)
+        assert d["unit"] == "", f"{line!r} lifted {d['unit']!r}"
+        assert "fennel bulb" in d["name"].lower(), f"{line!r} -> {d['name']!r}"
+    # the SEED is untouched: it is not the compound, so its own unit still lifts
+    assert ic.classify_line("1 tbsp fennel seeds")["unit"] == "tbsp"
+
+
+def test_a_doubled_comma_is_collapsed_with_the_space_before_it():
+    """⚠️ ONE ARTIFACT, NOT TWO. "butter, , melted" repaired only for the space reads
+    "butter,, melted", which is worse than it started. The live row is vanilla-mug-cake[4]."""
+    assert ic.clean_source_text("2 tablespoon butter, , melted (28 g)")[0] == \
+        "2 tablespoon butter, melted (28 g)"
+    assert ic.classify_line("2 tablespoon butter, , melted (28 g)")["name"] == "butter, melted"
+    assert ic.clean_source_text("a, b")[1] == []          # nothing to do, no flag
 
 
 def test_a_cinnamon_stick_keeps_its_stick():
