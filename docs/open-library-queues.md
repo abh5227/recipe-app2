@@ -1540,3 +1540,52 @@ Nothing is needed before (a) or (b) arrive. When they do:
 
 **Design item, not a task.** Nothing to build now. This exists so the question is already answered
 when either threshold is crossed, rather than being noticed afterwards.
+
+## 25. Source-coverage gaps the linkage pass found, and none of them is an admission
+
+**Recorded 2026-09-25, from the linkage dry run on live.** 471 of 3,349 ingredient lines reach no
+catalog row, over 388 distinct names. ⚠️ **This is a queue of things to LOOK AT in the sources, not
+a list of rows to author.** `docs/what-the-library-is-for.md` governs admission and nothing here
+overrides it. The instruction that produced this list was explicit: investigate source coverage,
+do not hand-author rows.
+
+**Two rows a link landed coarsely on, because the specific row does not exist.**
+
+| the line | where it landed | what is missing |
+| --- | --- | --- |
+| `Crimini Mushrooms, Sliced or Quartered`, `cremini mushrooms, trimmed and sliced` | `Q654236 edible mushroom` | no cremini row. The catalog holds `en:button-mushroom` and `en:portobello`, which are the same species at two other stages |
+| `block extra firm tofu (drained and pressed)` | `en:firm-tofu` | no extra-firm row, and the two differ by water content, which is what a recipe is choosing between |
+
+Neither link is wrong. Both are the most specific row that exists, so they are recorded here
+rather than flagged in the pass.
+
+**The head of the unmatched list, and three different problems are mixed in it.**
+
+| lines | name | what is actually wrong |
+| --- | --- | --- |
+| 16 | `sea salt and freshly ground black pepper` | two ingredients on one line, a LINE defect |
+| 8 | `chicken stock` | no row, a real gap |
+| 7 | `cooking salt` | no row, and `salt` exists. A naming gap |
+| 4 | `juice of 1 lemon` | a line defect, the amount is inside the name |
+| 3 | `spring onions` | `scallion` exists and the matcher does not reach it from this name |
+| 3 | `beef stock` | no row, pairs with `chicken stock` |
+| 3 | `swiss chard` | no row |
+| 3 | `tomato passata` | no row |
+| 3 | `low sodium chicken stock` | same gap as `chicken stock` |
+| 3 | `msg` | no row |
+| 3 | `ice` | arguably not an ingredient |
+| 3 | `juice of ½ lemon` | line defect |
+| 3 | `cooking` | line defect, wreckage from a split |
+| 3 | `ice cold water` | `water` exists, the modifiers block it |
+| 2 | `salsa`, `coarse sugar`, `tortilla chips`, `semolina flour`, `speculoos cookie butter`, `loose earl grey tea`, `nonstick pan spray`, `roasted chili flakes` | no row |
+| 2 | `diamond crystal kosher salt`, `freshly grated pecorino romano cheese`, `kosher salt and freshly ground black pepper` | a row exists and the name does not reach it |
+| 2 | `eggs approx. 260g-270g excluding shell`, `plus 2 tablespoons extra-virgin olive oil`, `about ⅔ cup`, `one 2-inch piece ginger`, `ground cumin sea salt` | line defects |
+
+**The stocks are the largest genuine gap.** `chicken stock`, `low sodium chicken stock` and
+`beef stock` are 14 lines between them and the catalog has `broth` rows. Whether stock and broth
+are one row or two is a food question, not a matcher one, and it is the first thing to settle
+here.
+
+⚠️ **Roughly a third of this list is a LINE defect, not a library gap**, and re-running the
+linkage pass after any future line repair will shrink it without a single row being admitted.
+The full 388 regenerate into `previews/linkage-dryrun.csv` on every dry run.
