@@ -1575,6 +1575,37 @@ when `section` is `None` (no preceding heading) or the section was since renamed
 neighbor** (simpler + clearer for duplicate-heavy recipes). Pure function + tests only — no render (O-c-1),
 no schema, no snapshot-format change; **stage-4 materialization inherits position + section for free.**
 
+## LOCKSTEP: a re-split moves the live row and its baseline together
+
+**The rule.** Whenever the app re-splits a stored line into amount, unit and name, it re-splits
+that line's `reason='original'` snapshot row in the SAME transaction, using the SAME function
+applied to the SNAPSHOT'S OWN text. It never copies the split from the live row, and it never
+touches `raw_text` on either side. One shared path, `resplit.py`, so a rule cannot be applied to
+the live rows and skipped on the baselines.
+
+**Why it exists, measured.** The recipe page builds its "your changes" marginalia by diffing each
+row against its baseline. A parser improvement that re-splits a live row and leaves the baseline
+alone therefore invents an edit the cook never made. `ed6aaf5` did that on 2026-09-23: it lifted
+the counting noun into the unit on 73 live rows, touched no baseline, and minted 73 phantom
+amount-edits. Counted on 2026-09-25, the page was showing **81 amount edits of which 73 were the
+backfill's and 8 were real**. The marginalia is the app's whole premise, so a rule that quietly
+fills it with the parser's own history is not a cosmetic problem.
+
+**Each side is re-read from its own text, and that half is the easy one to get wrong.** Copying
+the live row's split into the baseline would make every edit since the baseline vanish from the
+crossed-out view. `bulgogi-bowls[1]` is the live example: the baseline reads "to wilt the spinach"
+where the current line reads "to wilt baby spinach". The RULE applies to both. The TEXT stays
+different, which is exactly what the reader is meant to see.
+
+**raw_text is never rewritten by a re-split.** A re-split re-READS a line. Rewriting the source
+line is what lost 373 rows' amounts in the first place, and the Paprika restore below is what put
+them back.
+
+**Never lose an amount.** A stored row can carry a qty its `raw_text` does not, which is what the
+old save left behind. Re-reading that text finds no amount, so `split_columns` keeps the stored one
+and updates the name alone. That guard lives in the shared function rather than in each caller, so
+a future re-split path gets it without knowing to ask.
+
 ## The Paprika restore, and why correcting the 'original' baselines was a one-off
 
 Until `e7835cb` every save rewrote `raw_text` with the displayed name, so "2 tbsp extra virgin olive
