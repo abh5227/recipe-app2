@@ -18,7 +18,14 @@ THE RULE, in three parts:
      to stay visible in the crossed-out view.
   3. raw_text is never touched on either side. A re-split re-reads a line, it does not rewrite it.
 
-WHAT IT WRITES: qty, quantity, unit, label. Nothing else.
+WHAT IT WRITES: qty, quantity, unit, label, and a `note` that repeats the label. Nothing else.
+
+⚠️ A NOTE IS CLEARED ONLY WHEN IT SAYS NOTHING THE LABEL DOES NOT. The old parser split a prep
+clause out into `note`; the current one keeps the name whole, so a row re-split since then carries
+the same clause in BOTH columns. Measured on live before the rule was written: 26 baseline rows
+carry a note, 18 of them repeat their own label word for word, and 0 of the 13 live notes do. The
+containment test is the whole guard, and a note holding anything of its own ('plus more to serve',
+'optional, but really great') is never touched.
 
 ⚠️ grams AND secondary_measure ARE NOT RE-DERIVED. A stored weight was harvested from the line as
 it read at import, and a re-split that re-harvested could only ever lose one (a row whose gram
@@ -30,6 +37,8 @@ import import_cleanup as ic
 from snapshot_serialize import content_blob
 
 SPLIT_COLUMNS = ("qty", "quantity", "unit", "label")
+# what plan_row may propose. `note` is not re-derived from the line, it is only ever cleared.
+WRITE_COLUMNS = SPLIT_COLUMNS + ("note",)
 
 
 from import_write import _qty_text          # THE qty join, shared with a fresh import
@@ -69,13 +78,31 @@ def split_columns(raw_text, stored_qty=None, hints=None):
     }
 
 
+def redundant_note(row):
+    """True when a row's `note` repeats text its own `label` already carries.
+
+    The old parser wrote 'carrot' + note ', peeled and julienned'. The current one writes
+    'carrot, peeled and julienned' and no note, so a row that has had its name re-split and its
+    note left behind shows the clause twice. Leading punctuation and case are ignored, and the
+    match has to be a containment, so a note that adds anything at all fails the test.
+    """
+    clause = (row.get("note") or "").strip().lstrip(",").strip()
+    return bool(clause) and clause.lower() in (row.get("label") or "").lower()
+
+
 def plan_row(row, hints=None):
-    """One stored row (a mapping with raw_text/qty/quantity/unit/label) -> the columns that would
-    change, or {} when the re-split agrees with what is already there."""
+    """One stored row (a mapping with raw_text/qty/quantity/unit/label/note) -> the columns that
+    would change, or {} when the re-split agrees with what is already there."""
     got = split_columns(row.get("raw_text"), row.get("qty"), hints)
     if got is None:
         return {}
-    return {k: v for k, v in got.items() if (row.get(k) or None) != (v or None)}
+    out = {k: v for k, v in got.items() if (row.get(k) or None) != (v or None)}
+    # ⚠️ AGAINST THE ROW AS THE RE-SPLIT WOULD LEAVE IT, not as it is stored. A row whose name is
+    #    being widened to 'carrot, peeled and julienned' in this very call is exactly the one whose
+    #    note becomes a duplicate, and reading the stored label would miss it.
+    if (row.get("note") or "") and redundant_note(dict(row, **out)):
+        out["note"] = ""
+    return out
 
 
 def baseline_rows(conn, recipe_id):

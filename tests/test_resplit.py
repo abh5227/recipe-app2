@@ -173,3 +173,69 @@ def test_lockstep_is_idempotent(kitchen):
     after_first = (_live(kitchen, rid), _baseline(kitchen, rid))
     assert resplit.plan_row(dict(_live(kitchen, rid)[0])) == {}, "a second pass still wants a change"
     assert (_live(kitchen, rid), _baseline(kitchen, rid)) == after_first
+
+
+# --------------------------------------------------------------------------------------------- #
+# The duplicated note
+# --------------------------------------------------------------------------------------------- #
+def test_a_note_that_repeats_the_label_is_cleared():
+    """⚠️ THE OTHER HALF OF ed6aaf5's DEBT. The old parser wrote 'carrot' plus a note holding the
+    prep clause. The current one keeps the name whole, so a row re-split since then carries the
+    clause in both columns and the page shows it twice."""
+    row = {"raw_text": "1 large carrot, peeled and julienned", "qty": "1 large", "quantity": "1",
+           "unit": "large", "label": "carrot", "note": ", peeled and julienned"}
+    got = resplit.plan_row(row)
+    assert got["label"] == "carrot, peeled and julienned"
+    assert got["note"] == ""
+
+
+def test_a_note_that_says_anything_of_its_own_is_never_touched():
+    """⚠️ NEVER LOSE INFORMATION. Measured on live: 13 rows carry a note and not one repeats its
+    label. 'plus more to serve' is not in the name and clearing it would delete a real instruction."""
+    for note in ("plus more to serve", "optional, but really great", "or light brown sugar",
+                 ", finely grated (~¼ onion)"):
+        row = {"raw_text": "2 tbsp extra-virgin olive oil", "qty": "2 tbsp", "quantity": "2",
+               "unit": "tbsp", "label": "extra-virgin olive oil", "note": note}
+        assert "note" not in resplit.plan_row(row), note
+
+
+def test_the_note_is_read_against_the_name_the_re_split_is_about_to_write():
+    """The stored label is 'carrot' and the note is not inside it. The label this very call widens
+    to DOES contain it, and reading the stored one instead would leave every such row behind."""
+    row = {"raw_text": "1 large carrot, peeled and julienned", "qty": "1 large", "quantity": "1",
+           "unit": "large", "label": "carrot", "note": ", peeled and julienned"}
+    assert not resplit.redundant_note(row)                 # against what is stored: no
+    widened = resplit.split_columns(row["raw_text"], row["qty"])["label"]
+    assert resplit.redundant_note(dict(row, label=widened))               # against the re-split: yes
+    assert resplit.plan_row(row)["note"] == ""
+
+
+def test_clearing_a_note_is_idempotent():
+    row = {"raw_text": "2 large red onions, finely sliced into half-moons", "qty": "2 large",
+           "quantity": "2", "unit": "large", "label": "red onions, finely sliced into half-moons",
+           "note": ", finely sliced into half-moons"}
+    assert resplit.plan_row(row) == {"note": ""}
+    assert resplit.plan_row(dict(row, note="")) == {}
+
+
+def test_lockstep_clears_a_duplicated_note_on_the_baseline_alone(kitchen):
+    """⚠️ THE LIVE SHAPE, all 18 of them. Both sides hold the same name; only the baseline still
+    carries the old parser's note, so the page shows a note edit nobody made. One lockstep write
+    cancels it and the live row is already right, so nothing moves there."""
+    rid = _seed(kitchen,
+                rows=[{"raw_text": "2 large red onions, finely sliced into half-moons",
+                       "qty": "2 large", "quantity": "2", "unit": "large",
+                       "label": "red onions, finely sliced into half-moons", "note": ""}],
+                baseline_rows=[{"raw_text": "2 large red onions, finely sliced into half-moons",
+                                "qty": "2 large", "quantity": "2", "unit": "large",
+                                "label": "red onions, finely sliced into half-moons",
+                                "note": ", finely sliced into half-moons"}])
+    with kitchen.conn() as c:
+        assert resplit.plan_row(dict(_live(kitchen, rid)[0])) == {}, \
+            "premise: the live row is already split the current way"
+        n_live, n_base = resplit.write_lockstep(c, rid, {0: {}})
+        c.commit()
+    assert (n_live, n_base) == (0, 1), "the live row had nothing to change, the baseline did"
+    assert _baseline(kitchen, rid)[0]["note"] == ""
+    assert _live(kitchen, rid)[0]["label"] == "red onions, finely sliced into half-moons"
+    assert _live(kitchen, rid)[0]["qty"] == "2 large"
