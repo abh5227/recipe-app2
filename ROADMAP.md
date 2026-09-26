@@ -684,6 +684,36 @@ destructive action.
 
 App-wide light/dark toggle. Frontend only, no schema. Cheap; pull forward freely.
 
+### The library on the recipe page (P21) — 2,851 links reach the cook nowhere
+
+**Recorded 2026-09-25, from the linkage pass.** 2,851 of 3,349 ingredient lines carry a
+`catalog_id` and **`app.py` names no library table at all.** Every assertion those links reach is
+read by `library_viewer.py` and by nothing a cook opens.
+
+Measured on live at the pass:
+
+```
+732 linked rows reach one of the 53 authored library entries
+    those entries hold 128 claims and 44 safety flags
+    25 of the flags name an allergen: wheat 9, peanut 4, milk 4, soybeans 3,
+    tree nuts 2, and one each of sesame, molluscan shellfish and egg
+202 of the 300 recipes carry at least one safety flag through their links
+```
+
+**What would ship.** The allergen and hazard flags on a recipe, and the ingredient's own entry
+reachable from its line. The data is there, sourced and cited, and the join is one query.
+
+⚠️ **This is also what changes the stakes on every link.** A wrong link today renders a name that
+looks the same as any other, so the cost of one is close to zero. The moment this ships, a wrong
+link shows another ingredient's prose and another ingredient's allergen warning under the name a
+cook is reading mid-recipe. The decline-over-guess rule in the matcher and the flagged-retarget
+rule in the linkage pass are both written for the world after this feature, not the one before
+it. Read them again before building this.
+
+- *Schema:* none. `library_entries`, `library_assertions` and `library_names` already hold it.
+- **Depends on** nothing that is missing. It is gated on a design decision about how a warning
+  appears on a recipe page without turning into the gamification and nagging the app refuses.
+
 ---
 
 ## Tier 3 — Data-asset features
