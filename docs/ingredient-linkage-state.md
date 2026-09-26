@@ -1,227 +1,129 @@
 # Ingredient linkage: where the work stands
 
-First written at `460cae5`, brought current at `622a6a0`. Every count here was re-derived
-from the repo, from `recipes.db` read-only, or from the `previews/` CSVs. Where an earlier
-figure was quoted from memory and disagreed with the measurement, the measurement won and
-the difference is noted in place.
+First written at `460cae5`. Brought current at `de7b1b9` on 2026-09-25, and the head of this
+document was rewritten rather than patched, because the state it described no longer existed.
+Every count below was re-derived from the repo or from a read-only copy of the live
+`recipes.db` at `7336ad55`. Sections from "Confidence" down are older and carry their own
+dateline.
 
-**The one-line state.** The library is built, the matcher is **FINISHED**, and there is
-somewhere for a link to go. **Still nothing links.** 50 of 3,332 ingredient lines carry a
-stored `ingredient_id`, exactly as before. ⚠️ **The matcher is no longer the constraint.** It
-lives at `study/matcher/`, committed in `b42dd14`, runs in about ten seconds, and resolves
-2,214 of the 2,997 labelled lines. Five other things stand between that result and a stored
-link, and they are listed under "The matcher" below.
+**The one-line state. Linking is shipped and running.** 2,767 of 3,349 non-heading ingredient
+lines carry a `catalog_id`, which is **82.6%**. A rebuild on today's code and today's library
+would take that to 2,851, which is **85.1%**. The matcher is `linkage_matcher.py` in the repo
+root, not the study directory, and `build_links.py` writes what it proposes.
 
-⚠️ **Do not read the shipped backend as "linking is done".** It is plumbing with nothing
-flowing through it. No UI reaches it, `library_names.csv` exists on no machine, and the
-live `recipes.db` has not even had migrations 029 and 030 applied yet (checked: no `source`
-column on `ingredients`, no `library_names` table).
+⚠️ **What this document said until now was "Still nothing links", and that was true when it
+was written.** The five blockers listed under the old "The matcher" heading have since been
+answered: the write path is `build_links.py`, the library file is loaded, the `ingredients`
+table is no longer the FK target for a catalog link, and the AMBIGUOUS tier is empty on the
+current corpus. The one blocker that survives is the first and largest, and it is restated
+below under "Confidence, and what has actually been read".
 
-## What is committed and pushed
+## The pipeline, as it runs today
 
-`origin/main` is at `622a6a0`, local matches, zero ahead and zero behind. `recipes.db` was
-never written by any of it and holds
-`83cd7be8e837beb1a53e2e54ce0a326106ef5f8b03dc38f8d2e107765dcfd9d7` throughout.
+Three files, in this order, and the order is the whole point.
 
-| commit | what it did |
+| file | what it does |
 | --- | --- |
-| `4fee4a0` | `docs/what-the-library-is-for.md`, and the cut rules point at it. The standing purpose test for admitting, cutting, renaming or merging a row. |
-| `7b3c74c` | Tracks `seed_links.csv`, the 50 seed-recipe ingredient links. This is the whole of the stored linkage. |
-| `f7644ea` | `depluralize` mangled the `-ves` words, `cloves` to `clof`. Cost 46 recipe-line matches. Fixed with a word list. |
-| `974c66d` | `normalize` deleted diacritics rather than folding them, `jalapeño` to `jalape o`. Dropped accented ingredients. NFD, not NFKD, and not `build_join`'s NFKC. |
-| `bc38181` | `depluralize`'s `ss/us/is` guard blocked real plurals whose singular ends in `-i`. `zucchinis`, `chilis`. Fixed with `I_PLURAL`, a membership set, because the shape is genuinely ambiguous. |
-| `460cae5` | Rule 5, the pasta-parent anchor. Admits a Wikidata item that names Q178 "pasta" as a direct superclass, one P279 hop. Plus `bagel` as override number six, filed as a new class C. |
-| `14575b4` | This document, first written. |
+| `linkage_matcher.py` | Reads `recipes.db` read-only and proposes a catalog row for every line. Writes nothing. |
+| `build_links.py` | Clears all four link columns, writes the three tiers a rule may write, then calls the hand file. |
+| `apply_repoints.py` | Replays `hand_repoints.csv`, the 61 decisions no rule reaches. It goes LAST, so it overrides the matcher rather than being overwritten by it. |
 
-## The add-on-save backend, shipped
+**Only three tiers become links.** EXACT, DECIDED and FORM_STRIP. AMBIGUOUS refused to choose
+and UNMATCHED found nothing, so neither is written and the `/uncovered` view exists to show
+them. A suppression in the hand file is a decision not to link, not an absence.
 
-Eight commits, `41aeea6` through `5f2aacd`, all pushed and CI-green. They answer decision 4
-and build the whole backend for it. Nothing in the UI calls any of it.
+**The four stored columns** are `catalog_id`, `link_confidence`, `link_rule` and
+`link_matched`. `catalog_id` points at `library_names.library_id`, which is a Wikidata Q-id
+for about 61% of rows and an Open Food Facts string such as `en:roasted-peanut` for the rest.
 
-| commit | what it did |
-| --- | --- |
-| `41aeea6` | `library_names`, a two-column `(library_id, canonical)` lookup. Migration 029. Inert. |
-| `fcea950` | `ingredients.source` and `ingredients.library_id`. Migration 030. `source` mirrors `recipes.source` and defaults to `'seed'`, which marks the 36 hand-authored rows without a backfill. |
-| `9cb9365` | `build_db.seed_library_names`, which fills the lookup from a gitignored server-side file and leaves the table empty when the file is absent. Mirrors `seed_weights`. |
-| `5aa257a` | `build_library.write_library_names`, which writes that file from the kept rowset. Same `not row["cut_by"]` predicate the review sheet uses, so the two describe one list. |
-| `644c2e6` | `GET /api/library/search?q=`, plus `ingredient_slug()`. Returns matches with `ingredient_id` and `matched_by`, so a caller knows whether linking would create a row. |
-| `dd45959` | The save gate becomes create-or-reject. A line carrying `item_library_id` creates an `ingredients` row and links to it. `validate_recipe_payload` renamed to `resolve_recipe_payload`, because it writes now. |
-| `beae33d` | `DELETE /api/ingredients/<iid>`. The undo, landed before the lookup file could exist so a wrong promote was always reversible. |
-| `5f2aacd` | Five fixes from a whole-stack review, one of them a real cross-stage bug. See below. |
-| `622a6a0` | Stage 7, the drawer. All four panel blocks now follow one rule: no data, no block. The visibility decision moved into `static/panel-blocks.js`, a pure module, and `buildSeason` stopped claiming "A pantry staple, available year-round" for a row with no month data. ⚠️ That line was showing on **22 of the 36 curated rows**, not only on promoted ones, so removing it changed what soy sauce and cumin display. Deliberate. |
+**A save drops the link on any line the cook edits**, deliberately. An unlinked line renders
+exactly as it reads, and a wrongly linked one shows another ingredient's prose and allergen
+warnings under the wrong name. `build_links.py` rebuilds a dropped link from committed files.
 
-**The backend is COMPLETE. The create path is INERT.** `library_names.csv` is gitignored
-and exists on no machine and in no clone, so the lookup is empty everywhere. An empty
-lookup means every `item_library_id` falls into the reject case, which means the gate
-behaves exactly as the old default-deny gate did. **The feature self-disables wherever the
-file is absent**, and that is true on a fresh clone, in CI, and on Postgres, where nothing
-populates the table at all.
-
-### The architecture, settled
-
-- **The `ingredients` table IS the durable link target, and it GROWS.** Links point at
-  `ingredients` rows, the way the existing 50 do. A library link creates a new row from
-  `library_names`: slug id, canonical name, `source='app'`, `library_id` recorded,
-  `descr`/`pairs` NULL.
-- **The library is a WRITE-TIME source, never a link target and never read at serve time.**
-  `app.py` has no access to `join.db` (894 MB) or `sources.db` (5.18 GB), and a test checks
-  that on the import graph. The only library data the app sees is the small lookup.
-- **Why not link to library ids directly:** they are not durable. `460cae5` destroyed seven
-  of them in one ordinary rebuild (`en:penne`, `en:lasagne`, `en:linguine` and four more).
-  An `ingredients` id is minted once and never recomputed, so churn cannot reach a stored
-  link. `ingredients.library_id` is audit provenance and is expected to dangle.
-- **Promotion is ADD-ON-SAVE.** The row is created when a save first references it, not by
-  a bulk migration and not by an offline batch.
-- **`library_names.csv` ships as a gitignored server-side file**, like `recipes.db` and the
-  two source databases it is derived from. Placed by hand on a machine that generated it.
-  This is precisely why the feature self-disables without it.
-- **`ingredient_slug()` is the shared minting rule.** Unicode-preserving (ASCII-folding
-  erases 56 of the 10,515 canonicals outright), underscores rather than `slugify()`'s
-  hyphens. The search route and the save gate both call it. Two copies would make the
-  route's `matched_by: "slug"` answer a lie.
-- **Tiers.** `'seed'` is the hand-authored 36 and is protected. `'app'` is promoted and
-  deletable. The delete path allowlists `('app',)` rather than refusing `'seed'`, so a
-  tier invented later is protected by default.
-- **Fail-closed throughout.** Names come from the table and never from the request. An id
-  the lookup does not hold creates nothing. Check-then-link runs before every insert,
-  because 32 of the 36 seed ids are reproduced exactly by slugifying some library canonical
-  and inserting over one is a primary-key conflict.
-- ⚠️ **STEP-LINK PROMOTION IS DROPPED.** A step's `[[key]]` still resolves against existing
-  ingredient ids exactly as before, and still cannot create. The reverse lookup a step would
-  need is not a function: 63 slugs map to 129 library rows. Dropping it also took the `slug`
-  column and its index out of `library_names` (624 KB rather than 1,044 KB) and removed four
-  of the gate's cases. The ingredient list is the natural entry point for linking anyway.
-
-### The pre-push review, and the lesson
-
-The six commits after `41aeea6` were each reviewed and tested at the time. A critical read
-of them **as a set**, before pushing, found five things. One was a real bug.
-
-⚠️ **`_promote_library_row` matched on the slug alone, which is not idempotent.** Promote
-`Q1063736` as `penne`, let a rebuild rename its canonical to `penne rigate`, promote the
-same library id again, and the new slug missed the old row and inserted a SECOND
-`ingredients` row carrying the same `library_id`. `/api/library/search` resolves a
-`library_id` through a dict built in a loop with no `ORDER BY`, so in that state it answered
-with whichever row the database returned last.
-
-**Why stage-by-stage testing could not catch it.** Stage 4 tested search's notion of
-"already promoted". Stage 5 tested the gate's notion. Both passed. **Neither ever tested the
-two notions against each other**, and they had silently diverged. Fixed in `5f2aacd`, where
-the resolution order became lookup, `library_id`, slug, insert, and a test now asks search
-and the gate the same question and asserts they agree.
-
-**The lesson: cross-stage consistency needs its own review pass.** A staged build with a
-stop at each seam catches what is wrong inside a stage. It cannot catch two stages that each
-work and disagree.
-
-The other four: a list or dict link key returned 500 rather than 400 (and the `item` half of
-that predates add-on-save), an em dash in a refusal string, a promoted line rendering its
-slug (`200g egg_pasta`) because `write_recipe_rows` falls back to the id, and the search
-route using `LIKE`, which folds ASCII case on SQLite and nothing at all on Postgres.
-
-## The matcher
-
-✅ **It has a committed home and it is FINISHED.** `study/matcher/` holds 23 source files
-and a README, committed in `b42dd14`. Re-run at `86671ee` against the live `recipes.db`,
-which it opens read-only: **9.0 seconds**, and **2,214 of 2,997 labelled lines resolve,
-73.9%**, against the 50 stored today.
-
-⚠️ **Matching is not what blocks linking. Five other things are**, and none of them is the
-matcher.
-
-**1. Nobody has read what it found.** 3,038 lines, **91.2%**, have never been individually
-read, and 2,410 of those sit in the AGREE block where two matchers landed on the same row and
-neither was checked. The confidence bands are **computed** from n-gram length and coverage in
-`AGREE.py`, so HIGH means the algorithm is confident, not that a person agreed. **Reading is
-the remaining work.**
-
-**2. There is no write path.** No code anywhere writes a matcher result into
-`recipe_ingredients.ingredient_id`. Measured by searching every `.py` in the repo. The only
-code that sets that column is `write_recipe_rows`, from a save payload, one recipe at a time.
-
-**3. The library file is absent.** A write has to route through the materialization boundary,
-`_promote_library_row`, whose first step reads `library_names`. That table is loaded from
-`library_names.csv`, which is gitignored and **is not on this machine**.
-[ingredient-model.md](ingredient-model.md) is the source of record for why the boundary
-exists.
-
-**4. Everything downstream assumes 36 ingredient rows.** Materializing the matches takes
-`ingredients` from 36 into the hundreds. **25 assertions across 10 test files** are written
-against exactly 36, as is every documented count.
-
-**5. ⚠️ 299 of the 2,214 links are AMBIGUOUS**, 13.5%, meaning the name sits on two or more
-library rows and the matcher reports all of them. **There is no tiebreak rule, and choosing
-one is its own decision** that has to be made before any of this is built.
-
-### The banked configuration
-
-**seg0-core.** Segment the line on `, ; ( ) /` and on "or", take every consecutive word run
-inside each segment, normalize with `build_join.norm_name` (the same function the index is
-built with), and rank by **segment first, then longest, then leftmost**. A match in an
-earlier segment beats any match in a later one, which is what stops a parenthetical gloss
-from winning over the named ingredient.
-
-**No language rule. No clause strip.** Both were measured and both were declined.
-
-Five ranking variants and two clause-strip configurations were measured against the same
-hand-judged sets of 62 regressions, 758 recoveries and 93 wrong recoveries. Results are in
-`previews/seg0-eval.csv` and `previews/headnoun-eval.csv`.
-
-| variant | matched | ambiguous | miss | regressions still open | recoveries kept |
-| --- | --- | --- | --- | --- | --- |
-| rightmost, the committed ladder's tie-break | 2,783 | 511 | 38 | 62 of 62 | 758 of 758 |
-| **seg0** | 2,771 | 523 | 38 | **5 of 62** | 582 of 758 |
-| seg0 plus the language rule, every length | 2,759 | 522 | 51 | 5 of 62 | 584 of 758 |
-| seg0 plus the language rule, one word only | 2,759 | 522 | 51 | 5 of 62 | 584 of 758 |
-| seg0 plus head-noun | 2,769 | 525 | 38 | 5 of 62 | **652 of 758** |
-
-Those figures are from the pre-`bc38181` library and are kept because they are the
-comparison that chose the config. The current numbers are in the next section.
-
-**Why the language rule is out.** It buys 2 recoveries and costs 13 misses. That is a bad
-trade and the rule rests on language tags that are empty for authored and for many Open
-Food Facts names.
-
-**Why the clause strip is out.** Stripping trailing purpose clauses ("plus more for
-dusting", "to serve") gains 6 matcher lines and **deletes 4 real ingredients**, because
-Paprika wrapped two ingredients onto one line and the second one sits after the marker. An
-index-key guard was built to stop that. It removed all 4 losses and all 6 gains, because
-`pan`, `dish`, `taste`, `dough` and 8 more ordinary purpose-clause words are themselves
-library index keys. The guard cannot tell "for boiling potatoes" from "plus more, black
-pepper". **Clause-stripping is not safely buildable in this form.**
-
-⚠️ **head-noun measured better than seg0 and is not banked.** It keeps 652 of 758
-recoveries against seg0's 582 for the same 57 regressions fixed, roughly 11 lines net. It
-was left out because the head-noun definition (the last content word of the segment, form
-words counting as heads) is what fixes `chile powder` and what breaks `panko crumbs`, and
-it guesses on a meaningful fraction. That is a judgement call and it can be revisited.
-
-⚠️ **Unresolved.** Language-rule variants (c) and (d) return identical numbers on every
-column. Either they are genuinely equivalent over this corpus or the split between them
-never took effect. Not chased, because both lose.
-
-### Current coverage, at `460cae5`
-
-Library rebuilt fresh from `join.db` plus `sources.db`: 11,357 rows, 10,515 kept, 184,891
-index keys.
-
-**Two numbers, and they are different questions.**
+## Current coverage, measured at `de7b1b9`
 
 ```
-STORED in recipes.db right now      50 rows over 6 recipes, 36 distinct ingredient_ids
-                                    1.5% of the 3,332 ingredient lines
-                                    the ingredients table has 36 rows and is the FK target
+the corpus            300 recipes, 3,572 ingredient rows, 223 of them headings
+the catalog           10,020 rows in library_names, 246 aliases, 56 authored entries
+                      53 of those entries carry a library_id a link can reach
 
-WHAT seg0-core WOULD LINK           MATCHED 2,777   83.3%
-                                    AMBIG     523   15.7%
-                                    MISS       32    1.0%
-                                    reach a row 3,300 = 99.0%
+STORED TODAY          2,767 of 3,349 non-heading lines   82.6%
+                      exact 2,128   form_strip 587   repoint 33   decided 19
+                      68 of 300 recipes have every line linked
+
+A REBUILD WOULD GIVE  2,851 of 3,349                     85.1%
+                      exact 2,199   form_strip 600   repoint 33   decided 19
+                      79 of 300 recipes have every line linked
+                      0 links lost, 84 gained, 66 retargeted
 ```
 
-The 10,515-row library lives in `join.db` and reaches no recipe row at all.
-`import_write.py` sets `ingredient_id` to `None` at line 128 and says so, twice.
+**The stored links were built on 2026-09-10** and nothing has rebuilt them since. The gap
+between the two figures is four things that happened after that date: aliases were wired into
+`load_catalog`, a 470-name cut ran, the Paprika restore put 300 source lines back, and the
+reparse re-split 270 live rows. The lines are in a better shape than the links were built
+against.
+
+**Where the remaining 471 unmatched lines go.** 388 distinct names, and the head of the list
+is not a library gap at all. 16 lines read `sea salt and freshly ground black pepper`, which is
+two ingredients on one line. `chicken stock` at 8 and `cooking salt` at 7 are real library
+to-dos. `juice of 1 lemon` at 4 and `about ⅔ cup` at 2 are line defects. The full list is
+regenerated by the dry run into `previews/linkage-dryrun.csv`.
+
+## The matcher, and the two things it deliberately refuses
+
+**DROPPED names have no safe target.** `rose`, `meal`, `sprout`, `amaretto`, `pastry`, `soy`
+and `tartar` among them. A bare `tartar` in a baking line means cream of tartar and would land
+on mayonnaise, so refusing costs a miss and a row would cost a wrong match.
+
+**AMBIGUOUS is a refusal, not a failure.** A name held by two catalog rows resolves to neither.
+On the current corpus that tier is empty, which is a change from the 299 ambiguous lines the
+older study matcher reported and comes from the 470-name cut rather than from a tiebreak rule.
+No tiebreak rule exists and none is planned.
+
+**The blocked-decision branch was fixed at `de7b1b9`+1.** `strip_forms` accepts a catalog name
+or a decided one, so the search could stop at a decided name with no row behind it, and the
+branch then gave up rather than searching on. It now re-runs the strip over the catalog alone.
+Measured on the live corpus: **1 line reaches that branch and 0 links change**, because
+`fresh coriander` strips to `coriander`, which the catalog does not hold as a row at all. The
+fix is structural insurance, not a coverage win. `tests/test_linkage_matcher.py` pins it.
+
+## The hand file, and why a line change can halt a rebuild
+
+`hand_repoints.csv` carries 61 decisions: 33 repoints, 25 relabels and 3 suppressions. Each row
+stores the line as it read when the decision was made, in a `line_check` column, and
+`apply_repoints.py` **stops the whole run** when the text at that position no longer matches.
+
+⚠️ **This is what makes the linkage pass and the reparse pass touch each other.** The reparse
+excludes any row named in the hand file, so two `panang-curry` lines still carry a space before
+their comma that every other line has had cleaned. Repairing the line and its `line_check`
+together is a single change, and it belongs to whichever pass is willing to write both.
+
+## Two decisions point at targets the catalog no longer holds
+
+`load_decisions` returns them as problems rather than crashing, and both are inert.
+
+```
+'bread improver'     target Q469842 is not in the built catalog
+'sugar substitute'   target Q626292 is not in the built catalog
+```
+
+Neither name occurs in the corpus, so nothing is losing a link to them. They are rows the
+470-name cut removed while `previews/alias-collisions.csv` kept pointing at them.
+
+## What a link reaches, once it is made
+
+**732 linked rows reach one of the 53 authored library entries.** Those entries carry 128
+claims and 44 safety flags, and 25 of the flags name an allergen: wheat 9, peanut 4, milk 4,
+soybeans 3, tree nuts 2, and one each of sesame, molluscan shellfish and egg. **202 of the 300
+recipes carry at least one safety flag** through their links.
+
+⚠️ **The recipe page surfaces none of it.** `app.py` names no library table. The assertions are
+read by `library_viewer.py` only, so today an allergen reached through a link is visible in the
+library viewer and nowhere a cook would see it. That is a build item, not a data gap.
 
 ## Confidence, and what has actually been read
+
+⚠️ **Dated 2026-08-27, and it is the blocker that survived.** The sample below was read against the study matcher, not against `linkage_matcher.py`, so the precision figure is indicative rather than current. Nothing has re-read the shipped links at that scale. The linkage dry run of 2026-09-25 read all 84 gained and all 66 retargeted links one at a time and found 3 that crossed a food identity, which is the only reading of the shipped matcher that exists.
 
 **The AGREE block is 2,414 lines, 72.4 percent of the corpus.** AGREE means the committed
 reduction ladder and seg0-core resolved the line to the same row. It was never read until a
