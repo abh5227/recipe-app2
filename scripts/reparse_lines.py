@@ -25,6 +25,12 @@ THE HARD RULES. A row breaking one is EXCLUDED and named in the CSV with the rul
   4. Never touch a row named in hand_repoints.csv. Its line_check compares the stored text and
      halts build_links.py when it no longer matches, so these belong to the linkage pass.
   5. Lockstep applies to every change.
+  6. Never drop or change the numeric count of a stored amount. Rule 1 covers a raw_text carrying
+     NO amount. This covers one carrying a DIFFERENT one, which is the commoner shape: 17 rows
+     read "large garlic clove" where the row holds '1 large', so re-reading the text alone loses
+     the 1. cauliflower-soup[2] is the sharpest, '1 pound' against a line reading '6 ounces'.
+  7. A row whose new NAME opens with punctuation or a joining word is junk, not an improvement.
+     3 rows: '+ 2 tablespoons olive oil', 'or 4 onions', 'each), cleaned and cut in half'.
 
 Usage:
     python3 scripts/reparse_lines.py --db /tmp/copy.db                 # dry run + CSV
@@ -35,6 +41,7 @@ import collections
 import csv
 import json
 import pathlib
+import re
 import sqlite3
 import sys
 
@@ -170,6 +177,10 @@ def plan_reparse(conn, anns, hand):
                       "changed": " ".join(sorted(cols))})
             if (rid, pos) in hand:
                 d["verdict"] = "EXCLUDED: rule 4, named in hand_repoints.csv"
+            elif _count_lost(d["old_qty"], d["new_qty"]):
+                d["verdict"] = "EXCLUDED: rule 6, the stored amount's count would change"
+            elif JUNK_NAME.match(d["new_label"]) and not JUNK_NAME.match(d["old_label"]):
+                d["verdict"] = "EXCLUDED: rule 7, the new name opens with junk"
             elif (note or "").strip():
                 d["verdict"] = "EXCLUDED: rule 2, the row carries a note"
             elif pos in edited:
@@ -179,6 +190,19 @@ def plan_reparse(conn, anns, hand):
                 d["_cols"] = cols
             out.append(d)
     return out
+
+
+# rule 7: a name that opens with punctuation or a joining word is wreckage from a line the parser
+# could not split, never a better reading of the food.
+JUNK_NAME = re.compile(r"^\s*(?:[-+,;)]|or\b|and\b|each\)|plus\b)")
+
+_NUM = re.compile(r"\d+(?:[./]\d+)?|[\u00bc\u00bd\u00be\u2153\u2154\u215b]")
+
+
+def _count_lost(old_qty, new_qty):
+    """rule 6: the stored amount's NUMBERS must survive a re-read. A unit word moving in or out is
+    fine ('4' -> '4 cloves'); the digits changing is not ('1 large' -> 'large')."""
+    return _NUM.findall(old_qty or "") != _NUM.findall(new_qty or "")
 
 
 def classify(d):
