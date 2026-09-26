@@ -46,7 +46,7 @@ repoint,warm-buttered-hummus,12,Q774278,repoint,repoint:green-onions,scallion,"g
 repoint,baked-cauliflower-with-red-onions-feta-and-dill-firinda-karnabahar-mucveri,11,Q95388739,repoint,repoint:plain-flour,all-purpose flour,plain flour
 repoint,khaliat-nahal-honeycomb-bread,2,Q95388739,repoint,repoint:plain-flour,all-purpose flour,plain flour
 repoint,milky-tea-tres-leches,5,Q95388739,repoint,repoint:plain-flour,all-purpose flour,plain flour
-repoint,panang-curry,21,en:roasted-peanut,repoint,repoint:roasted-unsalted-peanuts,roasted peanut,"unsalted peanuts , finely chopped"
+repoint,panang-curry,21,en:roasted-peanut,repoint,repoint:roasted-unsalted-peanuts,roasted peanut,"unsalted peanuts, finely chopped"
 repoint,peanut-chutney,0,en:roasted-peanut,repoint,repoint:roasted-unsalted-peanuts,roasted peanut,roasted unsalted peanuts
 repoint,red-pepper-potato-and-peanut-sabzi,7,en:roasted-peanut,repoint,repoint:roasted-unsalted-peanuts,roasted peanut,"roasted unsalted peanuts, crushed"
 repoint,agedashi-tofu,11,Q774278,repoint,repoint:spring-onions,scallion,spring onions (finely sliced)
@@ -78,7 +78,7 @@ relabel,korean-scallion-pancake,5,Q37937,exact,phasec_release:exact,sweet potato
 relabel,matcha-amaretti-cookies,1,Q822331,form_strip,phasec_release:form_strip:powder,matcha,matcha powder
 relabel,mussakhan,9,Q622350,exact,phasec_release:plural,red onion,"red onions, finely sliced into half-moons"
 relabel,pan-fried-cabbage-with-bacon-and-green-onions,1,Q11106,exact,phasec_release:exact,bacon,"bacon, cut crosswise into /-inch pieces"
-relabel,panang-curry,13,Q1139302,exact,phasec_release:exact,coconut cream,"coconut cream , full-fat"
+relabel,panang-curry,13,Q1139302,exact,phasec_release:exact,coconut cream,"coconut cream, full-fat"
 relabel,pasta-with-parsnips-and-bacon,4,Q11106,exact,phasec_release:exact,bacon,"bacon, diced"
 relabel,southwest-tofu-scramble,3,Q622350,exact,phasec_release:exact,red onion,red onion (thinly sliced)
 relabel,spiced-filipino-adobo-with-chicken-and-pork,7,Q216235,exact,phasec_release:exact,coconut oil,coconut oil or vegetable oil
