@@ -217,10 +217,16 @@ def match(core, cat, decided):
             return "DECIDED", canon, [(lid, canon)], f"{why} after prep strip:" + " ".join(dropped)
         rows = cat.get(m, [])
         if not rows:
-            # m was reachable only because it is a DECIDED name, and the decision was blocked
-            # (a FORM word was dropped). There is no catalog row here, so this is a miss, not a
-            # match with an empty target.
-            return "UNMATCHED", n, [], "decision blocked: a form word was dropped"
+            # ⚠️ FALL THROUGH TO THE CATALOG, DO NOT GIVE UP. m was reachable only because it is a
+            #    DECIDED name and the decision was blocked (a FORM word was dropped). The search
+            #    stopped at a name with no row behind it, so every deeper strip that would have
+            #    reached a real row went untried. Re-run it over the catalog ALONE, which is the
+            #    same search with the dead end removed.
+            m2, dropped2 = strip_forms(n, lambda k: k in cat, depluralize)
+            rows = cat.get(m2, []) if m2 else []
+            if not rows:
+                return "UNMATCHED", n, [], "decision blocked: a form word was dropped"
+            m, dropped = m2, dropped2
         return ("AMBIGUOUS" if len(rows) > 1 else "FORM_STRIP"), m, rows, \
                "form_strip:" + " ".join(dropped)
     return "UNMATCHED", n, [], "none"
