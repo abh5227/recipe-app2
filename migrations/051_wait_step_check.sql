@@ -1,0 +1,23 @@
+-- 051_wait_step_check.sql - a step pointer that refuses to point at the wrong step.
+--
+-- ⚠️ ADDITIVE. 049 and 050 are already applied to live, so this adds one column.
+--
+-- ⚠️ step_position ALONE IS A STALE POINTER WAITING TO HAPPEN. Insert a step above a linked one and
+--    every position below it shifts by one, so a wait that said "Step 4: Chill overnight" now points
+--    at whatever moved into slot 4. Nothing in the editor stops a step being inserted, reordered or
+--    deleted, and nothing updates the waits when it happens, by the same ruling that says editing a
+--    step does not move a wait.
+--
+-- ⚠️ THE SNIPPET IS THE CHECK, and it is the same idea as line_check in hand_repoints.csv. A short
+--    piece of the step's text is stored beside the position. At read time the step AT that position
+--    must still contain the snippet. If it does not, the wait shows with NO step number rather than
+--    linking to the wrong step. A pointer that is silently wrong is worse than no pointer: the wait
+--    still reads correctly, it just stops being clickable.
+--
+-- ⚠️ COMPARISON IS ON NORMALIZED TEXT (tags stripped, whitespace collapsed, lowercased), so the link
+--    survives re-formatting and breaks on re-wording. That is the line it is meant to draw.
+--
+-- ⚠️ STORAGE GETS NO POINTER. A storage row says where the leftovers go, and its bullet reads
+--    "Dough: fridge, up to 1 week" with no step number to carry.
+
+ALTER TABLE recipe_waits ADD COLUMN step_check TEXT;
