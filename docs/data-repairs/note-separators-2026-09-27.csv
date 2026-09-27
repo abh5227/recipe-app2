@@ -1,0 +1,15 @@
+recipe_id,position,column,before,after,source
+aloo-gobhi,6,note,"optional, but really great"," (optional, but really great)",the row's reason='original' baseline
+aloo-gobhi,6,raw_text,"pinch asafetidaoptional, but really great","pinch asafetida (optional, but really great)",the row's reason='original' baseline
+aloo-gobhi,9,note," about half a lime, plus more if needed"," (about half a lime), plus more if needed",the row's reason='original' baseline
+aloo-gobhi,9,raw_text,"1 tbsp lime juice about half a lime, plus more if needed","1 tbsp lime juice (about half a lime), plus more if needed",the row's reason='original' baseline
+bulgogi-bowls,2,raw_text,"1 tbsp onion, finely grated ~¼ onion","1 tbsp onion, finely grated (~¼ onion)",the row's reason='original' baseline
+bulgogi-bowls,6,note,all-purpose or light, — all-purpose or light,the row's reason='original' baseline
+bulgogi-bowls,6,raw_text,2½ tbsp soy sauceall-purpose or light,2½ tbsp soy sauce — all-purpose or light,the row's reason='original' baseline
+bulgogi-bowls,18,note," or chopped greens — cabbage, kale"," (or chopped greens — cabbage, kale)",the row's reason='original' baseline
+bulgogi-bowls,18,raw_text,"4 large handfuls baby spinach or chopped greens — cabbage, kale","4 large handfuls baby spinach (or chopped greens — cabbage, kale)",the row's reason='original' baseline
+gai-yang,13,note,store-bought or homemade,", store-bought or homemade",the row's reason='original' baseline
+gai-yang,13,raw_text,2 tbsp tamarind pastestore-bought or homemade,"2 tbsp tamarind paste, store-bought or homemade",the row's reason='original' baseline
+gai-yang,14,raw_text,"1 tbsp palm sugar, finely choppedor light brown sugar","1 tbsp palm sugar, finely chopped (or light brown sugar)",the row's reason='original' baseline
+mussakhan,5,note,plus more to dust,", plus more to dust",the row's reason='original' baseline
+mussakhan,5,raw_text,1½ tbsp sumacplus more to dust,"1½ tbsp sumac, plus more to dust",the row's reason='original' baseline
