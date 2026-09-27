@@ -247,3 +247,58 @@ def test_broken_positions_are_caught_by_p2():
     rowset = [ing(0, heading="SAUCE"), ing(5, label="oil", qty="1 tbsp"), ing(9, label="garlic", qty="2")]
     problems = content_safety_problems(BASE, content_blob(RECIPE, rowset, BASE_STEPS))
     assert any(p.startswith("P2 ingredients") for p in problems)
+
+
+# ---- P3: the sync carries every key it does not interleave -------------------------------------
+#
+# ⚠️ THE BUG THESE PIN. sync_heading_layout rebuilt the blob by calling content_blob with THREE
+# arguments. waits and storage default to None there, which OMITS the keys, so every save on a
+# recipe that had them silently stripped both from its baseline. Measured on the round-3 preview
+# copy: one save on morning-buns left its baseline with no waits key, and all six of that recipe's
+# waits then reported as "added" in "your changes" for good. P1 and P2 read ingredients and steps
+# only, so content_safety_problems reported no problem and the save went through.
+
+WAITS = [{"position": 0, "kind": "rising", "label": "1 hr", "min_minutes": 60, "max_minutes": 60,
+          "ext_label": None, "ext_min_minutes": None, "ext_max_minutes": None,
+          "when_kind": "always", "when_label": None}]
+STORAGE = [{"position": 0, "where_kept": "fridge", "applies_to": None, "label": "up to 1 week",
+            "min_minutes": 0, "max_minutes": 10080}]
+
+
+def test_the_heading_sync_carries_waits_and_storage_through():
+    b = content_blob(RECIPE, BASE_ING, BASE_STEPS, WAITS, STORAGE)
+    synced = sync_heading_layout(b, BASE_ING, BASE_STEPS)
+    assert json.loads(synced)["waits"] == json.loads(b)["waits"]
+    assert json.loads(synced)["storage"] == json.loads(b)["storage"]
+
+
+def test_a_no_op_sync_is_byte_identical_when_a_recipe_has_waits():
+    """The byte-equal short-circuit in _recipe_annotations protects all 300 baselines, and it only
+    works if a sync that changes nothing changes nothing."""
+    b = content_blob(RECIPE, BASE_ING, BASE_STEPS, WAITS, STORAGE)
+    assert sync_heading_layout(b, BASE_ING, BASE_STEPS) == b
+
+
+def test_the_guard_refuses_a_sync_that_drops_a_top_level_key():
+    """P3, stated over the KEY SET rather than a list of known keys, so the next key added to the
+    snapshot is covered before anyone remembers it."""
+    b = content_blob(RECIPE, BASE_ING, BASE_STEPS, WAITS, STORAGE)
+    stripped = content_blob(RECIPE, BASE_ING, BASE_STEPS)        # the old three-argument call
+    problems = content_safety_problems(b, stripped)
+    assert problems and any("P3" in p for p in problems)
+    assert "waits" in problems[-1] and "storage" in problems[-1]
+    with pytest.raises(HeadingSyncViolation):
+        assert_content_safe(b, stripped)
+
+
+def test_a_heading_move_still_syncs_with_waits_present():
+    """The transform's actual job, with the new keys along for the ride: the heading layout follows
+    current, the content rows survive verbatim, and waits and storage are untouched."""
+    moved = [ing(0, label="oil", qty="1 tbsp"), ing(1, heading="SAUCE"), ing(2, label="garlic", qty="2")]
+    b = content_blob(RECIPE, BASE_ING, BASE_STEPS, WAITS, STORAGE)
+    synced = sync_heading_layout(b, moved, BASE_STEPS)
+    assert content_safety_problems(b, synced) == []
+    assert texts(synced, "ingredients", "raw_text") == [
+        (0, "1 tbsp oil"), (1, "SAUCE"), (0, "2 garlic")]
+    assert json.loads(synced)["waits"] == WAITS
+    assert json.loads(synced)["storage"] == STORAGE
