@@ -83,6 +83,13 @@ ROWS = (
     ("gai-yang", 14, ("raw_text",),
      {"raw_text": "1 tbsp palm sugar, finely choppedor light brown sugar"},
      {"raw_text": "1 tbsp palm sugar, finely chopped (or light brown sugar)"}),
+    # ⚠️ ADDED 2026-09-27, AFTER THE FIRST EIGHT. This row lost MORE than a separator: the whole
+    #    clause left raw_text and the save put it in `note` instead. label is NULL here, so the page
+    #    falls back to raw_text, and restoring raw_text WITHOUT clearing the note would print
+    #    "plus more to serve" twice. The baseline has no note, so moving live onto it does both.
+    ("mussakhan", 1, ("note", "raw_text"),
+     {"note": "plus more to serve", "raw_text": "extra-virgin olive oil"},
+     {"note": "", "raw_text": "extra-virgin olive oil, plus more to serve"}),
     ("mussakhan", 5, ("note", "raw_text"),
      {"note": "plus more to dust", "raw_text": "1½ tbsp sumacplus more to dust"},
      {"note": ", plus more to dust", "raw_text": "1½ tbsp sumac, plus more to dust"}),
@@ -147,11 +154,15 @@ def main():
         conn.execute("COMMIT")
         print(f"\nwrote {len(planned)} rows")
 
+    # ⚠️ THE RECORD IS THE WHOLE REPAIR, NOT THIS RUN'S DELTA. Writing only what a run changed made
+    #    the second run overwrite the record of the first with one row, which is the opposite of an
+    #    audit trail. Every row in ROWS is written every time, from the committed before/after pair,
+    #    so the file is the same bytes whether it is run once or five times.
     rows = []
-    for rid, pos, cols, before in planned:
-        for c in sorted(cols):
+    for rid, pos, cols, want_live, want_target in ROWS:
+        for c in cols:
             rows.append({"recipe_id": rid, "position": pos, "column": c,
-                         "before": before.get(c), "after": cols[c],
+                         "before": want_live[c], "after": want_target[c],
                          "source": "the row's reason='original' baseline"})
     pathlib.Path(args.csv).parent.mkdir(parents=True, exist_ok=True)
     with open(args.csv, "w", newline="", encoding="utf-8") as fh:
