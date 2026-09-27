@@ -33,7 +33,7 @@ from units import canon_unit_str   # the Python mirror of scaler.js canonicalize
 # their own raw sqlite3 connections (out of Stage 1 scope). Stage 2 swaps the engine to Postgres
 # (see docs/migration-plan.md).
 from models import (
-    Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep,
+    Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep, RecipeStorage, RecipeWait,
     LibraryName,         # the id -> canonical lookup the library search reads (migration 029)
     # ⚠️ Rating (the `ratings` table) is INTENTIONALLY NOT IMPORTED. Migration 048 froze it: the
     # verdict lives on CookLog.rating now. Re-importing it here is how a stray read gets written.
@@ -44,6 +44,7 @@ from models import (
 from auth import auth_bp   # JSON auth endpoints (auth-2); auth.py imports models only, so no import cycle
 import images              # shared image brain: resize + the save_image storage seam (Stage 1/2)
 import snapshot_serialize  # single-source recipe-content snapshot FORMAT (shared ORM/serve + raw import)
+import planahead
 import snapshot_diff        # derived change-tracking DIFF (O-c): current-vs-original recipe-page annotations
 import snapshot_headsync    # pure baseline TRANSFORM: keep the original's heading layout in step with current
 import import_write         # U4 preview: the PURE planner (plan_recipe) + db_state; the writer stays unused here
@@ -590,6 +591,47 @@ def _row_qty_parts(row):
     return qty, quantity, unit
 
 
+def write_plan_ahead(s, rid, payload):
+    """Replace a recipe's waits and storage from the save payload.
+
+    ⚠️ THE NUMBERS ARE READ HERE, ONCE, FROM WHAT A PERSON TYPED. The editor sends one text box per
+    wait and planahead.read_duration turns it into minutes. Text it cannot read keeps its words and
+    leaves min and max NULL, which is the same contract normalize_time already has for a time column:
+    a wrong value stays visible and fixable instead of disappearing.
+
+    ⚠️ THE EXTENSION IS READ SEPARATELY AND NEVER FOLDED INTO THE RANGE. "or overnight if time
+    allows" becomes ext_min 480 beside a normal range of 10 to 60, not a range of 10 to 480.
+
+    Delete-and-reinsert, like the ingredient rows: these are short ordered lists a person edits by
+    hand, and there is no identity to carry across a save.
+    """
+    rw, rs = RecipeWait.__table__, RecipeStorage.__table__
+    s.execute(delete(rw).where(rw.c.recipe_id == rid))
+    s.execute(delete(rs).where(rs.c.recipe_id == rid))
+    for pos, w in enumerate(payload.get("waits") or []):
+        label = (w.get("label") or "").strip()
+        if not label:
+            continue
+        lo, hi = planahead.read_duration(label)
+        ext = (w.get("ext_label") or "").strip() or None
+        elo, ehi = planahead.read_duration(ext) if ext else (None, None)
+        kind = w.get("kind") if w.get("kind") in planahead.KINDS else "other"
+        s.execute(insert(rw).values(
+            recipe_id=rid, position=pos, kind=kind, label=label,
+            min_minutes=lo, max_minutes=hi, step_position=w.get("step_position"),
+            ext_label=ext, ext_min_minutes=elo, ext_max_minutes=ehi))
+    for pos, x in enumerate(payload.get("storage") or []):
+        label = (x.get("label") or "").strip()
+        if not label:
+            continue
+        lo, hi = planahead.read_duration(label)
+        where = x.get("where_kept") if x.get("where_kept") in planahead.WHERES else "other"
+        s.execute(insert(rs).values(
+            recipe_id=rid, position=pos, where_kept=where,
+            applies_to=(x.get("applies_to") or "").strip() or None,
+            label=label, min_minutes=lo, max_minutes=hi))
+
+
 def write_recipe_rows(s, rid, clean, preserve=None):
     """(Re)write a recipe's ingredient lines and steps from a validated payload.
 
@@ -704,7 +746,11 @@ def serialize_recipe_content(s, rid):
             .order_by(RecipeStep.position, RecipeStep.id)
         ).scalars()
     ]
-    return snapshot_serialize.content_blob(r, ingredients, steps)
+    waits = s.execute(select(RecipeWait.__table__).where(RecipeWait.recipe_id == rid)
+                      .order_by(RecipeWait.position, RecipeWait.id)).mappings().all()
+    storage = s.execute(select(RecipeStorage.__table__).where(RecipeStorage.recipe_id == rid)
+                        .order_by(RecipeStorage.position, RecipeStorage.id)).mappings().all()
+    return snapshot_serialize.content_blob(r, ingredients, steps, waits, storage)
 
 
 def snapshot_recipe(s, rid, cook_log_id, reason):
@@ -968,6 +1014,16 @@ def get_recipe(rid):
         ).mappings().all()
         stats = recipe_stats(s, rid, current_user.id)
         ingredients = attach_weights(s, ings)
+        # Plan-ahead waits and storage (round 2). Several rows per recipe by design, ordered by
+        # position, and the TOTAL is summed in Python rather than in SQL: Postgres returns Decimal
+        # from AVG over an integer column and nothing here should ever have to care.
+        waits = [dict(w) for w in s.execute(
+            select(RecipeWait.__table__).where(RecipeWait.recipe_id == rid)
+            .order_by(RecipeWait.position, RecipeWait.id)).mappings().all()]
+        storage = [dict(x) for x in s.execute(
+            select(RecipeStorage.__table__).where(RecipeStorage.recipe_id == rid)
+            .order_by(RecipeStorage.position, RecipeStorage.id)).mappings().all()]
+        wait_min, wait_max = planahead.total(waits)
         # is_queued (stage 3a): MY want-to-make state — per-user EXISTS against recipe_queue, scoped to
         # current_user.id like stats above. Any recipe is queueable, so this is independent of ownership.
         is_queued = s.scalar(
@@ -1025,6 +1081,12 @@ def get_recipe(rid):
             "is_test": r["source"] == "test",           # scratch tier — gets the visible test marker
             "is_queued": is_queued,                     # stage 3a: my want-to-make queue membership
             "annotations": annotations,                 # O-c-1: raw current-vs-original diff entries ([] if unedited)
+            # ⚠️ THE TOTAL IS THE NORMAL MINIMUMS ONLY. An extension ("or overnight if time allows")
+            # never enters it, and a max exists only when EVERY wait has one. See planahead.total.
+            "waits": waits,
+            "storage": storage,
+            "wait_total": {"min_minutes": wait_min, "max_minutes": wait_max,
+                           "label": planahead.total_label(waits)},
         }
     )
 
@@ -1073,6 +1135,9 @@ def update_recipe(rid):
             .order_by(RecipeIngredient.position, RecipeIngredient.id)
         ).mappings().all())
         write_recipe_rows(s, rid, clean, preserve)
+        # ⚠️ BEFORE the baseline capture and the heading sync below, so a snapshot taken in this
+        # same transaction sees the waits this save wrote.
+        write_plan_ahead(s, rid, payload)
         # U5: an imported recipe is written with NO reason='original' baseline, because it arrives as
         # the publisher wrote it and the user is about to fix the parse errors. THIS save is the first
         # moment the content is something they have approved, so the baseline is captured here, from

@@ -65,6 +65,10 @@ def diff_snapshots(old_blob, new_blob):
     old, new = _load(old_blob), _load(new_blob)
     changes = []
     changes += _diff_fields(old.get("recipe") or {}, new.get("recipe") or {})
+    # ⚠️ `or []` ON BOTH SIDES. A baseline written before these keys existed has neither, and an
+    #    empty list against a missing key must read as no change rather than as a deletion.
+    changes += _diff_rows("wait", old.get("waits") or [], new.get("waits") or [], WAIT_LABEL)
+    changes += _diff_rows("storage", old.get("storage") or [], new.get("storage") or [], STORAGE_LABEL)
 
     ing_h = lambda r: r.get("raw_text") or ""
     o_lines, o_ing_h = _split(old.get("ingredients") or [])
@@ -167,6 +171,40 @@ def _diff_fields(o, n):
         ov, nv = o.get(f), n.get(f)
         if (ov or "") != (nv or ""):                       # None and "" are both "empty" (no spurious change)
             out.append({"kind": "field", "type": "modified", "field": f, "from": ov, "to": nv})
+    return out
+
+
+# ⚠️ WAITS AND STORAGE ARE TREATED EXACTLY LIKE prep_time, WHICH IS THE RULING. Both are captured in
+#    the snapshot blob and both surface in "your changes" as an ordinary modification. The reason is
+#    that they are the same KIND of thing: a fact about the recipe a person typed, which no step edit
+#    updates on their behalf. What they are NOT is derived, so they are not diffed as text either.
+WAIT_LABEL = ("label", "kind", "min_minutes", "max_minutes", "ext_label", "ext_min_minutes",
+              "ext_max_minutes")
+STORAGE_LABEL = ("label", "where_kept", "applies_to", "min_minutes", "max_minutes")
+
+
+def _row_text(r, fields):
+    """The one line a wait or storage row reads as, so a change reports what a person would see."""
+    bits = [str(r.get(f)) for f in fields[:2] if r.get(f) not in (None, "")]
+    ext = r.get("ext_label")
+    return " · ".join(bits) + (f" ({ext})" if ext else "")
+
+
+def _diff_rows(kind, old_rows, new_rows, fields):
+    """Positional, because these are short ordered lists a person edits by hand. A row that moves
+    reads as two modifications, which is honest for a list of two or three items and cheaper than
+    pretending to track identity across a table with no stable key in the snapshot."""
+    out = []
+    for i in range(max(len(old_rows), len(new_rows))):
+        o = old_rows[i] if i < len(old_rows) else None
+        n = new_rows[i] if i < len(new_rows) else None
+        if o is None:
+            out.append(_added(kind, _row_text(n, fields), i))
+        elif n is None:
+            out.append(_removed(kind, _row_text(o, fields), i, None))
+        elif any((o.get(f) if o.get(f) != "" else None) != (n.get(f) if n.get(f) != "" else None)
+                 for f in fields):
+            out.append(_mod(kind, _row_text(o, fields), _row_text(n, fields), i, i))
     return out
 
 

@@ -232,6 +232,45 @@ class RecipeStep(Base):
     )
 
 
+class RecipeWait(Base):
+    """A plan-ahead wait. SEVERAL per recipe: pepperoni-rolls rises twice, morning-buns chills four
+    times. The extension columns hold "or overnight if time allows" WITHOUT widening the range it
+    sits beside. See migrations/049 and planahead.py."""
+    __tablename__ = "recipe_waits"
+    id = Column(Integer, primary_key=True)
+    recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+    position = Column(Integer, nullable=False)
+    kind = Column(Text, nullable=False)
+    label = Column(Text, nullable=False)
+    min_minutes = Column(Integer)
+    max_minutes = Column(Integer)
+    step_position = Column(Integer)
+    ext_label = Column(Text)
+    ext_min_minutes = Column(Integer)
+    ext_max_minutes = Column(Integer)
+    __table_args__ = (
+        Index("idx_recipe_waits_recipe", "recipe_id"),
+        {"sqlite_autoincrement": True},
+    )
+
+
+class RecipeStorage(Base):
+    """Where the leftovers go and for how long. ⚠️ NEVER a wait: it reaches no total and no filter."""
+    __tablename__ = "recipe_storage"
+    id = Column(Integer, primary_key=True)
+    recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+    position = Column(Integer, nullable=False)
+    where_kept = Column(Text, nullable=False)
+    applies_to = Column(Text)
+    label = Column(Text, nullable=False)
+    min_minutes = Column(Integer)
+    max_minutes = Column(Integer)
+    __table_args__ = (
+        Index("idx_recipe_storage_recipe", "recipe_id"),
+        {"sqlite_autoincrement": True},
+    )
+
+
 class SchemaMigration(Base):
     __tablename__ = "schema_migrations"
     filename = Column(Text, primary_key=True)

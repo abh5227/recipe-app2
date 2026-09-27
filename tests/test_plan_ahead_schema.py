@@ -129,3 +129,81 @@ def test_deleting_the_recipe_takes_both_tables_with_it(kitchen, rid):
         c.commit()
         assert c.execute("SELECT COUNT(*) FROM recipe_waits WHERE recipe_id=?", (rid,)).fetchone()[0] == 0
         assert c.execute("SELECT COUNT(*) FROM recipe_storage WHERE recipe_id=?", (rid,)).fetchone()[0] == 0
+
+
+# --------------------------------------------------------------------------------------------- #
+# The save path reads the numbers out of what a person typed
+# --------------------------------------------------------------------------------------------- #
+def _save(kitchen, rid, waits=None, storage=None):
+    return kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Waits", "ingredients": [], "steps": ["placeholder"],
+        "waits": waits or [], "storage": storage or []})
+
+
+def test_the_save_reads_minutes_out_of_the_typed_text(kitchen, rid):
+    assert _save(kitchen, rid, waits=[{"kind": "rising", "label": "1 hr rise"}]).status_code == 200
+    got = kitchen.client.get(f"/api/recipes/{rid}").get_json()
+    assert [(w["label"], w["min_minutes"], w["max_minutes"]) for w in got["waits"]] == \
+           [("1 hr rise", 60, 60)]
+    assert got["wait_total"] == {"min_minutes": 60, "max_minutes": 60, "label": "1 hr rise"}
+
+
+def test_an_extension_is_read_separately_and_never_widens_the_range(kitchen, rid):
+    """⚠️ THE WHOLE REASON THE EDITOR HAS TWO BOXES. One box would make this a 10 minute to 8 hour
+    marinade, which is a promise the recipe never made."""
+    _save(kitchen, rid, waits=[{"kind": "marinating", "label": "10 min - 1 hr",
+                                "ext_label": "or overnight if time allows"}])
+    w = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
+    assert (w["min_minutes"], w["max_minutes"]) == (10, 60)
+    assert (w["ext_label"], w["ext_min_minutes"]) == ("or overnight if time allows", 480)
+
+
+def test_unreadable_text_keeps_its_words_and_leaves_the_numbers_blank(kitchen, rid):
+    _save(kitchen, rid, waits=[{"kind": "other", "label": "until it smells right"}])
+    w = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
+    assert (w["label"], w["min_minutes"], w["max_minutes"]) == ("until it smells right", None, None)
+
+
+def test_several_waits_total_and_one_open_end_opens_the_total(kitchen, rid):
+    _save(kitchen, rid, waits=[{"kind": "rising", "label": "about 1 hr"},
+                               {"kind": "resting", "label": "30 min"}])
+    assert kitchen.client.get(f"/api/recipes/{rid}").get_json()["wait_total"] == \
+           {"min_minutes": 90, "max_minutes": 90, "label": "1 hr 30 min"}
+    _save(kitchen, rid, waits=[{"kind": "marinating", "label": "at least 2 hours"},
+                               {"kind": "resting", "label": "30 min"}])
+    assert kitchen.client.get(f"/api/recipes/{rid}").get_json()["wait_total"] == \
+           {"min_minutes": 150, "max_minutes": None, "label": "2 hr 30 min+"}
+
+
+def test_storage_never_reaches_the_wait_total(kitchen, rid):
+    """⚠️ THE SEPARATION, END TO END. A week of fridge life must not read as a week of planning."""
+    _save(kitchen, rid, waits=[{"kind": "chilling", "label": "30 min"}],
+          storage=[{"where_kept": "fridge", "applies_to": "the dough", "label": "up to 1 week"}])
+    got = kitchen.client.get(f"/api/recipes/{rid}").get_json()
+    assert got["wait_total"]["min_minutes"] == 30
+    assert got["storage"][0]["max_minutes"] == 10080
+
+
+def test_a_blank_row_is_dropped_and_a_bad_kind_falls_back(kitchen, rid):
+    _save(kitchen, rid, waits=[{"kind": "napping", "label": "30 min"}, {"kind": "rising", "label": "  "}])
+    got = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"]
+    assert len(got) == 1 and got[0]["kind"] == "other"
+
+
+def test_waits_show_up_in_your_changes_the_same_way_prep_time_does(kitchen, rid):
+    """⚠️ THE RULING, ASSERTED. prep_time is captured in the snapshot and diffed as a field, and a
+    wait is treated identically: a fact a person typed that no step edit updates for them."""
+    _save(kitchen, rid)                                    # settle the baseline
+    before = kitchen.client.get(f"/api/recipes/{rid}").get_json()["annotations"]
+    _save(kitchen, rid, waits=[{"kind": "rising", "label": "1 hr rise"}])
+    after = kitchen.client.get(f"/api/recipes/{rid}").get_json()["annotations"]
+    kinds = [a["kind"] for a in after if a not in before]
+    assert "wait" in kinds, after
+
+
+def test_a_recipe_with_no_waits_serializes_exactly_as_it_did_before(kitchen, rid):
+    """⚠️ THE BYTE-EQUAL SHORT-CIRCUIT. All 306 live baselines were written before these keys
+    existed, so emitting "waits":[] on every recipe would make every one of them differ from its
+    baseline and force the diff to run 300 times to return the same answer."""
+    import snapshot_serialize as ss
+    assert ss.content_blob({"name": "x"}, [], []) == ss.content_blob({"name": "x"}, [], [], [], [])

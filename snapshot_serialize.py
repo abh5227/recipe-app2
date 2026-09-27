@@ -38,18 +38,39 @@ def _get(row, key):
     return getattr(row, key, None)
 
 
-def content_blob(recipe, ingredients, steps):
-    """The stable JSON snapshot of a recipe's content. `recipe` is one row-like; `ingredients`/`steps` are
-    lists of row-likes (steps carry 'text'). Projects the content fields, sorts keys, compact + ascii-safe
-    -> a byte-stable string. THE format recipe_snapshots.content stores and snapshot_diff consumes."""
-    return json.dumps(
-        {
-            "recipe": {k: _get(recipe, k) for k in SNAPSHOT_RECIPE_FIELDS},
-            "ingredients": [{k: _get(row, k) for k in SNAPSHOT_ING_FIELDS} for row in ingredients],
-            "steps": [
-                {"position": _get(st, "position"), "is_heading": _get(st, "is_heading"), "text": _get(st, "text")}
-                for st in steps
-            ],
-        },
-        sort_keys=True, ensure_ascii=False, separators=(",", ":"),
-    )
+SNAPSHOT_WAIT_FIELDS = (
+    "position", "kind", "label", "min_minutes", "max_minutes",
+    "ext_label", "ext_min_minutes", "ext_max_minutes",
+)
+SNAPSHOT_STORAGE_FIELDS = (
+    "position", "where_kept", "applies_to", "label", "min_minutes", "max_minutes",
+)
+
+
+def content_blob(recipe, ingredients, steps, waits=None, storage=None):
+    """The stable JSON snapshot of a recipe's content. `recipe` is one row-like; the rest are lists of
+    row-likes (steps carry 'text'). Projects the content fields, sorts keys, compact + ascii-safe
+    -> a byte-stable string. THE format recipe_snapshots.content stores and snapshot_diff consumes.
+
+    ⚠️ WAITS AND STORAGE ARE OMITTED WHEN EMPTY, AND THAT IS NOT TIDINESS. _recipe_annotations
+    short-circuits on a byte-equal comparison against the stored baseline, and all 306 existing
+    baselines were written before these keys existed. Emitting "waits":[] on every recipe would make
+    every one of them differ from its baseline, forcing the diff to run 300 times to return the same
+    answer. A recipe that GAINS a wait stops being byte-equal, which is correct: it changed.
+
+    ⚠️ step_position IS NOT IN THE SNAPSHOT. It records which step a wait was read from, which is
+    provenance rather than content, and moving a step would otherwise read as an edit to the wait.
+    """
+    body = {
+        "recipe": {k: _get(recipe, k) for k in SNAPSHOT_RECIPE_FIELDS},
+        "ingredients": [{k: _get(row, k) for k in SNAPSHOT_ING_FIELDS} for row in ingredients],
+        "steps": [
+            {"position": _get(st, "position"), "is_heading": _get(st, "is_heading"), "text": _get(st, "text")}
+            for st in steps
+        ],
+    }
+    if waits:
+        body["waits"] = [{k: _get(w, k) for k in SNAPSHOT_WAIT_FIELDS} for w in waits]
+    if storage:
+        body["storage"] = [{k: _get(x, k) for k in SNAPSHOT_STORAGE_FIELDS} for x in storage]
+    return json.dumps(body, sort_keys=True, ensure_ascii=False, separators=(",", ":"))

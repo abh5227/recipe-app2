@@ -2351,3 +2351,35 @@ a.fn-item:hover { background: rgba(255,252,244,.10); }
   .lightbox { padding: 12px; gap: 2px; }
   .lb-nav { padding: 14px 8px; font-size: 24px; }
 }
+
+/* Plan-ahead wait + storage rows in the meta stack (round 2). The wait row can carry a breakdown,
+   so it is the one .meta-item that is allowed to be more than one line.
+   ⚠️ THE ROW NEVER SCALES. It lives in scaleMetaBlock beside the times, which the scaler already
+   passes through untouched: doubling a recipe does not double a rise. */
+.meta-ico.hg  { width: 15px; height: 15px; }
+.meta-ico.jar { width: 15px; height: 15px; }
+/* A multi-wait row stacks: the total on the first line, then each wait smaller under it. That is
+   the phone answer — at 390px a single line carrying two waits and an extension wraps four times. */
+.meta-stack .meta-item.wait { align-items: start; }
+.meta-break { display: block; margin-top: 1px; }
+.meta-break-row { display: block; font-size: 0.86em; color: var(--ink-soft); }
+/* An extension is an INVITATION, not part of the range, so it reads quieter than the note that
+   qualifies the figure and it always takes its own line. */
+.meta-ext { display: block; font-size: 0.86em; font-style: italic; color: var(--ink-soft); opacity: .85; }
+
+/* The plan-ahead + storage editor blocks. Same register as .ie-vitals: inline lowercase words, no
+   uppercase form labels, the inputs carry the shared .ie treatment. */
+.ie-planahead { margin: 6px 0 14px; }
+.ie-block { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 6px; }
+.ie-block > .ie-vlabel { flex: 0 0 100%; }
+.ie-wait-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 0 0 100%; }
+.ie-wait { flex: 1 1 11ch; min-width: 9ch; }
+.ie-wait-ext { flex: 1 1 18ch; min-width: 10ch; }
+.ie-pick { flex: 0 0 auto; font-family: var(--font-sans); font-size: 13px; padding: 2px 4px;
+  border: 1px solid var(--border-scaler); border-radius: 3px; background: var(--fill-surface); color: var(--ink); }
+.ie-x { flex: 0 0 auto; border: none; background: none; color: var(--ink-soft); cursor: pointer;
+  font-size: 17px; line-height: 1; padding: 0 5px; opacity: .65; }
+.ie-x:hover { opacity: 1; }
+.ie-add { font-family: var(--font-sans); font-size: 12.5px; color: var(--green); background: none;
+  border: none; cursor: pointer; padding: 2px 0; }
+.ie-add:hover { color: var(--green-lift); text-decoration: underline; }

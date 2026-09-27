@@ -1212,6 +1212,12 @@ function tagsHTML(r) {
 // Minimal inline icons for the masthead meta — a man+woman figure pair (servings) and a clock
 // (time), both --ink-soft via CSS. Hand-drawn paths, no icon library.
 const META_FIG = `<svg class="meta-ico fig" viewBox="0 0 30 24" aria-hidden="true"><circle cx="9" cy="6" r="3"/><path d="M4.5 20 a4.5 4.5 0 0 1 9 0"/><circle cx="21" cy="6" r="3"/><path d="M21 9 L17.2 20 H24.8 Z"/></svg>`;
+// ⚠️ TWO NEW ICONS, and they are the only drawn elements in this feature. The clock, the figure and
+// every other mark on the page were lifted rather than redrawn. These are new because the app has no
+// hourglass and no jar, and reusing the clock for the wait row put two clocks in one stack.
+// Same 24-box, same 1.5 stroke, same round caps and joins, same 15px render as .meta-ico.clk.
+const META_HOURGLASS = `<svg class="meta-ico hg" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3 H18"/><path d="M6 21 H18"/><path d="M7 3 V6.5 C7 9 12 11 12 12 C12 11 17 9 17 6.5 V3"/><path d="M7 21 V17.5 C7 15 12 13 12 12 C12 13 17 15 17 17.5 V21"/></svg>`;
+const META_JAR = `<svg class="meta-ico jar" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2.5 H16 V5 H8 Z"/><path d="M7.5 5 H16.5 A2 2 0 0 1 18.5 7 V19 A2.5 2.5 0 0 1 16 21.5 H8 A2.5 2.5 0 0 1 5.5 19 V7 A2 2 0 0 1 7.5 5 Z"/><path d="M5.5 10.5 H18.5"/></svg>`;
 const META_CLOCK = `<svg class="meta-ico clk" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7.5"/><path d="M12 9 V13 L15 15"/><path d="M9.5 3 H14.5"/></svg>`;
 
 // The control block above the Ingredients heading: cook time (top) + serves (bottom) STACKED on the
@@ -1253,6 +1259,34 @@ function scaleMetaBlock(r) {
     })
     .join(`<span class="meta-sep"> · </span>`);
   if (times) stack.push(`<span class="meta-item">${META_CLOCK}<span>${times}</span></span>`);
+  // ⚠️ THE WAIT ROW NEVER SCALES, and it gets that for free by living in scaleMetaBlock beside the
+  // times rather than in the ledger. Doubling a recipe does not double a rise.
+  const waits = (view.waits || []);
+  if (waits.length) {
+    const tot = view.waitTotal || {};
+    // One wait prints its own words, so "overnight" survives. Several print the summed figure and
+    // each wait gets its own smaller line beneath, which is what keeps the row readable on a phone.
+    const head = `Plan\u00a0ahead\u00a0<span class="meta-val">${esc(bindUnits(tot.label || ""))}</span>`
+      + (waits.length === 1 && waits[0].kind ? `<span class="meta-note"> (${esc(waits[0].kind)})</span>` : "");
+    const ext = waits.length === 1 && waits[0].ext_label
+      ? `<span class="meta-ext">${esc(bindUnits(waits[0].ext_label))}</span>` : "";
+    const breakdown = waits.length > 1
+      ? `<span class="meta-break">${waits.map((w) =>
+          `<span class="meta-break-row">${esc(bindUnits(w.label || ""))}<span class="meta-note"> ${esc(w.kind || "")}</span>`
+          + (w.ext_label ? `<span class="meta-ext">${esc(bindUnits(w.ext_label))}</span>` : "")
+          + `</span>`).join("")}</span>`
+      : "";
+    stack.push(`<span class="meta-item wait">${META_HOURGLASS}<span>${head}${ext}${breakdown}</span></span>`);
+  }
+  // ⚠️ STORAGE IS NOT A WAIT. It reaches no total and no filter, and it says WHERE.
+  const storage = (view.storage || []);
+  for (const st of storage) {
+    // "Keeps the dough in the fridge up to 1 week" reads as a sentence. The columns in their stored
+    // order ("fridge up to 1 week the dough") do not, and the subject belongs before the place.
+    const what = st.applies_to ? `${esc(st.applies_to)} ` : "";
+    stack.push(`<span class="meta-item">${META_JAR}<span>Keeps ${what}in the ${esc(st.where_kept)}\u00a0`
+      + `<span class="meta-val">${esc(bindUnits(st.label || ""))}</span></span></span>`);
+  }
   const base = servingsBase();
   if (base) stack.push(`<span class="meta-item">${META_FIG}<span>Serves <span class="serves-count meta-val">${formatAmount(base * view.scale)}</span></span></span>`);
   const metaStack = stack.length ? `<div class="meta-stack">${stack.join("")}</div>` : "";
@@ -1890,6 +1924,7 @@ async function renderRecipe(rid) {
   albumReorder = null;   // 3d-iii: leaving reorder mode on any repaint (defensive; commit/cancel already clear it)
   const data = await api("/api/recipes/" + encodeURIComponent(rid));
   view = { slug: rid, data, scale: 1,
+           waits: data.waits || [], storage: data.storage || [], waitTotal: data.wait_total || null,
            undoneCook: null, editMode: false, draft: null, dirty: false };
   app.className = "page recipe-view";
   setCookCount(app, data.stats.cook_count);   // reserved R2 wear signal on the recipe root
@@ -1938,7 +1973,7 @@ function paintRecipe() {
         ${dek ? `<div class="headnote"><p class="dek clamped">${esc(dek)}</p><button class="dek-more" data-dek-toggle hidden>more</button></div>` : ""}`;
 
   const vitalsInner = editing
-    ? `${vitalsEditHTML(r)}<div class="stats cook-block locked" data-rid="${esc(r.id)}" aria-disabled="true">${statsInner(data.stats)}</div>`
+    ? `${vitalsEditHTML(r)}<div class="ie-planahead">${waitsEditHTML(data)}${storageEditHTML(data)}</div><div class="stats cook-block locked" data-rid="${esc(r.id)}" aria-disabled="true">${statsInner(data.stats)}</div>`
     : `<div class="stats cook-block" data-rid="${esc(r.id)}">${statsInner(data.stats)}</div>
         ${owner}`;
 
@@ -2269,6 +2304,79 @@ function vitalsEditHTML(r) {
       ${num("cook_time", "Cook", r.cook_time)}<span class="ie-dot">·</span>
       ${num("total_time", "Total", r.total_time)}
     </div>`;
+}
+
+// Plan-ahead + storage editing (round 2). ONE text box per wait, exactly as the times above are one
+// box each: the numbers are read from what you type, on the server, on save. Unreadable words are
+// kept and the numbers stay blank, the same contract normalize_time already has for a time column.
+//
+// ⚠️ THE EXTENSION IS ITS OWN BOX, and that is the whole reason this is not a single field. Typing
+// "10 min to an hour or overnight if time allows" into one box gives a range of 10 minutes to 8
+// hours, which is a promise the recipe never made. Two boxes keep the invitation beside the range.
+const WAIT_KINDS = ["marinating", "chilling", "rising", "soaking", "resting", "freezing", "brining", "other"];
+const STORE_WHERE = ["fridge", "freezer", "room temp", "other"];
+
+function pickHTML(list, val, attr, i) {
+  return `<select class="ie ie-pick" data-${attr}="${i}">`
+    + list.map((k) => `<option value="${esc(k)}"${k === val ? " selected" : ""}>${esc(k)}</option>`).join("")
+    + `</select>`;
+}
+
+function waitsEditHTML(d) {
+  const rows = (d.waits || []).map((w, i) => `<div class="ie-wait-row">
+      ${pickHTML(WAIT_KINDS, w.kind || "other", "wait-kind", i)}
+      <input class="ie ie-wait" data-wait-label="${i}" value="${esc(w.label || "")}" placeholder="1 hr rise" aria-label="Wait">
+      <input class="ie ie-wait-ext" data-wait-ext="${i}" value="${esc(w.ext_label || "")}" placeholder="or overnight if time allows" aria-label="Extension">
+      <button type="button" class="ie-x" data-wait-del="${i}" aria-label="Remove this wait">×</button>
+    </div>`).join("");
+  return `<div class="ie-block"><span class="ie-vlabel">Plan ahead</span>${rows}
+      <button type="button" class="ie-add" data-wait-add>+ add a wait</button></div>`;
+}
+
+function storageEditHTML(d) {
+  const rows = (d.storage || []).map((x, i) => `<div class="ie-wait-row">
+      ${pickHTML(STORE_WHERE, x.where_kept || "fridge", "store-where", i)}
+      <input class="ie ie-wait-ext" data-store-what="${i}" value="${esc(x.applies_to || "")}" placeholder="the dough" aria-label="Applies to">
+      <input class="ie ie-wait" data-store-label="${i}" value="${esc(x.label || "")}" placeholder="up to 1 week" aria-label="Keeps for">
+      <button type="button" class="ie-x" data-store-del="${i}" aria-label="Remove this">×</button>
+    </div>`).join("");
+  return `<div class="ie-block"><span class="ie-vlabel">Storage</span>${rows}
+      <button type="button" class="ie-add" data-store-add>+ add storage</button></div>`;
+}
+
+// One delegated handler for both sections. Mutates the draft and repaints just the two blocks, so a
+// keystroke in a text box never repaints the page out from under the caret (only add/remove do).
+function handlePlanAheadAction(t) {
+  const d = view && view.draft;
+  if (!d) return false;
+  const repaint = () => {
+    const host = document.querySelector(".ie-planahead");
+    if (host) host.innerHTML = waitsEditHTML(d) + storageEditHTML(d);
+  };
+  if (t.closest("[data-wait-add]")) {
+    (d.waits = d.waits || []).push({ kind: "other", label: "", ext_label: "" }); view.dirty = true; repaint(); return true;
+  }
+  if (t.closest("[data-store-add]")) {
+    (d.storage = d.storage || []).push({ where_kept: "fridge", applies_to: "", label: "" }); view.dirty = true; repaint(); return true;
+  }
+  const wd = t.closest("[data-wait-del]");
+  if (wd) { d.waits.splice(+wd.dataset.waitDel, 1); view.dirty = true; repaint(); return true; }
+  const sd = t.closest("[data-store-del]");
+  if (sd) { d.storage.splice(+sd.dataset.storeDel, 1); view.dirty = true; repaint(); return true; }
+  return false;
+}
+
+function handlePlanAheadInput(el) {
+  const d = view && view.draft;
+  if (!d || !el.dataset) return false;
+  const set = (arr, i, key) => { if (arr && arr[i]) { arr[i][key] = el.value; view.dirty = true; } return true; };
+  if (el.dataset.waitLabel  !== undefined) return set(d.waits, +el.dataset.waitLabel, "label");
+  if (el.dataset.waitExt    !== undefined) return set(d.waits, +el.dataset.waitExt, "ext_label");
+  if (el.dataset.waitKind   !== undefined) return set(d.waits, +el.dataset.waitKind, "kind");
+  if (el.dataset.storeWhere !== undefined) return set(d.storage, +el.dataset.storeWhere, "where_kept");
+  if (el.dataset.storeWhat  !== undefined) return set(d.storage, +el.dataset.storeWhat, "applies_to");
+  if (el.dataset.storeLabel !== undefined) return set(d.storage, +el.dataset.storeLabel, "label");
+  return false;
 }
 
 // The note edits at the BOTTOM (after the steps), mirroring reading's closing "Note. …" block.
@@ -2777,6 +2885,12 @@ function draftPayload() {
     image: t(r.image), descr: t(r.descr), notes: t(r.notes),
     ingredients: nonEmptyRows(view.draft.ingredients).map(ingToPayload),   // drop blank rows the user left WIP
     steps: nonEmptySteps(view.draft.steps).map(stepToPayload),             // ditto — CLEARING a step's text deletes it
+    // A row whose text box is empty is one the user left WIP, exactly like a blank ingredient.
+    waits: (view.draft.waits || []).filter((w) => t(w.label)).map((w) => ({
+      kind: t(w.kind) || "other", label: t(w.label), ext_label: t(w.ext_label) || null,
+      step_position: w.step_position == null ? null : w.step_position })),
+    storage: (view.draft.storage || []).filter((x) => t(x.label)).map((x) => ({
+      where_kept: t(x.where_kept) || "fridge", applies_to: t(x.applies_to) || null, label: t(x.label) })),
   };
 }
 
@@ -3573,6 +3687,7 @@ document.addEventListener("click", (e) => {
   // extra terms on the line above, because the two exemption tests are not interchangeable — see the
   // note on closeRowMenu(). Also no return: this is a pre-branch, every handler below still runs.
   if (!e.target.closest(".row-menu") && !e.target.closest("[data-row-menu]")) closeRowMenu();
+  if (view && view.editMode && handlePlanAheadAction(e.target)) { markDirty(); return; }
 
   // Inline recipe editor: enter / save / cancel (namespaced data-inline-edit-*). Handled first.
   if (handleInlineEdit(e)) return;
@@ -3906,6 +4021,10 @@ document.addEventListener("dragover", stepDragOver);
 document.addEventListener("drop", stepDrop);
 document.addEventListener("dragend", stepDragEnd);
 
+document.addEventListener("change", (e) => {
+  if (view && view.editMode && view.draft && handlePlanAheadInput(e.target)) markDirty();
+});
+
 document.addEventListener("input", (e) => {
   // 3c: live N/60 count for the album caption edit (maxlength already hard-stops at 60; this only recolors the count)
   const capIn = e.target.closest("[data-cap-input]");
@@ -3920,6 +4039,9 @@ document.addEventListener("input", (e) => {
   if (el) { el.value = el.value.replace(/[^\d.]/g, ""); return; }   // digits + decimal point only while editing
   // Inline editor: buffer the scalar field into the draft ONLY — never re-render here, or the input
   // would lose focus/caret mid-typing. Re-render happens solely on mode/save/cancel.
+  // Plan-ahead + storage boxes buffer into the draft the same way, and for the same reason: no
+  // re-render here or the caret jumps. add/remove repaint, typing never does.
+  if (view && view.editMode && view.draft && handlePlanAheadInput(e.target)) { markDirty(); return; }
   const f = e.target.closest("[data-inline-edit-field]");
   if (f && view && view.editMode && view.draft) {
     view.draft.recipe[f.dataset.inlineEditField] = f.value;
