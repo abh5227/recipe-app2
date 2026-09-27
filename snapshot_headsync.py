@@ -116,12 +116,21 @@ def sync_heading_layout(old_blob, current_ingredients, current_steps):
     separators and the full key projection come from there. This module never calls json.dumps. That
     also means every key is reproduced on every row by construction — including the nine keys a
     heading row pins to null, which a hand-built dict would be free to omit and thereby change the
-    bytes."""
+    bytes.
+
+    ⚠️ EVERY KEY THIS FUNCTION DOES NOT INTERLEAVE IS HANDED BACK AS IT WAS FOUND. content_blob
+    DEFAULTS waits and storage to None, which OMITS them, so calling it with three arguments
+    silently stripped both from every baseline a save rewrote. Measured on the round-3 preview
+    copy: one save on morning-buns left its baseline with no waits key, and all six of that
+    recipe's waits then reported as "added" in "your changes" for good. This function's job is the
+    HEADING LAYOUT and nothing else."""
     old = _load(old_blob)
     return content_blob(
         old.get("recipe") or {},
         _reinterleave(old.get("ingredients") or [], current_ingredients, SNAPSHOT_ING_FIELDS),
         _reinterleave(old.get("steps") or [], current_steps, SNAPSHOT_STEP_FIELDS),
+        old.get("waits"),
+        old.get("storage"),
     )
 
 
@@ -145,6 +154,9 @@ def content_safety_problems(old_blob, new_blob):
 
     P2 — POSITIONS WELL-FORMED. Every row's position equals its index in the new full list. Without
     it, P1 could be satisfied by a blob whose positions no longer round-trip through the writer.
+
+    P3 — NO KEY DROPPED. Every top-level key in the old blob is still in the new one. P1 and P2 read
+    ingredients and steps only, so a key outside those two could be lost without either firing.
 
     ⚠️ THE DIRECTION OF P1 IS LOAD-BEARING — DO NOT "FIX" IT TO COMPARE AGAINST CURRENT.
     P1 compares the OLD blob against the NEW blob: the transform's own invariance. The baseline holds
@@ -186,6 +198,18 @@ def content_safety_problems(old_blob, new_blob):
         actual = [r.get("position") for r in rows]
         if actual != list(range(len(rows))):
             problems.append(f"P2 {name}: positions are not 0..{len(rows) - 1} — got {actual}")
+
+    # P3 — NOTHING ELSE IS DROPPED.
+    # ⚠️ P1 AND P2 READ ingredients AND steps ONLY, so a key neither of them knows about can vanish
+    #    without either noticing. That is exactly how waits and storage were lost: the transform
+    #    rebuilt the blob from three arguments, content_blob omitted the two it was not given, and
+    #    this function reported no problem. P3 is stated over the KEY SET rather than over a list of
+    #    known keys, so the next key added to the snapshot is covered before anyone remembers it.
+    missing = sorted(set(old) - set(new))
+    if missing:
+        problems.append(
+            f"P3: the sync dropped top-level key(s) {missing} — a heading sync must carry every "
+            f"key it does not interleave straight through")
     return problems
 
 
