@@ -61,7 +61,15 @@ _NUM = (r"(?:\d+(?:\s+|" + _JOIN + r")\d+/\d+|\d+/\d+|\d+(?:\s*|" + _JOIN + r")[
 
 # --- Layer 2: never-scale guard units (temperature, time, dimension) ---
 _TEMP = r"(?:°\s*[CF]?|degrees?\b)"
-_TIME = r"(?:min(?:ute)?s?|h(?:ou)?rs?|sec(?:ond)?s?)\b"
+# ⚠️ DAYS AND WEEKS ADDED 2026-09-27, and the reason is a MISREAD rather than a scaling risk.
+#    Without them "marinate in the fridge for 2 days" tokenized the 2 as a bare UNITLESS number with
+#    the word "days" stranded in the plain text beside it. That put a duration in the
+#    unitless-for-review bucket, which exists for a genuinely ambiguous count ("divide into 4"), and
+#    it split the duration across two spans so nothing downstream could read it whole. Measured on
+#    the corpus before the change: 3 live steps, and 0 time-looking spans were ever SCALABLE either
+#    before or after, so no number changes what it does at 2x.
+#    Months and years are deliberately absent. Neither occurs in any step in the corpus.
+_TIME = r"(?:min(?:ute)?s?|h(?:ou)?rs?|sec(?:ond)?s?|days?|weeks?)\b"
 _DIM = r'(?:inch(?:es)?\b|"|cm\b|mm\b)'
 _GUARD_UNIT = r"(?:" + _TEMP + r"|" + _TIME + r"|" + _DIM + r")"
 

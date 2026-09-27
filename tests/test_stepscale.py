@@ -45,6 +45,11 @@ NEVER_SCALE = [
     "preheat to 375°F / 190°C",
     "about ¾ inch / 2 cm apart",
     "simmer 4–6 minutes",
+    # ⚠️ DAYS AND WEEKS, added 2026-09-27. A wait is a duration like any other and must never scale.
+    "marinate in the fridge for 2 days",
+    "keeps, covered, for 1 week",
+    "cold proof for 1–2 days",
+    "store in the freezer up to 3 days",
 ]
 
 
@@ -141,3 +146,37 @@ def test_build_report_runs_on_seed(kitchen):
     assert all(r["marked_scale"] == 0 and r["marked_lock"] == 0 for r in cov.values())
     gy = cov["Thai BBQ Chicken (Gai Yang)"]                     # all temps/times -> guarded
     assert gy["heuristic"] == 0 and gy["guarded"] > 0
+
+
+# --------------------------------------------------------------------------------------------- #
+# Days and weeks are time units
+# --------------------------------------------------------------------------------------------- #
+def test_a_wait_in_days_is_one_guarded_duration_not_a_bare_count():
+    """⚠️ THE MISREAD THIS FIXES. Without 'day' in _TIME the 2 was a UNITLESS span with the word
+    'days' stranded in the plain text beside it, so the duration arrived split across two spans and
+    the number landed in the unitless-for-review bucket, which exists for a genuinely ambiguous
+    count ('divide into 4')."""
+    spans = ss.parse_step("marinate in the fridge for 2 days")
+    assert [s["text"] for s in spans if s["category"] == ss.GUARDED] == ["2 days"]
+    assert ss.UNITLESS not in [s["category"] for s in spans]
+
+
+def test_a_range_in_days_or_weeks_arrives_as_ONE_span():
+    """Two unitless numbers became one guarded range. Measured on live: khaliat-nahal[12] reads
+    '1–2 days' and spiced-scallops[3] reads '2-3 weeks'."""
+    for text, want in (("chill 1–2 days", "1–2 days"), ("keeps 2-3 weeks", "2-3 weeks")):
+        got = [s["text"] for s in ss.parse_step(text) if s["category"] == ss.GUARDED]
+        assert got == [want], text
+
+
+def test_singular_and_plural_both_guard():
+    for text in ("rest 1 day", "rest 3 days", "keeps 1 week", "keeps 2 weeks", "a 3-day cure"):
+        assert _scalable(text) == [], text
+        assert ss.GUARDED in _categories(text), text
+
+
+def test_a_month_is_still_not_a_time_unit():
+    """Deliberately absent: no step in the corpus says months or years, so the pattern is not
+    widened past what was measured."""
+    assert ss.GUARDED not in _categories("keeps 6 months")
+
