@@ -40,6 +40,11 @@ _WORD_DURATIONS = (
 )
 
 KINDS = ("marinating", "chilling", "rising", "soaking", "resting", "freezing", "brining", "other")
+# The kind as a VERB, which is how the breakdown bullet reads it: "Chill 4 hr – overnight" rather
+# than "4 hr – overnight chilling". Mirrored in static/app.js.
+VERBS = {"marinating": "Marinate", "chilling": "Chill", "rising": "Rise", "soaking": "Soak",
+         "resting": "Rest", "freezing": "Freeze", "brining": "Brine", "other": "Wait"}
+SNIPPET_LEN = 48
 WHERES = ("fridge", "freezer", "room temp", "other")
 WHENS = ("always", "optional", "only_if")
 
@@ -172,3 +177,79 @@ def total_label(waits):
     if hi is None:
         return f"{fmt_minutes(lo)}+"
     return fmt_minutes(lo) if hi == lo else f"{fmt_minutes(lo)} – {fmt_minutes(hi)}"
+
+
+# ---------------------------------------------------------------------------------------------
+# The step pointer. See migration 051.
+# ---------------------------------------------------------------------------------------------
+
+_TAGS = re.compile(r"<[^>]+>")
+
+
+def step_key(text):
+    """A step's text reduced to what the check compares: tags stripped, whitespace collapsed,
+    lowercased. Formatting changes do not break a link. Re-wording does, which is the point."""
+    return " ".join(_TAGS.sub(" ", text or "").split()).lower()
+
+
+def step_snippet(text, length=SNIPPET_LEN):
+    """The stored check: the first `length` characters of the normalized step text.
+
+    ⚠️ THE FRONT OF THE STEP, NOT THE MATCHED SENTENCE. A wait is usually read from a sentence in
+    the middle of a step, and storing that sentence would keep matching after the rest of the step
+    was rewritten around it. The opening is what identifies WHICH step this is."""
+    return step_key(text)[:length] or None
+
+
+def step_ok(step_text, check):
+    """Does the step at the stored position still look like the step the wait was read from?
+
+    A missing check is not a failure: rows written before 051 have no snippet, and a wait with a
+    position and no check keeps its link. A check that is present and absent from the step DOES
+    fail, and the caller drops the link rather than pointing at the wrong step."""
+    if not check:
+        return True
+    return check in step_key(step_text)
+
+
+def resolve_steps(waits, steps):
+    """Decide each wait's step link against the steps as they stand NOW.
+
+    `steps` is the recipe's rows in position order, each a mapping with position, is_heading, text.
+    Adds two keys to every wait, in place:
+      step_no  - the number the page prints ("Step 4"), heading-EXCLUDED to match the CSS counter,
+                 or None when there is no usable link
+      step_ok  - False ONLY when a pointer exists and the check failed, so the editor can say so
+
+    ⚠️ THE NUMBER IS NOT THE POSITION. Headings sit in the same table and carry positions but are
+    not numbered, so position 4 can print as Step 3.
+    """
+    def get(st, key):
+        """Rows arrive as dicts, SQLAlchemy RowMappings or ORM objects depending on the caller."""
+        try:
+            return st[key]
+        except (TypeError, KeyError, IndexError):
+            return getattr(st, key, None)
+
+    by_pos, number = {}, 0
+    for st in steps:
+        pos, heading, text = get(st, "position"), get(st, "is_heading"), get(st, "text")
+        if not heading:
+            number += 1
+        by_pos[pos] = (None if heading else number, text)
+    for w in waits:
+        pos = w.get("step_position")
+        w["step_no"], w["step_ok"] = None, True
+        if pos is None or pos not in by_pos:
+            if pos is not None:
+                w["step_ok"] = False          # the step it pointed at is gone
+            continue
+        num, text = by_pos[pos]
+        if num is None:                        # it now points at a heading
+            w["step_ok"] = False
+            continue
+        if step_ok(text, w.get("step_check")):
+            w["step_no"] = num
+        else:
+            w["step_ok"] = False
+    return waits

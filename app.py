@@ -632,6 +632,12 @@ def write_plan_ahead(s, rid, payload):
     rw, rs = RecipeWait.__table__, RecipeStorage.__table__
     s.execute(delete(rw).where(rw.c.recipe_id == rid))
     s.execute(delete(rs).where(rs.c.recipe_id == rid))
+    # ⚠️ THE SNIPPET IS COMPUTED HERE, NOT SENT BY THE CLIENT. This runs AFTER write_recipe_rows, so
+    #    it reads the steps as this save just wrote them, and the editor only ever sends a position.
+    step_text = {m["position"]: m["text"] for m in s.execute(
+        select(RecipeStep.__table__.c.position, RecipeStep.__table__.c.text)
+        .where(RecipeStep.__table__.c.recipe_id == rid,
+               RecipeStep.__table__.c.is_heading == 0)).mappings()}
     for pos, w in enumerate(payload.get("waits") or []):
         label = (w.get("label") or "").strip()
         if not label:
@@ -648,9 +654,23 @@ def write_plan_ahead(s, rid, payload):
             when_label = None
         elif not when_label:
             when_kind = "always"
+        # A position that names no ordinary step is dropped outright rather than stored broken.
+        sp = w.get("step_position")
+        sp = sp if sp in step_text else None
+        # ⚠️ AN EXISTING CHECK IS KEPT, NOT RECOMPUTED, AND THAT IS THE WHOLE MECHANISM.
+        #    write_recipe_rows reassigns every step's position by enumeration on every save, so
+        #    inserting a step shifts everything below it. Recomputing the snippet here would read
+        #    whatever step moved into that slot and quietly re-point the wait at it, which is the
+        #    exact failure 051 exists to prevent. The client round-trips the stored check and
+        #    clears it ONLY when the step picker is used, which is the one case that means
+        #    "this is a new pointer, read it fresh".
+        check = (w.get("step_check") or "").strip() or None
+        if sp is not None and check is None:
+            check = planahead.step_snippet(step_text[sp])
         s.execute(insert(rw).values(
             recipe_id=rid, position=pos, kind=kind, label=label,
-            min_minutes=lo, max_minutes=hi, step_position=w.get("step_position"),
+            min_minutes=lo, max_minutes=hi, step_position=sp,
+            step_check=check if sp is not None else None,
             ext_label=ext, ext_min_minutes=elo, ext_max_minutes=ehi,
             when_kind=when_kind, when_label=when_label))
     for pos, x in enumerate(payload.get("storage") or []):
@@ -1054,6 +1074,9 @@ def get_recipe(rid):
         storage = [dict(x) for x in s.execute(
             select(RecipeStorage.__table__).where(RecipeStorage.recipe_id == rid)
             .order_by(RecipeStorage.position, RecipeStorage.id)).mappings().all()]
+        # ⚠️ THE LINK IS DECIDED HERE, against the steps as they stand now. A wait whose check no
+        #    longer matches loses its number rather than pointing at whatever moved into that slot.
+        planahead.resolve_steps(waits, steps)
         wait_min, wait_max = planahead.total(waits)
         # is_queued (stage 3a): MY want-to-make state — per-user EXISTS against recipe_queue, scoped to
         # current_user.id like stats above. Any recipe is queueable, so this is independent of ownership.

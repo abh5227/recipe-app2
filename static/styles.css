@@ -2368,11 +2368,41 @@ a.fn-item:hover { background: rgba(255,252,244,.10); }
 /* A multi-wait row stacks: the total on the first line, then each wait smaller under it. That is
    the phone answer — at 390px a single line carrying two waits and an extension wraps four times.
    It needs no align-items of its own now that every .meta-item aligns to its first line. */
-.meta-break { display: block; margin-top: 1px; }
+/* The breakdown is a LIST now, one bullet per wait, because each wait is its own instruction and
+   a run-on line made the reader count durations to work out how many there were. The bullet is a
+   hanging dot in the same 0.86em quiet as the old rows. */
+ul.meta-break { display: block; margin: 2px 0 0; padding: 0; list-style: none; }
+ul.meta-break.bare { margin-top: 0; }
+.meta-bullet { display: block; position: relative; padding-left: 12px; font-size: 0.86em;
+               color: var(--ink-soft); line-height: 1.5; }
+.meta-bullet::before { content: "\2022"; position: absolute; left: 0; top: 0; opacity: .55; }
+/* The verb is the instruction, so it carries the weight the duration used to hold alone. */
+.meta-do { font-weight: 600; color: var(--ink); }
+/* "Step 4" is a link into the method, and it is deliberately quiet. A rule under every one of them
+   turned a six-wait breakdown into six underlines stacked down the page, which reads as a list of
+   links rather than a list of waits. The affordance arrives on hover and on keyboard focus. */
+a.meta-step { color: inherit; text-decoration: none; cursor: pointer; }
+a.meta-step:hover { color: var(--berry); text-decoration: underline;
+                    text-decoration-style: dotted; text-underline-offset: 2px; }
+a.meta-step:focus-visible { color: var(--berry); outline: 1px dotted currentColor; outline-offset: 2px; }
+/* "Keeps" heads the storage list the way "Plan ahead" heads the waits. */
+.meta-keeps { display: block; }
+/* The step the reader was sent to, marked just long enough to find it. Fades rather than blinks,
+   because the page has already scrolled and the eye only needs to be told where it landed. */
+@keyframes step-ping {
+  from { background: color-mix(in srgb, var(--amber) 22%, transparent); }
+  to   { background: transparent; }
+}
+.steps li.step.step-ping { animation: step-ping 1.6s ease-out; border-radius: 4px; }
+@media (prefers-reduced-motion: reduce) { .steps li.step.step-ping { animation-duration: 1ms; } }
 .meta-break-row { display: block; font-size: 0.86em; color: var(--ink-soft); }
 /* An extension is an INVITATION, not part of the range, so it reads quieter than the note that
    qualifies the figure and it always takes its own line. */
-.meta-ext { display: block; font-size: 0.86em; font-style: italic; color: var(--ink-soft); opacity: .85; }
+.meta-ext { font-size: 0.86em; font-style: italic; color: var(--ink-soft); opacity: .85; }
+/* Inside a bullet the extension and the qualifier sit INLINE after the duration, which is what the
+   bullet buys: one wait, one line, its conditions beside it rather than under it. */
+.meta-bullet .meta-ext, .meta-bullet .meta-when { font-size: 1em; }
+.meta-item.wait > span > .meta-ext { display: block; }
 /* "(optional)" / "if chilled" says why a wait is not in the figure above it. Same weight as the
    kind it follows, because it qualifies the wait rather than competing with it. */
 .meta-when { font-weight: 400; }
