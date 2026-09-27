@@ -1056,6 +1056,21 @@ function renderStepRow(row, ann) {
 
 // O-c-1: render the step list with its annotation layer. Own 0-based li.step counter (heading-EXCLUDED,
 // a SEPARATE index space from ingredients) == snapshot_diff step new_pos. Empty annotations -> byte-identical.
+// The plan-ahead bullet's "Step 4" link. n is the number the page PRINTS, which is the CSS
+// counter's sequence, so it indexes li.step specifically — li.group headings and the synthesized
+// li.step-removed rows are both unnumbered and both correctly skipped by this selector.
+// ⚠️ NO-OP IF THE STEP IS NOT THERE. The server already refuses to send a number whose check
+//    failed, and this is the second guard for a repaint that has not landed yet.
+function jumpToStep(n) {
+  const li = document.querySelectorAll("#steps-list li.step")[n - 1];
+  if (!li) return;
+  li.scrollIntoView({ behavior: "smooth", block: "center" });
+  li.classList.remove("step-ping");
+  void li.offsetWidth;                 // restart the animation if the same step is tapped twice
+  li.classList.add("step-ping");
+  setTimeout(() => li.classList.remove("step-ping"), 1600);
+}
+
 function renderStepsList(steps) {
   const { step, removedStep } = annotationIndex(view.data.annotations);
   let i = 0;   // heading-EXCLUDED step index (its OWN sequence); synthesized removals never advance it
@@ -1218,6 +1233,12 @@ const META_FIG = `<svg class="meta-ico fig" viewBox="0 0 30 24" aria-hidden="tru
 // Same 24-box, same 1.5 stroke, same round caps and joins, same 15px render as .meta-ico.clk.
 const META_HOURGLASS = `<svg class="meta-ico hg" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3 H18"/><path d="M6 21 H18"/><path d="M7 3 V6.5 C7 9 12 11 12 12 C12 11 17 9 17 6.5 V3"/><path d="M7 21 V17.5 C7 15 12 13 12 12 C12 13 17 15 17 17.5 V21"/></svg>`;
 const META_JAR = `<svg class="meta-ico jar" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 2.5 H16 V5 H8 Z"/><path d="M7.5 5 H16.5 A2 2 0 0 1 18.5 7 V19 A2.5 2.5 0 0 1 16 21.5 H8 A2.5 2.5 0 0 1 5.5 19 V7 A2 2 0 0 1 7.5 5 Z"/><path d="M5.5 10.5 H18.5"/></svg>`;
+// ⚠️ MIRRORS planahead.VERBS. The breakdown bullet reads as an instruction ("Chill 4 hr"), not as
+// a label with the verb tacked on the end ("4 hr chilling").
+const WAIT_VERBS = { marinating: "Marinate", chilling: "Chill", rising: "Rise", soaking: "Soak",
+                     resting: "Rest", freezing: "Freeze", brining: "Brine", other: "Wait" };
+// The place in the words the storage bullet uses. "other" names no place and drops out.
+const STORE_PLACE = { fridge: "fridge", freezer: "freezer", "room temp": "room temperature", other: "" };
 const META_CLOCK = `<svg class="meta-ico clk" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7.5"/><path d="M12 9 V13 L15 15"/><path d="M9.5 3 H14.5"/></svg>`;
 
 // The control block above the Ingredients heading: cook time (top) + serves (bottom) STACKED on the
@@ -1272,52 +1293,56 @@ function scaleMetaBlock(r) {
     const counted = waits.filter((w) => (w.when_kind || "always") === "always");
     const qual = (w) => {
       const k = w.when_kind || "always";
-      if (k === "optional") return `<span class="meta-when"> (optional)</span>`;
-      if (k === "only_if") return `<span class="meta-when"> if ${esc(w.when_label || "")}</span>`;
+      if (k === "optional") return `<span class="meta-when">(optional)</span>`;
+      if (k === "only_if") return `<span class="meta-when">if ${esc(w.when_label || "")}</span>`;
       return "";
     };
-    // "about 1 hr rising" already says rising. Printing the kind after it read "rising rising".
-    const kindOf = (w) => {
-      const k = (w.kind || "").trim();
-      return k && !(w.label || "").toLowerCase().includes(k.toLowerCase()) ? k : "";
-    };
-    // ⚠️ ONE COUNTED WAIT MEANS THE HEAD IS THAT WAIT'S OWN WORDS, so it must not repeat underneath.
-    //    no-knead-bread rises 12 to 18 hours and rests only if it was chilled, and printing every
-    //    wait in the breakdown read "Plan ahead 12–18 hr / 12–18 hr rising / 45–60 min resting if
-    //    chilled". Two or more counted waits sum to a figure nobody wrote, so there every wait
-    //    belongs in the breakdown.
-    const one = counted.length === 1 ? counted[0] : null;
+    // ⚠️ THE KIND READS AS A VERB. "Chill 4 hr – overnight" is an instruction. "4 hr – overnight
+    //    chilling" is a label with the verb tacked on the end. Mirrors planahead.VERBS.
+    const verb = (w) => WAIT_VERBS[w.kind] || WAIT_VERBS.other;
+    // ⚠️ THE STEP NUMBER LINKS ONLY WHEN THE SERVER SAYS THE POINTER STILL HOLDS. step_no comes
+    //    back null when the stored snippet no longer matches the step at that position, and the
+    //    bullet then reads with no step number rather than scrolling to the wrong step.
+    const stepTag = (w) => (w.step_no
+      ? `<a class="meta-step" href="#" data-wait-step="${w.step_no}">Step ${w.step_no}</a>: ` : "");
+    const bullet = (w) =>
+      `<li class="meta-bullet">${stepTag(w)}<span class="meta-do">${esc(verb(w))}</span> `
+      + `${esc(bindUnits(w.label || ""))}`
+      + (w.ext_label ? ` <span class="meta-ext">(${esc(bindUnits(w.ext_label))})</span>` : "")
+      + ((w.when_kind || "always") !== "always" ? " " + qual(w) : "")
+      + `</li>`;
+    // ⚠️ ONE WAIT ON ITS OWN STAYS ON ONE LINE. Everything else is a list, because a summed figure
+    //    is a figure nobody wrote and each wait has to be readable on its own.
+    const one = waits.length === 1 && counted.length === 1 ? waits[0] : null;
     const head = tot.label
       ? `Plan\u00a0ahead\u00a0<span class="meta-val">${esc(bindUnits(tot.label || ""))}</span>`
-        + (one && kindOf(one) ? `<span class="meta-note"> (${esc(kindOf(one))})</span>` : "")
+        + (one ? `<span class="meta-note"> (${esc(verb(one).toLowerCase())}${one.step_no
+              ? `, <a class="meta-step" href="#" data-wait-step="${one.step_no}">step ${one.step_no}</a>`
+              : ""})</span>` : "")
       : "";
     const ext = one && one.ext_label
       ? `<span class="meta-ext">${esc(bindUnits(one.ext_label))}</span>` : "";
-    // With no counted wait there is no figure, so the rows ARE the row: "8 hr soaking (optional)".
-    const rows = one ? waits.filter((w) => w !== one) : waits;
+    const rows = one ? [] : waits;
     const breakdown = rows.length
-      ? `<span class="meta-break${head ? "" : " bare"}">${rows.map((w) =>
-          `<span class="meta-break-row">${esc(bindUnits(w.label || ""))}`
-          + (kindOf(w) ? `<span class="meta-note"> ${esc(kindOf(w))}</span>` : "")
-          + qual(w)
-          + (w.ext_label ? `<span class="meta-ext">${esc(bindUnits(w.ext_label))}</span>` : "")
-          + `</span>`).join("")}</span>`
-      : "";
+      ? `<ul class="meta-break${head ? "" : " bare"}">${rows.map(bullet).join("")}</ul>` : "";
     stack.push(`<span class="meta-item wait">${META_HOURGLASS}<span>${head}${ext}${breakdown}</span></span>`);
   }
   // ⚠️ STORAGE IS NOT A WAIT. It reaches no total and no filter, and it says WHERE.
   const storage = (view.storage || []);
-  for (const st of storage) {
-    // "Keeps the dough in the fridge up to 1 week" reads as a sentence. The columns in their stored
-    // order ("fridge up to 1 week the dough") do not, and the subject belongs before the place.
-    // ⚠️ THE PREPOSITION BELONGS TO THE PLACE. "in the" is right for two of the four and wrong for
-    //    the other two: 11 of the 30 proposals keep at room temperature and 3 say "other", which
-    //    read "in the room temp" and "in the other". A place with no name drops the phrase.
-    const what = st.applies_to ? `${esc(st.applies_to)} ` : "";
-    const place = { fridge: "in the fridge", freezer: "in the freezer",
-                    "room temp": "at room temperature", other: "" }[st.where_kept] ?? "";
-    stack.push(`<span class="meta-item">${META_JAR}<span>Keeps ${what}${place ? place + " " : ""}`
-      + `<span class="meta-val">${esc(bindUnits(st.label || ""))}</span></span></span>`);
+  // ⚠️ STORAGE GETS THE SAME BULLET, minus the step number it has nothing to carry.
+  //    "Dough: fridge, up to 1 week", and with no subject just "fridge, up to 1 week".
+  //    ⚠️ THE PLACE IS NAMED, NOT PREPOSITIONED. 11 of the 30 proposals keep at room temperature
+  //       and 3 say "other", so "in the ___" was wrong for 14 of them.
+  if (storage.length) {
+    const sBullet = (st) => {
+      const bits = [STORE_PLACE[st.where_kept] ?? "", bindUnits(st.label || "")]
+        .filter(Boolean).map(esc).join(", ");
+      return `<li class="meta-bullet">`
+        + (st.applies_to ? `<span class="meta-do">${esc(st.applies_to)}</span>: ` : "")
+        + bits + `</li>`;
+    };
+    stack.push(`<span class="meta-item wait">${META_JAR}<span><span class="meta-keeps">Keeps</span>`
+      + `<ul class="meta-break">${storage.map(sBullet).join("")}</ul></span></span>`);
   }
   const base = servingsBase();
   if (base) stack.push(`<span class="meta-item">${META_FIG}<span>Serves <span class="serves-count meta-val">${formatAmount(base * view.scale)}</span></span></span>`);
@@ -2358,6 +2383,21 @@ function pickHTML(list, val, attr, i) {
     + `</select>`;
 }
 
+// The step picker's options: every ordinary step, numbered as the page numbers them, with enough
+// of its text to recognise. ⚠️ THE VALUE IS THE POSITION, NOT THE NUMBER. Headings carry positions
+// too, so the two sequences diverge the moment a recipe has a heading.
+function stepChoices(d) {
+  const out = [["", "no step"]];
+  let n = 0;
+  for (const st of (d.steps || [])) {
+    if (st.is_heading) continue;
+    n += 1;
+    const txt = String(st.text || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    out.push([String(st.position), `${n}. ${txt.slice(0, 40)}${txt.length > 40 ? "\u2026" : ""}`]);
+  }
+  return out;
+}
+
 function waitsEditHTML(d) {
   // ⚠️ THE CONDITION BOX IS ALWAYS IN THE DOM and CSS hides it unless the picker says only_if. The
   //    alternative is repainting the block on a select change, which takes focus off the select the
@@ -2368,6 +2408,7 @@ function waitsEditHTML(d) {
       <input class="ie ie-wait-ext" data-wait-ext="${i}" value="${esc(w.ext_label || "")}" placeholder="or overnight if time allows" aria-label="Extension">
       ${pickHTML(WAIT_WHENS, w.when_kind || "always", "wait-when", i)}
       <input class="ie ie-wait-if" data-wait-when-label="${i}" value="${esc(w.when_label || "")}" placeholder="chilled" aria-label="Only if">
+      ${pickHTML(stepChoices(d), w.step_position == null ? "" : String(w.step_position), "wait-step-pick", i)}
       <button type="button" class="ie-x" data-wait-del="${i}" aria-label="Remove this wait">×</button>
     </div>`).join("");
   return `<div class="ie-block"><span class="ie-vlabel">Plan ahead</span>${rows}
@@ -2420,6 +2461,17 @@ function handlePlanAheadInput(el) {
     return set(d.waits, +el.dataset.waitWhen, "when_kind");
   }
   if (el.dataset.waitWhenLabel !== undefined) return set(d.waits, +el.dataset.waitWhenLabel, "when_label");
+  // ⚠️ THE SNIPPET IS NOT SET HERE. The client sends a position and the server reads the step text
+  //    it points at, so a stale check can never be written from a stale draft.
+  if (el.dataset.waitStepPick !== undefined) {
+    const i = +el.dataset.waitStepPick;
+    if (d.waits && d.waits[i]) {
+      d.waits[i].step_position = el.value === "" ? null : +el.value;
+      d.waits[i].step_check = null;     // a fresh pick: the server reads the snippet off this step
+      view.dirty = true;
+    }
+    return true;
+  }
   if (el.dataset.storeWhere !== undefined) return set(d.storage, +el.dataset.storeWhere, "where_kept");
   if (el.dataset.storeWhat  !== undefined) return set(d.storage, +el.dataset.storeWhat, "applies_to");
   if (el.dataset.storeLabel !== undefined) return set(d.storage, +el.dataset.storeLabel, "label");
@@ -2938,7 +2990,10 @@ function draftPayload() {
     waits: (view.draft.waits || []).filter((w) => t(w.label)).map((w) => ({
       kind: t(w.kind) || "other", label: t(w.label), ext_label: t(w.ext_label) || null,
       when_kind: t(w.when_kind) || "always", when_label: t(w.when_label) || null,
-      step_position: w.step_position == null ? null : w.step_position })),
+      // ⚠️ ROUND-TRIPPED VERBATIM. The server keeps a check it is given and only reads a fresh one
+      //    when this is null, which the step picker below is the only thing that does.
+      step_check: t(w.step_check) || null,
+      step_position: w.step_position == null ? null : +w.step_position })),
     storage: (view.draft.storage || []).filter((x) => t(x.label)).map((x) => ({
       where_kept: t(x.where_kept) || "fridge", applies_to: t(x.applies_to) || null, label: t(x.label) })),
   };
@@ -3737,6 +3792,10 @@ document.addEventListener("click", (e) => {
   // extra terms on the line above, because the two exemption tests are not interchangeable — see the
   // note on closeRowMenu(). Also no return: this is a pre-branch, every handler below still runs.
   if (!e.target.closest(".row-menu") && !e.target.closest("[data-row-menu]")) closeRowMenu();
+  // A plan-ahead step link: scroll to that step and mark it briefly. Reading mode only — in the
+  // editor the same number is a picker, not a link.
+  const wstep = e.target.closest("[data-wait-step]");
+  if (wstep) { e.preventDefault(); jumpToStep(+wstep.dataset.waitStep); return; }
   if (view && view.editMode && handlePlanAheadAction(e.target)) { markDirty(); return; }
 
   // Inline recipe editor: enter / save / cancel (namespaced data-inline-edit-*). Handled first.

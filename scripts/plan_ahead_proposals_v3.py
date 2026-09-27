@@ -48,6 +48,15 @@ REREAD = {
         extend=("brioche-bread", "8",
                 "or an hour of fridge rest if you skip the overnight proof", 60, 60),
         note="reclassified: a SHORTER extension on the 8-12 hr cold proof"),
+    ("beans", "3"): dict(
+        drop=True,
+        # ⚠️ NOT A SECOND SOAK. The recipe heads step 2 "OVERNIGHT SOAK" and step 3 "QUICK SOAK",
+        #    and step 4 adds that you can skip soaking altogether. They are two ways to do the SAME
+        #    soak, so counting both told a cook to allow 9 hr 30 min for one of them. Found by
+        #    reading every pair of waits within 3 steps of each other while auditing morning-buns.
+        extend=("beans", "2", "or a 90 minute quick soak instead", 90, 90),
+        note="reclassified: the QUICK SOAK is an ALTERNATIVE to the overnight soak, so it is a "
+             "shorter extension rather than a second wait"),
     ("chocolate-chip-cookies", "22"): dict(
         becomes=[dict(type="wait", kind="resting", label="5 min", when_kind="always",
                       source="Allow the cookies to rest for 5 minutes on the baking sheets, then "
@@ -64,7 +73,7 @@ REREAD = {
                       source="Optional: refrigerate up to 3 days for more flavour.",
                       reason="reclassified: an optional cold ferment, not storage (it is 'for more "
                              "flavour', and the dough is still raw)"),
-                 dict(type="wait", kind="resting", label="45-60 min", when_kind="only_if",
+                 dict(type="wait", kind="resting", label="45\u201360 min", when_kind="only_if",
                       when_label="chilled",
                       source="If chilled, let the bowl sit out 45–60 minutes before shaping.",
                       reason="reclassified: conditional on the optional chill above")]),
@@ -155,11 +164,12 @@ def main():
     v2 = list(csv.DictReader(V2.open()))
     out, changes = [], {"kept": 0, "reclassified": 0, "from_exclusions": 0, "still_excluded": 0,
                         "extensions_added": 0, "recomputed": 0, "not_in_brief": 0}
-    extensions = {}
+    extensions, extension_note = {}, {}
     for key, spec in REREAD.items():
         if spec.get("extend"):
             rid, step, lbl, lo, hi = spec["extend"]
             extensions[(rid, step)] = (lbl, lo, hi)
+            extension_note[(rid, step)] = spec["note"]
 
     for r in v2:
         key = (r["recipe_id"], str(r["step_position"]))
@@ -211,7 +221,7 @@ def main():
             lbl, lo, hi = extensions[key]
             row["ext_label"], row["ext_min_minutes"], row["ext_max_minutes"] = lbl, lo, hi
             row["reason"] = ((row["reason"] + "; ") if row["reason"] else "") + \
-                REREAD[("brioche-bread", "10")]["note"]
+                extension_note[key]
             changes["extensions_added"] += 1
             row["reads_as"] = _reads_as(row)
         changes["kept"] += 1
@@ -232,7 +242,14 @@ def main():
         changes["not_in_brief"] += 1
         out.append(nr)
 
-    out.sort(key=lambda r: (r["recipe_id"], str(r["step_position"]), r["type"]))
+    def _pos(r):
+        """⚠️ NUMERIC. Sorting step_position as text put step 5 after step 24."""
+        try:
+            return float(str(r["step_position"]))
+        except (TypeError, ValueError):
+            return float("inf")
+
+    out.sort(key=lambda r: (r["recipe_id"], _pos(r), r["type"]))
     with OUT.open("w", newline="\n") as f:
         w = csv.DictWriter(f, fieldnames=FIELDS, lineterminator="\n")
         w.writeheader()

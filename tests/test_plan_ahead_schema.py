@@ -300,3 +300,86 @@ def test_turning_a_wait_optional_shows_in_your_changes(kitchen, rid):
     changes = snapshot_diff._diff_rows("wait", old["waits"], new["waits"], snapshot_diff.WAIT_LABEL)
     assert len(changes) == 1
     assert "(optional)" in str(changes[0])
+
+
+# ---------------------------------------------------------------------------------------------
+# migration 051: a step pointer that refuses to point at the wrong step.
+# ---------------------------------------------------------------------------------------------
+
+def _save_steps(kitchen, rid, steps, waits):
+    return kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Waits", "ingredients": [], "steps": steps, "waits": waits, "storage": []})
+
+
+def test_a_linked_wait_reports_the_step_number_the_page_prints(kitchen, rid):
+    _save_steps(kitchen, rid, ["Mix the dough.", "Wrap in plastic and refrigerate overnight."],
+                [{"kind": "chilling", "label": "overnight", "step_position": 1}])
+    w = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
+    assert w["step_no"] == 2 and w["step_ok"] is True
+    assert w["step_check"] == "wrap in plastic and refrigerate overnight."
+
+
+def test_inserting_a_step_above_a_linked_one_DROPS_the_link_instead_of_shifting_it(kitchen, rid):
+    """⚠️ THE WHOLE REASON 051 EXISTS.
+
+    write_recipe_rows reassigns every step position by enumeration on each save, so inserting a
+    step shifts everything below it. With a bare step_position the wait would keep pointing at
+    slot 1 and silently start describing the NEW step. The stored snippet no longer matches, so
+    the link is dropped and the wait reads with no step number at all."""
+    _save_steps(kitchen, rid, ["Mix the dough.", "Wrap in plastic and refrigerate overnight."],
+                [{"kind": "chilling", "label": "overnight", "step_position": 1}])
+    before = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
+    assert before["step_no"] == 2
+
+    # the client sends the draft back: a new step in the middle, the wait untouched
+    _save_steps(kitchen, rid,
+                ["Mix the dough.", "A BRAND NEW STEP.", "Wrap in plastic and refrigerate overnight."],
+                [{"kind": "chilling", "label": "overnight", "step_position": 1,
+                  "step_check": before["step_check"]}])
+    after = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
+    assert after["step_position"] == 1          # the pointer is still stored, untouched
+    assert after["step_no"] is None             # but it does NOT link
+    assert after["step_ok"] is False            # and the editor is told why
+    assert after["label"] == "overnight"        # the wait itself still reads correctly
+
+
+def test_the_picker_repairs_the_link_by_clearing_the_check(kitchen, rid):
+    """A fresh pick sends a null check, which is the one thing that makes the server read the
+    snippet off the step again."""
+    _save_steps(kitchen, rid,
+                ["Mix the dough.", "A BRAND NEW STEP.", "Wrap in plastic and refrigerate overnight."],
+                [{"kind": "chilling", "label": "overnight", "step_position": 2,
+                  "step_check": None}])
+    w = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
+    assert w["step_no"] == 3 and w["step_ok"] is True
+
+
+def test_deleting_the_linked_step_drops_the_link(kitchen, rid):
+    _save_steps(kitchen, rid, ["Mix the dough.", "Wrap in plastic and refrigerate overnight."],
+                [{"kind": "chilling", "label": "overnight", "step_position": 1}])
+    check = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]["step_check"]
+    _save_steps(kitchen, rid, ["Mix the dough."],
+                [{"kind": "chilling", "label": "overnight", "step_position": 1,
+                  "step_check": check}])
+    w = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
+    assert w["step_position"] is None and w["step_no"] is None
+
+
+def test_reformatting_a_step_keeps_the_link(kitchen, rid):
+    """The check compares NORMALIZED text, so markup and spacing changes are not a re-wording."""
+    _save_steps(kitchen, rid, ["Mix the dough.", "Wrap in plastic and refrigerate overnight."],
+                [{"kind": "chilling", "label": "overnight", "step_position": 1}])
+    check = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]["step_check"]
+    _save_steps(kitchen, rid,
+                ["Mix the dough.", "Wrap in   plastic and <b>refrigerate</b>  overnight."],
+                [{"kind": "chilling", "label": "overnight", "step_position": 1,
+                  "step_check": check}])
+    w = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
+    assert w["step_no"] == 2 and w["step_ok"] is True
+
+
+def test_a_wait_with_no_step_has_no_number_and_is_not_an_error(kitchen, rid):
+    _save_steps(kitchen, rid, ["Mix the dough."],
+                [{"kind": "chilling", "label": "overnight"}])
+    w = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
+    assert (w["step_position"], w["step_no"], w["step_ok"]) == (None, None, True)

@@ -257,6 +257,8 @@ class RecipeWait(Base):
     # ⚠️ ONLY 'always' REACHES THE TOTAL. See migration 050 and planahead.counts.
     when_kind = Column(Text, nullable=False, server_default="always")
     when_label = Column(Text)
+    # ⚠️ THE CHECK THAT STOPS step_position POINTING AT THE WRONG STEP. See migration 051.
+    step_check = Column(Text)
     __table_args__ = (
         Index("idx_recipe_waits_recipe", "recipe_id"),
         {"sqlite_autoincrement": True},

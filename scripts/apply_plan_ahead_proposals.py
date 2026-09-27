@@ -32,7 +32,8 @@ import snapshot_serialize                                             # noqa: E4
 CSV_PATH = BASE / "previews" / "plan-ahead-proposals-v3.csv"
 
 WAIT_COLS = ("position", "kind", "label", "min_minutes", "max_minutes", "step_position",
-             "ext_label", "ext_min_minutes", "ext_max_minutes", "when_kind", "when_label")
+             "ext_label", "ext_min_minutes", "ext_max_minutes", "when_kind", "when_label",
+             "step_check")
 STORE_COLS = ("position", "where_kept", "applies_to", "label", "min_minutes", "max_minutes")
 
 
@@ -63,7 +64,8 @@ def load(path=CSV_PATH):
                 ext_label=(r["ext_label"] or None),
                 ext_min_minutes=_i(r["ext_min_minutes"]), ext_max_minutes=_i(r["ext_max_minutes"]),
                 when_kind=r["when_kind"] or "always",
-                when_label=(r["when_label"] or None) if r["when_kind"] == "only_if" else None))
+                when_label=(r["when_label"] or None) if r["when_kind"] == "only_if" else None,
+                source_sentence=r["source_sentence"] or ""))
         elif t == "storage":
             bucket["storage"].append(dict(
                 where_kept=r["kind"] if r["kind"] in planahead.WHERES else "other",
@@ -97,10 +99,31 @@ def apply(db, plan, dry=False):
         if not c.execute("SELECT 1 FROM recipes WHERE id=?", (rid,)).fetchone():
             missing.append(rid)
             continue
-        waits, storage = plan[rid]["waits"], plan[rid]["storage"]
+        # ⚠️ STEP ORDER, NOT CSV ORDER. The CSV sorts step_position as a STRING, so morning-buns
+        #    listed steps 15, 18, 20, 24, 5, 7. A cook reads the method top to bottom and the
+        #    breakdown has to agree with it. A wait with no step keeps its relative place at the end.
+        waits = sorted(plan[rid]["waits"],
+                       key=lambda w: (w.get("step_position") is None, w.get("step_position") or 0))
+        storage = plan[rid]["storage"]
         c.execute("DELETE FROM recipe_waits WHERE recipe_id=?", (rid,))
         c.execute("DELETE FROM recipe_storage WHERE recipe_id=?", (rid,))
+        # ⚠️ THE SNIPPET COMES FROM THE SOURCE SENTENCE, which is the sentence that stated the
+        #    wait, not the step's opening. Measured on the v3 proposals: 88 of the 96 rows carry a
+        #    source sentence and every one of them IS a substring of the step at its position.
+        #    The other 8 have none recorded, and fall back to the step's opening.
+        steps = {r["position"]: r["text"] for r in c.execute(
+            "SELECT position, text FROM recipe_steps WHERE recipe_id=? AND is_heading=0", (rid,))}
         for pos, w in enumerate(waits):
+            sp = w.get("step_position")
+            sp = sp if sp in steps else None
+            if sp is None:
+                check = None
+            else:
+                sent = planahead.step_key(w.pop("source_sentence", "") or "")[:planahead.SNIPPET_LEN]
+                check = sent if sent and sent in planahead.step_key(steps[sp]) \
+                    else planahead.step_snippet(steps[sp])
+            w = dict(w, step_position=sp, step_check=check)
+            w.pop("source_sentence", None)
             row = dict(w, position=pos)
             c.execute(f"INSERT INTO recipe_waits (recipe_id,{','.join(WAIT_COLS)}) "
                       f"VALUES (?,{','.join('?' * len(WAIT_COLS))})",
