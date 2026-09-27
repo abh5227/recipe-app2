@@ -1310,8 +1310,13 @@ function scaleMetaBlock(r) {
   for (const st of storage) {
     // "Keeps the dough in the fridge up to 1 week" reads as a sentence. The columns in their stored
     // order ("fridge up to 1 week the dough") do not, and the subject belongs before the place.
+    // ⚠️ THE PREPOSITION BELONGS TO THE PLACE. "in the" is right for two of the four and wrong for
+    //    the other two: 11 of the 30 proposals keep at room temperature and 3 say "other", which
+    //    read "in the room temp" and "in the other". A place with no name drops the phrase.
     const what = st.applies_to ? `${esc(st.applies_to)} ` : "";
-    stack.push(`<span class="meta-item">${META_JAR}<span>Keeps ${what}in the ${esc(st.where_kept)}\u00a0`
+    const place = { fridge: "in the fridge", freezer: "in the freezer",
+                    "room temp": "at room temperature", other: "" }[st.where_kept] ?? "";
+    stack.push(`<span class="meta-item">${META_JAR}<span>Keeps ${what}${place ? place + " " : ""}`
       + `<span class="meta-val">${esc(bindUnits(st.label || ""))}</span></span></span>`);
   }
   const base = servingsBase();

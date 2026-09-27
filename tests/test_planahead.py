@@ -145,3 +145,33 @@ def test_two_counted_waits_beside_a_conditional_one_show_the_figure():
              _w(480, 480, "optional", "8 hr")]
     assert pa.total(waits) == (90, 90)
     assert pa.total_label(waits) == "1 hr 30 min"
+
+
+# ---------------------------------------------------------------------------------------------
+# "up to X" is a CEILING. Found by re-reading the v2 proposals for round 3.
+# ---------------------------------------------------------------------------------------------
+
+@pytest.mark.parametrize("text, want", [
+    ("up to 1 week", (0, 10080)),
+    ("up to 3 days", (0, 4320)),
+    ("up to 48 hr", (0, 2880)),
+    ("no more than 2 hr", (0, 120)),
+    ("at most 30 min", (0, 30)),
+])
+def test_up_to_is_a_ceiling_not_a_floor(text, want):
+    """⚠️ THE BUG. 'up to 1 week' read as (10080, 10080), which says a week is REQUIRED where the
+    recipe says a week is the most. 22 of the v2 proposal rows carry this shape. All 22 are storage,
+    which reaches no total, so nothing shipped wrong and the first wait saying 'chill up to 2 hours'
+    would have told a cook to set aside 2 hours for it."""
+    assert pa.read_duration(text) == want
+
+
+def test_both_markers_together_state_a_real_range():
+    """'at least 12 hours and up to 48' has a floor AND a ceiling, and neither modifier wins."""
+    assert pa.read_duration("at least 12 hr and up to 48 hr") == (720, 2880)
+
+
+def test_a_ceiling_only_wait_adds_nothing_to_the_minimum_total():
+    """A floor of 0 is the point: a wait that may be skipped entirely costs no planning time, and
+    the ceiling still sums so a maximum stays honest."""
+    assert pa.total([_w(60, 60), _w(0, 120)]) == (60, 180)

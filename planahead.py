@@ -97,8 +97,22 @@ def read_duration(text):
                 hi = other                                  # the high end of a cross-unit range
             elif _MIN[u2] < _MIN[unit]:
                 lo = hi = lo + other                        # "1 hr 30 min'
+        nf = _NO_FLOOR.search(s)
         if _OPEN_ENDED.search(s):
-            hi = None
+            # Both markers together state a real range, so both ends hold: "at least 12 hours and
+            # up to 48" is 12 to 48, not 12 with no ceiling. The ceiling is the figure AFTER the
+            # "up to", which the leading segment reader never reaches.
+            m3 = _TIME_SEG_RE.search(s[nf.end():]) if nf else None
+            u3 = _UNIT_WORDS.get(m3.group("unit").lower()) if m3 else None
+            hi = float(m3.group("lo")) * _MIN[u3] if (m3 and u3) else None
+        # ⚠️ "up to X" IS A CEILING AND WAS BEING READ AS A FLOOR. "up to 1 week" returned
+        #    (10080, 10080), which says a week is required where the recipe says a week is the most.
+        #    Measured on the v2 proposals: 22 rows carry this shape. All 22 are storage today, which
+        #    reaches no total, so nothing shipped wrong, and the first wait that says "chill up to
+        #    2 hours" would have told a cook to set aside 2 hours for it. The floor is 0, not null,
+        #    because a null min already means the reader could not parse the text at all.
+        elif hi is not None and nf:
+            lo = 0
         return int(lo), (None if hi is None else int(hi))
     for pat, lo, hi in _WORD_DURATIONS:
         if pat.search(s):
@@ -110,6 +124,9 @@ def read_duration(text):
 #    most of them say it in words rather than by leaving the range off.
 _RANGE_SEP = re.compile(r"\s*(?:to|[-\u2013\u2014])\s*", re.I)
 _OPEN_ENDED = re.compile(r"\b(?:at least|minimum(?: of)?|or (?:more|longer|overnight))\b|\+\s*$", re.I)
+# The mirror of the line above. "at least" removes the ceiling, "up to" removes the floor, and a
+# text carrying both ("at least 12 hours and up to 48") states a real range and keeps both ends.
+_NO_FLOOR = re.compile(r"\b(?:up to|no more than|at most|maximum(?: of)?)\b", re.I)
 
 
 def total(waits):
