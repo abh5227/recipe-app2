@@ -248,6 +248,9 @@ class RecipeWait(Base):
     ext_label = Column(Text)
     ext_min_minutes = Column(Integer)
     ext_max_minutes = Column(Integer)
+    # ⚠️ ONLY 'always' REACHES THE TOTAL. See migration 050 and planahead.counts.
+    when_kind = Column(Text, nullable=False, server_default="always")
+    when_label = Column(Text)
     __table_args__ = (
         Index("idx_recipe_waits_recipe", "recipe_id"),
         {"sqlite_autoincrement": True},

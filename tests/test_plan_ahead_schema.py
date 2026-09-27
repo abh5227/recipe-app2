@@ -207,3 +207,96 @@ def test_a_recipe_with_no_waits_serializes_exactly_as_it_did_before(kitchen, rid
     baseline and force the diff to run 300 times to return the same answer."""
     import snapshot_serialize as ss
     assert ss.content_blob({"name": "x"}, [], []) == ss.content_blob({"name": "x"}, [], [], [], [])
+
+
+# ---------------------------------------------------------------------------------------------
+# migration 050: a wait can be conditional, and only an unconditional one counts.
+# ---------------------------------------------------------------------------------------------
+
+def test_an_existing_wait_defaults_to_always(kitchen, rid):
+    """⚠️ THE DEFAULT IS THE MIGRATION'S WHOLE SAFETY ARGUMENT. Every wait written before 050 was
+    read from a recipe that states it flatly, so 'always' is the correct value for all of them and
+    no backfill is needed."""
+    _wait(kitchen, rid)
+    with kitchen.conn() as c:
+        assert c.execute("SELECT when_kind, when_label FROM recipe_waits").fetchone()[:2] == \
+               ("always", None)
+
+
+@pytest.mark.parametrize("kw, why", [
+    (dict(when_kind="maybe"), "a when outside the list"),
+    (dict(when_kind="only_if"), "only_if with no condition after it"),
+])
+def test_the_when_checks_refuse(kitchen, rid, kw, why):
+    with pytest.raises(sqlite3.IntegrityError):
+        _wait(kitchen, rid, **kw)
+
+
+def test_an_only_if_wait_stores_its_condition(kitchen, rid):
+    _wait(kitchen, rid, when_kind="only_if", when_label="chilled")
+    with kitchen.conn() as c:
+        assert c.execute("SELECT when_kind, when_label FROM recipe_waits").fetchone()[:2] == \
+               ("only_if", "chilled")
+
+
+def test_a_conditional_wait_never_reaches_the_total(kitchen, rid):
+    """⚠️ no-knead-bread rests 45 to 60 minutes ONLY IF the dough was chilled. Summing it tells a
+    cook to block out an hour for something the recipe told them to skip."""
+    assert _save(kitchen, rid, waits=[
+        {"kind": "rising", "label": "12 hr"},
+        {"kind": "resting", "label": "1 hr", "when_kind": "only_if", "when_label": "chilled"},
+    ]).status_code == 200
+    got = kitchen.client.get(f"/api/recipes/{rid}").get_json()
+    assert len(got["waits"]) == 2                       # both are stored and both are shown
+    assert got["wait_total"]["min_minutes"] == 720      # only the rise is counted
+    assert got["wait_total"]["label"] == "12 hr"        # one counted wait keeps its own words
+
+
+def test_an_optional_wait_is_the_same(kitchen, rid):
+    assert _save(kitchen, rid, waits=[
+        {"kind": "rising", "label": "1 hr"},
+        {"kind": "soaking", "label": "8 hr", "when_kind": "optional"},
+    ]).status_code == 200
+    got = kitchen.client.get(f"/api/recipes/{rid}").get_json()
+    assert got["wait_total"]["min_minutes"] == 60
+
+
+def test_a_recipe_whose_waits_are_all_conditional_has_no_total(kitchen, rid):
+    """The truthful answer is no plan-ahead figure at all, not a figure of zero."""
+    assert _save(kitchen, rid, waits=[
+        {"kind": "soaking", "label": "8 hr", "when_kind": "optional"}]).status_code == 200
+    got = kitchen.client.get(f"/api/recipes/{rid}").get_json()
+    assert got["wait_total"] == {"min_minutes": None, "max_minutes": None, "label": ""}
+    assert len(got["waits"]) == 1                       # still stored, still shown
+
+
+def test_only_if_with_no_condition_falls_back_to_always_rather_than_500ing(kitchen, rid):
+    """⚠️ THE CHECK WOULD REJECT THE ROW. A half-filled picker must not lose the save."""
+    assert _save(kitchen, rid, waits=[
+        {"kind": "rising", "label": "1 hr", "when_kind": "only_if", "when_label": "  "}]).status_code == 200
+    got = kitchen.client.get(f"/api/recipes/{rid}").get_json()
+    assert (got["waits"][0]["when_kind"], got["waits"][0]["when_label"]) == ("always", None)
+
+
+def test_a_bad_when_falls_back_to_always(kitchen, rid):
+    assert _save(kitchen, rid, waits=[
+        {"kind": "rising", "label": "1 hr", "when_kind": "whenever"}]).status_code == 200
+    assert kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]["when_kind"] == "always"
+
+
+def test_a_condition_is_dropped_when_the_wait_is_not_conditional(kitchen, rid):
+    """Switching the picker back to always must not leave the old condition behind to resurface."""
+    assert _save(kitchen, rid, waits=[
+        {"kind": "rising", "label": "1 hr", "when_kind": "always", "when_label": "chilled"}]).status_code == 200
+    assert kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]["when_label"] is None
+
+
+def test_turning_a_wait_optional_shows_in_your_changes(kitchen, rid):
+    """⚠️ SAME TREATMENT AS prep_time, which is the round-2 ruling. The qualifier is part of the
+    line, so the entry does not read as the same words twice."""
+    import snapshot_diff
+    old = {"waits": [{"position": 0, "label": "8 hr", "kind": "soaking", "when_kind": "always"}]}
+    new = {"waits": [{"position": 0, "label": "8 hr", "kind": "soaking", "when_kind": "optional"}]}
+    changes = snapshot_diff._diff_rows("wait", old["waits"], new["waits"], snapshot_diff.WAIT_LABEL)
+    assert len(changes) == 1
+    assert "(optional)" in str(changes[0])

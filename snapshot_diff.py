@@ -179,15 +179,28 @@ def _diff_fields(o, n):
 #    that they are the same KIND of thing: a fact about the recipe a person typed, which no step edit
 #    updates on their behalf. What they are NOT is derived, so they are not diffed as text either.
 WAIT_LABEL = ("label", "kind", "min_minutes", "max_minutes", "ext_label", "ext_min_minutes",
-              "ext_max_minutes")
+              "ext_max_minutes", "when_kind", "when_label")
 STORAGE_LABEL = ("label", "where_kept", "applies_to", "min_minutes", "max_minutes")
 
 
 def _row_text(r, fields):
-    """The one line a wait or storage row reads as, so a change reports what a person would see."""
+    """The one line a wait or storage row reads as, so a change reports what a person would see.
+
+    ⚠️ THE QUALIFIER IS PART OF THE LINE. Turning a wait optional changes nothing else about it, so
+    without this the "your changes" entry would read as the same words twice."""
     bits = [str(r.get(f)) for f in fields[:2] if r.get(f) not in (None, "")]
     ext = r.get("ext_label")
-    return " · ".join(bits) + (f" ({ext})" if ext else "")
+    return " · ".join(bits) + (f" ({ext})" if ext else "") + when_suffix(r)
+
+
+def when_suffix(r):
+    """" (optional)" or " (if chilled)", and nothing at all for an ordinary wait."""
+    wk = r.get("when_kind") or "always"
+    if wk == "optional":
+        return " (optional)"
+    if wk == "only_if":
+        return f" (if {r.get('when_label') or ''})".replace(" )", ")")
+    return ""
 
 
 def _diff_rows(kind, old_rows, new_rows, fields):

@@ -616,10 +616,19 @@ def write_plan_ahead(s, rid, payload):
         ext = (w.get("ext_label") or "").strip() or None
         elo, ehi = planahead.read_duration(ext) if ext else (None, None)
         kind = w.get("kind") if w.get("kind") in planahead.KINDS else "other"
+        # ⚠️ only_if WITHOUT A CONDITION FALLS BACK TO always, because the CHECK rejects the row and
+        #    a save must not 500 on a half-filled picker. "if" with nothing after it says nothing.
+        when_kind = w.get("when_kind") if w.get("when_kind") in planahead.WHENS else "always"
+        when_label = (w.get("when_label") or "").strip() or None
+        if when_kind != "only_if":
+            when_label = None
+        elif not when_label:
+            when_kind = "always"
         s.execute(insert(rw).values(
             recipe_id=rid, position=pos, kind=kind, label=label,
             min_minutes=lo, max_minutes=hi, step_position=w.get("step_position"),
-            ext_label=ext, ext_min_minutes=elo, ext_max_minutes=ehi))
+            ext_label=ext, ext_min_minutes=elo, ext_max_minutes=ehi,
+            when_kind=when_kind, when_label=when_label))
     for pos, x in enumerate(payload.get("storage") or []):
         label = (x.get("label") or "").strip()
         if not label:

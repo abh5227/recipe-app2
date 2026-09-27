@@ -1266,13 +1266,40 @@ function scaleMetaBlock(r) {
     const tot = view.waitTotal || {};
     // One wait prints its own words, so "overnight" survives. Several print the summed figure and
     // each wait gets its own smaller line beneath, which is what keeps the row readable on a phone.
-    const head = `Plan\u00a0ahead\u00a0<span class="meta-val">${esc(bindUnits(tot.label || ""))}</span>`
-      + (waits.length === 1 && waits[0].kind ? `<span class="meta-note"> (${esc(waits[0].kind)})</span>` : "");
-    const ext = waits.length === 1 && waits[0].ext_label
-      ? `<span class="meta-ext">${esc(bindUnits(waits[0].ext_label))}</span>` : "";
-    const breakdown = waits.length > 1
-      ? `<span class="meta-break">${waits.map((w) =>
-          `<span class="meta-break-row">${esc(bindUnits(w.label || ""))}<span class="meta-note"> ${esc(w.kind || "")}</span>`
+    // ⚠️ ONLY AN UNCONDITIONAL WAIT REACHES THE FIGURE, matching planahead.counts on the server.
+    //    A conditional one still reads in the breakdown, carrying the qualifier that says why it is
+    //    not in the total.
+    const counted = waits.filter((w) => (w.when_kind || "always") === "always");
+    const qual = (w) => {
+      const k = w.when_kind || "always";
+      if (k === "optional") return `<span class="meta-when"> (optional)</span>`;
+      if (k === "only_if") return `<span class="meta-when"> if ${esc(w.when_label || "")}</span>`;
+      return "";
+    };
+    // "about 1 hr rising" already says rising. Printing the kind after it read "rising rising".
+    const kindOf = (w) => {
+      const k = (w.kind || "").trim();
+      return k && !(w.label || "").toLowerCase().includes(k.toLowerCase()) ? k : "";
+    };
+    // ⚠️ ONE COUNTED WAIT MEANS THE HEAD IS THAT WAIT'S OWN WORDS, so it must not repeat underneath.
+    //    no-knead-bread rises 12 to 18 hours and rests only if it was chilled, and printing every
+    //    wait in the breakdown read "Plan ahead 12–18 hr / 12–18 hr rising / 45–60 min resting if
+    //    chilled". Two or more counted waits sum to a figure nobody wrote, so there every wait
+    //    belongs in the breakdown.
+    const one = counted.length === 1 ? counted[0] : null;
+    const head = tot.label
+      ? `Plan\u00a0ahead\u00a0<span class="meta-val">${esc(bindUnits(tot.label || ""))}</span>`
+        + (one && kindOf(one) ? `<span class="meta-note"> (${esc(kindOf(one))})</span>` : "")
+      : "";
+    const ext = one && one.ext_label
+      ? `<span class="meta-ext">${esc(bindUnits(one.ext_label))}</span>` : "";
+    // With no counted wait there is no figure, so the rows ARE the row: "8 hr soaking (optional)".
+    const rows = one ? waits.filter((w) => w !== one) : waits;
+    const breakdown = rows.length
+      ? `<span class="meta-break${head ? "" : " bare"}">${rows.map((w) =>
+          `<span class="meta-break-row">${esc(bindUnits(w.label || ""))}`
+          + (kindOf(w) ? `<span class="meta-note"> ${esc(kindOf(w))}</span>` : "")
+          + qual(w)
           + (w.ext_label ? `<span class="meta-ext">${esc(bindUnits(w.ext_label))}</span>` : "")
           + `</span>`).join("")}</span>`
       : "";
@@ -2315,18 +2342,27 @@ function vitalsEditHTML(r) {
 // hours, which is a promise the recipe never made. Two boxes keep the invitation beside the range.
 const WAIT_KINDS = ["marinating", "chilling", "rising", "soaking", "resting", "freezing", "brining", "other"];
 const STORE_WHERE = ["fridge", "freezer", "room temp", "other"];
+// The stored value and the word the editor shows for it. "only if" needs a condition after it.
+const WAIT_WHENS = [["always", "always"], ["optional", "optional"], ["only_if", "only if"]];
 
 function pickHTML(list, val, attr, i) {
+  // Each entry is either a bare value or [value, the word to show].
   return `<select class="ie ie-pick" data-${attr}="${i}">`
-    + list.map((k) => `<option value="${esc(k)}"${k === val ? " selected" : ""}>${esc(k)}</option>`).join("")
+    + list.map((k) => { const [v, w] = Array.isArray(k) ? k : [k, k];
+        return `<option value="${esc(v)}"${v === val ? " selected" : ""}>${esc(w)}</option>`; }).join("")
     + `</select>`;
 }
 
 function waitsEditHTML(d) {
-  const rows = (d.waits || []).map((w, i) => `<div class="ie-wait-row">
+  // ⚠️ THE CONDITION BOX IS ALWAYS IN THE DOM and CSS hides it unless the picker says only_if. The
+  //    alternative is repainting the block on a select change, which takes focus off the select the
+  //    user just used.
+  const rows = (d.waits || []).map((w, i) => `<div class="ie-wait-row" data-when="${esc(w.when_kind || "always")}">
       ${pickHTML(WAIT_KINDS, w.kind || "other", "wait-kind", i)}
       <input class="ie ie-wait" data-wait-label="${i}" value="${esc(w.label || "")}" placeholder="1 hr rise" aria-label="Wait">
       <input class="ie ie-wait-ext" data-wait-ext="${i}" value="${esc(w.ext_label || "")}" placeholder="or overnight if time allows" aria-label="Extension">
+      ${pickHTML(WAIT_WHENS, w.when_kind || "always", "wait-when", i)}
+      <input class="ie ie-wait-if" data-wait-when-label="${i}" value="${esc(w.when_label || "")}" placeholder="chilled" aria-label="Only if">
       <button type="button" class="ie-x" data-wait-del="${i}" aria-label="Remove this wait">×</button>
     </div>`).join("");
   return `<div class="ie-block"><span class="ie-vlabel">Plan ahead</span>${rows}
@@ -2354,7 +2390,7 @@ function handlePlanAheadAction(t) {
     if (host) host.innerHTML = waitsEditHTML(d) + storageEditHTML(d);
   };
   if (t.closest("[data-wait-add]")) {
-    (d.waits = d.waits || []).push({ kind: "other", label: "", ext_label: "" }); view.dirty = true; repaint(); return true;
+    (d.waits = d.waits || []).push({ kind: "other", label: "", ext_label: "", when_kind: "always", when_label: "" }); view.dirty = true; repaint(); return true;
   }
   if (t.closest("[data-store-add]")) {
     (d.storage = d.storage || []).push({ where_kept: "fridge", applies_to: "", label: "" }); view.dirty = true; repaint(); return true;
@@ -2373,6 +2409,12 @@ function handlePlanAheadInput(el) {
   if (el.dataset.waitLabel  !== undefined) return set(d.waits, +el.dataset.waitLabel, "label");
   if (el.dataset.waitExt    !== undefined) return set(d.waits, +el.dataset.waitExt, "ext_label");
   if (el.dataset.waitKind   !== undefined) return set(d.waits, +el.dataset.waitKind, "kind");
+  if (el.dataset.waitWhen   !== undefined) {
+    const row = el.closest(".ie-wait-row");
+    if (row) row.dataset.when = el.value;     // shows or hides the condition box, no repaint
+    return set(d.waits, +el.dataset.waitWhen, "when_kind");
+  }
+  if (el.dataset.waitWhenLabel !== undefined) return set(d.waits, +el.dataset.waitWhenLabel, "when_label");
   if (el.dataset.storeWhere !== undefined) return set(d.storage, +el.dataset.storeWhere, "where_kept");
   if (el.dataset.storeWhat  !== undefined) return set(d.storage, +el.dataset.storeWhat, "applies_to");
   if (el.dataset.storeLabel !== undefined) return set(d.storage, +el.dataset.storeLabel, "label");
@@ -2888,6 +2930,7 @@ function draftPayload() {
     // A row whose text box is empty is one the user left WIP, exactly like a blank ingredient.
     waits: (view.draft.waits || []).filter((w) => t(w.label)).map((w) => ({
       kind: t(w.kind) || "other", label: t(w.label), ext_label: t(w.ext_label) || null,
+      when_kind: t(w.when_kind) || "always", when_label: t(w.when_label) || null,
       step_position: w.step_position == null ? null : w.step_position })),
     storage: (view.draft.storage || []).filter((x) => t(x.label)).map((x) => ({
       where_kept: t(x.where_kept) || "fridge", applies_to: t(x.applies_to) || null, label: t(x.label) })),

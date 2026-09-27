@@ -41,6 +41,7 @@ def _get(row, key):
 SNAPSHOT_WAIT_FIELDS = (
     "position", "kind", "label", "min_minutes", "max_minutes",
     "ext_label", "ext_min_minutes", "ext_max_minutes",
+    "when_kind", "when_label",
 )
 SNAPSHOT_STORAGE_FIELDS = (
     "position", "where_kept", "applies_to", "label", "min_minutes", "max_minutes",

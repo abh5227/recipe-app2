@@ -1830,7 +1830,14 @@ a:hover { color: var(--berry-lift); }
 .meta-sep { opacity: 0.4; }
 /* fixed-width icon column so both rows share a left edge AND their text aligns (fig icon 26px is the
    wider of the two — 15px clock left-aligns in the same 26px slot). */
-.meta-stack .meta-item { display: grid; grid-template-columns: 26px auto; align-items: center; justify-items: start; gap: 7px; }
+/* ⚠️ align-items is START, not center, and the icon takes the leading back as a margin. Measured at
+   390px: centering put the clock 13.6px BELOW its own first line whenever the text wrapped to two
+   lines, and start alone put the hourglass 4.5px ABOVE it. Both are the same mistake, which is
+   aligning a 15px icon against a text BLOCK instead of against the FIRST LINE of that text. The
+   icon is 15px tall inside a 25.6px line box, so half the leftover leading centres it on that line
+   and holds however many lines the text runs to. 5.3px is that figure for browsers without `lh`. */
+.meta-stack .meta-item { display: grid; grid-template-columns: 26px auto; align-items: start; justify-items: start; gap: 7px; }
+.meta-stack .meta-item > .meta-ico { margin-top: 5.3px; margin-top: calc((1lh - 15px) / 2); }
 .scaler-col .scale-control button {
   width: 42px; height: 42px; padding: 0; border-radius: 50%;
   border: 1px solid var(--border-scaler);  /* lighter than the B elements — the scaler is a quieter control */
@@ -2359,13 +2366,19 @@ a.fn-item:hover { background: rgba(255,252,244,.10); }
 .meta-ico.hg  { width: 15px; height: 15px; }
 .meta-ico.jar { width: 15px; height: 15px; }
 /* A multi-wait row stacks: the total on the first line, then each wait smaller under it. That is
-   the phone answer — at 390px a single line carrying two waits and an extension wraps four times. */
-.meta-stack .meta-item.wait { align-items: start; }
+   the phone answer — at 390px a single line carrying two waits and an extension wraps four times.
+   It needs no align-items of its own now that every .meta-item aligns to its first line. */
 .meta-break { display: block; margin-top: 1px; }
 .meta-break-row { display: block; font-size: 0.86em; color: var(--ink-soft); }
 /* An extension is an INVITATION, not part of the range, so it reads quieter than the note that
    qualifies the figure and it always takes its own line. */
 .meta-ext { display: block; font-size: 0.86em; font-style: italic; color: var(--ink-soft); opacity: .85; }
+/* "(optional)" / "if chilled" says why a wait is not in the figure above it. Same weight as the
+   kind it follows, because it qualifies the wait rather than competing with it. */
+.meta-when { font-weight: 400; }
+/* With every wait conditional there is no figure, so the breakdown IS the row and the 1px nudge
+   that separates it from a total above has nothing to separate it from. */
+.meta-break.bare { margin-top: 0; }
 
 /* The plan-ahead + storage editor blocks. Same register as .ie-vitals: inline lowercase words, no
    uppercase form labels, the inputs carry the shared .ie treatment. */
@@ -2373,6 +2386,10 @@ a.fn-item:hover { background: rgba(255,252,244,.10); }
 .ie-block { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 0 0 6px; }
 .ie-block > .ie-vlabel { flex: 0 0 100%; }
 .ie-wait-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 0 0 100%; }
+/* The condition box belongs to only_if alone. It stays in the DOM so the picker can reveal it
+   without a repaint, which would take focus off the select the user just changed. */
+.ie-wait-row:not([data-when="only_if"]) .ie-wait-if { display: none; }
+.ie-wait-if { flex: 1 1 110px; min-width: 90px; }
 .ie-wait { flex: 1 1 11ch; min-width: 9ch; }
 .ie-wait-ext { flex: 1 1 18ch; min-width: 10ch; }
 .ie-pick { flex: 0 0 auto; font-family: var(--font-sans); font-size: 13px; padding: 2px 4px;

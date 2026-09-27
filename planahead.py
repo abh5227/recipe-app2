@@ -41,6 +41,19 @@ _WORD_DURATIONS = (
 
 KINDS = ("marinating", "chilling", "rising", "soaking", "resting", "freezing", "brining", "other")
 WHERES = ("fridge", "freezer", "room temp", "other")
+WHENS = ("always", "optional", "only_if")
+
+
+def counts(w):
+    """Does this wait reach the total? Only an unconditional one does.
+
+    ⚠️ AN OPTIONAL SOAK IS NOT TIME A COOK HAS TO SET ASIDE. coconut-curried-golden-lentils soaks
+    the lentils if there is time, and no-knead-bread rests the dough 45 to 60 minutes only when it
+    went to the refrigerator. Summing either would tell a cook to block out hours for something the
+    recipe already said they could skip. Both still show in the breakdown with their qualifier,
+    because a wait a cook MIGHT take is worth reading before starting.
+    """
+    return (w.get("when_kind") or "always") == "always"
 
 
 def read_duration(text):
@@ -100,15 +113,19 @@ _OPEN_ENDED = re.compile(r"\b(?:at least|minimum(?: of)?|or (?:more|longer|overn
 
 
 def total(waits):
-    """[{min_minutes, max_minutes}] -> (min_total, max_total). max_total is None when ANY wait is
-    open-ended, and None minutes anywhere are skipped rather than counted as zero."""
-    mins = [w.get("min_minutes") for w in waits]
-    maxs = [w.get("max_minutes") for w in waits]
+    """[{min_minutes, max_minutes, when_kind}] -> (min_total, max_total). max_total is None when ANY
+    counted wait is open-ended, and None minutes anywhere are skipped rather than counted as zero.
+
+    ⚠️ CONDITIONAL WAITS ARE FILTERED OUT FIRST, so a recipe whose only wait is optional has no
+    plan-ahead total at all, which is the truthful answer."""
+    counted = [w for w in waits if counts(w)]
+    mins = [w.get("min_minutes") for w in counted]
+    maxs = [w.get("max_minutes") for w in counted]
     known = [m for m in mins if m is not None]
     if not known:
         return None, None
     lo = sum(known)
-    hi = sum(maxs) if waits and all(m is not None for m in maxs) else None
+    hi = sum(maxs) if counted and all(m is not None for m in maxs) else None
     return lo, hi
 
 
@@ -126,11 +143,12 @@ def fmt_minutes(m):
 
 
 def total_label(waits):
-    """What the page prints beside 'Plan ahead'. A single wait shows its own words, so 'overnight'
-    stays 'overnight'. Several waits show the summed figure, because no one wrote that sentence."""
-    live = [w for w in waits if w.get("min_minutes") is not None]
-    if len(waits) == 1:
-        return waits[0].get("label") or ""
+    """What the page prints beside 'Plan ahead'. A single counted wait shows its own words, so
+    'overnight' stays 'overnight'. Several show the summed figure, because no one wrote that
+    sentence. A recipe whose waits are all conditional has no figure and prints nothing here."""
+    counted = [w for w in waits if counts(w)]
+    if len(counted) == 1:
+        return counted[0].get("label") or ""
     lo, hi = total(waits)
     if lo is None:
         return ""

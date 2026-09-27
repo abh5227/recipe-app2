@@ -98,3 +98,50 @@ def test_one_wait_shows_its_own_words_and_several_show_the_figure():
 ])
 def test_fmt_minutes(m, want):
     assert pa.fmt_minutes(m) == want
+
+
+# ---------------------------------------------------------------------------------------------
+# migration 050: only an unconditional wait reaches the total.
+# ---------------------------------------------------------------------------------------------
+
+def _w(mn, mx, when="always", label="x"):
+    return {"min_minutes": mn, "max_minutes": mx, "when_kind": when, "label": label}
+
+
+def test_a_wait_with_no_when_counts():
+    """Every row written before 050 has no when_kind in hand, and all of them are unconditional."""
+    assert pa.counts({"min_minutes": 60}) is True
+
+
+@pytest.mark.parametrize("when, want", [("always", True), ("optional", False), ("only_if", False)])
+def test_counts(when, want):
+    assert pa.counts({"when_kind": when}) is want
+
+
+def test_a_conditional_wait_is_left_out_of_the_total():
+    assert pa.total([_w(60, 60), _w(480, 480, "optional")]) == (60, 60)
+    assert pa.total([_w(60, 60), _w(45, 60, "only_if")]) == (60, 60)
+
+
+def test_all_conditional_means_no_total_at_all():
+    """Not a total of zero. A recipe that only MIGHT soak has nothing to plan around."""
+    assert pa.total([_w(480, 480, "optional")]) == (None, None)
+    assert pa.total_label([_w(480, 480, "optional", "8 hr")]) == ""
+
+
+def test_an_open_ended_conditional_wait_does_not_open_the_total():
+    """⚠️ THE BUG THIS GUARDS. A conditional wait with no ceiling would have made a closed total
+    open-ended, turning '1 hr 30 min' into '1 hr 30 min+' on the strength of a step a cook skips."""
+    assert pa.total([_w(60, 60), _w(120, None, "optional")]) == (60, 60)
+
+
+def test_one_counted_wait_beside_a_conditional_one_keeps_its_own_words():
+    waits = [_w(720, 1080, "always", "12-18 hr"), _w(45, 60, "only_if", "45-60 min")]
+    assert pa.total_label(waits) == "12-18 hr"
+
+
+def test_two_counted_waits_beside_a_conditional_one_show_the_figure():
+    waits = [_w(60, 60, "always", "1 hr"), _w(30, 30, "always", "30 min"),
+             _w(480, 480, "optional", "8 hr")]
+    assert pa.total(waits) == (90, 90)
+    assert pa.total_label(waits) == "1 hr 30 min"
