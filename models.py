@@ -196,6 +196,12 @@ class RecipeIngredient(Base):
     label = Column(Text)
     note = Column(Text)
     raw_text = Column(Text)
+    # Migration 052. The heading TITLE, and only meaningful while is_heading=1. It exists because a
+    # heading has a title, a line has a NAME (label) and a SOURCE LINE (raw_text), and three strings
+    # do not fit in two columns — writing the title over raw_text is what made converting a line to
+    # a heading destroy it. NULL on all 223 pre-052 heading rows, so every reader resolves the title
+    # as `heading` when set, else raw_text.
+    heading = Column(Text)
     grams = Column(Float)   # Float = float8/DOUBLE PRECISION on PG (sa.REAL = float4 would truncate)
     secondary_measure = Column(Text)
     quantity = Column(Text)
