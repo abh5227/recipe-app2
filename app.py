@@ -1148,7 +1148,14 @@ def home():
 def recipe_image(filename):
     # Recipe hero photos live in static/images/ (not the Vite bundle) and are referenced as
     # absolute /images/<file> in the client; serve them from their on-disk home.
-    return send_from_directory(BASE_DIR / "static" / "images", filename)
+    #
+    # ⚠️ images.IMAGES_DIR, NOT BASE_DIR / "static" / "images". They are the same folder in an
+    # ordinary checkout, and they are NOT the same folder when the photo directory is redirected —
+    # which images.py documents IMAGES_DIR as being for ("a REDIRECTABLE module global"). This read
+    # path computing its own answer meant a redirect moved where photos were WRITTEN and left where
+    # they were SERVED behind. scripts/serve_live.py is the case that needs them to agree: a pinned
+    # checkout serving its own dist while reading and writing the real photo folder.
+    return send_from_directory(images.IMAGES_DIR, filename)
 
 
 @app.route("/fonts/<path:filename>")

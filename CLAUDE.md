@@ -284,6 +284,21 @@ How this project is run:
   rule as the verbatim-components rule above, one layer deeper: if the app transforms a value before
   displaying it (scaling, abbreviation, unit conversion, truncation, linkify), the preview must call
   that transform.
+- **:8000 NEVER SERVES THE SHARED `dist/`.** The live server runs from its own git worktree,
+  pinned to a pushed commit, with its own `dist/` that no build in the working repo can reach:
+  `git worktree add ../recipe-app-serve <pushed-sha>`, `npm install && npm run build` there, then
+  `python3.13 scripts/serve_live.py`. That script points the pinned checkout at the REAL database and
+  the REAL photo folder (`app.DB`, `models.DB`, `images.IMAGES_DIR` — all redirectable module
+  globals, found through git rather than hardcoded), so the bundle and the server are the same commit
+  by construction while the data stays the live data. **Nothing is symlinked**, so a stray
+  `build_db.py` in that checkout cannot reach live's `recipes.db`. *Why this exists:* `dist/` is
+  rebuilt by every `npm run build`, including the ones behind a preview, and a preview build put a
+  client that sends `{id, text}` steps in front of a server old enough to read a non-string step as
+  `""` — which would have blanked every method step of the first recipe saved, with a 200 and no
+  sign anything was wrong. A preview likewise builds in its OWN worktree and never in the working
+  repo. **After any push you want live to run, rebuild the pinned worktree at the new SHA; do not
+  point :8000 at the working tree "just this once."**
+
 - **Propose a spec and STOP for approval** before building anything non-trivial; don't
   draft-and-commit in one shot.
 - **Present a full diff and wait for approval** before applying edits.
