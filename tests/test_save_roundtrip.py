@@ -141,14 +141,16 @@ def test_a_no_edit_save_does_not_move_the_annotations(kitchen):
     assert _annotations(kitchen, rid) == before
 
 
-def test_a_second_no_edit_save_also_changes_nothing_but_ids(kitchen):
+def test_a_second_no_edit_save_also_changes_nothing_at_all(kitchen):
+    """⚠️ THIS ONCE ASSERTED THE OPPOSITE. Until option C commit 2 the save deleted the recipe's
+    rows and reinserted them, so it ended `assert ids != ids` — the ids churned by design and
+    nothing outside these two tables could point at a row. They now hold still."""
     rid = _seed(kitchen)
     _save(kitchen, rid)
     once = _rows(kitchen, rid)
     _save(kitchen, rid)
     twice = _rows(kitchen, rid)
-    assert _strip_ids(twice) == _strip_ids(once)
-    assert [r["id"] for r in twice] != [r["id"] for r in once]   # ids still churn, by design
+    assert twice == once                                          # ids included
 
 
 def test_raw_text_is_never_rebuilt_from_qty_and_label(kitchen):
@@ -381,3 +383,244 @@ def test_an_object_step_may_carry_a_link_the_recipe_already_stands_on(kitchen):
         "name": "Round Trip", "ingredients": [],
         "steps": [{"id": None, "text": "Fold in the [[gone_away]]."}]})
     assert r.status_code == 200
+
+
+# --------------------------------------------------------------------------------------------- #
+# Option C, commit 2: the save updates in place, so a row id is permanent
+# --------------------------------------------------------------------------------------------- #
+def _ids(kitchen, rid):
+    return [r["id"] for r in _rows(kitchen, rid)]
+
+
+def _step_ids(kitchen, rid):
+    return [x["id"] for x in _steps(kitchen, rid)]
+
+
+def _drop_id(entries, i):
+    """The fixture's entries with entry `i` arriving WITHOUT an id — an older client's payload, or
+    a row the editor added. The stored row still has its id."""
+    out = copy.deepcopy(entries)
+    out[i]["payload"].pop("id", None)
+    return out
+
+
+def test_a_no_edit_save_keeps_every_row_id(kitchen):
+    rid = _seed(kitchen)
+    before, before_steps = _ids(kitchen, rid), _step_ids(kitchen, rid)
+    assert _save(kitchen, rid).status_code == 200
+    assert _ids(kitchen, rid) == before
+    assert _step_ids(kitchen, rid) == before_steps
+
+
+def test_a_reorder_keeps_every_id_and_only_moves_the_positions(kitchen):
+    """The marks come later (commit 4). What this pins is that a drag is not a delete and an
+    insert: every row is the same row afterwards, at a new position."""
+    rid = _seed(kitchen)
+    before = {r["id"]: r["raw_text"] for r in _rows(kitchen, rid)}
+
+    rows = copy.deepcopy(FIX["rows"])
+    rows[1], rows[5] = rows[5], rows[1]
+    rows.append(rows.pop(2))                                  # and one moved to the end
+    steps = copy.deepcopy(FIX["steps"])
+    steps[1], steps[2] = steps[2], steps[1]
+    assert _save(kitchen, rid, rows=rows, steps=steps).status_code == 200
+
+    after = {r["id"]: r["raw_text"] for r in _rows(kitchen, rid)}
+    assert after == before                                    # same ids, same lines on them
+    assert [r["position"] for r in _rows(kitchen, rid)] == list(range(len(FIX["rows"])))
+    assert [x["text"] for x in _steps(kitchen, rid)] == \
+           [FIX["steps"][i]["row"]["text"] for i in (0, 2, 1)]
+    assert sorted(_step_ids(kitchen, rid)) == sorted(x["row"]["id"] for x in FIX["steps"])
+
+
+def test_the_duplicate_case_can_no_longer_swap(kitchen):
+    """⚠️ THE RECORDED ROADMAP C-CASE, closed by construction.
+
+    The fixture's two water rows are told apart only by their amount, and they carry DIFFERENT link
+    rules. Edit the first one's amount to the second one's and the carry key collides: the exact
+    tier finds one stored row for ("2 tbsp", "water"), line 0 claims it and takes its link, line 1
+    falls to the name tier and takes the other's. Each line keeps a real link to a real row and the
+    two are swapped, which no count and no byte-comparison of the recipe can see. An id cannot
+    collide with anything, so each line stays on its own row."""
+    rid = _seed(kitchen)
+    rows = copy.deepcopy(FIX["rows"])
+    rows[5]["payload"]["quantity"] = "2"                      # was 3 tbsp, now identical to rows[6]
+    assert _save(kitchen, rid, rows=rows).status_code == 200
+
+    water = [r for r in _rows(kitchen, rid) if r["raw_text"] == "water"]
+    assert [r["id"] for r in water] == [9006, 9007]            # their own rows, in place
+    assert [r["link_rule"] for r in water] == ["exact", "form_strip:cold"]   # NOT swapped
+    assert [r["qty"] for r in water] == ["2 tbsp", "2 tbsp"]
+
+
+def test_the_same_duplicate_case_DOES_swap_without_ids(kitchen):
+    """The other half of the proof. Strip the ids and the identical payload swaps the two rows'
+    links, which is what every save did before commit 2 and what the fallback still does when a
+    client cannot tell the server which row is which."""
+    rows = _stripped(FIX["rows"])
+    rid = _seed(kitchen, rows=rows, name="Round Trip, No Ids")
+    rows[5]["payload"]["quantity"] = "2"
+    assert _save(kitchen, rid, rows=rows, name="Round Trip, No Ids").status_code == 200
+
+    water = [r for r in _rows(kitchen, rid) if r["raw_text"] == "water"]
+    assert [r["link_rule"] for r in water] == ["form_strip:cold", "exact"]   # swapped
+
+
+def test_an_id_less_line_still_falls_back_to_the_carry_and_keeps_its_row(kitchen):
+    """A row arriving with no id is matched the old way, and the row it matches is UPDATED rather
+    than replaced, so even the fallback preserves the id."""
+    rid = _seed(kitchen)
+    assert _save(kitchen, rid, rows=_drop_id(FIX["rows"], 3)).status_code == 200
+    row = [r for r in _rows(kitchen, rid) if r["raw_text"] == "kosher salt"][0]
+    assert row["id"] == 9004                                   # the same row, not a new one
+    assert row["grams"] == 6.0 and row["catalog_id"] == "Q4116639"
+    assert row["qty"] == "1 teaspoon"                          # the stored spelling, carried
+
+
+def test_the_carry_is_built_over_only_what_the_id_pass_left(kitchen):
+    """⚠️ THE ONE LINE THAT WOULD HAVE MADE COMMIT 2 A DATA-LOSS BUG.
+
+    Line 0 claims stored row 9006 by id. Line 1 arrives with NO id and a new amount, so its exact
+    key misses and it falls to the name tier, whose "water" bucket is [9006, 9007] in order. Built
+    over ALL the stored rows, the name tier hands it 9006 — the row line 0 is already writing — and
+    both lines update one row. Built over the leftovers, 9006 is not in the bucket at all and line 1
+    correctly gets 9007."""
+    rid = _seed(kitchen)
+    rows = _drop_id(FIX["rows"], 6)
+    rows[6]["payload"]["quantity"] = "5"                       # miss the exact tier on purpose
+    assert _save(kitchen, rid, rows=rows).status_code == 200
+
+    water = [r for r in _rows(kitchen, rid) if r["raw_text"] == "water"]
+    assert len(water) == 2                                     # neither line was lost
+    assert [r["id"] for r in water] == [9006, 9007]
+    assert [r["qty"] for r in water] == ["3 tbsp", "5 tbsp"]
+    assert [r["link_rule"] for r in water] == ["exact", "form_strip:cold"]
+
+
+def test_a_row_id_from_another_recipe_is_refused(kitchen):
+    """⚠️ REFUSED, NOT IGNORED. Ignoring it would write the line as a new row, which reads like
+    success and loses whatever the client thought it was editing."""
+    # ⚠️ THE OTHER RECIPE TAKES ITS IDS FROM THE SEQUENCE, not the fixture's hand-written ones,
+    #    or the two recipes would collide on the same primary keys.
+    other = _seed(kitchen, rows=_stripped(FIX["rows"]), steps=_stripped(FIX["steps"]),
+                  name="Someone Else")
+    rid = _seed(kitchen, name="Round Trip")
+    before, before_steps = _rows(kitchen, rid), _steps(kitchen, rid)
+
+    stolen = _rows(kitchen, other)[0]["id"]
+    rows = copy.deepcopy(FIX["rows"])
+    rows[1]["payload"]["id"] = stolen
+    r = _save(kitchen, rid, rows=rows)
+    assert r.status_code == 400
+    assert str(stolen) in r.get_json()["error"]
+    assert _rows(kitchen, rid) == before                       # and nothing was written
+    assert _steps(kitchen, rid) == before_steps
+
+
+def test_a_step_id_from_another_recipe_is_refused(kitchen):
+    other = _seed(kitchen, rows=_stripped(FIX["rows"]), steps=_stripped(FIX["steps"]),
+                  name="Someone Else")
+    rid = _seed(kitchen, name="Round Trip")
+    steps = copy.deepcopy(FIX["steps"])
+    steps[1]["payload"]["id"] = _steps(kitchen, other)[0]["id"]
+    assert _save(kitchen, rid, steps=steps).status_code == 400
+
+
+def test_a_row_id_the_payload_uses_twice_is_refused(kitchen):
+    """Two lines claiming one row means the second update overwrites the first and one line goes."""
+    rid = _seed(kitchen)
+    rows = copy.deepcopy(FIX["rows"])
+    rows[6]["payload"]["id"] = rows[5]["payload"]["id"]
+    r = _save(kitchen, rid, rows=rows)
+    assert r.status_code == 400
+    assert "twice" in r.get_json()["error"]
+
+
+def test_a_row_id_that_is_not_a_whole_number_is_refused(kitchen):
+    rid = _seed(kitchen)
+    for bad in ("9006", 9006.5, True, [9006]):
+        rows = copy.deepcopy(FIX["rows"])
+        rows[5]["payload"]["id"] = bad
+        assert _save(kitchen, rid, rows=rows).status_code == 400, f"accepted {bad!r}"
+
+
+def test_a_deleted_line_is_deleted_and_the_survivors_keep_their_ids(kitchen):
+    rid = _seed(kitchen)
+    rows = copy.deepcopy(FIX["rows"])
+    del rows[4]                                                # the note row
+    assert _save(kitchen, rid, rows=rows).status_code == 200
+    assert _ids(kitchen, rid) == [9001, 9002, 9003, 9004, 9006, 9007, 9008, 9009, 9010, 9011]
+    assert not [r for r in _rows(kitchen, rid) if r["label"] == "soy sauce"]
+
+
+def test_a_deleted_step_is_deleted_and_the_survivors_keep_their_ids(kitchen):
+    """The one that matters for the plan-ahead wait: a wait pointing at a step by id must see that
+    step's id unchanged when a DIFFERENT step is removed."""
+    rid = _seed(kitchen)
+    steps = copy.deepcopy(FIX["steps"])
+    del steps[1]
+    assert _save(kitchen, rid, steps=steps).status_code == 200
+    assert _step_ids(kitchen, rid) == [9101, 9103]
+    assert [x["position"] for x in _steps(kitchen, rid)] == [0, 1]
+
+
+def test_a_new_line_gets_a_new_id_and_takes_nobody_elses(kitchen):
+    rid = _seed(kitchen)
+    rows = copy.deepcopy(FIX["rows"])
+    rows.insert(3, {"shape": "new", "row": {}, "payload":
+                    {"id": None, "quantity": "1", "unit": "pinch", "text": "saffron", "note": ""}})
+    assert _save(kitchen, rid, rows=rows).status_code == 200
+    got = _rows(kitchen, rid)
+    fresh = [r for r in got if r["raw_text"] == "saffron"][0]
+    assert fresh["id"] not in {r["row"]["id"] for r in FIX["rows"]}
+    assert fresh["catalog_id"] is None
+    assert [r["id"] for r in got if r["raw_text"] != "saffron"] == \
+           [r["row"]["id"] for r in FIX["rows"]]
+
+
+def test_a_renamed_line_keeps_its_row_and_loses_its_link(kitchen):
+    """The rename rule as it stands (ROADMAP holds the re-match-on-save follow-up). The id is the
+    ROW's identity, so it survives; the link belongs to the LINE, so it does not."""
+    rid = _seed(kitchen)
+    rows = copy.deepcopy(FIX["rows"])
+    rows[2]["payload"]["text"] = "cold-pressed rapeseed oil"
+    assert _save(kitchen, rid, rows=rows).status_code == 200
+    row = [r for r in _rows(kitchen, rid) if r["id"] == 9003][0]
+    assert row["label"] == "cold-pressed rapeseed oil"
+    assert row["raw_text"] == "cold-pressed rapeseed oil"
+    assert row["catalog_id"] is None and row["link_rule"] is None
+
+
+def test_a_line_toggled_to_a_heading_keeps_its_id_and_drops_its_amount(kitchen):
+    """⚠️ THE REASON ONE BUILDER WRITES BOTH THE INSERT AND THE UPDATE. An UPDATE that only set the
+    heading's own columns would leave the amount, the weight and all four linkage columns sitting
+    on a heading row, where an insert had always left them NULL."""
+    rid = _seed(kitchen)
+    rows = copy.deepcopy(FIX["rows"])
+    rows[3] = {"shape": "toggled", "row": {}, "payload": {"id": 9004, "heading": "FOR THE BRINE"}}
+    assert _save(kitchen, rid, rows=rows).status_code == 200
+    row = [r for r in _rows(kitchen, rid) if r["id"] == 9004][0]
+    assert row["is_heading"] == 1 and row["raw_text"] == "FOR THE BRINE"
+    for col in ("qty", "quantity", "unit", "label", "grams", "secondary_measure",
+                "catalog_id", "link_confidence", "link_rule", "link_matched"):
+        assert row[col] is None, f"{col} survived the toggle to a heading"
+
+
+def test_a_step_toggled_to_a_heading_keeps_its_id(kitchen):
+    rid = _seed(kitchen)
+    steps = copy.deepcopy(FIX["steps"])
+    steps[1]["payload"] = {"id": 9102, "heading": "THEN COOK"}
+    assert _save(kitchen, rid, steps=steps).status_code == 200
+    row = [x for x in _steps(kitchen, rid) if x["id"] == 9102][0]
+    assert row["is_heading"] == 1 and row["text"] == "THEN COOK"
+
+
+def test_an_older_client_that_sends_no_ids_at_all_still_saves(kitchen):
+    """Every row falls back, every step is written as a new row — which is exactly what every save
+    did before commit 2. The content has to come out identical."""
+    rows, steps = _stripped(FIX["rows"]), _stripped(FIX["steps"])
+    rid = _seed(kitchen, rows=rows, steps=steps, name="Round Trip, No Ids")
+    before = _strip_ids(_rows(kitchen, rid))
+    assert _save(kitchen, rid, rows=rows, steps=steps, name="Round Trip, No Ids").status_code == 200
+    assert _strip_ids(_rows(kitchen, rid)) == before
+    assert [x["text"] for x in _steps(kitchen, rid)] == [x["row"]["text"] for x in FIX["steps"]]

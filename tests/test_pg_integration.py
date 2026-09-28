@@ -611,3 +611,143 @@ def test_import_db_error_aborts_the_rest_of_the_batch_pg(pg):
             iw.commit_plan(conn, later, owner)
         tx.rollback()
     assert _count(pg.engine, "SELECT COUNT(*) FROM recipes WHERE source='app'") == 0
+
+
+# ---- 8. the in-place save (option C commit 2) -----------------------------------------------------
+# The save no longer deletes the recipe's rows and reinserts them: it UPDATEs by id, INSERTs what is
+# new and DELETEs what the payload dropped. Three statements whose dialect behaviour is worth pinning
+# on PG rather than assumed — an UPDATE over the whole written column set, a DELETE ... WHERE id IN
+# (a Python list), and a sequence that no longer advances on a save that changes nothing.
+#
+# ⚠️ THE SEEDED FIXTURE RECIPES ARE source='seed' AND OWNER-NULL, so the edit route refuses them
+# with a 403 whoever asks. These tests create their own app-owned recipe, the same way
+# test_sequence_after_insert does.
+
+def _row_ids(engine, table, rid):
+    with engine.connect() as c:
+        return [r[0] for r in c.execute(
+            text(f"SELECT id FROM {table} WHERE recipe_id=:r ORDER BY position, id"), {"r": rid})]
+
+
+def _make(client, name="Place Check"):
+    return client.post("/api/recipes", json={
+        "name": name, "is_test": True,
+        "ingredients": [{"heading": "FOR THE SAUCE"},
+                        {"quantity": "2", "unit": "tbsp", "text": "soy sauce", "note": "light"},
+                        {"quantity": "1", "unit": "tsp", "text": "sesame oil", "note": ""},
+                        {"quantity": "3", "unit": "cloves", "text": "garlic", "note": ""},
+                        {"quantity": "1", "unit": "cup", "text": "water", "note": ""},
+                        {"quantity": "2", "unit": "tbsp", "text": "water", "note": ""}],
+        "steps": [{"heading": "MAKE IT"}, "Whisk the sauce.", "Rest it.", "Serve."],
+    }).get_json()["id"]
+
+
+def _put(client, rid, got, **over):
+    """The recipe back as it came, with the row ids the GET served. Mirrors what the editor sends."""
+    body = {
+        "name": got["recipe"]["name"],
+        "ingredients": [{"id": x["id"], "heading": x["raw_text"]} if x["is_heading"]
+                        else {"id": x["id"], "quantity": x["quantity"] or "", "unit": x["unit"] or "",
+                              "text": x["label"] or x["raw_text"] or "", "note": x["note"] or ""}
+                        for x in got["ingredients"]],
+        "steps": [{"id": x["id"], "heading": x["text"]} if x["is_heading"]
+                  else {"id": x["id"], "text": x["text"]} for x in got["steps"]],
+    }
+    body.update(over)
+    return client.put(f"/api/recipes/{rid}", json=body)
+
+
+def test_a_no_edit_save_keeps_every_row_id_pg(pg):
+    """⚠️ THE WHOLE POINT OF COMMIT 2, on the production dialect. A row id has to be permanent on
+    Postgres too, or anything that later references one (a wait's step, a snapshot's line) points at
+    a row that silently became a different row on the next save."""
+    c = pg.client
+    rid = _make(c)
+    ing_before = _row_ids(pg.engine, "recipe_ingredients", rid)
+    step_before = _row_ids(pg.engine, "recipe_steps", rid)
+    assert len(ing_before) == 6 and len(step_before) == 4
+
+    assert _put(c, rid, c.get(f"/api/recipes/{rid}").get_json()).status_code == 200
+    assert _row_ids(pg.engine, "recipe_ingredients", rid) == ing_before
+    assert _row_ids(pg.engine, "recipe_steps", rid) == step_before
+
+
+def test_a_no_edit_save_does_not_advance_the_sequence_pg(pg):
+    """The other side of test_sequence_after_insert. Nothing is inserted, so nothing is drawn from
+    the sequence — the measurable difference between updating in place and rewriting the recipe."""
+    c = pg.client
+    rid = _make(c)
+    got = c.get(f"/api/recipes/{rid}").get_json()
+    with pg.engine.connect() as conn:
+        before = conn.execute(text("SELECT last_value FROM recipe_ingredients_id_seq")).scalar()
+    assert _put(c, rid, got).status_code == 200
+    with pg.engine.connect() as conn:
+        assert conn.execute(text("SELECT last_value FROM recipe_ingredients_id_seq")).scalar() == before
+
+
+def test_a_delete_removes_only_the_dropped_rows_pg(pg):
+    """DELETE ... WHERE id IN (:list) over a Python list, on PG. Everything else keeps its id."""
+    c = pg.client
+    rid = _make(c)
+    got = c.get(f"/api/recipes/{rid}").get_json()
+    before = _row_ids(pg.engine, "recipe_ingredients", rid)
+    dropped = got["ingredients"][2]["id"]
+    got["ingredients"] = [x for x in got["ingredients"] if x["id"] != dropped]
+    assert _put(c, rid, got).status_code == 200
+    assert _row_ids(pg.engine, "recipe_ingredients", rid) == [i for i in before if i != dropped]
+
+
+def test_an_edit_updates_the_row_in_place_pg(pg):
+    """An UPDATE over the whole written column set, on PG. The row keeps its id and takes the new
+    text, and a renamed line is a new line, so its note goes with the edit."""
+    c = pg.client
+    rid = _make(c)
+    got = c.get(f"/api/recipes/{rid}").get_json()
+    target = next(x for x in got["ingredients"] if not x["is_heading"])
+    target["label"] = "something else entirely"
+    assert _put(c, rid, got).status_code == 200
+    with pg.engine.connect() as conn:
+        row = conn.execute(text("SELECT label, raw_text, position FROM recipe_ingredients "
+                                "WHERE id=:i"), {"i": target["id"]}).mappings().one()
+    assert row["label"] == "something else entirely"
+    assert row["raw_text"] == "something else entirely"
+    assert row["position"] == 1
+
+
+def test_a_line_toggled_to_a_heading_nulls_its_amount_pg(pg):
+    """The shared value builder on PG: an UPDATE has to write the NULLs an INSERT got for free."""
+    c = pg.client
+    rid = _make(c)
+    got = c.get(f"/api/recipes/{rid}").get_json()
+    target = next(x for x in got["ingredients"] if not x["is_heading"])
+    got["ingredients"] = [{"id": x["id"], "heading": "FOR THE BRINE"} if x["id"] == target["id"]
+                          else x for x in got["ingredients"]]
+    body = {"name": got["recipe"]["name"],
+            "ingredients": [x if "heading" in x else
+                            {"id": x["id"], "heading": x["raw_text"]} if x["is_heading"]
+                            else {"id": x["id"], "quantity": x["quantity"] or "",
+                                  "unit": x["unit"] or "", "text": x["label"] or x["raw_text"] or "",
+                                  "note": x["note"] or ""}
+                            for x in got["ingredients"]],
+            "steps": [{"id": x["id"], "heading": x["text"]} if x["is_heading"]
+                      else {"id": x["id"], "text": x["text"]} for x in got["steps"]]}
+    assert c.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    with pg.engine.connect() as conn:
+        row = conn.execute(text("SELECT is_heading, raw_text, qty, quantity, unit, label, grams "
+                                "FROM recipe_ingredients WHERE id=:i"), {"i": target["id"]}).mappings().one()
+    assert row["is_heading"] == 1 and row["raw_text"] == "FOR THE BRINE"
+    for col in ("qty", "quantity", "unit", "label", "grams"):
+        assert row[col] is None, f"{col} survived the toggle on PG"
+
+
+def test_a_foreign_row_id_is_refused_pg(pg):
+    c = pg.client
+    other = _make(c, name="Place Check Two")
+    rid = _make(c)
+    stolen = _row_ids(pg.engine, "recipe_ingredients", other)[0]
+    before = _row_ids(pg.engine, "recipe_ingredients", rid)
+    got = c.get(f"/api/recipes/{rid}").get_json()
+    got["ingredients"][1]["id"] = stolen
+    r = _put(c, rid, got)
+    assert r.status_code == 400 and str(stolen) in r.get_json()["error"]
+    assert _row_ids(pg.engine, "recipe_ingredients", rid) == before

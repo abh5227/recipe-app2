@@ -685,12 +685,117 @@ def write_plan_ahead(s, rid, payload):
             label=label, min_minutes=lo, max_minutes=hi))
 
 
-def write_recipe_rows(s, rid, clean, preserve=None):
-    """(Re)write a recipe's ingredient lines and steps from a validated payload.
+def _check_row_ids(clean, stored_ing, stored_step):
+    """Return an error string, or None. Every row id the payload sends must name a row of THIS
+    recipe, and must name it once.
 
-    `preserve` (edit path only) is a _Carry built from the rows about to be replaced. A line the
-    user did not touch is matched to the stored row it replaces and gets EVERYTHING that row was
-    carrying back. On create there is nothing to match against, so every row is new.
+    ⚠️ A FOREIGN ID IS REFUSED RATHER THAN IGNORED. Ignoring it would write the line as a new row,
+    which reads like success and quietly loses whatever the client thought it was editing. Worse,
+    an id belonging to ANOTHER recipe would be a cross-recipe write if it were ever honoured, so
+    the check is against this recipe's own rows and nothing wider.
+
+    ⚠️ A REPEATED ID IS REFUSED for the same reason the carry consumes a row once: two lines
+    claiming one row means the second update overwrites the first and one line disappears."""
+    for rows, stored in ((clean["ingredients"], stored_ing), (clean["steps"], stored_step)):
+        known = {o["id"] for o in stored}
+        seen = set()
+        for row in rows:
+            if not isinstance(row, dict):
+                continue                                  # a bare-string step carries no id
+            n = row.get("id")
+            if n is None:
+                continue
+            # bool is an int in Python, and True would silently mean row 1.
+            if isinstance(n, bool) or not isinstance(n, int):
+                return "a row id in this save isn't a whole number"
+            if n not in known:
+                return f"a row id in this save ({n}) isn't part of this recipe"
+            if n in seen:
+                return f"a row id in this save ({n}) is used twice"
+            seen.add(n)
+    return None
+
+
+def _ing_row_values(pos, row, parts, held, exact):
+    """Every column an ingredient row is written with — the SAME dict for an INSERT and an UPDATE.
+
+    ⚠️ ONE BUILDER FOR BOTH, AND THAT IS THE POINT. An UPDATE that leaves a column out keeps the
+    OLD value where an INSERT would have left NULL, so a line toggled to a heading would silently
+    keep its amount, its harvested weight and its four linkage columns. The insert path never had
+    to think about it, having written every row from nothing. The heading branch below therefore
+    spells out the NULLs an insert used to get for free, and the line branch spells out is_heading.
+
+    `held` is the stored row whose columns carry, or None for a line that is new content. `exact`
+    says the amount did not move, which is what decides whether the weight carries with it."""
+    if parts is None:
+        # A heading carries only its text, and its `note` exists purely so a no-edit save is
+        # byte-identical (2 live heading rows hold '' where a fresh insert would write NULL).
+        return {
+            "position": pos, "is_heading": 1, "raw_text": row["heading"],
+            "note": held["note"] if held else None,
+            "qty": None, "quantity": None, "unit": None, "ingredient_id": None, "label": None,
+            "grams": None, "secondary_measure": None,
+            "catalog_id": None, "link_confidence": None, "link_rule": None, "link_matched": None,
+        }
+
+    (qty, quantity, unit), linked, text = parts
+    note_in = row.get("note") or ""
+    if held is not None:
+        raw_text = held["raw_text"]
+        label = held["label"] if not linked else (held["label"] or text)
+        # A note-only edit must not look like a no-op, and an unchanged note must not drift
+        # between NULL and ''. Equivalent -> keep the stored spelling. Different -> take the edit.
+        note = held["note"] if (held["note"] or "") == note_in else (note_in or None)
+        if exact:                                   # nothing about the amount moved
+            qty, quantity, unit = held["qty"], held["quantity"], held["unit"]
+        links = (held["catalog_id"], held["link_confidence"],
+                 held["link_rule"], held["link_matched"])
+        grams, secondary = (held["grams"], held["secondary_measure"]) if exact else (None, None)
+    else:
+        raw_text = text                             # a new line: the typed text IS the source line
+        label = text
+        note = note_in or None
+        links = (None, None, None, None)
+        grams, secondary = None, None
+
+    return {
+        "position": pos, "is_heading": 0, "qty": qty, "quantity": quantity, "unit": unit,
+        "ingredient_id": linked or None, "label": label, "note": note, "raw_text": raw_text,
+        "grams": grams, "secondary_measure": secondary,
+        "catalog_id": links[0], "link_confidence": links[1],
+        "link_rule": links[2], "link_matched": links[3],
+    }
+
+
+def _display_name(o):
+    """A stored line's display name — its label, or raw_text when there is no label. The same
+    reading _Carry keys on, so the id path and the fallback path agree on what 'the same line' is."""
+    return o["label"] or o["raw_text"]
+
+
+def write_recipe_rows(s, rid, clean, stored=None):
+    """Write a recipe's ingredient lines and steps from a validated payload, IN PLACE.
+
+    ⚠️ IT NO LONGER DELETES THE RECIPE AND WRITES IT AGAIN. It used to, which is why no row id
+    survived a save: every id in both tables churned on every save, so nothing outside these two
+    tables could ever point at a row. A row is now matched by its id and UPDATED, a row that is
+    not in the payload is DELETED, and a row with no id is INSERTED. Same session, same single
+    transaction as before, and the caller still commits.
+
+    `stored` (edit path only) is (ingredient rows, step rows) as they stand, ordered by position
+    then id. On create there is nothing stored, so every row is new and nothing is deleted.
+
+    ⚠️ THE ID PASS RUNS FIRST AND THE CARRY GETS ONLY WHAT IT LEAVES. A line arriving without an
+    id still falls back to the two-tier _Carry, exactly as before, but that carry is built over the
+    stored rows the id pass did NOT consume. Built over all of them instead, an id-less line could
+    match a row an id-carrying line has already claimed, and both would write to the one row: one
+    save, two lines, one of them silently gone.
+
+    ⚠️ AN ID IDENTIFIES THE ROW, NOT THE LINE. A row whose id matches is the same ROW however much
+    its text has changed, so it is updated in place and keeps its id. What it CARRIES is a separate
+    question with the same answer as before: the name changed, so it is new content, so raw_text
+    becomes the typed text and the four linkage columns go to NULL. The id survives a rename. The
+    link does not, which is the rule as it stands (ROADMAP holds the re-match-on-save follow-up).
 
     ⚠️ raw_text MEANS "THE LINE AS IT CAME IN" AND IS NEVER REBUILT. It used to be recomputed as
     f"{qty} {label}{note}" on the linked branch and set to the displayed text on the other, which
@@ -704,12 +809,10 @@ def write_recipe_rows(s, rid, clean, preserve=None):
     warnings under the wrong name. The old line is still in the reason='original' snapshot, and
     build_links.py rebuilds a dropped link from committed files.
 
-    Stage 1c: runs on the caller's ORM session `s` (Core delete/insert on the same tables, exact
-    column-for-column parity with the prior raw SQL); the caller commits."""
-    carry = preserve
+    Stage 1c: runs on the caller's ORM session `s` (Core statements on the same tables); the
+    caller commits."""
+    stored_ing, stored_step = stored if stored is not None else ([], [])
     ri, rs = RecipeIngredient.__table__, RecipeStep.__table__
-    s.execute(delete(ri).where(ri.c.recipe_id == rid))
-    s.execute(delete(rs).where(rs.c.recipe_id == rid))
 
     # Resolve every line's (qty, name) BEFORE writing any of them, so the carry can run its EXACT
     # tier over the whole recipe before a NAME-only match consumes a row. See _Carry.plan.
@@ -724,53 +827,76 @@ def write_recipe_rows(s, rid, clean, preserve=None):
         # Hybrid: recombine qty from explicit parts (Stage-4 editor) or derive the split from the
         # authored qty (Stage 3).
         prepared.append((row, (_row_qty_parts(row), linked, text)))
-    held_for = (carry.plan([None if p[1] is None else (p[1][0][0], p[1][2]) for p in prepared])
+
+    # PASS 1 — the id. update_recipe has already refused an id this recipe does not own and an id
+    # the payload repeats, so a hit here is a row this payload may claim, once.
+    by_id = {o["id"]: o for o in stored_ing}
+    target = [by_id.get(row.get("id")) for row, _ in prepared]
+    claimed = {o["id"] for o in target if o is not None}
+
+    # PASS 2 — the carry, over ONLY the rows pass 1 left behind. See the warning above.
+    carry = _Carry([o for o in stored_ing if o["id"] not in claimed]) if stored_ing else None
+    held_for = (carry.plan([None if (target[i] is not None or p[1] is None) else (p[1][0][0], p[1][2])
+                            for i, p in enumerate(prepared)])
                 if carry else [None] * len(prepared))
 
+    written = set()
     for pos, (row, parts) in enumerate(prepared):
-        if parts is None:
-            # A heading carries only its text, and its `note` exists purely so a no-edit save is
-            # byte-identical (2 live heading rows hold '' where a fresh insert would write NULL).
+        into = target[pos]
+        if into is not None:
+            if parts is None:
+                held, exact = into, False           # a heading carries only its note
+            else:
+                name = parts[2]
+                stored_name = _display_name(into)
+                held = into if _name_key(name) == _name_key(stored_name) else None
+                exact = (held is not None and _preserve_key(parts[0][0], name)
+                         == _preserve_key(into["qty"], stored_name))
+        elif parts is None:
             held = carry.take_heading(row["heading"]) if carry else None
-            s.execute(insert(ri).values(recipe_id=rid, position=pos, is_heading=1,
-                                        raw_text=row["heading"],
-                                        note=held["note"] if held else None))
-            continue
-
-        (qty, quantity, unit), linked, text = parts
-        note_in = row.get("note") or ""
-        held, exact = held_for[pos] or (None, False)
-
-        if held is not None:
-            raw_text = held["raw_text"]
-            label = held["label"] if not linked else (held["label"] or text)
-            # A note-only edit must not look like a no-op, and an unchanged note must not drift
-            # between NULL and ''. Equivalent -> keep the stored spelling. Different -> take the edit.
-            note = held["note"] if (held["note"] or "") == note_in else (note_in or None)
-            if exact:                                   # nothing about the amount moved
-                qty, quantity, unit = held["qty"], held["quantity"], held["unit"]
-            links = (held["catalog_id"], held["link_confidence"],
-                     held["link_rule"], held["link_matched"])
-            grams, secondary = (held["grams"], held["secondary_measure"]) if exact else (None, None)
+            exact, into = False, held
         else:
-            raw_text = text                             # a new line: the typed text IS the source line
-            label = text
-            note = note_in or None
-            links = (None, None, None, None)
-            grams, secondary = None, None
+            held, exact = held_for[pos] or (None, False)
+            into = held                             # a fallback match updates that row in place too
 
-        s.execute(insert(ri).values(
-            recipe_id=rid, position=pos, qty=qty, quantity=quantity, unit=unit,
-            ingredient_id=linked or None, label=label, note=note, raw_text=raw_text,
-            grams=grams, secondary_measure=secondary,
-            catalog_id=links[0], link_confidence=links[1],
-            link_rule=links[2], link_matched=links[3],
-        ))
+        values = _ing_row_values(pos, row, parts, held, exact)
+        if into is not None:
+            # ⚠️ A RAISE, NOT AN assert, so it holds under python -O too. Two lines resolving to one
+            # row is the silent-loss shape this whole function is arranged to make impossible, and a
+            # 500 with nothing committed is the right answer to it. Reachable only through a bug in
+            # the resolution above: the id check refuses a repeated id and _Carry consumes once.
+            if into["id"] in written:
+                raise RuntimeError(f"two payload lines resolved to stored row {into['id']}")
+            s.execute(update(ri).where(ri.c.id == into["id"]).values(**values))
+            written.add(into["id"])
+        else:
+            s.execute(insert(ri).values(recipe_id=rid, **values))
 
+    gone = [o["id"] for o in stored_ing if o["id"] not in written]
+    if gone:
+        s.execute(delete(ri).where(ri.c.id.in_(gone)))
+
+    # Steps carry nothing, so there is no carry tier and nothing to preserve across a rewrite. A
+    # step with a known id is updated, and a step with none is a new row — which is every step of
+    # every save before this, so an older client's payload behaves exactly as it always did.
+    step_by_id = {o["id"]: o for o in stored_step}
+    kept = set()
     for pos, step in enumerate(clean["steps"]):
         text_val, is_heading = _step_parts(step)
-        s.execute(insert(rs).values(recipe_id=rid, position=pos,
-                                    is_heading=1 if is_heading else 0, text=text_val))
+        into = step_by_id.get(step.get("id") if isinstance(step, dict) else None)
+        if into is not None:
+            if into["id"] in kept:                      # see the ingredient guard above
+                raise RuntimeError(f"two payload steps resolved to stored row {into['id']}")
+            s.execute(update(rs).where(rs.c.id == into["id"]).values(
+                position=pos, is_heading=1 if is_heading else 0, text=text_val))
+            kept.add(into["id"])
+        else:
+            s.execute(insert(rs).values(recipe_id=rid, position=pos,
+                                        is_heading=1 if is_heading else 0, text=text_val))
+
+    gone = [o["id"] for o in stored_step if o["id"] not in kept]
+    if gone:
+        s.execute(delete(rs).where(rs.c.id.in_(gone)))
 
 
 # ---- change-tracking (stage 1): recipe_snapshots — capture-on-cook ------------------------------
@@ -1179,16 +1305,26 @@ def update_recipe(rid):
             cook_time=payload.get("cook_time"), total_time=payload.get("total_time"), descr=payload.get("descr"),
             notes=payload.get("notes"), image=payload.get("image"),
         ))
-        # Snapshot the rows about to be replaced so write_recipe_rows can hand each surviving line
-        # back everything it was carrying: raw_text, label, note, the amount, the four linkage
-        # columns and the harvested weight. A line the user actually edited matches nothing and is
-        # written as new. See _Carry for the two tiers and why they carry different things.
-        preserve = _Carry(s.execute(
+        # The rows as they stand. write_recipe_rows matches each incoming line to one of them by id
+        # and updates it in place, falls back to the two-tier _Carry for a line that arrives without
+        # one, inserts what is left and deletes what the payload dropped. Read here rather than in
+        # there so the id check below and the write agree on exactly one set of rows.
+        stored_ing = s.execute(
             select(RecipeIngredient.__table__)
             .where(RecipeIngredient.recipe_id == rid)
             .order_by(RecipeIngredient.position, RecipeIngredient.id)
-        ).mappings().all())
-        write_recipe_rows(s, rid, clean, preserve)
+        ).mappings().all()
+        stored_step = s.execute(
+            select(RecipeStep.__table__)
+            .where(RecipeStep.recipe_id == rid)
+            .order_by(RecipeStep.position, RecipeStep.id)
+        ).mappings().all()
+        # BEFORE the first write, so a bad id costs nothing. The recipe row above is updated in this
+        # same transaction and `with orm_session()` closes without committing on this return.
+        id_err = _check_row_ids(clean, stored_ing, stored_step)
+        if id_err:
+            return jsonify({"error": id_err}), 400
+        write_recipe_rows(s, rid, clean, stored=(stored_ing, stored_step))
         # ⚠️ BEFORE the baseline capture and the heading sync below, so a snapshot taken in this
         # same transaction sees the waits this save wrote.
         write_plan_ahead(s, rid, payload)
