@@ -22,8 +22,12 @@ COLS = ("position", "is_heading", "qty", "quantity", "unit", "ingredient_id", "l
         "raw_text", "grams", "secondary_measure", "catalog_id", "link_confidence", "link_rule",
         "link_matched")
 
+# ⚠️ THE FIXTURE'S ids ARE INSERTED VERBATIM (option C commit 1). The payloads carry the id the
+# client read off the GET, so the stored row and the payload have to agree on one. They are 9001+
+# and 9101+ to clear the rows the fixture recipes already hold. See scripts/gen_save_roundtrip.mjs.
 
-def _seed(kitchen, rows=None, steps=None):
+
+def _seed(kitchen, rows=None, steps=None, name="Round Trip"):
     """A recipe whose stored rows are EXACTLY the fixture's, written straight to the table.
 
     Direct SQL on purpose: these are shapes only an import or a linkage pass produces (a NULL label
@@ -32,7 +36,7 @@ def _seed(kitchen, rows=None, steps=None):
     rows = FIX["rows"] if rows is None else rows
     steps = FIX["steps"] if steps is None else steps
     rid = kitchen.client.post("/api/recipes", json={
-        "name": "Round Trip", "ingredients": [], "steps": ["placeholder"],
+        "name": name, "ingredients": [], "steps": ["placeholder"],
     }).get_json()["id"]
     with kitchen.conn() as c:
         c.execute("DELETE FROM recipe_ingredients WHERE recipe_id=?", (rid,))
@@ -41,13 +45,14 @@ def _seed(kitchen, rows=None, steps=None):
                   "VALUES ('egg_pasta', 'egg pasta', 'app', '')")
         for r in rows:
             row = r["row"]
-            c.execute(f"INSERT INTO recipe_ingredients (recipe_id, {','.join(COLS)}) "
-                      f"VALUES (?,{','.join('?' * len(COLS))})",
-                      (rid, *[row[k] for k in COLS]))
+            c.execute(f"INSERT INTO recipe_ingredients (id, recipe_id, {','.join(COLS)}) "
+                      f"VALUES (?,?,{','.join('?' * len(COLS))})",
+                      (row.get("id"), rid, *[row[k] for k in COLS]))
         for s in steps:
             st = s["row"]
-            c.execute("INSERT INTO recipe_steps (recipe_id, position, is_heading, text) VALUES (?,?,?,?)",
-                      (rid, st["position"], st["is_heading"], st["text"]))
+            c.execute("INSERT INTO recipe_steps (id, recipe_id, position, is_heading, text) "
+                      "VALUES (?,?,?,?,?)",
+                      (st.get("id"), rid, st["position"], st["is_heading"], st["text"]))
         c.commit()
     return rid
 
@@ -70,10 +75,19 @@ def _strip_ids(rows):
     return [{k: v for k, v in r.items() if k != "id"} for r in rows]
 
 
-def _save(kitchen, rid, rows=None, steps=None):
+def _stripped(entries):
+    """The fixture's entries with the id taken out of BOTH halves — the payload an older client
+    sends, against a recipe whose rows were inserted the ordinary way."""
+    return [{**e,
+             "row": {k: v for k, v in e["row"].items() if k != "id"},
+             "payload": {k: v for k, v in e["payload"].items() if k != "id"}}
+            for e in entries]
+
+
+def _save(kitchen, rid, rows=None, steps=None, name="Round Trip"):
     """PUT the recipe back with the client's own payload for every row."""
     payload = {
-        "name": "Round Trip",
+        "name": name,
         "ingredients": [r["payload"] for r in (FIX["rows"] if rows is None else rows)],
         "steps": [s["payload"] for s in (FIX["steps"] if steps is None else steps)],
     }
@@ -291,3 +305,79 @@ def test_an_inserted_row_cannot_steal_a_line_a_later_row_matches_exactly(kitchen
     assert kept["3 tbsp"]["link_rule"] == "exact"        # each stored row stayed on its own line
     assert kept["2 tbsp"]["link_rule"] == "form_strip:cold"
     assert all(r["catalog_id"] == "water" for r in kept.values())
+
+
+# --------------------------------------------------------------------------------------------- #
+# Option C, commit 1: the row id makes the round trip, and the server ignores it
+#
+# The read half was ALREADY true and is pinned here rather than added: get_recipe selects the whole
+# table, so `id` has always been served on every ingredient and step row, and enterEditMode's
+# structuredClone has always copied it into the draft. It was dropped on the way BACK, by
+# ingToPayload / stepToPayload, which is why no row id survived a save.
+# --------------------------------------------------------------------------------------------- #
+def test_the_api_serves_a_row_id_on_every_ingredient_and_step(kitchen):
+    rid = _seed(kitchen)
+    got = kitchen.client.get(f"/api/recipes/{rid}").get_json()
+    assert [r["id"] for r in got["ingredients"]] == [r["row"]["id"] for r in FIX["rows"]]
+    assert [x["id"] for x in got["steps"]] == [x["row"]["id"] for x in FIX["steps"]]
+
+
+def test_a_payload_carrying_ids_saves_exactly_like_one_without(kitchen):
+    """Commit 1 is additive: the id rides along and nothing reads it yet. Commit 2 is where it
+    starts to mean something, and this is the before-picture it has to change."""
+    with_ids = _seed(kitchen)
+    assert _save(kitchen, with_ids).status_code == 200
+
+    without = _seed(kitchen, rows=_stripped(FIX["rows"]), steps=_stripped(FIX["steps"]),
+                    name="Round Trip, Older Client")
+    assert _save(kitchen, without, name="Round Trip, Older Client",
+                 rows=_stripped(FIX["rows"]), steps=_stripped(FIX["steps"])).status_code == 200
+
+    assert _strip_ids(_rows(kitchen, with_ids)) == _strip_ids(_rows(kitchen, without))
+    assert _strip_ids(_steps(kitchen, with_ids)) == _strip_ids(_steps(kitchen, without))
+
+
+def test_a_step_sent_as_an_object_keeps_its_text(kitchen):
+    """⚠️ THE ONE THAT WOULD HAVE EATEN EVERY STEP. write_recipe_rows read a step as
+    `step if isinstance(step, str) else ""`, so the new {"id": …, "text": …} form would have been
+    written BLANK on every save, and a blank step is how the client deletes one."""
+    rid = _seed(kitchen)
+    assert _save(kitchen, rid).status_code == 200
+    assert [x["text"] for x in _steps(kitchen, rid)] == [x["row"]["text"] for x in FIX["steps"]]
+    assert [x["is_heading"] for x in _steps(kitchen, rid)] == [1, 0, 0]
+
+
+def test_a_step_sent_as_a_bare_string_still_works(kitchen):
+    """The import review posts plain text and a browser holding the old bundle over a deploy will
+    too, so the string form is not going away."""
+    rid = _seed(kitchen)
+    r = kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Round Trip", "ingredients": [], "steps": ["Whisk it.", {"heading": "THEN"}]})
+    assert r.status_code == 200
+    assert [(x["is_heading"], x["text"]) for x in _steps(kitchen, rid)] == \
+           [(0, "Whisk it."), (1, "THEN")]
+
+
+def test_a_step_object_is_still_checked_for_a_library_link_that_names_nothing(kitchen):
+    """The [[key]] gate read `(step or {}).get("heading", "")`, so an object step's links would
+    have gone unchecked — the same silent miss as the blank text above, on the validation side."""
+    rid = _seed(kitchen)
+    r = kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Round Trip", "ingredients": [],
+        "steps": [{"id": None, "text": "Fold in the [[nonesuch]]."}]})
+    assert r.status_code == 400
+    assert "nonesuch" in r.get_json()["error"]
+
+
+def test_an_object_step_may_carry_a_link_the_recipe_already_stands_on(kitchen):
+    """The standing-link let-through has to reach the object form too, or the five recipes migration
+    046 stranded become unsaveable again the moment the client sends objects."""
+    rid = _seed(kitchen)
+    with kitchen.conn() as c:
+        c.execute("UPDATE recipe_steps SET text='Fold in the [[gone_away]].' WHERE recipe_id=? "
+                  "AND is_heading=0", (rid,))
+        c.commit()
+    r = kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Round Trip", "ingredients": [],
+        "steps": [{"id": None, "text": "Fold in the [[gone_away]]."}]})
+    assert r.status_code == 200

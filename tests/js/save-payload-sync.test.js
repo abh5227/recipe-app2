@@ -43,6 +43,45 @@ test("the client canonicalizes the unit on the way out, which the server key mus
 });
 
 test("a step's line breaks survive the payload builder", () => {
-  const s = FIX.steps.find((x) => String(x.payload).includes("AIR FRYER"));
-  assert.ok(String(s.payload).includes("\n\n"), "the blank line was folded away");
+  const s = FIX.steps.find((x) => (x.payload.text || "").includes("AIR FRYER"));
+  assert.ok(s.payload.text.includes("\n\n"), "the blank line was folded away");
+});
+
+// --------------------------------------------------------------------------------------------- //
+// Option C commit 1: the row id goes back
+// --------------------------------------------------------------------------------------------- //
+test("every ingredient payload carries its row id", () => {
+  for (const { shape, row, payload } of FIX.rows) {
+    assert.equal(payload.id, row.id, `no id went back for: ${shape}`);
+  }
+});
+
+test("every step payload carries its row id, heading or not", () => {
+  for (const { row, payload } of FIX.steps) {
+    assert.equal(payload.id, row.id);
+  }
+});
+
+test("a row the user just added sends id: null rather than omitting the key", () => {
+  // The templates addIngredient / addStep splice in, minus the fields the builders do not read.
+  const fresh = { id: null, is_heading: 0, quantity: "1", unit: "pinch", label: "saffron", note: "" };
+  assert.equal("id" in ingToPayload(fresh), true);
+  assert.equal(ingToPayload(fresh).id, null);
+  assert.equal(stepToPayload({ id: null, is_heading: 0, text: "Rest." }).id, null);
+  assert.equal(stepToPayload({ id: null, is_heading: 1, text: "MAKE IT" }).id, null);
+});
+
+test("a row with no id at all still sends id: null", () => {
+  // An older draft, or any row built before the template carried the key. undefined would serialize
+  // the key away entirely and the server would have to tell "absent" from "new".
+  assert.equal(ingToPayload({ is_heading: 0, quantity: "", unit: "", label: "salt" }).id, null);
+  assert.equal(ingToPayload({ is_heading: 1, heading: "FOR THE DOUGH" }).id, null);
+  assert.equal(stepToPayload({ is_heading: 0, text: "Rest." }).id, null);
+});
+
+test("a non-heading step goes back as an object, not a bare string", () => {
+  // The shape change the server's _step_parts exists to absorb. A string has nowhere to put an id.
+  const out = stepToPayload({ id: 12, is_heading: 0, text: "Whisk it." });
+  assert.equal(typeof out, "object");
+  assert.deepEqual(out, { id: 12, text: "Whisk it." });
 });

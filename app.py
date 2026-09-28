@@ -381,6 +381,30 @@ def _promote_library_row(s, library_id, known):
     return slug, canonical, None
 
 
+def _step_parts(step):
+    """(text, is_heading) for ONE payload step, in either wire form.
+
+    ⚠️ TWO WIRE FORMS, AND BOTH ARE LIVE.
+      {"heading": "MAKE THE SAUCE"}   a section heading. The original form, unchanged.
+      {"text": "Whisk it."}           a method step (option C, commit 1). Carries the row's `id`.
+      "Whisk it."                     a method step as a BARE STRING. The original form, and it is
+                                      not going away: the import review posts plain text, every
+                                      hand-written test payload is a string, and a browser holding
+                                      the old bundle across a deploy posts one too.
+
+    ⚠️ IT EXISTS BECAUSE THE STRING CHECK WAS LOAD-BEARING IN TWO PLACES AND WOULD HAVE FAILED
+    SILENTLY IN BOTH. write_recipe_rows read a step as `step if isinstance(step, str) else ""`, so
+    a {"text": ...} step would have been written BLANK, and nonEmptySteps treats a blank step as a
+    deletion. resolve_recipe_payload's [[key]] scan read `(step or {}).get("heading", "")`, so the
+    links inside an object step would not have been checked at all. One reader now, not two."""
+    if isinstance(step, dict):
+        heading = step.get("heading")
+        if heading:
+            return heading, True
+        return (step.get("text") or ""), False
+    return (step if isinstance(step, str) else ""), False
+
+
 def resolve_recipe_payload(s, payload, standing_step_links=frozenset()):
     """Return (clean, error). Validates a payload and RESOLVES its ingredient links, CREATING an
     ingredients row when a line names a library entry that has not been promoted yet.
@@ -458,7 +482,7 @@ def resolve_recipe_payload(s, payload, standing_step_links=frozenset()):
     #    as a button from the TEXT alone and never checks that the key resolves, so a step reads
     #    identically either way. The step text is stored verbatim, so nothing about it moves.
     for step in steps:
-        text = step if isinstance(step, str) else (step or {}).get("heading", "")
+        text, _ = _step_parts(step)
         for m in re.finditer(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]", text or ""):
             key = m.group(1).strip()
             if key not in known and key not in standing_step_links:
@@ -724,11 +748,9 @@ def write_recipe_rows(s, rid, clean, preserve=None):
         ))
 
     for pos, step in enumerate(clean["steps"]):
-        if isinstance(step, dict) and step.get("heading"):
-            s.execute(insert(rs).values(recipe_id=rid, position=pos, is_heading=1, text=step["heading"]))
-        else:
-            text_val = step if isinstance(step, str) else ""
-            s.execute(insert(rs).values(recipe_id=rid, position=pos, is_heading=0, text=text_val))
+        text_val, is_heading = _step_parts(step)
+        s.execute(insert(rs).values(recipe_id=rid, position=pos,
+                                    is_heading=1 if is_heading else 0, text=text_val))
 
 
 # ---- change-tracking (stage 1): recipe_snapshots — capture-on-cook ------------------------------

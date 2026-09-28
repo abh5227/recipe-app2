@@ -2569,8 +2569,10 @@ function focusIngField(i, key) {
 function addIngredient(isHeading, at) {
   const arr = view.draft.ingredients;
   const at_ = at == null ? arr.length : at;
-  arr.splice(at_, 0, isHeading ? { is_heading: 1, heading: "", qty: "", quantity: "", unit: "", label: "", note: "", ingredient_id: null, raw_text: "" }
-                               : { is_heading: 0, qty: "", quantity: "", unit: "", label: "", note: "", ingredient_id: null, raw_text: "" });
+  // id: null is the row template saying "the database has never seen me". ingToPayload sends it as
+  // such, and the server inserts rather than looks it up (option C).
+  arr.splice(at_, 0, isHeading ? { id: null, is_heading: 1, heading: "", qty: "", quantity: "", unit: "", label: "", note: "", ingredient_id: null, raw_text: "" }
+                               : { id: null, is_heading: 0, qty: "", quantity: "", unit: "", label: "", note: "", ingredient_id: null, raw_text: "" });
   markDirty(); rerenderEditIngredients();
   focusIngField(at_, isHeading ? "heading" : "quantity");
 }
@@ -2830,7 +2832,7 @@ function removeStep(i) {
 function addStep(at, isHeading) {
   const arr = view.draft.steps;
   const at_ = at == null ? arr.length : at;
-  arr.splice(at_, 0, { is_heading: isHeading ? 1 : 0, text: "" });
+  arr.splice(at_, 0, { id: null, is_heading: isHeading ? 1 : 0, text: "" });   // id: null — never saved yet
   markDirty(); rerenderEditSteps();
   // A heading row is a plain <input>, not a TipTap island, so focusStepEditor can't reach it — it looks
   // for a .step-editor-host that a heading never renders. `at` stays FIRST in the signature so both

@@ -103,12 +103,17 @@ def test_a_known_step_key_is_accepted_in_both_forms(kitchen):
                    steps=["Grate [[carrot|the carrots]]."]).status_code == 201
 
 
-def test_a_step_heading_is_scanned_but_a_dict_step_s_text_is_not(kitchen):
-    """⚠️ CHARACTERIZATION OF A QUIRK, not an endorsement. The scan reads a string step whole, and for
-    a dict step reads only .get('heading'). A dict step's 'text' is never scanned. That is consistent
-    with write_recipe_rows, which only ever writes a dict step as a heading."""
+def test_a_step_is_scanned_in_every_wire_form(kitchen):
+    """⚠️ THE QUIRK THIS ONCE CHARACTERIZED IS GONE, and it had to go before the client could send an
+    object step. The scan read a string whole and a dict as .get('heading') only, so a dict step's
+    'text' was never checked. It did not matter while write_recipe_rows only ever wrote a dict step
+    as a heading (it wrote the other kind BLANK). Option C's payload sends {"id": …, "text": …} for
+    every method step, so both readers now go through app._step_parts and both forms are scanned."""
     assert _create(kitchen, steps=[{"heading": "With [[penne]]"}]).status_code == 400
-    assert _create(kitchen, steps=[{"text": "With [[penne]]"}]).status_code == 201
+    assert _create(kitchen, name="Gate Object", steps=[{"text": "With [[penne]]"}]).status_code == 400
+    assert _create(kitchen, name="Gate String", steps=["With [[penne]]"]).status_code == 400
+    assert _create(kitchen, name="Gate Known",
+                   steps=[{"id": None, "text": "Grate [[carrot]]."}]).status_code == 201
 
 
 # ---- characterization: the same rules on the edit route -------------------------------------------

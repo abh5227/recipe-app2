@@ -4,6 +4,7 @@
   {
    "shape": "heading",
    "row": {
+    "id": 9001,
     "position": 0,
     "is_heading": 1,
     "qty": null,
@@ -21,12 +22,14 @@
     "link_matched": null
    },
    "payload": {
+    "id": 9001,
     "heading": "FOR THE SAUCE:"
    }
   },
   {
    "shape": "unlinked with a label, raw_text longer (the imported shape)",
    "row": {
+    "id": 9002,
     "position": 1,
     "is_heading": 0,
     "qty": "25 g",
@@ -44,6 +47,7 @@
     "link_matched": "guajillo chili"
    },
    "payload": {
+    "id": 9002,
     "quantity": "25",
     "unit": "g",
     "text": "guajillo chillies, dried",
@@ -53,6 +57,7 @@
   {
    "shape": "unlinked with a NULL label (the Paprika shape)",
    "row": {
+    "id": 9003,
     "position": 2,
     "is_heading": 0,
     "qty": "2 tbsp",
@@ -70,6 +75,7 @@
     "link_matched": "olive oil"
    },
    "payload": {
+    "id": 9003,
     "quantity": "2",
     "unit": "tbsp",
     "text": "extra virgin olive oil",
@@ -79,6 +85,7 @@
   {
    "shape": "unit the client canonicalizes (teaspoon -> tsp)",
    "row": {
+    "id": 9004,
     "position": 3,
     "is_heading": 0,
     "qty": "1 teaspoon",
@@ -96,6 +103,7 @@
     "link_matched": "kosher salt"
    },
    "payload": {
+    "id": 9004,
     "quantity": "1",
     "unit": "tsp",
     "text": "kosher salt",
@@ -105,6 +113,7 @@
   {
    "shape": "a note row",
    "row": {
+    "id": 9005,
     "position": 4,
     "is_heading": 0,
     "qty": "2 tbsp",
@@ -122,6 +131,7 @@
     "link_matched": null
    },
    "payload": {
+    "id": 9005,
     "quantity": "2",
     "unit": "tbsp",
     "text": "soy sauce",
@@ -131,6 +141,7 @@
   {
    "shape": "duplicate name, different qty",
    "row": {
+    "id": 9006,
     "position": 5,
     "is_heading": 0,
     "qty": "3 tbsp",
@@ -148,6 +159,7 @@
     "link_matched": "water"
    },
    "payload": {
+    "id": 9006,
     "quantity": "3",
     "unit": "tbsp",
     "text": "water",
@@ -157,6 +169,7 @@
   {
    "shape": "duplicate name, different qty (the second)",
    "row": {
+    "id": 9007,
     "position": 6,
     "is_heading": 0,
     "qty": "2 tbsp",
@@ -174,6 +187,7 @@
     "link_matched": "water"
    },
    "payload": {
+    "id": 9007,
     "quantity": "2",
     "unit": "tbsp",
     "text": "water",
@@ -183,6 +197,7 @@
   {
    "shape": "duplicate name AND qty (the full key collides)",
    "row": {
+    "id": 9008,
     "position": 7,
     "is_heading": 0,
     "qty": "1 cup",
@@ -200,6 +215,7 @@
     "link_matched": "all purpose flour"
    },
    "payload": {
+    "id": 9008,
     "quantity": "1",
     "unit": "cup",
     "text": "flour",
@@ -209,6 +225,7 @@
   {
    "shape": "duplicate name AND qty (the second)",
    "row": {
+    "id": 9009,
     "position": 8,
     "is_heading": 0,
     "qty": "1 cup",
@@ -226,6 +243,7 @@
     "link_matched": "all purpose flour"
    },
    "payload": {
+    "id": 9009,
     "quantity": "1",
     "unit": "cup",
     "text": "flour",
@@ -235,6 +253,7 @@
   {
    "shape": "linked to a library ingredient",
    "row": {
+    "id": 9010,
     "position": 9,
     "is_heading": 0,
     "qty": "200 g",
@@ -252,6 +271,7 @@
     "link_matched": "egg pasta"
    },
    "payload": {
+    "id": 9010,
     "quantity": "200",
     "unit": "g",
     "item": "egg_pasta",
@@ -262,6 +282,7 @@
   {
    "shape": "trailing space in the name",
    "row": {
+    "id": 9011,
     "position": 10,
     "is_heading": 0,
     "qty": "1 tbsp",
@@ -279,6 +300,7 @@
     "link_matched": null
    },
    "payload": {
+    "id": 9011,
     "quantity": "1",
     "unit": "tbsp",
     "text": "onion, finely grated ",
@@ -289,29 +311,39 @@
  "steps": [
   {
    "row": {
+    "id": 9101,
     "position": 0,
     "is_heading": 1,
     "text": "MAKE THE SAUCE"
    },
    "payload": {
+    "id": 9101,
     "heading": "MAKE THE SAUCE"
    }
   },
   {
    "row": {
+    "id": 9102,
     "position": 1,
     "is_heading": 0,
     "text": "Whisk it."
    },
-   "payload": "Whisk it."
+   "payload": {
+    "id": 9102,
+    "text": "Whisk it."
+   }
   },
   {
    "row": {
+    "id": 9103,
     "position": 2,
     "is_heading": 0,
     "text": "Rest.\n\nAIR FRYER OPTION:\nShake off excess."
    },
-   "payload": "Rest.\n\nAIR FRYER OPTION:\nShake off excess."
+   "payload": {
+    "id": 9103,
+    "text": "Rest.\n\nAIR FRYER OPTION:\nShake off excess."
+   }
   }
  ]
 }
