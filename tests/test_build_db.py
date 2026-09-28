@@ -3,7 +3,7 @@ rebuild is idempotent and keeps referential integrity."""
 from fixtures import TEST_RECIPES   # the test-owned recipe set the harness seeds (see fixtures.py)
 
 # Bump this when a migration is added.
-EXPECTED_MIGRATIONS = 51
+EXPECTED_MIGRATIONS = 52
 
 
 def test_all_migrations_applied(kitchen):
@@ -12,7 +12,7 @@ def test_all_migrations_applied(kitchen):
     assert len(files) == EXPECTED_MIGRATIONS
     assert files == sorted(files)                 # applied in filename order
     assert files[0].startswith("001")
-    assert files[-1].startswith("051")
+    assert files[-1].startswith("052")
 
 
 def test_seed_rows_get_qty_unit_split(kitchen):
@@ -84,7 +84,11 @@ def test_alembic_has_exactly_one_head():
             continue
         text = open(os.path.join(versions, name), encoding="utf-8").read()
         rev = re.search(r"^revision(?::\s*str)?\s*=\s*['\"]([^'\"]+)", text, re.M)
-        down = re.search(r"^down_revision(?:\s*:[^=]+)?=\s*(.+)$", text, re.M)
+        # ⚠️ \s* BEFORE THE =. Without it the pattern only matched Alembic's own annotated form
+        # (`down_revision: Union[...] = 'x'`) and skipped a hand-written `down_revision = "x"`
+        # entirely, which reads downstream as an unparented revision. The report was then "2 heads"
+        # for a file whose chain was correct, pointing at the wrong problem.
+        down = re.search(r"^down_revision(?:\s*:[^=]+)?\s*=\s*(.+)$", text, re.M)
         assert rev, f"{name} has no revision id"
         down_of[rev.group(1)] = (down.group(1).strip().strip("'\"") if down else None)
 

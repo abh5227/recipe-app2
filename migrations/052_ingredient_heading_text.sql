@@ -1,0 +1,18 @@
+-- 052: a heading row keeps its own title, so converting a line to a heading destroys nothing.
+--
+-- ⚠️ THREE STRINGS, AND THERE WERE ONLY TWO COLUMNS. A row that is a heading has a TITLE. A row
+-- that is a line has a NAME (label) and a SOURCE LINE (raw_text). Converting a line to a heading
+-- used to write the title over raw_text and NULL everything else, so the save destroyed the amount,
+-- the weight, the note and the four linkage columns, and converting back left a bare name. Measured
+-- on live: 2,912 of 3,349 lines (87%) carry a raw_text richer than their label, e.g.
+-- "2 tablespoons dried oregano (Greek or Turkish)" against "dried oregano (Greek or Turkish)", so
+-- the title cannot share raw_text and leave the round trip lossless.
+--
+-- The title now lives here. raw_text, label, qty, the weight and the links are left exactly as the
+-- line had them, dormant while the row is a heading. This mirrors the client, where the heading text
+-- has had its own field since the lossless toggle landed (static/ingredient-row.js toggleRowType).
+--
+-- ⚠️ NULL ON ALL 223 EXISTING HEADING ROWS, AND THAT IS THE COMPATIBILITY STORY. Every reader
+-- resolves the title as `heading` when set, else raw_text — the same fallback the client's
+-- headingText() already used. The 300 reason='original' baselines are untouched.
+ALTER TABLE recipe_ingredients ADD COLUMN heading TEXT;
