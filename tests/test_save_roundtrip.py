@@ -739,3 +739,118 @@ def test_an_older_client_that_sends_no_ids_at_all_still_saves(kitchen):
     assert _save(kitchen, rid, rows=rows, steps=steps, name="Round Trip, No Ids").status_code == 200
     assert _strip_ids(_rows(kitchen, rid)) == before
     assert [x["text"] for x in _steps(kitchen, rid)] == [x["row"]["text"] for x in FIX["steps"]]
+
+
+# --------------------------------------------------------------------------------------------- #
+# The heading sync must write a converted heading's TITLE into the baseline, not its source line
+#
+# ⚠️ A REGRESSION THE 052 WORK INTRODUCED. snapshot_headsync._reinterleave built its rows with a
+# plain field copy and so skipped the projection content_blob applies. That was harmless while a
+# heading's title WAS its raw_text, and wrong the moment a converted heading kept the line's source
+# text there: the sync wrote "25 g (0.9 oz) guajillo chillies, dried" into the BASELINE as a section
+# title, and the recipe page then reported an unrelated heading as renamed. Both builders now come
+# through snapshot_serialize.snapshot_ing_row.
+# --------------------------------------------------------------------------------------------- #
+def _baseline(kitchen, rid):
+    import json
+    with kitchen.conn() as c:
+        return json.loads(c.execute(
+            "SELECT content FROM recipe_snapshots WHERE recipe_id=? AND reason='original'",
+            (rid,)).fetchone()[0])
+
+
+def _settle(kitchen, rid):
+    """Rewrite the reason='original' baseline from the recipe's CURRENT rows, so the fixture recipe
+    reads as unedited and _annotations() is []. 
+
+    ⚠️ ONLY EVER IN A TEST. _seed writes the fixture's rows in by direct SQL AFTER the POST that
+    created the recipe, so the baseline captured at birth holds the placeholder state and every
+    fixture row reads as 'added' forever. Declaring the recipe born in its current state is the
+    right thing HERE and a catastrophe in production, which is what sync_original_heading_layout's
+    docstring spends its length on: it would erase every annotation the recipe should have had."""
+    import app as app_module
+    with app_module.orm_session() as s:
+        blob = app_module.serialize_recipe_content(s, rid)
+    with kitchen.conn() as c:
+        c.execute("UPDATE recipe_snapshots SET content=? WHERE recipe_id=? AND reason='original'",
+                  (blob, rid))
+        c.commit()
+
+
+def test_the_baseline_never_gets_a_dormant_source_line_as_a_heading_title(kitchen):
+    """⚠️ THE REGRESSION 052 INTRODUCED. The sync built its rows with a plain field copy, skipping
+    the projection content_blob applies, so a converted heading's raw_text — which since 052 is the
+    LINE's source text — went into the baseline as a section title."""
+    rid = _seed(kitchen)
+    _save(kitchen, rid)                                    # let the heading sync settle
+    _settle(kitchen, rid)
+    source_line = [r for r in _rows(kitchen, rid) if r["id"] == 9002][0]["raw_text"]
+    assert source_line == "25 g (0.9 oz) guajillo chillies, dried"
+
+    rows = copy.deepcopy(FIX["rows"])
+    rows[1] = _heading_payload(9002, "FOR THE CHILLIES")
+    assert _save(kitchen, rid, rows=rows).status_code == 200
+
+    titles = [r["raw_text"] for r in _baseline(kitchen, rid)["ingredients"] if r["is_heading"]]
+    assert source_line not in titles, "the baseline got the dormant SOURCE LINE as a heading title"
+    # And the converted row is not copied into the baseline as a heading at all: the baseline still
+    # holds it as the content LINE it was at birth. See _reinterleave's key_of.
+    assert titles == ["FOR THE SAUCE:"]
+    lines = [r["raw_text"] for r in _baseline(kitchen, rid)["ingredients"] if not r["is_heading"]]
+    assert source_line in lines
+
+
+def test_converting_to_a_heading_and_back_leaves_no_marks_either_way(kitchen):
+    """⚠️ ZERO MARKS IN BOTH DIRECTIONS, which is the whole of the fix. A converted row shows the
+    same words on the page in a different style, and heading changes carry no annotation by existing
+    ruling, so nothing about the recipe's content moved."""
+    rid = _seed(kitchen)
+    _save(kitchen, rid)
+    _settle(kitchen, rid)
+    assert _annotations(kitchen, rid) == []
+    start = _rows(kitchen, rid)
+
+    rows = copy.deepcopy(FIX["rows"])
+    # ⚠️ THE TITLE IS THE ROW'S OWN NAME, because that is what toggleRowType seeds it with. A user
+    #    who also RETYPES the title has taken that name off the page, and the removal is then
+    #    reported on purpose — test_a_renamed_conversion_is_still_reported below.
+    rows[3] = _heading_payload(9004, "kosher salt")
+    assert _save(kitchen, rid, rows=rows).status_code == 200
+    assert _annotations(kitchen, rid) == [], "converting to a heading left a mark"
+
+    served = kitchen.client.get(f"/api/recipes/{rid}").get_json()["ingredients"]
+    back = [{"shape": "back", "row": {},
+             "payload": _as_line(x) if x["id"] == 9004 else _as_payload(x)} for x in served]
+    assert _save(kitchen, rid, rows=back).status_code == 200
+    assert _annotations(kitchen, rid) == [], "converting back left a mark"
+    assert _rows(kitchen, rid) == start                    # byte-identical, ids included
+
+
+def test_a_real_edit_alongside_a_conversion_still_marks(kitchen):
+    """The suppression retires the converted row and nothing else."""
+    rid = _seed(kitchen)
+    _save(kitchen, rid)
+    _settle(kitchen, rid)
+    rows = copy.deepcopy(FIX["rows"])
+    rows[3] = _heading_payload(9004, "kosher salt")         # convert one row
+    rows[5]["payload"]["quantity"] = "9"                   # and really edit another
+    assert _save(kitchen, rid, rows=rows).status_code == 200
+    got = _annotations(kitchen, rid)
+    assert len(got) == 1, got
+    assert got[0]["kind"] == "ingredient" and got[0]["field"] == "amount"
+    assert got[0]["to"] == "9 tbsp"
+
+
+def test_a_renamed_conversion_is_still_reported(kitchen):
+    """⚠️ NOT A GAP. Convert a line AND retype the heading, and that ingredient's name is no longer
+    anywhere on the page, so the removal is the honest report. The key is the row's NAME, so there is
+    nothing to recognize. Commit 3 puts the row id in the baseline, after which the same row IS
+    recognizable across a rename and this becomes a decision rather than a consequence."""
+    rid = _seed(kitchen)
+    _save(kitchen, rid)
+    _settle(kitchen, rid)
+    rows = copy.deepcopy(FIX["rows"])
+    rows[3] = _heading_payload(9004, "FOR THE BRINE")
+    assert _save(kitchen, rid, rows=rows).status_code == 200
+    got = _annotations(kitchen, rid)
+    assert any(c["kind"] == "ingredient" and c["type"] == "removed" for c in got), got

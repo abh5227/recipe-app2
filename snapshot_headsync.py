@@ -31,10 +31,13 @@ the baseline's.
 import json
 
 from snapshot_diff import _split                      # the ONE heading/content partitioner — not a second copy
-from snapshot_serialize import SNAPSHOT_ING_FIELDS, content_blob
+from snapshot_serialize import (
+    SNAPSHOT_ING_FIELDS, content_blob, kind_change_key, snapshot_ing_row, snapshot_step_row,
+)
 
 # The step row's three keys (snapshot_serialize spells them inline in its steps projection).
-SNAPSHOT_STEP_FIELDS = ("position", "is_heading", "text")
+# SNAPSHOT_STEP_FIELDS moved to snapshot_serialize, beside the ingredient list and the two row
+# builders that project them. _reinterleave takes a BUILDER now, not a field tuple — see below.
 
 
 class HeadingSyncViolation(Exception):
@@ -85,19 +88,44 @@ def _content_ordinal_of_headings(rows):
     return out
 
 
-def _reinterleave(old_rows, current_rows, fields):
+def _reinterleave(old_rows, current_rows, row_of, key_of=None):
     """Baseline CONTENT rows (order and values untouched) + CURRENT headings, re-interleaved by
     content ordinal, then renumbered so `position` is the row's index in the combined list —
-    exactly how write_recipe_rows assigns it (enumerate over the heading-INCLUSIVE list)."""
-    content = [_as_dict(r, fields) for r in old_rows if not _get(r, "is_heading")]
+    exactly how write_recipe_rows assigns it (enumerate over the heading-INCLUSIVE list).
+
+    ⚠️ `row_of` IS THE SNAPSHOT'S OWN ROW BUILDER, NOT A FIELD TUPLE, and that is the fix for a real
+    defect. This took `fields` and did a plain `{k: row[k] for k in fields}` copy, which quietly
+    skipped the projection content_blob applies. Migration 052 let a converted heading keep the
+    line's source text in raw_text and hold its title in `heading`, so the plain copy wrote
+    "125 g milk lukewarm (95-104°F)" into the BASELINE as a section title. Taking the builder means
+    a second copy of the projection cannot drift from the first, because there is no second copy."""
+    content = [row_of(r) for r in old_rows if not _get(r, "is_heading")]
     heads = _content_ordinal_of_headings(current_rows)
+    if key_of is not None:
+        # ⚠️ A CONVERTED ROW IS NOT A SECTION, AND COPYING IT IN DUPLICATES IT. The baseline holds
+        # the recipe's BIRTH content, where this row was an ingredient LINE and still is, above.
+        # Current holds it as a heading because the user converted it. Copying current's heading in
+        # regardless left the baseline carrying the same row twice, as a line and as a title, which
+        # is not a state the recipe was ever in.
+        #
+        # The damage was in the annotations, and it compounded. The duplicate has no counterpart in
+        # current, so it read as a heading the user had deleted; and on a recipe that lists an
+        # ingredient twice (brioche-bread has a Metric list and a US list) the extra name collided
+        # with the real second row and reported THAT one removed instead. Every further conversion
+        # save added another.
+        #
+        # Skipping it leaves the baseline's heading layout differing from current by exactly the
+        # converted rows, which is correct: in the baseline's world those rows are content, and the
+        # layout exists only so a REMOVED row can name the section it lived in.
+        known = {key_of(r) for r in content}
+        heads = [(o, h) for o, h in heads if key_of(h) not in known]
 
     merged, ci = [], 0
     for ordinal, h in heads:
         stop = min(ordinal, len(content))              # clamp: current may name an ordinal past the
         while ci < stop:                               # baseline's shorter content list
             merged.append(content[ci]); ci += 1
-        merged.append(_as_dict(h, fields))
+        merged.append(row_of(h))
     while ci < len(content):
         merged.append(content[ci]); ci += 1
 
@@ -127,8 +155,11 @@ def sync_heading_layout(old_blob, current_ingredients, current_steps):
     old = _load(old_blob)
     return content_blob(
         old.get("recipe") or {},
-        _reinterleave(old.get("ingredients") or [], current_ingredients, SNAPSHOT_ING_FIELDS),
-        _reinterleave(old.get("steps") or [], current_steps, SNAPSHOT_STEP_FIELDS),
+        _reinterleave(old.get("ingredients") or [], current_ingredients, snapshot_ing_row,
+                      kind_change_key),
+        # No key_of for steps: nothing converts a step to a heading or back (the editor has no
+        # such action — see the row-menu entry in ROADMAP), so there is no duplicate to avoid.
+        _reinterleave(old.get("steps") or [], current_steps, snapshot_step_row),
         old.get("waits"),
         old.get("storage"),
     )

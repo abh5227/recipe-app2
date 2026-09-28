@@ -38,8 +38,43 @@ def _get(row, key):
     return getattr(row, key, None)
 
 
-def _ing_row(row):
+SNAPSHOT_STEP_FIELDS = ("position", "is_heading", "text")
+
+
+def kind_change_key(row):
+    """The one thing that identifies a row across an ingredient <-> heading conversion.
+
+    ⚠️ ONE EXPRESSION FOR BOTH KINDS, AND IT WORKS BECAUSE OF WHAT EACH KIND KEEPS. A line's name is
+    its `label`, falling back to raw_text for the handful of live rows that have none. A heading
+    converted from a line keeps that same `label` dormant beside its title (migration 052), and a
+    heading that was BORN one has no label, so it falls back to raw_text — which for a born heading
+    IS its title. The same read answers "what is this row called" on either side of a conversion.
+
+    ⚠️ IT LIVES HERE, in the module that owns the snapshot row format, because BOTH readers need the
+    same answer: snapshot_diff, to recognize a row that only changed kind, and snapshot_headsync, to
+    avoid writing a heading into the baseline for a row the baseline already holds as a line.
+
+    ⚠️ IT IS TEXT, AND IT IS TEMPORARY. Commit 3 puts the row's database id in the baseline, at which
+    point this becomes `row.get("id")` and the matching stops depending on text at all. That is the
+    only line that needs to change, which is why the key is a function of its own."""
+    name = _get(row, "label") or _get(row, "raw_text") or ""
+    return " ".join(name.split()).lower()
+
+
+def snapshot_step_row(row):
+    """One step row, projected for the snapshot. Public for the same reason snapshot_ing_row is."""
+    return {k: _get(row, k) for k in SNAPSHOT_STEP_FIELDS}
+
+
+def snapshot_ing_row(row):
     """One ingredient row, projected for the snapshot.
+
+    ⚠️ PUBLIC, AND EVERY BUILDER OF A SNAPSHOT ROW MUST COME THROUGH HERE. It was private, and
+    snapshot_headsync._reinterleave built its rows with a plain field copy instead. That was
+    harmless while a heading's title WAS its raw_text, and wrong the moment migration 052 let a
+    converted heading keep the line's source text in raw_text: the heading sync then wrote
+    "125 g milk lukewarm (95-104°F)" into the baseline as a section title, and the recipe page
+    reported an unrelated heading as renamed. One projection in one place, used by both.
 
     ⚠️ A HEADING'S TITLE IS PROJECTED INTO raw_text, AND `heading` IS NOT EMITTED. Migration 052
     gave a heading row its own title column so converting a line to a heading stops destroying the
@@ -88,11 +123,8 @@ def content_blob(recipe, ingredients, steps, waits=None, storage=None):
     """
     body = {
         "recipe": {k: _get(recipe, k) for k in SNAPSHOT_RECIPE_FIELDS},
-        "ingredients": [_ing_row(row) for row in ingredients],
-        "steps": [
-            {"position": _get(st, "position"), "is_heading": _get(st, "is_heading"), "text": _get(st, "text")}
-            for st in steps
-        ],
+        "ingredients": [snapshot_ing_row(row) for row in ingredients],
+        "steps": [snapshot_step_row(st) for st in steps],
     }
     if waits:
         body["waits"] = [{k: _get(w, k) for k in SNAPSHOT_WAIT_FIELDS} for w in waits]

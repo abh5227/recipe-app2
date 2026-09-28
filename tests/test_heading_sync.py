@@ -302,3 +302,54 @@ def test_a_heading_move_still_syncs_with_waits_present():
         (0, "1 tbsp oil"), (1, "SAUCE"), (0, "2 garlic")]
     assert json.loads(synced)["waits"] == WAITS
     assert json.loads(synced)["storage"] == STORAGE
+
+
+# --------------------------------------------------------------------------------------------- #
+# Migration 052: a heading's TITLE, and the row it was converted from
+# --------------------------------------------------------------------------------------------- #
+def _conv_head(pos, *, title, label, source):
+    """A heading converted from a line: its title in `heading`, the line's name still in `label`
+    and the line's SOURCE TEXT still in raw_text. The shape migration 052 made possible."""
+    row = {k: None for k in SNAPSHOT_ING_FIELDS}
+    row.update(position=pos, is_heading=1, label=label, raw_text=source)
+    row["heading"] = title
+    return row
+
+
+def test_a_copied_heading_carries_its_title_not_its_source_line():
+    """⚠️ ONE PROJECTION, ONE PLACE. _reinterleave used a plain field copy and so wrote raw_text —
+    the dormant SOURCE LINE — into the baseline as a section title. It now uses the snapshot's own
+    row builder, the same one content_blob uses, so there is no second copy to drift."""
+    base = content_blob(RECIPE, [ing(0, label="oil"), ing(1, label="garlic")], BASE_STEPS)
+    # a heading whose name is NOT among the baseline's content rows, so the sync really does copy it
+    cur = [ing(0, label="oil"),
+           _conv_head(1, title="FOR THE BRINE", label="kosher salt",
+                      source="1 teaspoon kosher salt"),
+           ing(2, label="garlic")]
+    out = json.loads(sync_heading_layout(base, cur, BASE_STEPS))
+    heads = [r["raw_text"] for r in out["ingredients"] if r["is_heading"]]
+    assert heads == ["FOR THE BRINE"]
+    assert "1 teaspoon kosher salt" not in heads
+    assert "heading" not in out["ingredients"][0], "the extra key must not enter the blob"
+    assert_content_safe(base, json.dumps(out))
+
+
+def test_a_converted_row_is_not_duplicated_into_the_baseline():
+    """⚠️ THE BASELINE ALREADY HOLDS IT, AS A LINE. Copying current's heading in regardless left the
+    same row in the baseline twice, as a content line and as a section title — a state the recipe
+    was never in — and every further conversion save added another."""
+    base = content_blob(RECIPE, [ing(0, label="oil"), ing(1, label="garlic")], BASE_STEPS)
+    cur = [_conv_head(0, title="oil", label="oil", source="2 tbsp oil"), ing(1, label="garlic")]
+    out = json.loads(sync_heading_layout(base, cur, BASE_STEPS))
+    assert [r["raw_text"] for r in out["ingredients"] if r["is_heading"]] == []
+    assert [r["label"] for r in out["ingredients"] if not r["is_heading"]] == ["oil", "garlic"]
+    assert_content_safe(base, json.dumps(out))
+
+
+def test_a_real_section_heading_is_still_copied_in():
+    """The skip is narrow: only a heading that names one of the baseline's own content rows."""
+    base = content_blob(RECIPE, [ing(0, label="oil"), ing(1, label="garlic")], BASE_STEPS)
+    cur = [ing(0, heading="FOR THE SAUCE"), ing(1, label="oil"), ing(2, label="garlic")]
+    out = json.loads(sync_heading_layout(base, cur, BASE_STEPS))
+    assert [r["raw_text"] for r in out["ingredients"] if r["is_heading"]] == ["FOR THE SAUCE"]
+    assert_content_safe(base, json.dumps(out))

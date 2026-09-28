@@ -471,3 +471,125 @@ def test_note_change_riding_along_with_a_move_stays_suppressed():
     old = _blob(ingredients=[water, flour])
     new = _blob(ingredients=[dict(flour, position=0, note="sifted"), dict(water, position=1)])
     assert diff_snapshots(old, new) == []
+
+
+# --------------------------------------------------------------------------------------------- #
+# A row that only changed KIND emits nothing (ingredient <-> heading)
+#
+# ⚠️ IT USED TO EMIT TWO MARKS, AND BOTH READ AS THINGS THAT DID NOT HAPPEN. _split partitions rows
+# by is_heading, so a converted line leaves the lines sequence and joins the headings sequence:
+# difflib reported the ingredient REMOVED, struck through at the bottom of its section as though it
+# were gone, while it sat on the page as a section title. The heading arriving in the other sequence
+# then shifted that alignment and an UNRELATED heading read as renamed.
+# --------------------------------------------------------------------------------------------- #
+def _line(name, qty, position):
+    return _ing(qty=qty, label=name, raw_text=f"{qty} {name}", position=position)
+
+
+def _head(title, position, label=None):
+    """A heading. `label` is the dormant ingredient name a converted row keeps (migration 052); a
+    heading that was BORN one has no label and carries its title in raw_text."""
+    return _ing(is_heading=1, label=label, raw_text=title, position=position)
+
+
+def test_converting_a_line_to_a_heading_emits_nothing():
+    old = _blob(ingredients=[_line("milk", "125 g", 0), _line("flour", "500 g", 1)])
+    new = _blob(ingredients=[_head("milk", 0, label="milk"), _line("flour", "500 g", 1)])
+    assert diff_snapshots(json.dumps(old), json.dumps(new)) == []
+
+
+def test_converting_a_heading_back_to_a_line_emits_nothing():
+    old = _blob(ingredients=[_head("milk", 0, label="milk"), _line("flour", "500 g", 1)])
+    new = _blob(ingredients=[_line("milk", "125 g", 0), _line("flour", "500 g", 1)])
+    assert diff_snapshots(json.dumps(old), json.dumps(new)) == []
+
+
+def test_a_born_heading_converted_to_a_line_emits_nothing():
+    """No dormant label, so the key falls back to raw_text — which for a born heading IS its title,
+    and toggleRowType carries that title into the new line's name."""
+    old = _blob(ingredients=[_head("FOR THE DOUGH", 0), _line("flour", "500 g", 1)])
+    new = _blob(ingredients=[_line("FOR THE DOUGH", "", 0), _line("flour", "500 g", 1)])
+    assert diff_snapshots(json.dumps(old), json.dumps(new)) == []
+
+
+def test_an_unrelated_heading_is_not_reported_as_renamed():
+    """⚠️ THE SECOND MARK. The converted row joining the headings sequence shifted the alignment, so
+    a heading that nobody touched came out as modified."""
+    old = _blob(ingredients=[_head("FOR THE DOUGH", 0), _line("milk", "125 g", 1),
+                             _head("FOR THE GLAZE", 2)])
+    new = _blob(ingredients=[_head("FOR THE DOUGH", 0), _head("milk", 1, label="milk"),
+                             _head("FOR THE GLAZE", 2)])
+    got = diff_snapshots(json.dumps(old), json.dumps(new))
+    assert got == [], f"an untouched heading was reported: {got}"
+
+
+def test_a_real_edit_in_the_same_save_still_marks():
+    """The suppression must retire the converted row and NOTHING else."""
+    old = _blob(ingredients=[_line("milk", "125 g", 0), _line("flour", "500 g", 1)])
+    new = _blob(ingredients=[_head("milk", 0, label="milk"), _line("flour", "600 g", 1)])
+    got = diff_snapshots(json.dumps(old), json.dumps(new))
+    assert len(got) == 1, got
+    assert got[0]["kind"] == "ingredient" and got[0]["field"] == "amount"
+    assert (got[0]["from"], got[0]["to"]) == ("500 g", "600 g")
+
+
+def test_a_genuinely_deleted_line_is_still_reported():
+    """Nothing gained the name, so there is no conversion to recognize and the removal stands."""
+    old = _blob(ingredients=[_line("milk", "125 g", 0), _line("flour", "500 g", 1)])
+    new = _blob(ingredients=[_line("flour", "500 g", 0)])
+    got = diff_snapshots(json.dumps(old), json.dumps(new))
+    assert [(c["kind"], c["type"]) for c in got] == [("ingredient", "removed")]
+    assert got[0]["text"] == "125 g milk"
+
+
+def test_a_genuinely_added_heading_is_still_reported():
+    old = _blob(ingredients=[_line("flour", "500 g", 0)])
+    new = _blob(ingredients=[_head("FOR THE DOUGH", 0), _line("flour", "500 g", 1)])
+    got = diff_snapshots(json.dumps(old), json.dumps(new))
+    assert [(c["kind"], c["type"]) for c in got] == [("heading", "added")]
+
+
+def test_one_of_two_duplicate_names_converts_and_the_other_is_untouched():
+    """⚠️ CONSUME-ONCE. brioche-bread repeats an ingredient NAME 9 times. Converting one row called
+    "salt" must retire exactly one old line against exactly one new heading and leave the other pair
+    to difflib, which then correctly sees no change at all."""
+    old = _blob(ingredients=[_line("salt", "1 tsp", 0), _line("salt", "2 tbsp", 1)])
+    new = _blob(ingredients=[_head("salt", 0, label="salt"), _line("salt", "2 tbsp", 1)])
+    assert diff_snapshots(json.dumps(old), json.dumps(new)) == []
+
+
+def test_a_duplicate_name_that_is_also_edited_still_marks():
+    old = _blob(ingredients=[_line("salt", "1 tsp", 0), _line("salt", "2 tbsp", 1)])
+    new = _blob(ingredients=[_head("salt", 0, label="salt"), _line("salt", "3 tbsp", 1)])
+    got = diff_snapshots(json.dumps(old), json.dumps(new))
+    assert len(got) == 1 and got[0]["field"] == "amount"
+    assert (got[0]["from"], got[0]["to"]) == ("2 tbsp", "3 tbsp")
+
+
+def test_a_converted_row_that_is_also_renamed_is_not_silently_swallowed():
+    """The key is the NAME. Rename it while converting and there is nothing to recognize, so the
+    removal and the new heading are both reported — which is honest: that name left the page."""
+    old = _blob(ingredients=[_line("milk", "125 g", 0)])
+    new = _blob(ingredients=[_head("FOR THE SPONGE", 0, label="FOR THE SPONGE")])
+    kinds = {(c["kind"], c["type"]) for c in diff_snapshots(json.dumps(old), json.dumps(new))}
+    assert ("ingredient", "removed") in kinds
+
+
+def test_positions_below_a_converted_row_stay_aligned():
+    """⚠️ THE ANCHORING CONTRACT. The suppression removes rows from the MATCHING only. Every
+    surviving row keeps the heading-excluded ordinal it renders at, or O-c-1 anchors the marks to
+    the wrong lines."""
+    old = _blob(ingredients=[_line("milk", "125 g", 0), _line("flour", "500 g", 1),
+                             _line("salt", "1 tsp", 2)])
+    new = _blob(ingredients=[_head("milk", 0, label="milk"), _line("flour", "500 g", 1),
+                             _line("salt", "2 tsp", 2)])
+    got = diff_snapshots(json.dumps(old), json.dumps(new))
+    assert len(got) == 1
+    assert got[0]["old_pos"] == 2        # salt was the 3rd LINE before
+    assert got[0]["new_pos"] == 1        # and is the 2nd after, the heading not being counted
+
+
+def test_the_kind_change_key_reads_both_kinds_the_same_way():
+    assert sd.kind_change_key(_line("Milk  Lukewarm", "1 cup", 0)) == "milk lukewarm"
+    assert sd.kind_change_key(_head("Milk  Lukewarm", 0)) == "milk lukewarm"
+    assert sd.kind_change_key(_head("A TITLE", 0, label="Milk Lukewarm")) == "milk lukewarm"

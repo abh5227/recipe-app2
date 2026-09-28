@@ -45,6 +45,7 @@ CHANGE OBJECT SHAPE (a flat, ordered list):
 import json
 from difflib import SequenceMatcher
 
+from snapshot_serialize import kind_change_key   # noqa: F401  (re-exported, see below)
 import units   # pure unit abbreviator (mirrors scaler.js) — canonical amount COMPARE, kills unit-repr phantoms
 
 # The modified-vs-(added+removed) boundary for UNLINKED rows / steps, tuned via the unit tests: a reword
@@ -74,9 +75,13 @@ def diff_snapshots(old_blob, new_blob):
     o_lines, o_ing_h = _split(old.get("ingredients") or [])
     n_lines, n_ing_h = _split(new.get("ingredients") or [])
     o_line_pos, n_line_pos = _indexer(o_lines), _indexer(n_lines)   # heading-EXCLUDED real-ingredient index
-    ing_section = _section_lookup(old.get("ingredients") or [], ing_h)   # preceding heading uses FULL position
-    changes += _diff_ingredients(o_lines, n_lines, o_line_pos, n_line_pos, ing_section)
     o_ih_pos, n_ih_pos = _indexer(o_ing_h), _indexer(n_ing_h)       # ingredient-headings sequence
+    ing_section = _section_lookup(old.get("ingredients") or [], ing_h)   # preceding heading uses FULL position
+    # ⚠️ THE INDEXERS ARE BUILT OVER THE UNFILTERED LISTS, ABOVE THIS LINE. A row that only changed
+    # kind is dropped from the MATCHING only — every surviving row keeps the ordinal it renders at,
+    # because _indexer is keyed on id(row) and the same objects flow through.
+    o_lines, o_ing_h, n_lines, n_ing_h = suppress_kind_changes(o_lines, o_ing_h, n_lines, n_ing_h)
+    changes += _diff_ingredients(o_lines, n_lines, o_line_pos, n_line_pos, ing_section)
     changes += _diff_seq(                                   # ingredient headings, kept OUT of line matching
         o_ing_h, n_ing_h, ing_h,
         on_pair=lambda o, n: [_mod("heading", ing_h(o), ing_h(n), n_ih_pos(n), o_ih_pos(o))],
@@ -116,6 +121,81 @@ def _split(rows):
     lines = [r for r in rows if not r.get("is_heading")]
     headings = [r for r in rows if r.get("is_heading")]
     return lines, headings
+
+
+# kind_change_key is imported from snapshot_serialize, the module that owns the snapshot row format,
+# so this reader and snapshot_headsync cannot disagree about what a row is called. Re-exported here
+# because the diff's own tests reach for it by this module's name.
+
+
+def suppress_kind_changes(o_lines, o_heads, n_lines, n_heads):
+    """Drop rows that ONLY changed kind from all four matching sequences.
+
+    ⚠️ BEFORE difflib, NOT AFTER. A line that becomes a heading leaves the lines sequence and joins
+    the headings sequence, so difflib reports it as an ingredient REMOVED — struck through at the
+    bottom of its section, as though the ingredient were gone, when it is still on the page as a
+    section title. Worse, the heading arriving in the other sequence shifts that alignment, and an
+    UNRELATED heading reads as renamed. Suppressing afterwards can pair the removal away but cannot
+    undo the misalignment, because by then difflib has already chosen the wrong pairs. Removing the
+    row from both sequences first means neither ever happens.
+
+    Emitting nothing is the right answer, not a convenient one: heading changes carry no annotation
+    by existing ruling (they are organizational), and a converted row shows the same words on the
+    page in a different style. Nothing about the recipe's content moved.
+
+    ⚠️ CONSUME-ONCE, for the same reason _Carry consumes once. brioche-bread repeats an ingredient
+    NAME 9 times. Converting one of two rows called "salt" must retire exactly one old line against
+    exactly one new heading and leave the other pair to difflib.
+
+    Returns the four sequences with the paired rows removed. Callers keep indexing positions off the
+    UNFILTERED lists — _indexer is keyed on id(row), so a surviving row keeps its true ordinal and
+    every anchor below it stays aligned."""
+    used, changed = set(), set()
+
+    def pair(froms, tos):
+        pool = {}
+        for r in tos:
+            pool.setdefault(kind_change_key(r), []).append(r)
+        for r in froms:
+            key = kind_change_key(r)
+            bucket = pool.get(key) or []
+            while bucket:
+                other = bucket.pop(0)
+                if id(other) not in used:
+                    used.add(id(r))
+                    used.add(id(other))
+                    changed.add(key)
+                    break
+
+    pair(o_lines, n_heads)          # a line became a heading
+    pair(o_heads, n_lines)          # and the other way
+
+    keep = lambda rows: [r for r in rows if id(r) not in used]
+    o_lines, o_heads, n_lines, n_heads = (keep(o_lines), keep(o_heads),
+                                          keep(n_lines), keep(n_heads))
+
+    # ⚠️ THE HEADING SYNC LEAVES A TWIN IN THE BASELINE, and it is not a bug there. The save that
+    # converts a line also runs sync_original_heading_layout, whose rule is "the baseline's content
+    # rows, untouched, plus CURRENT's headings". The converted row is a content row of the baseline
+    # AND a heading of current, so the baseline comes out holding it both ways. P1 and P2 are both
+    # satisfied (no content row was added or dropped, positions still enumerate), so the sync is
+    # doing exactly what it is specified to do.
+    #
+    # The consequence lands here: the old line has been retired against the new heading above, and
+    # the twin is left over in the OLD headings sequence with nothing to match, reading as a heading
+    # the user deleted. Only the OLD side can carry one — the twin is created in the baseline, and
+    # converting BACK removes it again, which is why that direction needs nothing.
+    for key in changed:
+        excess = (sum(1 for r in o_heads if kind_change_key(r) == key)
+                  - sum(1 for r in n_heads if kind_change_key(r) == key))
+        while excess > 0:
+            for i, r in enumerate(o_heads):
+                if kind_change_key(r) == key:
+                    o_heads.pop(i)
+                    break
+            excess -= 1
+
+    return o_lines, o_heads, n_lines, n_heads
 
 
 def _similar(a, b):
