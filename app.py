@@ -727,6 +727,72 @@ def _check_row_ids(clean, stored_ing, stored_step):
     return None
 
 
+class BlankedRowViolation(RuntimeError):
+    """A save would have left a surviving row with nothing in it. See blanked_row_problems."""
+
+
+def _row_display_text(row, kind):
+    """What the reader would SEE on this row, trimmed. Empty means the row renders as nothing."""
+    if kind == "step":
+        return (row["text"] or "").strip()
+    if row["is_heading"]:
+        return _heading_title(row).strip()
+    return ((row["label"] or row["raw_text"]) or "").strip()
+
+
+def blanked_row_problems(before, after, kind):
+    """Rows that read as something before this save and as nothing after it, on the SAME row id.
+    Returns a list of human-readable problems, empty when the save is safe — the same shape as
+    snapshot_headsync.content_safety_problems, which guards the baseline rather than the rows.
+
+    ⚠️ A ROW THE PAYLOAD DROPPED IS NOT A PROBLEM. Deleting a row is an ordinary edit, and clearing a
+    step's text IS how the editor deletes one (nonEmptySteps prunes it, so a deleted step simply does
+    not arrive). The dangerous shape is the opposite: a row that IS in the payload, keeps its id, and
+    comes out empty. The real editor cannot produce it, because nonEmptyRows and nonEmptySteps prune
+    a blank row before the payload is built. So this firing means the server read the payload
+    differently from how the client wrote it.
+
+    ⚠️ IT HAS ALREADY NEARLY HAPPENED ONCE, which is why it is worth two SELECTs per save. Option C
+    gave a non-heading step an object wire form so it could carry an id. write_recipe_rows read a step
+    as `step if isinstance(step, str) else ""`, so every object step would have been written BLANK —
+    the whole method of every recipe, on its first save, with a 200 and no sign anything was wrong.
+    That was caught by reading the code. A guard that compares what was there against what is about
+    to be there does not depend on anyone noticing."""
+    by_id = {r["id"]: r for r in after}
+    problems = []
+    for old in before:
+        new = by_id.get(old["id"])
+        if new is None:
+            continue                                    # removed by id: a deliberate delete
+        was = _row_display_text(old, kind)
+        if was and not _row_display_text(new, kind):
+            problems.append(
+                f"{kind} id={old['id']} (position {new['position']}) read {was!r} and this save "
+                f"would leave it empty")
+    return problems
+
+
+def assert_no_blanked_rows(s, rid, before_ing, before_step):
+    """Raise BlankedRowViolation unless every surviving row still reads as something.
+
+    Called AFTER write_recipe_rows and BEFORE the caller's commit, so raising aborts the whole save
+    and leaves no partial state — the same seam, and the same reasoning, as
+    sync_original_heading_layout's assert_content_safe. A failed save costs one retry. A recipe whose
+    method has been silently emptied costs the recipe."""
+    after_ing = s.execute(
+        select(RecipeIngredient.__table__).where(RecipeIngredient.recipe_id == rid)
+        .order_by(RecipeIngredient.position, RecipeIngredient.id)).mappings().all()
+    after_step = s.execute(
+        select(RecipeStep.__table__).where(RecipeStep.recipe_id == rid)
+        .order_by(RecipeStep.position, RecipeStep.id)).mappings().all()
+    problems = (blanked_row_problems(before_ing, after_ing, "ingredient")
+                + blanked_row_problems(before_step, after_step, "step"))
+    if problems:
+        raise BlankedRowViolation(
+            "this save would empty a row that is still in the recipe:\n  - "
+            + "\n  - ".join(problems))
+
+
 def _ing_row_values(pos, row, parts, held, exact):
     """Every column an ingredient row is written with — the SAME dict for an INSERT and an UPDATE.
 
@@ -1358,6 +1424,11 @@ def update_recipe(rid):
         if id_err:
             return jsonify({"error": id_err}), 400
         write_recipe_rows(s, rid, clean, stored=(stored_ing, stored_step))
+        # ⚠️ IMMEDIATELY AFTER THE WRITE AND BEFORE ANYTHING READS THE ROWS. A surviving row that
+        # came out empty means the server read this payload differently from how the client wrote it,
+        # which is the shape that nearly emptied every recipe's method when steps gained an object
+        # wire form. Raising here rolls the whole save back.
+        assert_no_blanked_rows(s, rid, stored_ing, stored_step)
         # ⚠️ BEFORE the baseline capture and the heading sync below, so a snapshot taken in this
         # same transaction sees the waits this save wrote.
         write_plan_ahead(s, rid, payload)
