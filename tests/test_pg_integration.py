@@ -714,30 +714,78 @@ def test_an_edit_updates_the_row_in_place_pg(pg):
     assert row["position"] == 1
 
 
-def test_a_line_toggled_to_a_heading_nulls_its_amount_pg(pg):
-    """The shared value builder on PG: an UPDATE has to write the NULLs an INSERT got for free."""
+def _ing_payload(x):
+    """One served ingredient row, as the client sends it back."""
+    if x["is_heading"]:
+        title = x["heading"] if x.get("heading") is not None else (x["raw_text"] or "")
+        return {"id": x["id"], "heading": title}
+    return {"id": x["id"], "quantity": x["quantity"] or "", "unit": x["unit"] or "",
+            "text": x["label"] or x["raw_text"] or "", "note": x["note"] or ""}
+
+
+def test_a_line_toggled_to_a_heading_keeps_its_line_pg(pg):
+    """⚠️ THE ONE ANDY FOUND, on the production dialect. Converting a line to a heading used to NULL
+    the amount, the weight, the note and the four linkage columns, so saving while it was a heading
+    destroyed the line. Migration 052 gave the title its own column and the line now survives
+    intact, dormant, with the title beside it."""
     c = pg.client
     rid = _make(c)
     got = c.get(f"/api/recipes/{rid}").get_json()
     target = next(x for x in got["ingredients"] if not x["is_heading"])
-    got["ingredients"] = [{"id": x["id"], "heading": "FOR THE BRINE"} if x["id"] == target["id"]
-                          else x for x in got["ingredients"]]
     body = {"name": got["recipe"]["name"],
-            "ingredients": [x if "heading" in x else
-                            {"id": x["id"], "heading": x["raw_text"]} if x["is_heading"]
-                            else {"id": x["id"], "quantity": x["quantity"] or "",
-                                  "unit": x["unit"] or "", "text": x["label"] or x["raw_text"] or "",
-                                  "note": x["note"] or ""}
-                            for x in got["ingredients"]],
+            "ingredients": [{"id": x["id"], "heading": "FOR THE BRINE"} if x["id"] == target["id"]
+                            else _ing_payload(x) for x in got["ingredients"]],
             "steps": [{"id": x["id"], "heading": x["text"]} if x["is_heading"]
                       else {"id": x["id"], "text": x["text"]} for x in got["steps"]]}
     assert c.put(f"/api/recipes/{rid}", json=body).status_code == 200
     with pg.engine.connect() as conn:
-        row = conn.execute(text("SELECT is_heading, raw_text, qty, quantity, unit, label, grams "
-                                "FROM recipe_ingredients WHERE id=:i"), {"i": target["id"]}).mappings().one()
-    assert row["is_heading"] == 1 and row["raw_text"] == "FOR THE BRINE"
-    for col in ("qty", "quantity", "unit", "label", "grams"):
-        assert row[col] is None, f"{col} survived the toggle on PG"
+        row = conn.execute(text("SELECT is_heading, heading, raw_text, qty, quantity, unit, label, "
+                                "note FROM recipe_ingredients WHERE id=:i"),
+                           {"i": target["id"]}).mappings().one()
+    assert row["is_heading"] == 1
+    assert row["heading"] == "FOR THE BRINE"                 # the title, in its own column
+    assert row["raw_text"] == target["raw_text"]             # the source line, untouched
+    assert row["qty"] == target["qty"] and row["label"] == target["label"]
+    assert row["note"] == target["note"]
+
+
+def test_convert_to_a_heading_and_back_is_byte_identical_pg(pg):
+    """The whole round trip on PG, through the real endpoint both ways."""
+    c = pg.client
+    rid = _make(c)
+    cols = ("id, position, is_heading, heading, raw_text, label, note, qty, quantity, unit, "
+            "ingredient_id, grams, secondary_measure, catalog_id, link_confidence, link_rule, "
+            "link_matched")
+
+    def rows():
+        with pg.engine.connect() as conn:
+            return [dict(r) for r in conn.execute(text(
+                f"SELECT {cols} FROM recipe_ingredients WHERE recipe_id=:r ORDER BY position, id"),
+                {"r": rid}).mappings()]
+
+    start = rows()
+    got = c.get(f"/api/recipes/{rid}").get_json()
+    target = next(x for x in got["ingredients"] if not x["is_heading"])
+    steps = [{"id": x["id"], "heading": x["text"]} if x["is_heading"]
+             else {"id": x["id"], "text": x["text"]} for x in got["steps"]]
+
+    assert c.put(f"/api/recipes/{rid}", json={
+        "name": got["recipe"]["name"], "steps": steps,
+        "ingredients": [{"id": x["id"], "heading": "FOR THE BRINE"} if x["id"] == target["id"]
+                        else _ing_payload(x) for x in got["ingredients"]]}).status_code == 200
+
+    reloaded = c.get(f"/api/recipes/{rid}").get_json()       # the reload
+    back = []
+    for x in reloaded["ingredients"]:
+        if x["id"] == target["id"]:                          # toggleRowType: heading -> line
+            back.append({"id": x["id"], "quantity": x["quantity"] or "", "unit": x["unit"] or "",
+                         "text": x["label"] or x["raw_text"] or "", "note": x["note"] or ""})
+        else:
+            back.append(_ing_payload(x))
+    assert c.put(f"/api/recipes/{rid}", json={
+        "name": got["recipe"]["name"], "ingredients": back, "steps": steps}).status_code == 200
+
+    assert rows() == start
 
 
 def test_a_foreign_row_id_is_refused_pg(pg):

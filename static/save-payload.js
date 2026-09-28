@@ -15,6 +15,12 @@
 // save: write_recipe_rows deletes the recipe's rows and reinserts them with no id at all. The server
 // IGNORES the id until commit 2 gives it a meaning, so this is additive on its own.
 import { canonicalizeUnit } from "./scaler.js";
+// ⚠️ IMPORTED, NOT RE-SPELLED. This used to read `x.heading || x.label || x.raw_text`, which was the
+// same fallback one letter longer and went wrong the moment a heading row kept its label: migration
+// 052 lets a heading hold the line's dormant name, so the `|| x.label` arm would have sent "salt"
+// back as the section title and renamed the heading on the next save. headingText is the one
+// definition of "which string is the title", and the server's _heading_title mirrors it.
+import { headingText } from "./ingredient-row.js";
 
 // A row the user just added has no id yet. `undefined` and `null` are the same answer here, and
 // sending the key always means the server never has to tell "no id" from "the key is missing".
@@ -25,7 +31,7 @@ const oneLine = (v) => (v || "").replace(/[\r\n]+/g, " ");
 
 export function ingToPayload(x) {
   const id = rowId(x);
-  if (x.is_heading) return { id, heading: oneLine(x.heading || x.label || x.raw_text) };   // dedicated field, back-compat fallbacks
+  if (x.is_heading) return { id, heading: oneLine(headingText(x)) };   // `heading`, else raw_text
   // Stage 4 (B): send the STRUCTURED parts — quantity + canonical unit. The server recombines
   // qty = quantity + " " + unit, so qty is omitted. Authority is quantity+unit.
   const quantity = oneLine(x.quantity);

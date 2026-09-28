@@ -38,6 +38,30 @@ def _get(row, key):
     return getattr(row, key, None)
 
 
+def _ing_row(row):
+    """One ingredient row, projected for the snapshot.
+
+    ⚠️ A HEADING'S TITLE IS PROJECTED INTO raw_text, AND `heading` IS NOT EMITTED. Migration 052
+    gave a heading row its own title column so converting a line to a heading stops destroying the
+    line, which means a converted heading now holds its title in `heading` and the line's source
+    text in raw_text. The diff reads an ingredient heading's text from raw_text alone
+    (snapshot_diff.ing_h), and all 300 reason='original' baselines were written that way.
+    Resolving the title HERE keeps both true at once: the diff still reads one key, and every
+    pre-052 heading row (heading NULL, title in raw_text) serializes to exactly the bytes it always
+    did, so _recipe_annotations' byte-equal short-circuit survives for all 300 recipes untouched.
+
+    Adding `heading` to SNAPSHOT_ING_FIELDS instead would have made every one of those 300
+    baselines differ from its recipe's current serialization on the day it shipped, which is the
+    cost the waits keys avoided by being omitted when empty. A title is never empty, so the same
+    trick was not available."""
+    out = {k: _get(row, k) for k in SNAPSHOT_ING_FIELDS}
+    if out.get("is_heading"):
+        title = _get(row, "heading")
+        if title is not None:
+            out["raw_text"] = title
+    return out
+
+
 SNAPSHOT_WAIT_FIELDS = (
     "position", "kind", "label", "min_minutes", "max_minutes",
     "ext_label", "ext_min_minutes", "ext_max_minutes",
@@ -64,7 +88,7 @@ def content_blob(recipe, ingredients, steps, waits=None, storage=None):
     """
     body = {
         "recipe": {k: _get(recipe, k) for k in SNAPSHOT_RECIPE_FIELDS},
-        "ingredients": [{k: _get(row, k) for k in SNAPSHOT_ING_FIELDS} for row in ingredients],
+        "ingredients": [_ing_row(row) for row in ingredients],
         "steps": [
             {"position": _get(st, "position"), "is_heading": _get(st, "is_heading"), "text": _get(st, "text")}
             for st in steps
