@@ -20,7 +20,7 @@ FIX = json.loads((pathlib.Path(__file__).parent / "fixtures" / "save-roundtrip.j
 # ids churn by design until option C (update in place) lands. Everything else must survive.
 COLS = ("position", "is_heading", "qty", "quantity", "unit", "ingredient_id", "label", "note",
         "raw_text", "grams", "secondary_measure", "catalog_id", "link_confidence", "link_rule",
-        "link_matched")
+        "link_matched", "heading")
 
 # ⚠️ THE FIXTURE'S ids ARE INSERTED VERBATIM (option C commit 1). The payloads carry the id the
 # client read off the GET, so the stored row and the payload have to agree on one. They are 9001+
@@ -47,7 +47,8 @@ def _seed(kitchen, rows=None, steps=None, name="Round Trip"):
             row = r["row"]
             c.execute(f"INSERT INTO recipe_ingredients (id, recipe_id, {','.join(COLS)}) "
                       f"VALUES (?,?,{','.join('?' * len(COLS))})",
-                      (row.get("id"), rid, *[row[k] for k in COLS]))
+                      # .get: the fixture rows are LINES, so they carry no `heading` (052)
+                      (row.get("id"), rid, *[row.get(k) for k in COLS]))
         for s in steps:
             st = s["row"]
             c.execute("INSERT INTO recipe_steps (id, recipe_id, position, is_heading, text) "
@@ -591,19 +592,133 @@ def test_a_renamed_line_keeps_its_row_and_loses_its_link(kitchen):
     assert row["catalog_id"] is None and row["link_rule"] is None
 
 
-def test_a_line_toggled_to_a_heading_keeps_its_id_and_drops_its_amount(kitchen):
-    """⚠️ THE REASON ONE BUILDER WRITES BOTH THE INSERT AND THE UPDATE. An UPDATE that only set the
-    heading's own columns would leave the amount, the weight and all four linkage columns sitting
-    on a heading row, where an insert had always left them NULL."""
+# --------------------------------------------------------------------------------------------- #
+# Converting a line to a heading, and back (migration 052)
+#
+# ⚠️ THIS SECTION ONCE ASSERTED THE OPPOSITE, and the opposite was a data-loss bug. The save used to
+# NULL a heading row's amount, weight, note and four linkage columns on purpose, so that a heading
+# could not carry stale numbers. The editor holds them in memory, so converting back and forth
+# looked lossless until you SAVED while it was a heading. After that the line was gone.
+#
+# Nothing needed to be hidden in the first place: the reading view renders a heading as its title
+# alone and the diff compares headings on the title alone. What was missing was somewhere to put
+# the title, which migration 052 added.
+# --------------------------------------------------------------------------------------------- #
+def _heading_payload(rid_, title):
+    return {"shape": "toggled", "row": {}, "payload": {"id": rid_, "heading": title}}
+
+
+def _as_line(x):
+    """One SERVED row, as the client's ingToPayload would send it if it were a line. The linked and
+    unlinked branches really are different keys — `item` + `label` against `text` — and sending the
+    wrong one drops the library link, which is the editor's rename rule doing its job."""
+    base = {"id": x["id"], "quantity": x["quantity"] or "", "unit": x["unit"] or "",
+            "note": x["note"] or ""}
+    if x["ingredient_id"]:
+        return {**base, "item": x["ingredient_id"], "label": x["label"] or x["raw_text"] or ""}
+    return {**base, "text": x["label"] or x["raw_text"] or ""}
+
+
+def _as_payload(x):
+    """One SERVED row as ingToPayload sends it, heading or line. A heading's title resolves the way
+    headingText() does: `heading` when set, else raw_text."""
+    if x["is_heading"]:
+        title = x["heading"] if x.get("heading") is not None else (x["raw_text"] or "")
+        return {"id": x["id"], "heading": title}
+    return _as_line(x)
+
+
+def test_a_line_toggled_to_a_heading_keeps_everything_it_was_carrying(kitchen):
+    rid = _seed(kitchen)
+    before = [r for r in _rows(kitchen, rid) if r["id"] == 9004][0]
+    rows = copy.deepcopy(FIX["rows"])
+    rows[3] = _heading_payload(9004, "FOR THE BRINE")
+    assert _save(kitchen, rid, rows=rows).status_code == 200
+
+    row = [r for r in _rows(kitchen, rid) if r["id"] == 9004][0]
+    assert row["is_heading"] == 1
+    assert row["heading"] == "FOR THE BRINE"          # the title, in its own column
+    assert row["raw_text"] == before["raw_text"]      # the SOURCE LINE, untouched
+    for col in ("qty", "quantity", "unit", "label", "note", "grams", "secondary_measure",
+                "catalog_id", "link_confidence", "link_rule", "link_matched"):
+        assert row[col] == before[col], f"{col} was destroyed by the toggle to a heading"
+
+
+def test_convert_save_reload_convert_back_save_is_byte_identical(kitchen):
+    """⚠️ ANDY'S OWN TEST, and the one the bug failed. Convert a line to a heading, SAVE, read the
+    recipe back the way a reload does, convert it back from what the GET served, and save again.
+    Every column of every row has to be where it started, ids included."""
+    rid = _seed(kitchen)
+    _save(kitchen, rid)                                # let the heading sync settle
+    start, start_steps = _rows(kitchen, rid), _steps(kitchen, rid)
+
+    rows = copy.deepcopy(FIX["rows"])
+    rows[3] = _heading_payload(9004, "FOR THE BRINE")
+    assert _save(kitchen, rid, rows=rows).status_code == 200
+
+    # the reload: rebuild the payload from what the API serves, the way the editor's draft does
+    served = kitchen.client.get(f"/api/recipes/{rid}").get_json()["ingredients"]
+    back = [{"shape": "reloaded", "row": {},
+             "payload": _as_line(x) if x["id"] == 9004 else _as_payload(x)}
+            for x in served]                           # 9004: toggleRowType heading -> line
+    assert _save(kitchen, rid, rows=back).status_code == 200
+
+    assert _rows(kitchen, rid) == start                # ids, amounts, links, weights, raw_text
+    assert _steps(kitchen, rid) == start_steps
+
+
+def test_a_headings_hidden_values_never_reach_the_snapshot_as_its_text(kitchen):
+    """The blob a reader diffs against carries the TITLE in raw_text for a heading row, so the
+    annotation for a converted line reads as a heading called "FOR THE BRINE" and never as the
+    dormant source line sitting in the same row."""
+    import json
     rid = _seed(kitchen)
     rows = copy.deepcopy(FIX["rows"])
-    rows[3] = {"shape": "toggled", "row": {}, "payload": {"id": 9004, "heading": "FOR THE BRINE"}}
-    assert _save(kitchen, rid, rows=rows).status_code == 200
+    rows[3] = _heading_payload(9004, "FOR THE BRINE")
+    _save(kitchen, rid, rows=rows)
+    kitchen.client.post(f"/api/recipes/{rid}/cooked-and-rated", json={"rating": 4})
+    with kitchen.conn() as c:
+        blob = json.loads(c.execute(
+            "SELECT content FROM recipe_snapshots WHERE recipe_id=? AND reason='cook' "
+            "ORDER BY id DESC LIMIT 1", (rid,)).fetchone()[0])
+    head = [r for r in blob["ingredients"] if r["is_heading"] and r["position"] == 3][0]
+    assert head["raw_text"] == "FOR THE BRINE"        # the title, not the dormant source line
+    assert "heading" not in head                       # and the extra key never enters the blob
+
+
+def test_renaming_a_converted_row_still_clears_its_link(kitchen):
+    """The normal rename rule survives the trip through a heading. The id makes it the same ROW, so
+    it keeps its id, and the new name makes it a new LINE, so the library link goes."""
+    rid = _seed(kitchen)
+    rows = copy.deepcopy(FIX["rows"])
+    rows[3] = _heading_payload(9004, "FOR THE BRINE")
+    _save(kitchen, rid, rows=rows)
+
+    back = copy.deepcopy(FIX["rows"])
+    back[3]["payload"] = {"id": 9004, "quantity": "1", "unit": "tsp",
+                          "text": "flaky sea salt", "note": ""}       # was "kosher salt"
+    assert _save(kitchen, rid, rows=back).status_code == 200
     row = [r for r in _rows(kitchen, rid) if r["id"] == 9004][0]
-    assert row["is_heading"] == 1 and row["raw_text"] == "FOR THE BRINE"
-    for col in ("qty", "quantity", "unit", "label", "grams", "secondary_measure",
-                "catalog_id", "link_confidence", "link_rule", "link_matched"):
-        assert row[col] is None, f"{col} survived the toggle to a heading"
+    assert row["is_heading"] == 0 and row["heading"] is None
+    assert row["label"] == "flaky sea salt"
+    assert row["raw_text"] == "flaky sea salt"        # a renamed line IS its own source line
+    assert row["catalog_id"] is None and row["link_rule"] is None
+
+
+def test_a_row_born_as_a_heading_has_nothing_dormant(kitchen):
+    """Added as a heading, so there is nothing to keep. raw_text carries the title the way every
+    pre-052 heading row does, so a reader that falls back to raw_text still reads it right."""
+    rid = _seed(kitchen)
+    rows = copy.deepcopy(FIX["rows"])
+    rows.insert(4, {"shape": "new", "row": {}, "payload": {"id": None, "heading": "FOR THE GLAZE"}})
+    assert _save(kitchen, rid, rows=rows).status_code == 200
+    row = [r for r in _rows(kitchen, rid) if r["position"] == 4][0]
+    assert row["is_heading"] == 1
+    # ⚠️ heading IS NULL, and that is the rule: the title column is only used when raw_text is not
+    # already the title. It keeps all 223 pre-052 heading rows on live untouched by their first save.
+    assert row["heading"] is None and row["raw_text"] == "FOR THE GLAZE"
+    for col in ("qty", "quantity", "unit", "label", "note", "grams", "catalog_id"):
+        assert row[col] is None, f"a born heading came out carrying {col}"
 
 
 def test_a_step_toggled_to_a_heading_keeps_its_id(kitchen):

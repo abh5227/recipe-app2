@@ -940,7 +940,10 @@ function wordDiffHTML(fromStr, toStr) {
 function plainRow(row, ann) {
   // Guard (belt-and-suspenders): never render an empty row as a bare divider line, even if one somehow
   // reaches the reading view — a heading with no text, or a line with no name, is skipped entirely.
-  if (row.is_heading) return (row.raw_text || "").trim() ? `<li class="group">${esc(row.raw_text)}</li>` : "";
+  // headingText, not raw_text: since migration 052 a heading converted from a line keeps the line's
+  // source text in raw_text and its title in `heading`. A heading renders as its TITLE and nothing
+  // else — the dormant amount, weight, note and links never reach the page.
+  if (row.is_heading) return headingText(row).trim() ? `<li class="group">${esc(headingText(row))}</li>` : "";
   if (!(row.label || row.raw_text || "").trim()) return "";
   // Added ingredient: the whole current line in the hand ink, "+"-prefixed (see li.added CSS).
   if (ann && ann.added) return `<li class="added">${ledgerCells(row.qty, row.grams_per_ml)}<span class="iname">${lineBodyHTML(row)}</span></li>`;
@@ -979,7 +982,7 @@ function ingredientsSectionInner(view) {
   // are spliced in afterwards and never touch it, so every other anchor stays aligned.
   const items = view.data.ingredients.map((row) => ({
     isHeading: !!row.is_heading,
-    headingText: row.is_heading ? (row.raw_text || "") : null,
+    headingText: row.is_heading ? headingText(row) : null,
     html: row.is_heading ? plainRow(row) : plainRow(row, ing.get(i++)),
   }));
   insertRemovedRows(items, removedIng, removedIngredientRow);
@@ -3151,7 +3154,7 @@ function stepRow(o) {
 
 // Convert a saved DB row back into a pre-filled editor row (for the edit form).
 function ingToRow(x) {
-  if (x.is_heading) return ingRow({ type: "heading", heading: x.raw_text });
+  if (x.is_heading) return ingRow({ type: "heading", heading: headingText(x) });
   if (x.ingredient_id) return ingRow({ type: "line", qty: x.qty, link: x.ingredient_id, text: x.label || x.raw_text, note: x.note });
   return ingRow({ type: "line", qty: x.qty, text: x.label || x.raw_text });
 }

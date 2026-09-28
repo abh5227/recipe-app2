@@ -1510,6 +1510,34 @@ worth knowing before they bite. None of the *data* limitations occur in the curr
   round-trips, and it closes this case by construction. Until then the exposure grows with every
   duplicate-name recipe that gains a link a rebuild cannot reproduce.
 
+- **The row menus differ between ingredients and steps, and neither offers undo.** The `⋯` menu on
+  an ingredient row and on a step row grew separately and do not offer the same things in the same
+  order. A step has no **Convert to heading** at all, so the only way to make a step a section title
+  is to add a heading row and retype it, while an ingredient row converts in place. **Delete** sits
+  in a different position in the two menus, which is the worst kind of inconsistency for a
+  destructive item. And no delete anywhere in either list can be undone: clearing a step's text IS
+  its deletion (`nonEmptySteps`), so a mis-click is recoverable only by cancelling the whole edit
+  and losing every other change in the session. Fix shape: one menu definition both lists render
+  from, with **Convert to heading** added for steps and **Delete** last in both, plus a single
+  undo buffer for row deletions across all three draggable lists. The natural seam is the same one
+  the keyboard-reorder entry names (`static/drop-index.js` is already list-agnostic), so the two are
+  worth doing together rather than twice.
+
+- **"Your changes" compares raw storage, so an amount can be marked as edited while reading
+  identically on the page.** `snapshot_diff` compares an ingredient's `qty` through
+  `units.canon_unit_str`, which folds the UNIT spelling (`½ teaspoon` against `½ tsp` is correctly
+  silent) but not the FRACTION glyph. `1/2 tsp` against `½ tsp` is therefore marked, and the reading
+  view runs both through `amountText(_, 1)`, which renders each as `½ tsp` — so the annotation reads
+  `½ tsp -> ½ tsp`. Measured on live: 608 rows carry a vulgar fraction, 288 carry an ASCII one, 154
+  distinct amount strings over 896 rows, and retyping any of them in the other spelling marks a row
+  that did not visibly change. The same class covers the trailing-whitespace and `NULL` against `''`
+  marks a no-edit save already invents on 18 of 300 recipes. Fix shape: the diff compares what the
+  cook SEES. `scaler.js` already exports `normalizeFractions`, so the fold exists on the client and
+  needs its mirror beside `canon_unit_str` in `units.py`, held by the same sync test; text fields
+  compare trimmed with whitespace collapsed, and `NULL` compares equal to `''`. ⚠️ **It is a
+  comparison change, not a storage change** — nothing is rewritten, so it needs no migration and no
+  backfill, and a real amount edit (`½ tsp` to `1 tsp`) still marks.
+
 - **Lowercase ingredient section-headers — narrow detection + flag, not silent auto-classify.**
   Bare lowercase headers (e.g. "crust", "filling") are promoted to section headings only via a
   NARROW signal — a common-section-word list plus a same-recipe step-section mirror — and every

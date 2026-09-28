@@ -85,3 +85,32 @@ test("a non-heading step goes back as an object, not a bare string", () => {
   assert.equal(typeof out, "object");
   assert.deepEqual(out, { id: 12, text: "Whisk it." });
 });
+
+// --------------------------------------------------------------------------------------------- //
+// Migration 052: a heading row may carry a dormant name, so the title must be read, not guessed
+// --------------------------------------------------------------------------------------------- //
+test("a heading sends its TITLE even when the row still holds a dormant name", () => {
+  // ⚠️ THE TRAP THIS REPLACED. ingToPayload read `x.heading || x.label || x.raw_text`. Once a
+  // heading keeps the line's label, that middle arm wins whenever `heading` is unset and sends the
+  // INGREDIENT NAME back as the section title, renaming the heading on the next save.
+  const converted = { id: 7, is_heading: 1, heading: "FOR THE BRINE", label: "kosher salt",
+                      raw_text: "1 teaspoon kosher salt", qty: "1 teaspoon" };
+  assert.deepEqual(ingToPayload(converted), { id: 7, heading: "FOR THE BRINE" });
+});
+
+test("a heading with no title column falls back to raw_text, never to the label", () => {
+  // The 223 pre-052 heading rows: heading NULL, title in raw_text, label NULL. And the shape that
+  // would have gone wrong: heading NULL with a label present.
+  assert.equal(ingToPayload({ id: 8, is_heading: 1, heading: null,
+                              raw_text: "FOR THE SAUCE:" }).heading, "FOR THE SAUCE:");
+  assert.equal(ingToPayload({ id: 9, is_heading: 1, heading: null, label: "kosher salt",
+                              raw_text: "FOR THE SAUCE:" }).heading, "FOR THE SAUCE:");
+});
+
+test("a heading payload carries the title and nothing else", () => {
+  // The hidden columns are the SERVER's business: it keeps them from the stored row it is updating.
+  // The client cannot carry raw_text anyway, and 87% of live lines have one richer than their name.
+  const out = ingToPayload({ id: 7, is_heading: 1, heading: "FOR THE BRINE", label: "salt",
+                             qty: "1 tsp", quantity: "1", unit: "tsp", note: "flaky" });
+  assert.deepEqual(Object.keys(out).sort(), ["heading", "id"]);
+});

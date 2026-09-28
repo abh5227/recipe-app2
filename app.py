@@ -499,6 +499,14 @@ CARRIED = ("raw_text", "label", "note", "qty", "quantity", "unit",
            "grams", "secondary_measure")
 
 
+def _heading_title(o):
+    """A stored heading row's TITLE: `heading` when set, else raw_text. The Python mirror of the
+    client's headingText(), and the compatibility story for migration 052 — all 223 pre-052 heading
+    rows have heading NULL and their title in raw_text, so the fallback reads them unchanged."""
+    h = o["heading"] if "heading" in o.keys() else None
+    return h if h is not None else (o["raw_text"] or "")
+
+
 def _name_key(name):
     """The display name, normalized for matching. Whitespace is COLLAPSED, not just trimmed,
     because the client sends every field through oneLine() and a stored name with a double space
@@ -553,7 +561,10 @@ class _Carry:
         self.used = set()
         for o in stored:
             if o["is_heading"]:
-                self.headings.setdefault(_name_key(o["raw_text"]), []).append(o)
+                # ⚠️ THE TITLE, NOT raw_text. Since migration 052 a heading converted from a line
+                # keeps the line's source text in raw_text and holds its title in `heading`, so
+                # bucketing on raw_text would look this row up under the wrong string.
+                self.headings.setdefault(_name_key(_heading_title(o)), []).append(o)
                 continue
             name = o["label"] or o["raw_text"]
             self.exact.setdefault(_preserve_key(o["qty"], name), []).append(o)
@@ -728,15 +739,36 @@ def _ing_row_values(pos, row, parts, held, exact):
     `held` is the stored row whose columns carry, or None for a line that is new content. `exact`
     says the amount did not move, which is what decides whether the weight carries with it."""
     if parts is None:
-        # A heading carries only its text, and its `note` exists purely so a no-edit save is
-        # byte-identical (2 live heading rows hold '' where a fresh insert would write NULL).
-        return {
-            "position": pos, "is_heading": 1, "raw_text": row["heading"],
-            "note": held["note"] if held else None,
-            "qty": None, "quantity": None, "unit": None, "ingredient_id": None, "label": None,
-            "grams": None, "secondary_measure": None,
-            "catalog_id": None, "link_confidence": None, "link_rule": None, "link_matched": None,
-        }
+        # ⚠️ A HEADING KEEPS EVERY HIDDEN COLUMN, AND IT USED TO KEEP NONE OF THEM. Converting a
+        # line to a heading wrote the title over raw_text and NULLed the amount, the weight, the
+        # note and the four linkage columns. The editor holds them in memory, so the toggle looked
+        # lossless until you SAVED while it was a heading, and then converting back gave you a bare
+        # name. The reading view renders a heading as its title alone (plainRow) and the diff
+        # compares headings on the title alone (snapshot_diff ing_h), so there is nothing for the
+        # kept values to leak into. See migration 052 for why the title needed its own column.
+        title = row["heading"]
+        if held is None:
+            # Born a heading: nothing is dormant, and raw_text carries the title the way every
+            # pre-052 heading row does.
+            keep = {"raw_text": title, "label": None, "note": None,
+                    "qty": None, "quantity": None, "unit": None, "ingredient_id": None,
+                    "grams": None, "secondary_measure": None, "catalog_id": None,
+                    "link_confidence": None, "link_rule": None, "link_matched": None}
+        else:
+            # Converted from a line, or an existing heading saved again. Everything here is the row
+            # as it stood, untouched. raw_text in particular: 87% of live lines carry a source line
+            # richer than their name, and overwriting it is what made the round trip lossy.
+            keep = {k: held[k] for k in
+                    ("raw_text", "label", "note", "qty", "quantity", "unit", "ingredient_id",
+                     "grams", "secondary_measure", "catalog_id", "link_confidence",
+                     "link_rule", "link_matched")}
+        # ⚠️ THE TITLE COLUMN IS ONLY USED WHEN raw_text IS NOT ALREADY THE TITLE, which is the same
+        # rule the readers apply from the other side (`heading` when set, else raw_text). It keeps
+        # all 223 pre-052 heading rows on live exactly as they are: their title IS their raw_text,
+        # so saving their recipe writes NULL where NULL already was, rather than stamping a
+        # redundant copy onto every one of them the first time its recipe is touched.
+        return {"position": pos, "is_heading": 1,
+                "heading": None if title == keep["raw_text"] else title, **keep}
 
     (qty, quantity, unit), linked, text = parts
     note_in = row.get("note") or ""
@@ -764,6 +796,7 @@ def _ing_row_values(pos, row, parts, held, exact):
         "grams": grams, "secondary_measure": secondary,
         "catalog_id": links[0], "link_confidence": links[1],
         "link_rule": links[2], "link_matched": links[3],
+        "heading": None,          # a line has no title, and NULLing it is what makes the round trip exact
     }
 
 
