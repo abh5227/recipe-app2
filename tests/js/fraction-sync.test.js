@@ -9,6 +9,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 
 function pairs(file, re) {
   const src = fs.readFileSync(path.join(import.meta.dirname, "../../", file), "utf8");
@@ -30,17 +31,35 @@ test("JS scaler.js UNICODE_FRACTIONS agrees with Python units.py UNICODE_FRACTIO
   }
 });
 
+// ⚠️ THE INTERPRETER IS RESOLVED, NOT NAMED. This test shelled out to `python3.13` and CI's JS step
+// runs under actions/setup-python 3.12, which puts it on PATH as `python` — so the whole JS suite went
+// red on a name. The rest of this suite is zero-dep and reads units.py as TEXT for exactly that
+// reason; this one case executes it, because normalizeFractions has logic beyond the glyph map (where
+// the spaces go, how whitespace collapses) and a text comparison cannot check that at all.
+function python() {
+  for (const bin of ["python3", "python", "python3.13"]) {
+    try {
+      execFileSync(bin, ["-c", "import units"], { cwd: REPO, stdio: "ignore" });
+      return bin;
+    } catch { /* not this one */ }
+  }
+  return null;
+}
+
+const REPO = path.join(import.meta.dirname, "../..");
+
 test("the Python normalizer produces what the JS one does, on the real glyph set", async () => {
   // Not a re-implementation: scaler.js EXPORTS normalizeFractions, so this runs the real JS function
-  // and compares against the real Python one via a subprocess, on every glyph plus the mixed-number
-  // and whitespace cases the amounts on live actually contain.
+  // and compares against the real Python one, on every glyph plus the mixed-number and whitespace
+  // cases the amounts on live actually contain.
+  const bin = python();
+  assert.ok(bin, "no python3 on PATH that can import units.py — this guard must not silently skip");
   const { normalizeFractions } = await import("../../static/scaler.js");
-  const { execFileSync } = await import("node:child_process");
   const cases = ["½ tsp", "1½ cups", "¼", "2 ⅔ cups", " 3/4  tsp ", "1 1/2", "no fraction here",
                  "⅛ tsp", "⅚ cup", "2½–3 tbsp"];
-  const py = JSON.parse(execFileSync("python3.13",
+  const py = JSON.parse(execFileSync(bin,
     ["-c", "import sys,json,units;print(json.dumps([units.normalize_fractions(x) for x in json.loads(sys.argv[1])]))",
      JSON.stringify(cases)],
-    { cwd: path.join(import.meta.dirname, "../..") }).toString());
+    { cwd: REPO }).toString());
   cases.forEach((c, i) => assert.equal(py[i], normalizeFractions(c), `differs on ${JSON.stringify(c)}`));
 });
