@@ -43,6 +43,13 @@ class Recipe(Base):
     prep_time = Column(Text)
     cook_time = Column(Text)
     total_time = Column(Text)
+    # ⚠️ A RULING ABOUT THE TOTAL, NOT CONTENT, AND DELIBERATELY OUT OF THE SNAPSHOT. Three states on
+    # one nullable column: NULL is "use the rule" (299 of 300 recipes), 1 is "the total already covers
+    # the plan-ahead waits", 0 is "it excludes them, add them and say so". Migration 058.
+    # It is not in SNAPSHOT_RECIPE_FIELDS because it is a display decision the owner makes about the
+    # recipe, not a word a cook typed into it, and adding a key every stored baseline lacks would end
+    # the byte-equal short-circuit for all 300 at once. Same trap the row id shipped a backfill for.
+    total_includes_waits = Column(Integer)
     descr = Column(Text)
     notes = Column(Text)
     image = Column(Text)

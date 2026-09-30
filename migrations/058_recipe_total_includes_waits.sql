@@ -1,0 +1,22 @@
+-- 058_recipe_total_includes_waits.sql - does a recipe's total already cover its plan-ahead waits?
+--
+-- ⚠️ ONE NULLABLE COLUMN, THREE STATES, AND ALMOST ALWAYS NULL. A recipe's Total is computed at
+--    display from prep + cook + the counted waits, and a stated publisher total is shown unchanged.
+--    Both rules are right nearly everywhere, and this column exists for the handful of recipes where
+--    the arithmetic and the author disagree.
+--
+--      NULL -> nobody has ruled on this recipe. Use the rule.
+--      1    -> the total already covers the waits. Do not add them.
+--      0    -> the total EXCLUDES the waits. Add them, and say so on the line.
+--
+-- ⚠️ MEASURED BEFORE IT WAS BUILT, WHICH IS WHY IT IS ONE COLUMN AND NOT A PER-WAIT FLAG. 10 of the
+--    300 recipes flagged as unclear, in three shapes: a publisher total below prep + cook + waits (2),
+--    a prep time at least as long as a counted wait's minimum so the prep may already include it (9),
+--    and a publisher total below prep + cook (1). Of those 10, 9 want exactly what the rule already
+--    does. Exactly ONE recipe needs a stored answer.
+--
+-- ⚠️ IT IS READ FOR A COMPUTED TOTAL TOO, not only a publisher one. A recipe with no stated total can
+--    still have a prep time that already swallowed its marinade, and a per-recipe answer is the only
+--    thing that can say so.
+
+ALTER TABLE recipes ADD COLUMN total_includes_waits INTEGER;
