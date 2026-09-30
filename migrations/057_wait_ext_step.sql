@@ -1,0 +1,25 @@
+-- 057_wait_ext_step.sql - a wait's ALTERNATIVE points at the step that describes it.
+--
+-- ⚠️ THE ALTERNATIVE IS USUALLY IN THE SAME SENTENCE AS THE WAIT, AND TWICE IT IS NOT. Measured over
+--    the 7 stored extensions: 5 say the alternative in the wait's own step ("marinate 10 minutes to
+--    an hour, or overnight if time allows"), and 2 describe it in a step of its own. beans soaks
+--    overnight at step 2 and puts its 90 minute quick soak at step 3. brioche-bread cold proofs at
+--    step 9 and explains the shorter option at step 11. A cook reading "or a 90 minute quick soak
+--    instead" has nowhere to go for the method, because the wait's only step link points at the
+--    overnight soak.
+--
+-- ⚠️ NULL WHEN IT WOULD EQUAL step_id, AND THAT RULE LIVES IN THE SAVE PATH. The alternative that
+--    shares its step needs no second link, and printing "(step 1)" twice on one line says nothing.
+--    write_plan_ahead stores NULL in that case, so only the 2 real cases carry a value.
+--
+-- ⚠️ NO CHECK, AND THAT IS A DECISION RATHER THAN AN OMISSION. A "ext_step_id <> step_id" constraint
+--    would be satisfiable (NULL passes it, so ON DELETE SET NULL never collides with it the way the
+--    alongside NOT-NULL check did in 056), but SQLite cannot add a CHECK without recreating the
+--    table, and recreating a table to restate a rule the save path already enforces buys nothing.
+--    ADD COLUMN is additive, cheap, and cannot lose a row in a copy.
+--
+-- ⚠️ IT POINTS AT A STEP, NEVER AT A WAIT, for the same reason 053 and 056 do. write_plan_ahead
+--    deletes and reinserts every wait on every save, so a wait id does not survive being referenced.
+--    A step row is updated in place and does.
+
+ALTER TABLE recipe_waits ADD COLUMN ext_step_id INTEGER REFERENCES recipe_steps(id) ON DELETE SET NULL;

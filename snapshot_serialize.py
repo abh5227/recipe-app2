@@ -145,6 +145,10 @@ SNAPSHOT_WAIT_FIELDS = (
     "ext_label", "ext_min_minutes", "ext_max_minutes",
     "when_kind", "when_label",
 )
+# ⚠️ step_id, alongside_step_id AND ext_step_id ARE NOT IN THE SNAPSHOT, deliberately and for the
+# reason step_position was not (see content_blob). They record WHICH STEP a wait was read from or
+# points at, which is provenance rather than content, and a step that moved would otherwise read as
+# an edit to the wait.
 SNAPSHOT_STORAGE_FIELDS = (
     "id", "position", "where_kept", "applies_to", "label", "min_minutes", "max_minutes",
 )

@@ -271,6 +271,11 @@ class RecipeWait(Base):
     # breakdown and does NOT reach the total, which needed no code: planahead.counts already answers
     # "only an unconditional wait counts".
     alongside_step_id = Column(Integer, ForeignKey("recipe_steps.id", ondelete="SET NULL"))
+    # ⚠️ THE STEP THAT DESCRIBES THE ALTERNATIVE, for a wait carrying ext_label. Migration 057.
+    # NULL when the alternative is stated in the wait's own step, which is 5 of the 7 stored
+    # extensions. write_plan_ahead stores NULL rather than a copy of step_id, so a wait either names
+    # a second step worth reading or names nothing.
+    ext_step_id = Column(Integer, ForeignKey("recipe_steps.id", ondelete="SET NULL"))
     __table_args__ = (
         Index("idx_recipe_waits_recipe", "recipe_id"),
         {"sqlite_autoincrement": True},
