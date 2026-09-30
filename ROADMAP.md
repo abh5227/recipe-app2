@@ -277,8 +277,10 @@ writes a scraped average into `recipes.rating` has misread this note.
   "structured it wrong."
 - **Harvest parenthetical grams** (e.g. "(226 grams)") as authoritative weights — better than
   volume→weight conversion; feeds 1c.
-- **Step headings and lead-in labels, on the way in.** ⚠️ **PROPOSED, NOT BUILT.** Round A repaired
-  300 recipes by hand and the importer still produces the same three shapes. What it should do:
+- **Step headings and lead-in labels, on the way in.** ✅ **BUILT.** `import_cleanup.plan_step_rows`
+  is the rule set, and `scripts/convert_step_headings.py` imports it rather than keeping a second
+  copy, so a recipe imported tomorrow is structured the way the 300 were just repaired to be. The
+  rules, and what each was measured against:
   - **A whole step wrapped in emphasis is a heading.** `import_cleanup.strip_emphasis` already
     recognizes `_x_` and `**x**` and `classify_step` never calls it, so 8 headings over 5 recipes
     arrived as numbered steps. Unwrap and mark `is_heading`. Confident, no review needed.
@@ -290,10 +292,22 @@ writes a scraped average into `recipes.rating` has misread this note.
     which is how two of KFC's labels were missed.
   - **A step opening `Note:` or `Tip:` is not a step.** 7 of them, and they belong in the recipe's
     Notes, appended with a blank line, which is 78 of the 79 separators the corpus already uses.
+  - **ALL CAPS heading text becomes sentence case.** 49 of the corpus's headings were shouting.
+    It lowercases proper nouns too, which is accepted rather than solved and is why every one is
+    surfaced.
+  - **A short title-like step is NOT converted.** "Prepare the pan" and "Chop everything" are the
+    same shape, one a heading and one an instruction, and no length or verb rule separated them on
+    the corpus without also catching real steps. The repair converted 21 of these from a reviewed
+    list; an importer has no reviewer. Leaving them as steps is the error a person can see.
   - **Every conversion is listed in the import report**, the same way a flagged line is, because a
     heading that should have been a step is a structural claim and the failure mode has to be
     "told you what it did", never "restructured it quietly". The decline-over-guess rule applies
-    unchanged: a label the rules cannot place stays a step and gets flagged.
+    unchanged: a label the rules cannot place stays a step and gets flagged. The review queue is
+    also the undo path, since the step row menu can convert a heading back or change its level
+    without the row losing its id.
+  - ⚠️ **A label carrying an ingredient link is refused.** A heading is escaped and never
+    linkified, so lifting "Wilt the [[spinach]]:" puts raw markup on the page. Exactly 1 of the
+    corpus's 104 labels is this shape, and an earlier run of the repair pass shipped it.
 - **Source field = flexible provenance.** Store whatever's there (cookbook, cookbook+author,
   URL, URL+author, or none); don't require a URL; preserve the raw value + structure what's
   detectable.
@@ -668,6 +682,21 @@ Builds on Phases 8–9.
 - **10b — Filters.** Cuisine/region, tags, dietary, equipment, difficulty, time, favorites.
 - **10c — In-season recipe filter.** Recipes whose linked ingredients are in season now
   (global or local season — see 10g; linked lines only).
+- **Notes as their own rows, with an optional step link.** The round after plan-ahead reaches live.
+  Today a note is one text blob on the recipe, so a note that belongs to one step has nowhere to
+  say so. 7 Note and Tip steps were just moved out of the method into that blob, which put them
+  where a reader looks for them and lost which step each one was about.
+  Three parts, each small on its own: a **note marker on the step** (hover on desktop, tap on
+  phone), a **"(step N)" link in Notes** pointing back, and rows to hang both on.
+  *Start with the three the corpus already names:* the bagel's yeast note belongs to the yeast
+  step and matters before you mix, KFC's "only toss the chicken you'll eat now" belongs to the
+  double-fry step, and lentils' "soaking is optional" belongs to the soak step.
+  *Schema:* a `recipe_notes` table with `step_id INTEGER REFERENCES recipe_steps(id) ON DELETE SET
+  NULL`, the same shape `recipe_waits.step_id` already uses and for the same reason — a step row is
+  updated in place by a save, so its id survives where a position does not.
+  *Why it is worth a table:* the same mechanism gives **ingredient notes** (backlog #4) with no
+  second design. A note that points at a row is one idea, and the row it points at is a column.
+  *Depends on:* plan-ahead on live, because it reuses that pointer's proven behavior.
 - **10h — Plan-ahead filter, merged with "tonight".** Filter browse by what the waiting asks of you
   rather than by the dish. Three axes off data the recipes now carry: **wait type** (marinating,
   rising, chilling, soaking, resting, freezing, brining), **needs an overnight** (a counted wait of
