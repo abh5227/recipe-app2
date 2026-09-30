@@ -1,0 +1,4 @@
+recipe_id,column,before,after,reason
+brioche-bread,descr,,NULL,"the pre-_kept save wrote '' over a NULL it did not mean to change, which cost this recipe the byte-equal short-circuit against its baseline"
+brioche-bread,image,,NULL,"the pre-_kept save wrote '' over a NULL it did not mean to change, which cost this recipe the byte-equal short-circuit against its baseline"
+brioche-bread,total_time,,NULL,"the pre-_kept save wrote '' over a NULL it did not mean to change, which cost this recipe the byte-equal short-circuit against its baseline"
