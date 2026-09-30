@@ -25,7 +25,7 @@ pair is a cost with nothing buying it.
 """
 import re
 
-from import_cleanup import _TIME_JOIN_RE, _TIME_SEG_RE, _TIME_UNITS   # THE shared segment reader
+from import_cleanup import _TIME_JOIN_RE, _TIME_SEG_RE, _TIME_UNITS, normalize_time   # THE shared segment reader
 
 # minutes per unit the segment reader may return, plus the two it does not carry
 _MIN = {"min": 1, "hr": 60, "day": 1440, "week": 10080}
@@ -280,19 +280,35 @@ def recipe_total(recipe, waits):
 
     if stated and ruling != 0:
         # The author's own figure, untouched. ruling == 1 says the same thing explicitly.
-        return stated, None
+        return _stated_parts(stated)
     plo, phi = clock_minutes(get("prep_time"))
     clo, chi = clock_minutes(get("cook_time"))
     if plo is None or clo is None:
         # ⚠️ A STATED TOTAL STILL WINS EVEN WHEN THE RULING SAYS "ADD THE WAITS", because there is
         #    nothing to add it to. Showing the author's figure beats showing none.
-        return (stated, None) if stated else (None, None)
+        return _stated_parts(stated) if stated else (None, None)
     base_lo, base_hi = plo + clo, phi + chi
     if not has_waits or ruling == 1:
         return _range_label(base_lo, base_hi), None
     lo = base_lo + wlo
     hi = None if whi is None else base_hi + whi
     return _range_label(lo, hi), INCLUDES_WAITS_NOTE
+
+
+def _stated_parts(stated):
+    """An author's own total -> (figure, note), normalized the way every other stored time is.
+
+    ⚠️ THE SPLIT HAPPENS HERE BECAUSE THE CLIENT MUST NOT SPLIT A COMPUTED ONE. The reading view used
+    to run timeParts over whatever sat in the Total slot, which is right for a stored string ("2 hr,
+    30 min" -> "2 hr 30 min", "35 min (plus 1 hr soaking)" -> a figure and a note) and WRONG for a
+    computed range: timeParts stops at the en dash, so "40 min - 45 min" came back as "40 min" and
+    the upper end was silently dropped. Measured on miso-tofu, butter-chicken and brioche-bread.
+    Normalizing both cases here means the label the client prints is final either way."""
+    text = normalize_time(stated)
+    if text.endswith(")") and " (" in text:
+        figure, note = text.rsplit(" (", 1)
+        return figure, note[:-1]
+    return text, None
 
 
 def _range_label(lo, hi):

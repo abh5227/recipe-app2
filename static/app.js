@@ -1253,12 +1253,17 @@ function scaleMetaBlock(r) {
   const times = [["Prep", r.prep_time, ""], ["Cook", r.cook_time, ""],
                  ["Total", totals.label || "", totals.note || ""]]
     .filter(([, v]) => (v || "").trim())
-    .map(([label, v, extraNote]) => {
+    .map(([label, v, serverNote]) => {
       // The note is its own span so it can stay at the inherited 400 while .meta-val carries the
       // 600 that makes the figure land. The parentheses and the weight then say the same thing.
-      const { value, note } = timeParts(v);
-      const shown = extraNote || note;
-      const tail = shown ? `<span class="meta-note"> (${esc(bindUnits(shown))})</span>` : "";
+      // ⚠️ THE TOTAL IS NOT RE-SPLIT HERE. Prep and Cook are raw stored strings and need timeParts.
+      //    The Total arrives from the server already normalized and already split, and running
+      //    timeParts over it TRUNCATED A RANGE: the segment reader stops at the en dash, so
+      //    "40 min – 45 min" came back as "40 min" and the upper end vanished. Measured on
+      //    miso-tofu, butter-chicken and brioche-bread.
+      const isTotal = label === "Total";
+      const { value, note } = isTotal ? { value: v, note: serverNote } : timeParts(v);
+      const tail = note ? `<span class="meta-note"> (${esc(bindUnits(note))})</span>` : "";
       return `${label}\u00a0<span class="meta-val">${esc(bindUnits(value))}</span>${tail}`;
     })
     .join(`<span class="meta-sep"> · </span>`);

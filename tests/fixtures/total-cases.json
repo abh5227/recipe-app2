@@ -214,5 +214,44 @@
   "waits": [],
   "label": null,
   "note": null
+ },
+ {
+  "why": "a stated total is normalized the way every other stored time is",
+  "recipe": {
+   "prep_time": "5 min",
+   "cook_time": "20 min",
+   "total_time": "2 hr, 30 min"
+  },
+  "waits": [],
+  "label": "2 hr 30 min",
+  "note": null
+ },
+ {
+  "why": "a stated total's trailing note is split out server-side, not by the client",
+  "recipe": {
+   "prep_time": "30 min",
+   "cook_time": "2 hr 25 min",
+   "total_time": "3 hr plus cooling"
+  },
+  "waits": [],
+  "label": "3 hr",
+  "note": "plus cooling"
+ },
+ {
+  "why": "a computed RANGE keeps both ends (the client used to stop at the en dash)",
+  "recipe": {
+   "prep_time": "10 min",
+   "cook_time": "10 min",
+   "total_time": null
+  },
+  "waits": [
+   {
+    "min_minutes": 20,
+    "max_minutes": 40,
+    "when_kind": "always"
+   }
+  ],
+  "label": "40 min – 1 hr",
+  "note": "incl. plan ahead"
  }
 ]
