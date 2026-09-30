@@ -55,15 +55,23 @@ CSV_OUT = REPO / "previews" / "reparse2-dryrun.csv"
 HAND = REPO / "hand_repoints.csv"
 
 
-def hand_repointed():
-    """{(recipe_id, position)} named in hand_repoints.csv."""
+def hand_repointed(conn):
+    """{(recipe_id, position)} named in hand_repoints.csv.
+
+    ⚠️ THE FILE IS KEYED ON (recipe_id, row_id) NOW, and this function still answers in positions
+    because its one caller compares against a (recipe_id, position) pair it already has. The row id is
+    resolved to the row's CURRENT position here, which is the whole point of the re-key: the file no
+    longer has to be corrected when a line is inserted above a named one."""
     out = set()
     for line in open(HAND, encoding="utf-8"):
         s = line.strip()
         if not s or s.startswith("#") or s.startswith("action,"):
             continue
         r = next(csv.reader([line]))
-        out.add((r[1], int(r[2])))
+        row = conn.execute("SELECT position FROM recipe_ingredients WHERE recipe_id=? AND id=?",
+                           (r[1], int(r[2]))).fetchone()
+        if row is not None:
+            out.add((r[1], row[0]))
     return out
 
 
@@ -225,7 +233,7 @@ def main():
     args = ap.parse_args()
 
     conn = sqlite3.connect(args.db)
-    hand = hand_repointed()
+    hand = hand_repointed(conn)
     rids = [r[0] for r in conn.execute("SELECT id FROM recipes ORDER BY id")]
 
     before_anns = annotations(args.db, rids)

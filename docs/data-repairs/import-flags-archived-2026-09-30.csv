@@ -1,0 +1,563 @@
+id,recipe_id,position,flag,reason,created_at
+92,bbq-gulf-snapper,0,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:10
+93,bbq-gulf-snapper,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+94,bbq-gulf-snapper,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+95,1-2-3-4-5-tofu,0,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:10
+96,acqua-pazza,0,multiplier,"N x SIZE multiplier — ambiguous semantics, review",2026-07-01 21:29:10
+97,adventist-gumbo,16,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+98,agedashi-tofu,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+99,aloo-potato-parathas,0,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:10
+100,aloo-potato-parathas,5,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:10
+101,arkansas-style-cheese-dip,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+102,arkansas-style-cheese-dip,19,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+103,asparagus-with-eggs-and-za-atar-halayone-w-bayd,1,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:10
+104,asparagus-with-eggs-and-za-atar-halayone-w-bayd,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+105,asparagus-with-eggs-and-za-atar-halayone-w-bayd,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+106,asparagus-with-eggs-and-za-atar-halayone-w-bayd,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+107,baked-cauliflower-with-red-onions-feta-and-dill-firinda-karnabahar-mucveri,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+108,baked-cauliflower-with-red-onions-feta-and-dill-firinda-karnabahar-mucveri,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+109,baked-cauliflower-with-red-onions-feta-and-dill-firinda-karnabahar-mucveri,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+110,baked-cauliflower-with-red-onions-feta-and-dill-firinda-karnabahar-mucveri,13,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+111,baked-rosemary-chickpeas,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+112,baked-rosemary-chickpeas,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+113,baked-zucchini-needs-a-redemption,2,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:10
+114,basic-dal,0,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:10
+115,basic-dal,5,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:10
+116,basic-dal,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+117,basic-dal,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+118,basic-hummus,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+119,basic-hummus,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+120,beans,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+121,beans,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+122,beans,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+123,beans,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+124,beans,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+125,beans,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+126,beans,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+127,beans,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+128,beans,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+129,beans,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+130,beans,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+131,beans,12,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+132,beans,13,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+133,beans,14,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+134,beans,15,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+135,beef-bulgogi,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+136,beef-bulgogi,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+137,birria-tacos,25,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+138,birria-tacos,26,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+142,bo-luc-lac-shaking-beef,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+143,breakfast-burrito,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+144,breakfast-burrito,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+145,breakfast-burrito,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+146,breakfast-burrito,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+147,breakfast-burrito,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+148,breakfast-burrito,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+149,breakfast-burrito,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+151,breakfast-potatoes,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+153,brioche-bread,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+154,brioche-bread,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+155,brioche-bread,19,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+156,brioche-cinnamon-rolls,7,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:10
+157,brioche-cinnamon-rolls,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+158,brown-butter-brownie-cookies,0,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:10
+159,brown-butter-brownie-cookies,3,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:10
+160,brown-butter-brownie-cookies,12,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+161,brown-rice-and-lentil-pilaf-with-crispy-fried-onions-mujaddara,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+162,brown-rice-and-lentil-pilaf-with-crispy-fried-onions-mujaddara,12,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+163,brown-rice-and-lentil-pilaf-with-crispy-fried-onions-mujaddara,13,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+164,brussel-sprouts,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+165,brussel-sprouts,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+166,brussel-sprouts,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+167,brussel-sprouts,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+168,burgers,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+169,burgers,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+170,burgers,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+171,burgers,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+173,butter-chicken,17,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+174,butter-chicken,18,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+175,butter-chicken,19,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+176,buttermilk-biscuits,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+177,cacio-e-pepe,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+178,cappuccino-muffins,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+179,caprese-salad,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+180,caprese-salad,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+181,caprese-salad,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+182,caprese-salad,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+183,caprese-salad,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+184,caprese-salad,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+185,caprese-salad,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+187,caramelized-onion-dal,0,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:10
+188,caramelized-onion-dal,5,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:10
+189,caramelized-onion-dal,8,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:10
+190,cauliflower-soup,1,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:10
+191,cauliflower-soup,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+192,cauliflower-soup,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+193,cauliflower-soup,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+194,cheesy-congee,0,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:10
+195,cheesy-congee,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+196,cheesy-congee,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+197,cheesy-congee,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+198,chicago-style-italian-beef-pot-roast-sandwich,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+199,chicago-style-italian-beef-pot-roast-sandwich,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+200,chicago-style-italian-beef-pot-roast-sandwich,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+201,chicago-style-italian-beef-pot-roast-sandwich,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+202,chicago-style-italian-beef-pot-roast-sandwich,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+203,chicken,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+205,chicken-asparagus-stir-fry,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+206,chicken-asparagus-stir-fry,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+207,chicken-and-broccoli-with-brown-sauce,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+208,chicken-florentine,1,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:10
+209,chicken-marsala,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+210,chicken-marsala,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+211,chicken-nachos,11,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:10
+212,chicken-nachos,12,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:10
+213,chicken-nachos,14,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:10
+214,chicken-nachos,16,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+215,chicken-nachos,17,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+216,chicken-nachos,18,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+217,chicken-nachos,19,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+218,chicken-pepperoni,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+219,chicken-pepperoni,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+220,chicken-shawarma,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+221,chicken-shawarma,14,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+222,chicken-shawarma,15,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+223,chicken-shawarma,16,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+224,chickpea-falafel-patties,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+225,chickpea-falafel-patties,12,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+226,chickpea-hash,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+228,chickpea-rice-pilaf,5,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:10
+229,chickpea-rice-pilaf,13,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+230,chipotle-black-beans,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+231,chipotle-black-beans,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+232,chipotle-black-beans,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+233,chips-and-salsa,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+234,chips-and-salsa,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+235,chips-and-salsa,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+236,chips-and-salsa,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+237,chips-and-salsa,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+238,chips-and-salsa,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+240,chocolate-chunk-oatmeal-cookie-bars,10,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:10
+241,chocolate-chunk-oatmeal-cookie-bars,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+242,chocolate-peanut-butter-banana-smoothie,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+243,chocolate-peanut-butter-banana-smoothie,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+244,chocolate-peanut-butter-banana-smoothie,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+245,chocolate-peanut-butter-banana-smoothie,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+246,chocolate-hazelnut-wedges,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+247,cinnamon-scones,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+248,cinnamon-scones,10,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:10
+249,cinnamon-sugar-speculoos-squares,0,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:10
+250,cinnamon-sugar-speculoos-squares,2,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:10
+251,cinnamon-sugar-speculoos-squares,12,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:10
+252,comforting-spinach-and-chickpeas-sabanekh-bil-hummus,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+253,comforting-spinach-and-chickpeas-sabanekh-bil-hummus,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+254,comforting-spinach-and-chickpeas-sabanekh-bil-hummus,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+255,comforting-spinach-and-chickpeas-sabanekh-bil-hummus,8,multiplier,"N x SIZE multiplier — ambiguous semantics, review",2026-07-01 21:29:10
+256,comforting-spinach-and-chickpeas-sabanekh-bil-hummus,12,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+257,country-ham-croquettes-with-parsley-salad,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+258,country-ham-croquettes-with-parsley-salad,19,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+259,country-ham-croquettes-with-parsley-salad,21,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+260,crick-cracks,0,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:10
+261,crick-cracks,7,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:10
+262,dan-dan-noodles,16,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+263,dan-dan-noodles,18,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+264,dan-dan-noodles,19,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+266,earl-grey-tea-cake,0,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:10
+267,earl-grey-tea-cake,5,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:10
+268,egg-fried-rice,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+269,egg-fried-rice,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+270,egg-fried-rice,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+271,egg-fried-rice,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+272,egg-fried-rice,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+273,egg-fried-rice,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+274,egg-fried-rice,6,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:10
+275,egg-fried-rice,7,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:10
+276,egg-fried-rice,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+277,egg-fried-rice,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+278,egg-fried-rice,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+279,egg-paratha-wrap,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+280,egg-paratha-wrap,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+281,egg-paratha-wrap,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+282,egg-paratha-wrap,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+283,egg-paratha-wrap,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+284,egg-paratha-wrap,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+285,egg-paratha-wrap,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+286,egg-paratha-wrap,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+288,egg-sammies,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+289,egg-sammies,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+291,eleni-s-sourdough-bread,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+292,eleni-s-sourdough-bread,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+293,elenis-sourdough-bread-starter,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+294,elenis-sourdough-bread-starter,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+295,everyday-palestinian-salad,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+296,everyday-palestinian-salad,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+297,falafel,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+298,falafel,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+299,falafel,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+300,fish-with-white-wine-sauce,1,multiplier,"N x SIZE multiplier — ambiguous semantics, review",2026-07-01 21:29:10
+301,flatbreads-with-za-atar-mana-eesh,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+302,french-toast,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+303,french-toast,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+304,french-toast,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+305,french-toast,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+306,french-toast,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+307,french-toast,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+308,french-toast,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+310,garlic-kale-salad-with-crispy-chickpeas,12,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:10
+311,garlic-kale-salad-with-crispy-chickpeas,13,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+312,garlic-ginger-chicken-with-cilantro-and-mint,0,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:10
+313,garlic-ginger-chicken-with-cilantro-and-mint,12,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:10
+314,garlic-ginger-chicken-with-cilantro-and-mint,13,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:10
+315,gazan-lentils-with-swiss-chard-and-tahini,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+316,gazan-salad,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+317,gazan-salad,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+318,ginger-chicken,4,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:10
+319,ginger-spritz,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+320,ginger-spritz,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+323,green-beans-with-olive-oil-fasolia-bi-zait,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+324,green-beans-with-olive-oil-fasolia-bi-zait,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+325,green-beans-with-olive-oil-fasolia-bi-zait,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+326,green-chicken-chili-soup,14,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+327,green-chicken-chili-soup,15,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+328,herbed-focaccia,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+329,homemade-pasta-dough,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+330,homemade-pasta-dough,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+331,homemade-pizzas,0,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:10
+332,homemade-pizzas,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+333,homemade-pizzas,2,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:10
+334,homemade-pizzas,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+336,honey-cookies-finikia,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+337,honey-cookies-finikia,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+338,hong-kong-style-shrimp-chow-mein-noodles,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+339,hummus,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+340,hummus,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+341,hummus-2,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+342,indian-ribollita,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+343,indian-ribollita,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+344,jamaican-jerk-fish,12,multiplier,"N x SIZE multiplier — ambiguous semantics, review",2026-07-01 21:29:10
+345,jamaican-rice-and-peas-beans,7,multiplier,"N x SIZE multiplier — ambiguous semantics, review",2026-07-01 21:29:10
+346,jamaican-rice-and-peas-beans,8,multiplier,"N x SIZE multiplier — ambiguous semantics, review",2026-07-01 21:29:10
+347,kachumber-tilapia,0,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:10
+348,kachumber-tilapia,7,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:10
+349,kachumber-tilapia,8,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:10
+350,kale-fennel-and-noodle-soup-rishta,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+351,kale-fennel-and-noodle-soup-rishta,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+352,kale-fennel-and-noodle-soup-rishta,16,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:10
+353,key-lime-pie,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+354,key-lime-pie,17,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+355,kfc-spicy-chicken-rice-bowl,0,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:11
+356,kfc-spicy-chicken-rice-bowl,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+357,kfc-spicy-chicken-rice-bowl,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+358,kfc-spicy-chicken-rice-bowl,14,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:11
+359,kfc-spicy-chicken-rice-bowl,17,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+360,kfc-spicy-chicken-rice-bowl,24,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+361,khaliat-nahal-honeycomb-bread,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+362,khaliat-nahal-honeycomb-bread,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+363,khaliat-nahal-honeycomb-bread,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+364,khichdi,0,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:11
+365,khichdi,7,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:11
+366,khichdi,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+367,khichdi,12,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+368,korean-cucumber-salad,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+369,korean-cucumber-salad,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+370,korean-scallion-pancake,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+371,kuku-paka-african-chicken-curry,1,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+372,kuku-paka-african-chicken-curry,1,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:11
+373,kuku-paka-african-chicken-curry,2,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+374,kuku-paka-african-chicken-curry,2,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:11
+375,kuku-paka-african-chicken-curry,19,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+376,lazy-noodles,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+377,lazy-noodles,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+378,lemon-and-chili-roast-potatoes-batata-harra,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+379,lemon-and-chili-roast-potatoes-batata-harra,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+380,lemon-and-chili-roast-potatoes-batata-harra,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+381,lemon-and-chili-roast-potatoes-batata-harra,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+382,lemon-cumin-and-green-chili-sea-bass,0,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+383,lemon-cumin-and-green-chili-sea-bass,0,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:11
+384,lemon-cumin-and-green-chili-sea-bass,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+385,lemon-cumin-and-green-chili-sea-bass,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+386,lemon-cumin-and-green-chili-sea-bass,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+387,lentil-salad-with-garlic-and-herbs,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+388,lentil-salad-with-garlic-and-herbs,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+389,lentil-soup-with-walnut-and-cilantro-smash-shorbat-adas,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+390,lentil-soup-with-walnut-and-cilantro-smash-shorbat-adas,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+391,lentil-soup-with-walnut-and-cilantro-smash-shorbat-adas,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+392,lotus-root-and-jammy-tomatoes,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+393,lotus-root-and-jammy-tomatoes,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+394,malted-brownie-biscotti,0,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+395,malted-brownie-biscotti,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+396,malted-brownie-biscotti,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+397,malted-brownie-biscotti,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+398,malted-chocolate-chip-cookie-bars,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+399,malted-chocolate-chip-cookie-bars,5,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+400,malted-chocolate-chip-cookie-bars,9,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+401,malted-chocolate-chip-cookie-bars,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+402,marble-bundt-cake,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+403,marble-bundt-cake,1,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+404,marble-bundt-cake,13,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:11
+405,marble-bundt-cake,15,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+406,marbled-chocolate-sugar-cookies,4,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+407,masa-cakes-with-mushroom-corn-and-cucumber-salad,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+408,masa-cakes-with-mushroom-corn-and-cucumber-salad,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+409,masa-cakes-with-mushroom-corn-and-cucumber-salad,17,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+410,masa-cakes-with-mushroom-corn-and-cucumber-salad,24,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+411,masa-cakes-with-mushroom-corn-and-cucumber-salad,27,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+412,meat-lasagna,23,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+413,meat-lasagna,24,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+414,meat-lasagna,26,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+415,meat-lasagna,28,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+416,meatball-banh-mi,16,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+417,meatball-banh-mi,22,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+418,meatball-hoagies,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+419,meatball-hoagies,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+420,meatball-hoagies,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+422,mejadra,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+423,mejadra,14,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+424,milky-tea-tres-leches,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+425,minestrone-soup,13,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+426,minestrone-soup,15,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+427,minestrone-soup,16,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+428,minestrone-soup,17,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+429,minestrone-soup,18,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+430,mocha-chocolate-chunk-cookies,0,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+431,mocha-chocolate-chunk-cookies,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+432,mocha-chocolate-chunk-cookies,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+433,morning-buns-with-orange-blossom-glaze,10,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:11
+434,nandos-portuguese-chicken-and-rice,23,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+435,new-york-style-bagel,3,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+436,oat-bars,0,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:11
+437,oat-bars,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+438,oat-bars,6,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:11
+439,oat-bars,15,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+440,orange-peel-fish,0,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:11
+441,orange-peel-fish,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+442,orange-peel-fish,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+443,oven-baked-quesadillas,12,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+444,oven-baked-quesadillas,20,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+445,oven-baked-ribs,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+446,palak-chicken-recipe-dhaba-style-saag-wala-chicken,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+447,palak-chicken-recipe-dhaba-style-saag-wala-chicken,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+448,palak-chicken-recipe-dhaba-style-saag-wala-chicken,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+449,palak-chicken-recipe-dhaba-style-saag-wala-chicken,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+450,palak-chicken-recipe-dhaba-style-saag-wala-chicken,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+451,palak-chicken-recipe-dhaba-style-saag-wala-chicken,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+452,palak-chicken-recipe-dhaba-style-saag-wala-chicken,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+453,palak-chicken-recipe-dhaba-style-saag-wala-chicken,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+454,palak-chicken-recipe-dhaba-style-saag-wala-chicken,12,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+455,palak-chicken-recipe-dhaba-style-saag-wala-chicken,15,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+456,palak-chicken-recipe-dhaba-style-saag-wala-chicken,22,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+457,palak-chicken-recipe-dhaba-style-saag-wala-chicken,27,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+458,palak-chicken-recipe-dhaba-style-saag-wala-chicken,28,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+459,palak-chicken-recipe-dhaba-style-saag-wala-chicken,33,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+460,palak-chicken-recipe-dhaba-style-saag-wala-chicken,39,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+461,palak-chicken-recipe-dhaba-style-saag-wala-chicken,40,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+462,palak-chicken-recipe-dhaba-style-saag-wala-chicken,41,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+463,palak-chicken-recipe-dhaba-style-saag-wala-chicken,42,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+464,panang-curry,3,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+465,panang-curry,9,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:11
+466,panang-curry,20,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+467,panang-curry,22,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+471,pasta-alla-norcina,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+472,pasta-alla-norcina,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+473,pasta-alla-norcina,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+474,pasta-alla-zozzona,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+475,pasta-alla-zozzona,9,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:11
+476,pasta-alla-zozzona,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+477,pasta-alla-zozzona,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+478,pasta-alla-zozzona,12,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+479,pasta-bolognese,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+480,pasta-bolognese,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+481,pasta-bolognese,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+482,pasta-bolognese,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+483,pasta-bolognese,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+484,pasta-bolognese,13,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+485,pasta-bolognese,14,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+486,pasta-bolognese,15,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+487,pasta-e-ceci,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+488,pasta-e-ceci,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+489,pasta-e-ceci,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+490,pasta-with-lentils,17,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+491,pasta-with-lentils,19,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+492,pasta-with-parsnips-and-bacon,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+493,pasta-with-parsnips-and-bacon,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+494,pastina,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+495,pastina,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+496,pastina,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+497,pastina,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+498,pastina,13,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+499,pastina,17,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+500,pastina,18,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+501,peanut-chutney,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+502,penne-alla-vodka,13,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+503,pepper-steak,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+504,pepperoni-rolls,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+505,pepperoni-rolls,12,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:11
+506,pepperoni-rolls,13,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+507,pizza-bagels,0,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:11
+508,pizza-bagels,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+509,pizza-bagels,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+510,pizza-bagels,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+511,pizza-bagels,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+513,pork-chops,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+515,pork-stir-fry-with-green-beans,12,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+516,pork-stir-fry-with-green-beans,13,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+517,potato-scallion-cakes-fritterra,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+518,potato-wedges,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+520,prego-rolls-steak-and-piri-piri-sandwiches,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+521,priya-s-dal,0,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:11
+522,priya-s-dal,6,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:11
+523,priya-s-dal,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+524,priya-s-dal,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+525,pumpkin-banana-bread,14,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+526,pumpkin-scones,1,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+527,pumpkin-spice-sandwich-cookies-with-brown-butter-cream-cheese-frosting,0,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:11
+528,pumpkin-spice-sandwich-cookies-with-brown-butter-cream-cheese-frosting,1,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+529,pumpkin-spice-sandwich-cookies-with-brown-butter-cream-cheese-frosting,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+530,pumpkin-spice-sandwich-cookies-with-brown-butter-cream-cheese-frosting,12,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+531,pumpkin-spice-sandwich-cookies-with-brown-butter-cream-cheese-frosting,14,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+532,quick-easy-hainanese-chicken-rice-khao-mun-gai,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+533,quick-easy-hainanese-chicken-rice-khao-mun-gai,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+534,quick-easy-hainanese-chicken-rice-khao-mun-gai,28,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+535,quick-easy-hainanese-chicken-rice-khao-mun-gai,29,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+536,quick-easy-hainanese-chicken-rice-khao-mun-gai,33,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+537,quick-pasta,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+539,rao-s-meatballs,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+540,rao-s-meatballs,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+541,raspberry-chocolate-chunk-cookies,1,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+542,red-lentil-and-squash-soup-with-za-atar-croutons,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+543,red-lentil-and-squash-soup-with-za-atar-croutons,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+544,red-lentil-and-squash-soup-with-za-atar-croutons,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+545,red-lentil-and-squash-soup-with-za-atar-croutons,15,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+546,red-lentil-and-squash-soup-with-za-atar-croutons,16,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+547,red-wine-braised-short-ribs,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+548,red-wine-braised-short-ribs,12,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+549,red-wine-braised-short-ribs,13,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+550,rhubarb-cake,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+551,rhubarb-cake,4,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+552,rhubarb-cake,6,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+553,rhubarb-cake,7,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+554,rhubarb-cake,8,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+555,rhubarb-cake,10,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+556,rhubarb-cake,12,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+557,rigatoni-amatriciana,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+558,rigatoni-amatriciana,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+559,rigatoni-amatriciana,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+560,rigatoni-amatriciana,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+561,rigatoni-amatriciana,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+562,rigatoni-amatriciana,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+563,rigatoni-amatriciana,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+564,roasted-carrot-avocado-salad-with-crunchy-seeds,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+565,roasted-carrot-avocado-salad-with-crunchy-seeds,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+566,roasted-chili-flakes,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+567,roasted-chili-flakes,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+568,salmon,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+570,salt-and-pepper-tofu,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+571,salt-crusted-potatoes-with-cilantro-mojo,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+572,salt-crusted-potatoes-with-cilantro-mojo,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+573,salted-brown-butter-pecan-tassies,0,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:11
+574,salted-brown-butter-pecan-tassies,5,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:11
+575,salted-brown-butter-pecan-tassies,6,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+576,sarma-hot-honey-cornbread,10,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:11
+577,sausage-sandwich,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+578,sausage-sandwich,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+579,sausage-sandwich,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+580,sausage-sandwich,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+582,sausage-kale-and-crouton-saute,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+583,sausage-kale-and-crouton-saute,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+584,sausage-kale-and-crouton-saute,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+585,savory-rice-porridge,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+586,scallion-rice,0,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+587,shepherds-pie,16,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+588,shepherds-pie,17,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+589,shepherds-pie,19,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+590,shepherds-pie,24,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+591,shishito-peppers,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+593,shrimp-scampi,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+594,snickerdoodle-shortbread,3,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+595,southwest-tofu-scramble,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+596,southwest-tofu-scramble,13,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:11
+597,southwest-tofu-scramble,14,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+598,southwest-tofu-scramble,15,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+599,southwest-tofu-scramble,16,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:11
+600,southwest-tofu-scramble,17,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+601,spiced-filipino-adobo-with-chicken-and-pork,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+602,spiced-fish-pilaf-with-caramelized-onions-sayadieh,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+603,spiced-fish-pilaf-with-caramelized-onions-sayadieh,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+604,spiced-pumpkin-olive-oil-and-orange-cake,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+605,spiced-pumpkin-olive-oil-and-orange-cake,17,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+606,spiced-pumpkin-olive-oil-and-orange-cake,20,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+607,spiced-scallops-with-saffron-beurre-blanc,0,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:11
+608,spiced-scallops-with-saffron-beurre-blanc,5,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:11
+609,spiced-scallops-with-saffron-beurre-blanc,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+610,spiced-scallops-with-saffron-beurre-blanc,13,ambiguous_section,no amount and not clearly a section — suggest section,2026-07-01 21:29:11
+611,spicy-chickpea-dip,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+612,spicy-crispy-pork-noodles,15,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+613,spinach-and-feta-parcels-fatayer-sabanekh,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+614,spinach-and-feta-parcels-fatayer-sabanekh,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+615,spinach-and-feta-parcels-fatayer-sabanekh,14,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+616,spinach-and-feta-parcels-fatayer-sabanekh,17,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+617,stir-fried-green-beans-with-pork,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+618,sunday-sauce,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+619,sunday-sauce,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+620,sunday-sauce,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+621,sunday-sauce,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+622,sweet-pumpkin-fritters,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+623,sweet-pumpkin-fritters,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+624,sweet-pumpkin-fritters,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+625,syrian-style-lentils-with-chard,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+626,tacos,8,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:11
+627,tacos,9,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:11
+628,tahini-brioche-loaves-and-dinner-rolls,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+629,tahini-brioche-loaves-and-dinner-rolls,6,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:11
+630,tahini-brioche-loaves-and-dinner-rolls,13,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+631,taiwanese-beef-noodle-soup,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+632,taiwanese-beef-noodle-soup,16,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+633,taiwanese-beef-noodle-soup,17,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+634,taiwanese-beef-noodle-soup,18,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+635,teriyaki-tofu,0,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+636,teriyaki-tofu,12,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+637,the-best-new-york-style-bagel,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+638,the-best-new-york-style-bagel,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+639,three-cup-tofu,13,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+640,tilapia,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+642,tofu-burger,0,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+643,tofu-burger,1,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+645,tofu-green-bean-breakfast-scramble,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+646,tomato-brown-butter,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+647,toum,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+648,triple-spice-sugar-cookies,7,grams_declined,a gram value was present but not confidently harvested,2026-07-01 21:29:11
+649,tseke-com-peix-frito-local-spinach-with-curry-sauce-and-crispy-fried-fish,4,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:11
+650,tseke-com-peix-frito-local-spinach-with-curry-sauce-and-crispy-fried-fish,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+651,tseke-com-peix-frito-local-spinach-with-curry-sauce-and-crispy-fried-fish,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+652,vanilla-mug-cake,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+653,vietnamese-caramel-ginger-chicken,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+654,vietnamese-caramel-ginger-chicken,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+655,vietnamese-caramel-ginger-chicken,11,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+656,vietnamese-caramel-ginger-chicken,12,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+657,vietnamese-caramelised-pork,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+658,vietnamese-coffee-bundt-cake,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+659,vietnamese-coffee-bundt-cake,15,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+660,waffle,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+661,warm-buttered-hummus,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+662,warm-squash-chickpea-salad-with-tahini,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+663,watermelon-juice-with-lime-ginger-and-mint,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+664,watermelon-juice-with-lime-ginger-and-mint,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+665,wedding-soup,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+666,wedding-soup,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+667,wedding-soup,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+668,wedding-soup,8,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+669,wedding-soup,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+670,weekday-meat-sauce,3,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+671,weekday-meat-sauce,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+672,weekday-meat-sauce,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+673,weekday-meat-sauce,6,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+674,weekday-meat-sauce,7,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+676,white-bean-stuffed-poblanos,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+677,white-bean-stuffed-poblanos,9,each_multi,'each' distributes one amount over several ingredients — review,2026-07-01 21:29:11
+678,yellow-split-peas-with-za-atar-spiced-almonds,9,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+679,za-atar-bread,0,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:11
+680,za-atar-bread,7,section_suggested,"no amount, matches section pattern — treated as section header, confirm",2026-07-01 21:29:11
+681,za-atar-bread,10,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+682,za-atar-roast-salmon-with-garlicky-bean-mash,2,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+683,za-atar-roast-salmon-with-garlicky-bean-mash,5,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11
+684,zanzibar-pilau-rice-pilaf,4,ambiguous_section,no amount and not clearly a section — suggest ingredient,2026-07-01 21:29:11

@@ -5,11 +5,14 @@
 matcher would otherwise decide: plain flour matches the generic flour row on its own, and the
 repoint sends it to all-purpose flour instead. Applied first, the matcher would overwrite it.
 
-⚠️ KEYED ON (recipe_id, position). That pair is unique over all 3,555 recipe lines. The id
-column is a rowid build_db regenerates, so keying on it would survive nothing.
+⚠️ KEYED ON (recipe_id, row_id). It was (recipe_id, position), because the id "is a rowid build_db
+regenerates" — true while the 5 seed recipes existed and build_db rebuilt their rows, and false since
+migration 016 flipped them to source='app' and emptied seed.py's RECIPES. Measured before the file was
+converted: build_db.build() over a copy of live returned all 3,572 ingredient rows byte-identical.
+A position is a slot, so inserting one line above a corrected line moved every correction below it.
 
 ⚠️ A LINE THAT NO LONGER READS THE SAME STOPS THE RUN. The hand file carries the line as it was
-when the decision was made. If the text at that position has changed the decision may no longer
+when the decision was made. If the text on that row has changed the decision may no longer
 apply, and repointing it silently would move a link onto an unrelated ingredient. Phase C showed
 what a silent no-op costs, so this fails loudly instead.
 
@@ -37,17 +40,22 @@ def apply(db=DB, hand=HAND, verbose=True):
     applied = unchanged = suppressed = relabelled = 0
     try:
         conn.execute("BEGIN")
-        for action, recipe_id, position, catalog_id, conf, rule, matched, check in rows:
+        for action, recipe_id, row_id, catalog_id, conf, rule, matched, check in rows:
+            # recipe_id is in the WHERE beside the id on purpose: an id names one row in the whole
+            # table, so a file naming the right id under the wrong recipe would otherwise apply.
             cur = conn.execute(
                 "SELECT COALESCE(label, raw_text), catalog_id, link_confidence, link_rule "
-                "FROM recipe_ingredients WHERE recipe_id=? AND position=?",
-                (recipe_id, int(position))).fetchone()
+                "FROM recipe_ingredients WHERE recipe_id=? AND id=?",
+                (recipe_id, int(row_id))).fetchone()
             if cur is None:
-                raise SystemExit(f"⚠️  no line at {recipe_id!r} position {position}. The hand file "
+                raise SystemExit(f"⚠️  no line in {recipe_id!r} with row id {row_id}. The hand file "
                                  "names a row that is not in the corpus. Fix the file rather than "
                                  "skipping it.")
+            # ⚠️ line_check IS STILL CHECKED, and the id does not make it redundant. The id says which
+            # row; this says the decision was made about THIS TEXT. A rewritten line is a different
+            # line, and its repoint may no longer name the right target.
             if check and (cur[0] or "")[:120] != check:
-                raise SystemExit(f"⚠️  the line at {recipe_id!r} position {position} now reads "
+                raise SystemExit(f"⚠️  the line in {recipe_id!r} with row id {row_id} now reads "
                                  f"{(cur[0] or '')[:60]!r}, not {check[:60]!r}. The decision was "
                                  "made about different text, so it is not replayed.")
             if action == "relabel":
@@ -57,7 +65,7 @@ def apply(db=DB, hand=HAND, verbose=True):
                     unchanged += 1
                 else:
                     conn.execute("UPDATE recipe_ingredients SET link_rule=? WHERE recipe_id=? "
-                                 "AND position=?", (rule, recipe_id, int(position)))
+                                 "AND id=?", (rule, recipe_id, int(row_id)))
                     relabelled += 1
                 continue
             if action == "suppress":
@@ -68,7 +76,7 @@ def apply(db=DB, hand=HAND, verbose=True):
                 else:
                     conn.execute("UPDATE recipe_ingredients SET catalog_id=NULL, "
                                  "link_confidence=NULL, link_rule=NULL, link_matched=NULL "
-                                 "WHERE recipe_id=? AND position=?", (recipe_id, int(position)))
+                                 "WHERE recipe_id=? AND id=?", (recipe_id, int(row_id)))
                     suppressed += 1
                 continue
             if (cur[1], cur[2], cur[3]) == (catalog_id, conf, rule):
@@ -76,8 +84,8 @@ def apply(db=DB, hand=HAND, verbose=True):
                 continue
             conn.execute(
                 "UPDATE recipe_ingredients SET catalog_id=?, link_confidence=?, link_rule=?, "
-                "link_matched=? WHERE recipe_id=? AND position=?",
-                (catalog_id, conf, rule, matched or None, recipe_id, int(position)))
+                "link_matched=? WHERE recipe_id=? AND id=?",
+                (catalog_id, conf, rule, matched or None, recipe_id, int(row_id)))
             applied += 1
         want = sum(1 for r in rows if r[0] == "repoint")
         n = conn.execute("SELECT COUNT(*) FROM recipe_ingredients "
