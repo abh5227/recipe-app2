@@ -491,10 +491,12 @@ def test_the_old_step_pointer_columns_are_gone(kitchen):
     assert "step_id" in cols
 
 
-def test_dropping_them_left_every_index_key_and_check_in_place(kitchen):
-    """SQLite rewrites the table to drop a column, so the things that came along for the ride are
-    worth asserting rather than assuming: the four indexes, the seven CHECKs, the uniqueness of
-    (recipe_id, position), and step_id's ON DELETE SET NULL."""
+def test_the_table_rebuilds_kept_every_index_key_and_guard(kitchen):
+    """⚠️ SQLITE REWRITES THE WHOLE TABLE to drop a column (054) or change a CHECK (056), so what came
+    along for the ride is worth asserting rather than assuming.
+
+    ⚠️ THIS USED TO COUNT THE CHECKS AND THE COUNT BROKE THE MOMENT 056 ADDED TWO. A count says nothing
+    about WHICH guard survived, which is the only thing worth knowing, so each one is named."""
     with kitchen.conn() as c:
         sql = c.execute("SELECT sql FROM sqlite_master WHERE name='recipe_waits'").fetchone()[0]
         idx = sorted(r[0] for r in c.execute(
@@ -503,9 +505,19 @@ def test_dropping_them_left_every_index_key_and_check_in_place(kitchen):
         assert c.execute("PRAGMA foreign_key_check").fetchall() == []
     assert idx == ["idx_recipe_waits_min", "idx_recipe_waits_recipe", "idx_recipe_waits_when",
                    "sqlite_autoindex_recipe_waits_1"]
-    assert sql.count("CHECK") == 7
     assert "UNIQUE (recipe_id, position)" in sql
-    assert "ON DELETE SET NULL" in sql
+    assert sql.count("ON DELETE SET NULL") == 2, "step_id AND alongside_step_id"
+    assert "ON DELETE CASCADE" in sql, "the recipe_id cascade"
+    for guard in (
+            "when_kind IN ('always','optional','only_if','alongside')",
+            "when_kind <> 'only_if' OR when_label IS NOT NULL",
+            "alongside_step_id IS NULL OR alongside_step_id <> step_id",
+            "kind IN ('marinating','chilling','rising','soaking','resting','freezing','brining','other')",
+            "min_minutes IS NULL OR min_minutes >= 0",
+            "max_minutes IS NULL OR min_minutes IS NULL OR max_minutes >= min_minutes",
+            "ext_max_minutes IS NULL OR ext_min_minutes IS NULL OR ext_max_minutes >= ext_min_minutes",
+            "ext_label IS NOT NULL OR (ext_min_minutes IS NULL AND ext_max_minutes IS NULL)"):
+        assert guard in sql, f"the CHECK for {guard!r} did not survive the rebuild"
 
 
 def test_the_model_no_longer_declares_them():
@@ -514,3 +526,133 @@ def test_the_model_no_longer_declares_them():
     cols = {c.name for c in RecipeWait.__table__.columns}
     assert "step_position" not in cols and "step_check" not in cols
     assert "step_id" in cols
+
+
+# ---------------------------------------------------------------------------------------------
+# migration 056: a wait that happens at the same time as another one.
+# ---------------------------------------------------------------------------------------------
+
+def _two_waits(kitchen, rid, when_kind="alongside"):
+    """Two chills on two steps, the second running alongside the first. Mirrors morning-buns, where
+    the dough chills overnight and the butter block chills overnight during the same night."""
+    _save_steps(kitchen, rid, ["Chill the dough.", "Make the butter block.", "Roll and bake."], [])
+    rows = _steps(kitchen, rid)
+    dough, butter = rows[0]["id"], rows[1]["id"]
+    _save_steps(kitchen, rid, [{"id": r["id"], "text": r["text"]} for r in rows],
+                [{"kind": "chilling", "label": "overnight", "step_id": dough},
+                 {"kind": "chilling", "label": "overnight", "step_id": butter,
+                  "when_kind": when_kind, "alongside_step_id": dough}])
+    return dough, butter
+
+
+def test_an_alongside_wait_names_the_step_it_overlaps(kitchen, rid):
+    dough, butter = _two_waits(kitchen, rid)
+    got = _waits(kitchen, rid)
+    assert (got[1]["when_kind"], got[1]["alongside_step_id"]) == ("alongside", dough)
+    assert got[1]["alongside_no"] == 1, "the PRINTED number of the step it runs alongside"
+    assert got[1]["step_no"] == 2, "and its own step number is unaffected"
+
+
+def test_an_alongside_wait_does_not_reach_the_total(kitchen, rid):
+    """⚠️ THIS NEEDED NO CODE, WHICH IS THE POINT. planahead.counts already answers "only an
+    unconditional wait counts", so a fourth when_kind is excluded by the rule that was already there.
+    Two overnights that happen on the same night are one night of waiting."""
+    _two_waits(kitchen, rid)
+    d = kitchen.client.get(f"/api/recipes/{rid}").get_json()
+    assert len(d["waits"]) == 2
+    import planahead
+    assert [planahead.counts(w) for w in d["waits"]] == [True, False]
+    assert planahead.total(d["waits"]) == (480, None), "8 hr, not 16"
+
+
+def test_there_is_no_check_forcing_an_alongside_wait_to_name_a_step(kitchen):
+    """⚠️ THE CHECK THAT LOOKS OBVIOUS AND CONTRADICTS THE FOREIGN KEY. "an alongside wait must name
+    the step it runs alongside" cannot hold at the same time as ON DELETE SET NULL on that very
+    column: deleting the step tries to null the pointer and the CHECK refuses, so the DELETE fails.
+    write_recipe_rows deletes step rows BEFORE write_plan_ahead rewrites the waits, so a cook deleting
+    an overlapped step would have got a 500 and lost the edit. The invariant lives in the save path
+    and in counts() instead."""
+    with kitchen.conn() as c:
+        sql = c.execute("SELECT sql FROM sqlite_master WHERE name='recipe_waits'").fetchone()[0]
+    assert "alongside_step_id IS NOT NULL" not in sql
+
+
+def test_an_alongside_wait_that_overlaps_nothing_reaches_the_total():
+    """The other half of removing that CHECK. Between the step being deleted and the next save, the
+    row says 'alongside' and points at nothing, and it is no longer overlapping anything, so it is
+    ordinary waiting time and the total must say so."""
+    import planahead
+    assert planahead.counts({"when_kind": "alongside", "alongside_step_id": 7}) is False
+    assert planahead.counts({"when_kind": "alongside", "alongside_step_id": None}) is True
+    assert planahead.counts({"when_kind": "always"}) is True
+    assert planahead.counts({"when_kind": "optional"}) is False
+
+
+def test_an_alongside_wait_with_no_target_falls_back_to_always(kitchen, rid):
+    """⚠️ A HALF-FILLED PICKER MUST NOT 500 THE SAVE. The table refuses an 'alongside' with nothing to
+    run alongside, so the save turns it into an ordinary wait, which reads correctly and is fixable.
+    Same treatment only_if already gets when its condition is blank."""
+    _save_steps(kitchen, rid, ["Chill the dough."], [])
+    sid = _steps(kitchen, rid)[0]["id"]
+    assert _save_steps(kitchen, rid, [{"id": sid, "text": "Chill the dough."}],
+                       [{"kind": "chilling", "label": "overnight", "step_id": sid,
+                         "when_kind": "alongside"}]).status_code == 200
+    w = _waits(kitchen, rid)[0]
+    assert (w["when_kind"], w["alongside_step_id"]) == ("always", None)
+
+
+def test_a_wait_cannot_run_alongside_its_own_step(kitchen, rid):
+    """It would say nothing. The save drops the pointer rather than storing a row the CHECK refuses."""
+    _save_steps(kitchen, rid, ["Chill the dough."], [])
+    sid = _steps(kitchen, rid)[0]["id"]
+    assert _save_steps(kitchen, rid, [{"id": sid, "text": "Chill the dough."}],
+                       [{"kind": "chilling", "label": "overnight", "step_id": sid,
+                         "when_kind": "alongside", "alongside_step_id": sid}]).status_code == 200
+    w = _waits(kitchen, rid)[0]
+    assert (w["when_kind"], w["alongside_step_id"]) == ("always", None)
+
+
+def test_deleting_the_overlapped_step_clears_the_pointer(kitchen, rid):
+    """The overlap pointer gets the same treatment as step_id: a step that is gone cannot be named."""
+    dough, butter = _two_waits(kitchen, rid)
+    rows = [r for r in _steps(kitchen, rid) if r["id"] != dough]
+    _save_steps(kitchen, rid, [{"id": r["id"], "text": r["text"]} for r in rows],
+                [{"kind": "chilling", "label": "overnight", "step_id": butter,
+                  "when_kind": "alongside", "alongside_step_id": dough}])
+    w = _waits(kitchen, rid)[0]
+    assert w["alongside_step_id"] is None and w["when_kind"] == "always"
+
+
+def test_the_database_refuses_a_dangling_overlap_pointer(kitchen, rid):
+    """ON DELETE SET NULL underneath the save path, for any route to a deleted step."""
+    dough, butter = _two_waits(kitchen, rid)
+    with kitchen.conn() as c:
+        c.execute("PRAGMA foreign_keys = ON")
+        assert c.execute("SELECT alongside_step_id FROM recipe_waits WHERE when_kind='alongside'"
+                         ).fetchone()[0] == dough
+        c.execute("DELETE FROM recipe_steps WHERE id=?", (dough,))
+        c.commit()
+        assert c.execute("SELECT alongside_step_id FROM recipe_waits WHERE step_id=?",
+                         (butter,)).fetchone()[0] is None
+
+
+def test_an_overlap_pointing_at_another_recipes_step_is_refused(kitchen, rid):
+    other = kitchen.client.post("/api/recipes", json={
+        "name": "Elsewhere", "ingredients": [], "steps": ["Not this recipe."]}).get_json()["id"]
+    stolen = _steps(kitchen, other)[0]["id"]
+    _save_steps(kitchen, rid, ["Chill the dough.", "Make the butter."], [])
+    rows = _steps(kitchen, rid)
+    _save_steps(kitchen, rid, [{"id": r["id"], "text": r["text"]} for r in rows],
+                [{"kind": "chilling", "label": "overnight", "step_id": rows[1]["id"],
+                  "when_kind": "alongside", "alongside_step_id": stolen}])
+    w = _waits(kitchen, rid)[0]
+    assert (w["when_kind"], w["alongside_step_id"]) == ("always", None)
+
+
+def test_alongside_reads_as_a_qualifier_not_a_second_step_link():
+    """The words the page shows. A pointer the server could not resolve leaves alongside_no null, and
+    the wait then reads without the phrase rather than with a wrong number."""
+    import planahead
+    assert planahead.alongside_label({"alongside_no": 3}) == " alongside step 3"
+    assert planahead.alongside_label({"alongside_no": None}) == ""
+    assert planahead.alongside_label({}) == ""

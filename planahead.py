@@ -46,7 +46,12 @@ VERBS = {"marinating": "Marinate", "chilling": "Chill", "rising": "Rise", "soaki
          "resting": "Rest", "freezing": "Freeze", "brining": "Brine", "other": "Wait"}
 SNIPPET_LEN = 48
 WHERES = ("fridge", "freezer", "room temp", "other")
-WHENS = ("always", "optional", "only_if")
+# ⚠️ 'alongside' IS A FOURTH VALUE ON A COLUMN THAT MEANS "does this wait always happen", and it is
+# strictly speaking a different question: a wait could be both optional AND alongside, and one column
+# cannot say so. Nothing in the corpus needs both (morning-buns' butter chill is unconditional, it just
+# shares a night with the dough), so the collision costs nothing today. If a wait ever needs both, this
+# is the seam that has to split into two columns.
+WHENS = ("always", "optional", "only_if", "alongside")
 
 
 def counts(w):
@@ -58,7 +63,20 @@ def counts(w):
     recipe already said they could skip. Both still show in the breakdown with their qualifier,
     because a wait a cook MIGHT take is worth reading before starting.
     """
-    return (w.get("when_kind") or "always") == "always"
+    when = w.get("when_kind") or "always"
+    if when == "alongside":
+        # ⚠️ AN ALONGSIDE WAIT WHOSE STEP IS GONE OVERLAPS NOTHING, so it is an ordinary wait again and
+        # DOES reach the total. The pointer is nulled by ON DELETE SET NULL, and the next save
+        # normalizes when_kind back to 'always'. Between those two moments this is what is true.
+        return w.get("alongside_step_id") is None
+    return when == "always"
+
+
+def alongside_label(w):
+    """" alongside step 3", or "" for a wait that overlaps nothing. The caller renders it beside the
+    wait's own words, the same way when_suffix renders "(optional)"."""
+    n = w.get("alongside_no")
+    return f" alongside step {n}" if n else ""
 
 
 def read_duration(text):
@@ -260,6 +278,11 @@ def resolve_steps(waits, steps):
     for w in waits:
         sid = w.get("step_id")
         w["step_no"], w["step_ok"] = None, True
+        # ⚠️ THE OVERLAP POINTER IS RESOLVED THE SAME WAY AND REPORTED SEPARATELY. alongside_no is the
+        # PRINTED number of the step this wait runs alongside, so "alongside step 3" means the number
+        # the page shows, not a position and not an id. A pointer at a heading or at nothing resolves
+        # to None and the wait simply reads without the phrase, rather than reading a wrong number.
+        w["alongside_no"] = by_id.get(w.get("alongside_step_id")) if w.get("alongside_step_id") else None
         if sid is None:
             continue
         num = by_id.get(sid)

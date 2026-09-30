@@ -265,6 +265,12 @@ class RecipeWait(Base):
     # the recipe, which is what clears the link when a linked step is deleted. Reordering steps does
     # not touch it, because a save updates rows in place and an id survives.
     step_id = Column(Integer, ForeignKey("recipe_steps.id", ondelete="SET NULL"))
+    # ⚠️ THE STEP OF THE WAIT THIS ONE OVERLAPS, for when_kind='alongside'. Migration 056. It names a
+    # STEP and never a wait, because write_plan_ahead deletes and reinserts every wait on every save,
+    # so a wait id is not a thing that survives being referenced. An alongside wait is listed in the
+    # breakdown and does NOT reach the total, which needed no code: planahead.counts already answers
+    # "only an unconditional wait counts".
+    alongside_step_id = Column(Integer, ForeignKey("recipe_steps.id", ondelete="SET NULL"))
     __table_args__ = (
         Index("idx_recipe_waits_recipe", "recipe_id"),
         {"sqlite_autoincrement": True},

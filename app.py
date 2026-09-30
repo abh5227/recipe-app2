@@ -678,9 +678,22 @@ def write_plan_ahead(s, rid, payload):
         #    whole reason the snippet existed and the whole reason it is gone.
         sid = w.get("step_id")
         sid = sid if sid in step_ids else None
+        # ⚠️ THE OVERLAP POINTER GETS THE SAME TREATMENT, AND alongside FALLS BACK THE WAY only_if DOES.
+        #    A when_kind the picker has half filled in must not 500 the save, so an 'alongside' with no
+        #    usable step to run alongside becomes an ordinary 'always' wait — which reads correctly and
+        #    is fixable, where a refused save loses the whole edit. The three CHECKs on the table are
+        #    the floor under this, not a substitute for it.
+        #
+        #    A wait cannot run alongside its OWN step: that says nothing, and the table refuses it.
+        aside = w.get("alongside_step_id")
+        aside = aside if (aside in step_ids and aside != sid) else None
+        if when_kind == "alongside" and aside is None:
+            when_kind = "always"
+        if when_kind != "alongside":
+            aside = None
         s.execute(insert(rw).values(
             recipe_id=rid, position=pos, kind=kind, label=label,
-            min_minutes=lo, max_minutes=hi, step_id=sid,
+            min_minutes=lo, max_minutes=hi, step_id=sid, alongside_step_id=aside,
             ext_label=ext, ext_min_minutes=elo, ext_max_minutes=ehi,
             when_kind=when_kind, when_label=when_label))
     for pos, x in enumerate(payload.get("storage") or []):

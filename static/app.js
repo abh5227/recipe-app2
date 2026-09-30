@@ -1258,6 +1258,13 @@ function scaleMetaBlock(r) {
       const k = w.when_kind || "always";
       if (k === "optional") return `<span class="meta-when">(optional)</span>`;
       if (k === "only_if") return `<span class="meta-when">if ${esc(w.when_label || "")}</span>`;
+      // ⚠️ "alongside step N" IS A QUALIFIER, NOT A SECOND STEP LINK. It says why this wait is not in
+      //    the total: it happens during another one. N is the printed number the server resolved from
+      //    alongside_step_id, so it agrees with what the page shows. A pointer the server could not
+      //    resolve leaves alongside_no null and the wait reads without the phrase rather than with a
+      //    wrong number.
+      if (k === "alongside") return w.alongside_no
+        ? `<span class="meta-when">alongside step ${w.alongside_no}</span>` : "";
       return "";
     };
     // ⚠️ THE KIND READS AS A VERB. "Chill 4 hr – overnight" is an instruction. "4 hr – overnight
@@ -2336,7 +2343,8 @@ function vitalsEditHTML(r) {
 const WAIT_KINDS = ["marinating", "chilling", "rising", "soaking", "resting", "freezing", "brining", "other"];
 const STORE_WHERE = ["fridge", "freezer", "room temp", "other"];
 // The stored value and the word the editor shows for it. "only if" needs a condition after it.
-const WAIT_WHENS = [["always", "always"], ["optional", "optional"], ["only_if", "only if"]];
+const WAIT_WHENS = [["always", "always"], ["optional", "optional"], ["only_if", "only if"],
+                    ["alongside", "alongside"]];
 
 function pickHTML(list, val, attr, i) {
   // Each entry is either a bare value or [value, the word to show].
@@ -2353,8 +2361,8 @@ function pickHTML(list, val, attr, i) {
 // the slots, so a wait linked by position pointed at whatever moved into that slot afterwards. The
 // number shown to the user is still the printed step number, counted heading-excluded here exactly as
 // the CSS counter does — the id is what travels. Migration 053.
-function stepChoices(d) {
-  const out = [["", "no step"]];
+function stepChoices(d, blank = "no step") {
+  const out = [["", blank]];
   let n = 0;
   for (const st of (d.steps || [])) {
     if (st.is_heading) continue;
@@ -2376,6 +2384,7 @@ function waitsEditHTML(d) {
       ${pickHTML(WAIT_WHENS, w.when_kind || "always", "wait-when", i)}
       <input class="ie ie-wait-if" data-wait-when-label="${i}" value="${esc(w.when_label || "")}" placeholder="chilled" aria-label="Only if">
       ${pickHTML(stepChoices(d), w.step_id == null ? "" : String(w.step_id), "wait-step-pick", i)}
+      ${pickHTML(stepChoices(d, "alongside which step?"), w.alongside_step_id == null ? "" : String(w.alongside_step_id), "wait-aside-pick", i)}
       <button type="button" class="ie-x" data-wait-del="${i}" aria-label="Remove this wait">×</button>
     </div>`).join("");
   return `<div class="ie-block"><span class="ie-vlabel">Plan ahead</span>${rows}
@@ -2403,7 +2412,9 @@ function handlePlanAheadAction(t) {
     if (host) host.innerHTML = waitsEditHTML(d) + storageEditHTML(d);
   };
   if (t.closest("[data-wait-add]")) {
-    (d.waits = d.waits || []).push({ kind: "other", label: "", ext_label: "", when_kind: "always", when_label: "" }); view.dirty = true; repaint(); return true;
+    (d.waits = d.waits || []).push({ kind: "other", label: "", ext_label: "", when_kind: "always",
+                                     when_label: "", step_id: null, alongside_step_id: null });
+    view.dirty = true; repaint(); return true;
   }
   if (t.closest("[data-store-add]")) {
     (d.storage = d.storage || []).push({ where_kept: "fridge", applies_to: "", label: "" }); view.dirty = true; repaint(); return true;
@@ -2428,8 +2439,17 @@ function handlePlanAheadInput(el) {
     return set(d.waits, +el.dataset.waitWhen, "when_kind");
   }
   if (el.dataset.waitWhenLabel !== undefined) return set(d.waits, +el.dataset.waitWhenLabel, "when_label");
-  // ⚠️ THE SNIPPET IS NOT SET HERE. The client sends a position and the server reads the step text
-  //    it points at, so a stale check can never be written from a stale draft.
+  if (el.dataset.waitAsidePick !== undefined) {
+    // ⚠️ THE STEP THIS WAIT RUNS ALONGSIDE, for when_kind='alongside'. It names a STEP and never
+    //    another wait: waits are deleted and reinserted on every save, so a wait id survives nothing.
+    //    The server drops a pointer that names no step of this recipe, or names this wait's own step.
+    const i = +el.dataset.waitAsidePick;
+    if (d.waits && d.waits[i]) {
+      d.waits[i].alongside_step_id = el.value === "" ? null : +el.value;
+      view.dirty = true;
+    }
+    return true;
+  }
   if (el.dataset.waitStepPick !== undefined) {
     const i = +el.dataset.waitStepPick;
     if (d.waits && d.waits[i]) {
@@ -2960,7 +2980,8 @@ function draftPayload() {
       when_kind: t(w.when_kind) || "always", when_label: t(w.when_label) || null,
       // ⚠️ ROUND-TRIPPED VERBATIM. The server keeps a check it is given and only reads a fresh one
       //    when this is null, which the step picker below is the only thing that does.
-      step_id: w.step_id == null ? null : +w.step_id })),
+      step_id: w.step_id == null ? null : +w.step_id,
+      alongside_step_id: w.alongside_step_id == null ? null : +w.alongside_step_id })),
     storage: (view.draft.storage || []).filter((x) => t(x.label)).map((x) => ({
       where_kept: t(x.where_kept) || "fridge", applies_to: t(x.applies_to) || null, label: t(x.label) })),
   };

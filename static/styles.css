@@ -2419,6 +2419,10 @@ a.meta-step:focus-visible { color: var(--berry); outline: 1px dotted currentColo
 /* The condition box belongs to only_if alone. It stays in the DOM so the picker can reveal it
    without a repaint, which would take focus off the select the user just changed. */
 .ie-wait-row:not([data-when="only_if"]) .ie-wait-if { display: none; }
+/* ⚠️ THE OVERLAP PICKER FOLLOWS THE SAME RULE AS THE CONDITION BOX: always in the DOM, hidden unless
+   the when picker says it applies. Repainting the row on a select change would take focus off the
+   select the user just used, which is why both are CSS and not markup. */
+.ie-wait-row:not([data-when="alongside"]) [data-wait-aside-pick] { display: none; }
 .ie-wait-if { flex: 1 1 110px; min-width: 90px; }
 .ie-wait { flex: 1 1 11ch; min-width: 9ch; }
 .ie-wait-ext { flex: 1 1 18ch; min-width: 10ch; }
