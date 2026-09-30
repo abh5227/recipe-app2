@@ -299,6 +299,23 @@ How this project is run:
   repo. **After any push you want live to run, rebuild the pinned worktree at the new SHA; do not
   point :8000 at the working tree "just this once."**
 
+- **A MIGRATION'S ORDER AGAINST THE DEPLOY FOLLOWS ITS DIRECTION. Additive goes BEFORE the deploy,
+  destructive goes AFTER.** The question is which of the two versions names something the other side
+  does not have. Migration 053 ADDED `recipe_waits.step_id` and the new code selects it, so deploying
+  first would have failed every recipe page on a column that did not exist yet. Migration 054 DROPPED
+  `step_position` and `step_check`, and the OLD code still declared them on its `RecipeWait` model, so
+  `select(RecipeWait.__table__)` emitted them by name and migrating first would have failed every
+  recipe page the other way. Same outage, opposite order.
+  The rule underneath both: **find the version that can serve BOTH schemas and run that one in the
+  middle.** New code that reads a new column cannot serve the old schema, so the schema moves first.
+  New code that merely stops declaring a column serves the old schema fine, so the code moves first.
+  **Verify it, do not reason it out and proceed:** start the intermediate version against the CURRENT
+  schema and confirm the pages build before touching the schema. A column added and a column dropped
+  are one command from a live outage in opposite directions, and nothing in the tooling warns you.
+  *Corollary for a drop:* retire the column in one commit (stop reading and writing it, keep it in the
+  table) and drop it in a later one, which is what 053 and 054 did. That makes the deploy-then-migrate
+  order available instead of forcing a simultaneous cutover.
+
 - **Propose a spec and STOP for approval** before building anything non-trivial; don't
   draft-and-commit in one shot.
 - **Present a full diff and wait for approval** before applying edits.
