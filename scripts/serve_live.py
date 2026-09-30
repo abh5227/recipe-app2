@@ -45,6 +45,19 @@ def live_root():
 
 def main():
     root = live_root()
+    # ⚠️ THE RULE IS NOW ENFORCED, NOT JUST WRITTEN DOWN ABOVE. Run from the main working tree, this
+    # script cheerfully served the shared dist/ on :8000 — CODE comes from __file__, so invoking it
+    # as `python3.13 scripts/serve_live.py` inside the main checkout points it at exactly the folder
+    # the docstring spends its length forbidding. It happened, the commits matched by luck at the
+    # time, and the next `npm run build` behind a preview is what makes it dangerous. Run it as
+    # `cd ../recipe-app-serve && python3.13 scripts/serve_live.py`.
+    if CODE == root:
+        sys.exit(f"refusing to serve live from the main working tree ({CODE}).\n"
+                 f"  Its dist/ is rebuilt by every npm run build, including a preview's.\n"
+                 f"  Run this from the pinned worktree instead:\n"
+                 f"    git worktree add ../recipe-app-serve <pushed-sha>\n"
+                 f"    cd ../recipe-app-serve && npm install && npm run build\n"
+                 f"    python3.13 scripts/serve_live.py")
     db = root / "recipes.db"
     photos = root / "static" / "images"
     for name, path in (("database", db), ("photo folder", photos)):
