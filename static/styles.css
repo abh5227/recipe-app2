@@ -70,6 +70,12 @@
 
   --fs-title:    clamp(28px, 4vw, 38px);   /* reduced so long titles stay ~2 lines, not ~4 */
   --fs-headnote: 16px;     /* subordinate to the title — near body size, italic */
+  /* ⚠️ THE DESCRIPTION'S OWN SIZE, SPLIT OUT OF --fs-headnote. That token was doing three jobs at
+     once: the description (.dek), the Prep/Cook/Plan-ahead line (.meta-stack) and the editor's
+     description field (.ie-prose). Moving the description alone was impossible without moving the
+     time line with it. This value is DELIBERATELY IDENTICAL to --fs-headnote for now, so the split
+     lands with no visual change at all and the size is chosen separately. */
+  --fs-descr:    16px;     /* the recipe description, reading view and editor */
   --fs-body:     18.5px;   /* a step up — the primary read was a touch small */
   --fs-amount:   15px;     /* mono, tabular — nudged with the body so ledger figures keep proportion */
   --fs-label:    12px;     /* mono, uppercase, tracked */
@@ -445,7 +451,7 @@ a:hover { color: var(--berry-lift); }
                                         no max-width: the float governs the narrow-beside / full-below wrap */
 .dek {
   font-family: var(--font-serif); font-style: italic; font-weight: 400;
-  font-size: var(--fs-headnote); line-height: 1.7; color: var(--ink-soft);   /* airier for long descriptions */
+  font-size: var(--fs-descr); line-height: 1.7; color: var(--ink-soft);   /* airier for long descriptions */
   margin: 0;
   /* The paragraph breaks the writer typed are STORED and were being thrown away here: HTML collapses
      a newline to a space, so 27 of 126 descriptions read as one block on the page while the editor's
@@ -527,7 +533,9 @@ a:hover { color: var(--berry-lift); }
   border-radius: 3px; padding: 2px 7px; outline: none; width: 9ch; caret-color: var(--berry); }
 .ie-tag-new::placeholder { color: var(--green); opacity: 0.7; text-transform: none; letter-spacing: 0; }
 .ie-tag-new:focus { border-style: solid; border-color: var(--berry); background: var(--card); }
-.ie-prose { font-family: var(--font-serif); font-style: italic; font-size: var(--fs-headnote); line-height: 1.7; color: var(--ink-soft); display: block; width: 100%; resize: none; }
+/* ⚠️ THE EDITOR'S FIELD FOLLOWS THE DESCRIPTION, not the meta line. Reading and editing show the
+   same words and have to show them at the same size, or the wrap points move under the cursor. */
+.ie-prose { font-family: var(--font-serif); font-style: italic; font-size: var(--fs-descr); line-height: 1.7; color: var(--ink-soft); display: block; width: 100%; resize: none; }
 .ie-vitals { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; font-family: var(--font-sans); font-size: 13.5px; color: var(--ink-soft); margin: 6px 0 12px; }
 .ie-vlabel { font-family: var(--font-sans); font-size: 13.5px; color: var(--ink-soft); }
 .ie-dot { opacity: 0.4; }
@@ -2398,11 +2406,14 @@ a.meta-step:focus-visible { color: var(--berry); outline: 1px dotted currentColo
 .meta-break-row { display: block; font-size: 0.86em; color: var(--ink-soft); }
 /* An extension is an INVITATION, not part of the range, so it reads quieter than the note that
    qualifies the figure and it always takes its own line. */
-.meta-ext { font-size: 0.86em; font-style: italic; color: var(--ink-soft); opacity: .85; }
+/* The alternative to a wait ("or a 90 minute quick soak instead"). ⚠️ ITS OWN LINE IN BOTH RENDER
+   PATHS. The single-wait line and the per-wait bullet used to disagree, one parenthesized inline and
+   one blocked below, so the same fact read two ways depending on how many waits a recipe had. */
+.meta-ext { display: block; font-size: 0.86em; font-style: italic; color: var(--ink-soft); opacity: .85; }
 /* Inside a bullet the extension and the qualifier sit INLINE after the duration, which is what the
    bullet buys: one wait, one line, its conditions beside it rather than under it. */
-.meta-bullet .meta-ext, .meta-bullet .meta-when { font-size: 1em; }
-.meta-item.wait > span > .meta-ext { display: block; }
+.meta-bullet .meta-when { font-size: 1em; }   /* the qualifier stays inline at the bullet's size */
+/* (the block display moved onto .meta-ext itself, so both paths get it) */
 /* "(optional)" / "if chilled" says why a wait is not in the figure above it. Same weight as the
    kind it follows, because it qualifies the wait rather than competing with it. */
 .meta-when { font-weight: 400; }

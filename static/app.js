@@ -1275,11 +1275,23 @@ function scaleMetaBlock(r) {
     //    bullet then reads with no step number rather than scrolling to the wrong step.
     const stepTag = (w) => (w.step_no
       ? `<a class="meta-step" href="#" data-wait-step="${w.step_no}">Step ${w.step_no}</a>: ` : "");
+    // ⚠️ ONE FORMAT FOR THE ALTERNATIVE, AND IT USED TO BE TWO. The bullet path wrote it inline in
+    //    parentheses and the single-wait path wrote it bare on its own line, so the same fact read
+    //    two ways on two recipes. It is its own line in lighter text in both places now.
+    // ⚠️ THE LEADING SPACE IS NOT DECORATION. Without it the markup ran
+    //    "(soak, step 2)or a 90 minute quick soak" with nothing between the two spans. On screen
+    //    the block display hid that, and a copy of the line showed it. A block element is one CSS
+    //    line away from not being one, and the text should read correctly either way.
+    const extHTML = (w) => (w.ext_label
+      ? ` <span class="meta-ext">${esc(bindUnits(w.ext_label))}</span>` : "");
     const bullet = (w) =>
       `<li class="meta-bullet">${stepTag(w)}<span class="meta-do">${esc(verb(w))}</span> `
-      + `${esc(bindUnits(w.label || ""))}`
-      + (w.ext_label ? ` <span class="meta-ext">(${esc(bindUnits(w.ext_label))})</span>` : "")
+      // ⚠️ label_text, NOT label. The server decides what a wait PRINTS (planahead.display_label),
+      //    so "overnight" arrives as "8 hr+ (overnight)" and there is no second copy of that rule
+      //    here. label is still the stored text and is what the editor shows.
+      + `${esc(bindUnits(w.label_text || w.label || ""))}`
       + ((w.when_kind || "always") !== "always" ? " " + qual(w) : "")
+      + extHTML(w)
       + `</li>`;
     // ⚠️ ONE WAIT ON ITS OWN STAYS ON ONE LINE. Everything else is a list, because a summed figure
     //    is a figure nobody wrote and each wait has to be readable on its own.
@@ -1290,8 +1302,7 @@ function scaleMetaBlock(r) {
               ? `, <a class="meta-step" href="#" data-wait-step="${one.step_no}">step ${one.step_no}</a>`
               : ""})</span>` : "")
       : "";
-    const ext = one && one.ext_label
-      ? `<span class="meta-ext">${esc(bindUnits(one.ext_label))}</span>` : "";
+    const ext = one ? extHTML(one) : "";
     const rows = one ? [] : waits;
     const breakdown = rows.length
       ? `<ul class="meta-break${head ? "" : " bare"}">${rows.map(bullet).join("")}</ul>` : "";

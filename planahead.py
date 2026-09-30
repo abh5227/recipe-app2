@@ -72,6 +72,42 @@ def counts(w):
     return when == "always"
 
 
+# ⚠️ AN OVERNIGHT THAT IS THE FLOOR READS AS A FIGURE. "Plan ahead overnight" tells a cook nothing
+#    they can put in a calendar, and the minutes behind it (480) were already right on all 14 rows
+#    this touches. Only the words changed, and only on the way OUT.
+#
+#    THE THREE CASES THE CORPUS HAS, and the separator is what tells them apart:
+#      A  "overnight" / "at least overnight" / "8 hr or overnight" / "the day before"
+#            -> the word IS the minimum            -> "8 hr+ (overnight)"
+#      B  "4 hr – overnight" / "6 hr – overnight"  -> the word is the CEILING, and 4 hr is the floor
+#            -> left exactly as written, because rewriting it would lose the floor
+#      C  the word lives in ext_label, not label   -> an invitation, not a requirement, left alone
+#    Measured over the 94 stored waits: 14 are A, 7 are B, 4 are C.
+_OVERNIGHT_WORD = re.compile(r"\b(over\s?night|the day before|night before)\b", re.I)
+# The word preceded by a RANGE separator is case B. Nothing else in the label matters.
+_OVERNIGHT_AS_CEILING = re.compile(r"(?:to|[-\u2013\u2014])\s*(?:over\s?night|the day before)\b", re.I)
+
+
+def display_label(w):
+    """What the page PRINTS for one wait. The stored label is never rewritten.
+
+    ⚠️ IT IS COMPUTED SERVER-SIDE AND SENT, rather than mirrored in JS, for the reason at the top of
+    this module. The client prints `label_text` and owns no second copy of this rule."""
+    label = w.get("label") or ""
+    m = _OVERNIGHT_WORD.search(label)
+    if not m or _OVERNIGHT_AS_CEILING.search(label):
+        return label
+    lo = w.get("min_minutes")
+    if lo is None:
+        return label
+    hi = w.get("max_minutes")
+    figure = fmt_minutes(lo) if hi == lo else (f"{fmt_minutes(lo)}+" if hi is None
+                                               else f"{fmt_minutes(lo)} \u2013 {fmt_minutes(hi)}")
+    # The author's own word is kept beside the figure, so "the day before" does not become
+    # "overnight". They are not the same instruction to a cook reading it the night before.
+    return f"{figure} ({m.group(0).lower()})"
+
+
 def alongside_label(w):
     """" alongside step 3", or "" for a wait that overlaps nothing. The caller renders it beside the
     wait's own words, the same way when_suffix renders "(optional)"."""
@@ -188,7 +224,7 @@ def total_label(waits):
     sentence. A recipe whose waits are all conditional has no figure and prints nothing here."""
     counted = [w for w in waits if counts(w)]
     if len(counted) == 1:
-        return counted[0].get("label") or ""
+        return display_label(counted[0])
     lo, hi = total(waits)
     if lo is None:
         return ""

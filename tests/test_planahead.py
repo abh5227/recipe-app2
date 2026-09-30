@@ -86,10 +86,51 @@ def test_no_waits_and_no_numbers_give_no_total():
 def test_one_wait_shows_its_own_words_and_several_show_the_figure():
     """⚠️ 'overnight' MUST SURVIVE TO THE PAGE. Nobody wants to read 'Plan ahead 8 hr' on a recipe
     whose step says overnight. With several waits no one wrote the summed sentence, so the figure
-    is the honest thing to print."""
-    assert pa.total_label([{"min_minutes": 480, "max_minutes": None, "label": "overnight"}]) == "overnight"
+    is the honest thing to print.
+
+    ⚠️ THE WORD NOW ARRIVES WITH ITS FIGURE BESIDE IT, which is a decided change and not a drift.
+    This asserted a bare "overnight", on the ground above. A cook cannot plan around a word, and the
+    480 minutes were already stored, so the figure was being withheld for no gain. The word is still
+    there, which is what this test was protecting."""
+    assert pa.total_label([{"min_minutes": 480, "max_minutes": None, "label": "overnight"}]) \
+        == "8 hr+ (overnight)"
     assert pa.total_label([{"min_minutes": 60, "max_minutes": 60, "label": "about 1 hr"},
                            {"min_minutes": 30, "max_minutes": 30, "label": "30 min"}]) == "1 hr 30 min"
+
+
+# ---- display_label: an overnight that is the FLOOR reads as a figure (Round A, item 5) -----------
+
+@pytest.mark.parametrize("label, lo, hi, want", [
+    # A: the word IS the minimum. 14 stored waits.
+    ("overnight", 480, None, "8 hr+ (overnight)"),
+    ("at least overnight", 480, None, "8 hr+ (overnight)"),
+    ("8 hr or overnight", 480, None, "8 hr+ (overnight)"),
+    # ⚠️ THE AUTHOR'S OWN WORD IS KEPT. "the day before" is not "overnight" to someone reading it at
+    #    nine in the evening, so it is not normalized to one.
+    ("the day before", 480, None, "8 hr+ (the day before)"),
+    # B: the word is the CEILING and 4 hr is the floor. Rewriting it would lose the floor.
+    ("4 hr \u2013 overnight", 240, 480, "4 hr \u2013 overnight"),
+    ("6 hr \u2013 overnight", 360, 480, "6 hr \u2013 overnight"),
+    ("3 hr \u2013 overnight", 180, 480, "3 hr \u2013 overnight"),
+    # No overnight word at all: untouched, whatever its shape.
+    ("8\u201312 hr", 480, 720, "8\u201312 hr"),
+    ("2 hr+", 120, None, "2 hr+"),
+    ("10 min \u2013 1 hr", 10, 60, "10 min \u2013 1 hr"),
+])
+def test_display_label(label, lo, hi, want):
+    assert pa.display_label({"label": label, "min_minutes": lo, "max_minutes": hi}) == want
+
+
+def test_display_label_keeps_the_words_when_there_are_no_minutes():
+    """A wait whose text carried no duration has nothing to print a figure from."""
+    assert pa.display_label({"label": "overnight", "min_minutes": None, "max_minutes": None}) \
+        == "overnight"
+
+
+def test_display_label_never_touches_the_stored_label():
+    w = {"label": "overnight", "min_minutes": 480, "max_minutes": None}
+    pa.display_label(w)
+    assert w["label"] == "overnight"
 
 
 @pytest.mark.parametrize("m, want", [

@@ -1351,6 +1351,13 @@ def get_recipe(rid):
         #    the step NUMBER the page prints. Migration 053 made the link a step id, so there is
         #    nothing left to verify — a pointer either names a step of this recipe or is null.
         planahead.resolve_steps(waits, steps)
+        # ⚠️ WHAT THE PAGE PRINTS FOR EACH WAIT IS DECIDED HERE, NOT IN JS. A stored "overnight" has
+        #    480 minutes behind it already, and printing the author's word alone told a cook nothing
+        #    they could plan around. display_label turns the 14 rows whose floor IS the word into
+        #    "8 hr+ (overnight)" and leaves the 11 where it is a ceiling or an invitation untouched.
+        #    Server-side for the reason planahead's header gives: one implementation, no mirror.
+        for w in waits:
+            w["label_text"] = planahead.display_label(w)
         wait_min, wait_max = planahead.total(waits)
         # is_queued (stage 3a): MY want-to-make state — per-user EXISTS against recipe_queue, scoped to
         # current_user.id like stats above. Any recipe is queueable, so this is independent of ownership.
