@@ -73,7 +73,7 @@
   "note": "incl. plan ahead"
  },
  {
-  "why": "brioche-bread: a range carries through both ends",
+  "why": "brioche-bread: a computed range shows its shortest time and a plus",
   "recipe": {
    "prep_time": "30 mins",
    "cook_time": "30 mins",
@@ -86,7 +86,7 @@
     "when_kind": "always"
    }
   ],
-  "label": "9 hr – 13 hr",
+  "label": "9 hr+",
   "note": "incl. plan ahead"
  },
  {
@@ -172,7 +172,7 @@
     "when_kind": "always"
    }
   ],
-  "label": "40 min – 45 min",
+  "label": "40 min+",
   "note": "incl. plan ahead"
  },
  {
@@ -238,7 +238,7 @@
   "note": "plus cooling"
  },
  {
-  "why": "a computed RANGE keeps both ends (the client used to stop at the en dash)",
+  "why": "the plus is one spelling for a range and for an open end, so a cook never has to read two figures to find the floor",
   "recipe": {
    "prep_time": "10 min",
    "cook_time": "10 min",
@@ -251,7 +251,24 @@
     "when_kind": "always"
    }
   ],
-  "label": "40 min – 1 hr",
+  "label": "40 min+",
+  "note": "incl. plan ahead"
+ },
+ {
+  "why": "butter-chicken: a 1 to 22 hr marinade would have printed 3 hr 35 min - 24 hr 35 min",
+  "recipe": {
+   "prep_time": "2 hr 15 min",
+   "cook_time": "20 min",
+   "total_time": null
+  },
+  "waits": [
+   {
+    "min_minutes": 60,
+    "max_minutes": 1320,
+    "when_kind": "always"
+   }
+  ],
+  "label": "3 hr 35 min+",
   "note": "incl. plan ahead"
  }
 ]

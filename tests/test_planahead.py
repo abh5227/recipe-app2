@@ -236,6 +236,51 @@ def test_recipe_total(case):
     assert pa.recipe_total(recipe, case["waits"]) == (case["label"], case["note"])
 
 
+def test_the_total_shows_its_floor_and_the_plan_ahead_line_keeps_both_ends():
+    """⚠️ THE SAME TWO NUMBERS, SPELLED TWO WAYS ON PURPOSE, WHICH IS WHY THIS TEST EXISTS.
+
+    A computed Total is a SUM of ranges, so its ends drift much further apart than any one part of
+    it. butter-chicken's marinade tolerates 1 to 22 hours and its Total printed
+    "3 hr 35 min - 24 hr 35 min", which is arithmetic where a cook wanted a number. The Total gives
+    the floor and a '+'.
+
+    The Plan ahead line keeps both ends, because there the range IS the content: a cook deciding
+    whether to start the marinade tonight needs to know it tolerates 22 hours. That line names one
+    wait instead of summing four things, so its ends stay close to what the author wrote.
+
+    Collapsing the two spellings into one helper would silently change whichever line was not being
+    thought about, so total_label keeps its own copy of the range spelling and this pins both.
+    """
+    waits = [_w(60, 1320, label="1 hr to 22 hr")]
+    recipe = {"prep_time": "2 hr 15 min", "cook_time": "20 min", "total_time": None,
+              "total_includes_waits": None}
+    assert pa.recipe_total(recipe, waits) == ("3 hr 35 min+", pa.INCLUDES_WAITS_NOTE)
+    # One wait, so Plan ahead prints the author's own words, which name both ends.
+    assert pa.total_label(waits) == "1 hr to 22 hr"
+    # Several waits, so Plan ahead SUMS them, and the summed figure keeps both ends too.
+    assert pa.total_label([_w(60, 1320), _w(30, 30)]) == "1 hr 30 min \u2013 22 hr 30 min"
+
+
+def test_a_total_whose_ends_agree_gets_no_plus():
+    """The '+' says a ceiling exists. A recipe with one exact marinade has nothing above its figure,
+    and printing "1 hr 15 min+" there would invent an open end the data does not have."""
+    recipe = {"prep_time": "35 min", "cook_time": "10 min", "total_time": None,
+              "total_includes_waits": None}
+    assert pa.recipe_total(recipe, [_w(30, 30)]) == ("1 hr 15 min", pa.INCLUDES_WAITS_NOTE)
+    assert pa.recipe_total(recipe, []) == ("45 min", None)
+
+
+def test_a_publisher_total_that_is_a_range_is_left_alone():
+    """⚠️ THE '+' IS FOR A COMPUTED TOTAL ONLY. An author who wrote "45 to 50 minutes" answered the
+    question themselves, and normalize_time's job is to spell it the app's way, not to re-decide it.
+    _stated_parts never reaches _range_label, and this states that rather than trusting it."""
+    recipe = {"prep_time": "20 min", "cook_time": "25 min", "total_time": "45-50 minutes",
+              "total_includes_waits": None}
+    label, note = pa.recipe_total(recipe, [])
+    assert "+" not in label
+    assert label == pa.normalize_time("45-50 minutes") and note is None
+
+
 @pytest.mark.parametrize("text, want", [
     ("35 min", (35, 35)),
     ("1 hr 15 min", (75, 75)),

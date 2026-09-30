@@ -312,12 +312,28 @@ def _stated_parts(stated):
 
 
 def _range_label(lo, hi):
-    """(lo, hi) minutes -> the figure the page prints. A None hi is open-ended and gets the '+'."""
+    """(lo, hi) minutes -> the COMPUTED Total's figure. The shortest time, and a '+' whenever the
+    real answer is longer than it.
+
+    ⚠️ THE SHORTEST TIME PLUS A '+', NOT BOTH ENDS, AND ONLY HERE. A computed Total is a SUM of
+    ranges, so its two ends drift apart much further than any one part of it: butter-chicken's
+    marinade is "1 to 22 hr" and the total that carries it printed "3 hr 35 min - 24 hr 35 min",
+    which is 27 characters of arithmetic answering a question a cook asked in one word. The floor is
+    the number they need, and the '+' says the ceiling exists.
+
+    ⚠️ THE PLAN AHEAD LINE KEEPS BOTH ENDS, and total_label holds its own copy of the range spelling
+    for exactly that reason. There the range IS the content: a cook deciding whether to start the
+    marinade tonight needs to know it tolerates 22 hours, and that line names one wait rather than
+    summing four things. A publisher's stated total is untouched too, because _stated_parts
+    normalizes what the author wrote and never recomputes it.
+
+    An open-ended hi already read this way, so the '+' is one spelling for both cases rather than a
+    new one: a range and an unbounded wait both mean "at least this"."""
     if lo is None:
         return None
-    if hi is None:
+    if hi is None or hi != lo:
         return f"{fmt_minutes(lo)}+"
-    return fmt_minutes(lo) if hi == lo else f"{fmt_minutes(lo)} \u2013 {fmt_minutes(hi)}"
+    return fmt_minutes(lo)
 
 
 def fmt_minutes(m):
