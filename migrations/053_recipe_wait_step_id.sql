@@ -1,0 +1,35 @@
+-- 053_recipe_wait_step_id.sql - a wait points at a step ROW, not at a slot and a guess.
+--
+-- ⚠️ ADDITIVE. One column, nullable, default NULL. step_position and step_check are RETIRED, not
+--    dropped: nothing reads or writes them after this, and the columns stay where they are so this
+--    migration cannot lose anything. Dropping them is a later, separate decision.
+--
+-- ⚠️ THIS REPLACES A POINTER THAT COULD NOT BE TRUSTED WITH ONE THAT CANNOT BE WRONG. 051 stored a
+--    position beside a snippet of the step's text, because write_recipe_rows renumbered every step on
+--    every save, so inserting one step shifted every position below it. The snippet existed only to
+--    DETECT that drift and drop the link rather than point at the wrong step. Both halves go away
+--    here. Option C gave every step row a database id that survives a save (a save now updates rows
+--    in place instead of deleting and rewriting the recipe), so the row itself is the pointer.
+--
+-- ⚠️ THE SNIPPET COULD ALSO BE WRONG IN THE OTHER DIRECTION, which is the second reason to retire it.
+--    It compared the FRONT of the step, so rewording a step's opening broke a link the user never
+--    meant to touch, and the wait silently stopped being clickable. An id does not care what the step
+--    says.
+--
+-- ⚠️ ON DELETE SET NULL IS THE DATABASE'S OWN GUARANTEE, and it is a backstop rather than the working
+--    mechanism. Through the editor, write_plan_ahead deletes and reinserts every wait on each save and
+--    refuses a step_id that names no step of this recipe, which is what clears the link when a user
+--    deletes a linked step. This clause covers every other route to a deleted step row and makes a
+--    dangling pointer unrepresentable. TESTED ON BOTH DIALECTS BEFORE THIS FILE WAS WRITTEN: SQLite
+--    allows ADD COLUMN with a REFERENCES clause when the default is NULL, and on both engines deleting
+--    the referenced step nulled exactly that wait's link and left another wait's link intact.
+--
+-- ⚠️ FOREIGN KEYS ARE OPT-IN ON SQLITE, so this clause is inert on a connection that has not run
+--    PRAGMA foreign_keys=ON. Every entry point does (orm_session's connect listener, migrate.py, the
+--    test harness) and tests/test_fetch_sources.py holds them to it.
+--
+-- ⚠️ LIVE HAS 0 recipe_waits ROWS, so nothing is backfilled and no existing link is converted. The
+--    plan-ahead rows were proposed and never applied. A recipe that gains a wait after this gets a
+--    real id from the start.
+
+ALTER TABLE recipe_waits ADD COLUMN step_id INTEGER REFERENCES recipe_steps(id) ON DELETE SET NULL;

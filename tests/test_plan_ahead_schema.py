@@ -303,7 +303,13 @@ def test_turning_a_wait_optional_shows_in_your_changes(kitchen, rid):
 
 
 # ---------------------------------------------------------------------------------------------
-# migration 051: a step pointer that refuses to point at the wrong step.
+# migration 053: a wait points at a step ROW. step_position and step_check are retired.
+#
+# ⚠️ THESE REPLACE THE 051 TESTS, AND ONE OF THEM INVERTS. Under 051 a wait was a slot number plus a
+# snippet of the step's text, and inserting a step above a linked one DROPPED the link, because every
+# save renumbered the slots and the snippet existed to notice. The id does not move when the slots do,
+# so that same edit now KEEPS the link and the printed number follows the step. The old behaviour was
+# the best available answer to a pointer that could not be trusted, not a thing anyone wanted.
 # ---------------------------------------------------------------------------------------------
 
 def _save_steps(kitchen, rid, steps, waits):
@@ -311,75 +317,161 @@ def _save_steps(kitchen, rid, steps, waits):
         "name": "Waits", "ingredients": [], "steps": steps, "waits": waits, "storage": []})
 
 
+def _steps(kitchen, rid):
+    """The step rows as the client would read them, in printed order."""
+    return kitchen.client.get(f"/api/recipes/{rid}").get_json()["steps"]
+
+
+def _waits(kitchen, rid):
+    return kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"]
+
+
+def _linked(kitchen, rid, steps, which=1, label="overnight"):
+    """Save `steps`, then link one wait to the step at index `which` BY ITS ID, as the picker does."""
+    _save_steps(kitchen, rid, steps, [])
+    sid = _steps(kitchen, rid)[which]["id"]
+    _save_steps(kitchen, rid, [{"id": s["id"], "text": s["text"]} for s in _steps(kitchen, rid)],
+                [{"kind": "chilling", "label": label, "step_id": sid}])
+    return sid
+
+
 def test_a_linked_wait_reports_the_step_number_the_page_prints(kitchen, rid):
-    _save_steps(kitchen, rid, ["Mix the dough.", "Wrap in plastic and refrigerate overnight."],
-                [{"kind": "chilling", "label": "overnight", "step_position": 1}])
-    w = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
-    assert w["step_no"] == 2 and w["step_ok"] is True
-    assert w["step_check"] == "wrap in plastic and refrigerate overnight."
+    sid = _linked(kitchen, rid, ["Mix the dough.", "Wrap in plastic and refrigerate overnight."])
+    w = _waits(kitchen, rid)[0]
+    assert (w["step_id"], w["step_no"], w["step_ok"]) == (sid, 2, True)
 
 
-def test_inserting_a_step_above_a_linked_one_DROPS_the_link_instead_of_shifting_it(kitchen, rid):
-    """⚠️ THE WHOLE REASON 051 EXISTS.
-
-    write_recipe_rows reassigns every step position by enumeration on each save, so inserting a
-    step shifts everything below it. With a bare step_position the wait would keep pointing at
-    slot 1 and silently start describing the NEW step. The stored snippet no longer matches, so
-    the link is dropped and the wait reads with no step number at all."""
-    _save_steps(kitchen, rid, ["Mix the dough.", "Wrap in plastic and refrigerate overnight."],
-                [{"kind": "chilling", "label": "overnight", "step_position": 1}])
-    before = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
-    assert before["step_no"] == 2
-
-    # the client sends the draft back: a new step in the middle, the wait untouched
+def test_inserting_a_step_above_a_linked_one_KEEPS_the_link_and_the_number_follows(kitchen, rid):
+    """⚠️ THE INVERSION, AND THE WHOLE POINT OF 053. A save renumbers every step, so under 051 the
+    pointer said slot 1 while the step had moved to slot 2, and the snippet check dropped the link to
+    avoid describing the wrong step. The id is not a slot. The wait stays attached and its printed
+    number moves from 2 to 3, which is what the reader sees on the page."""
+    sid = _linked(kitchen, rid, ["Mix the dough.", "Wrap in plastic and refrigerate overnight."])
+    assert _waits(kitchen, rid)[0]["step_no"] == 2
+    rows = _steps(kitchen, rid)
     _save_steps(kitchen, rid,
-                ["Mix the dough.", "A BRAND NEW STEP.", "Wrap in plastic and refrigerate overnight."],
-                [{"kind": "chilling", "label": "overnight", "step_position": 1,
-                  "step_check": before["step_check"]}])
-    after = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
-    assert after["step_position"] == 1          # the pointer is still stored, untouched
-    assert after["step_no"] is None             # but it does NOT link
-    assert after["step_ok"] is False            # and the editor is told why
-    assert after["label"] == "overnight"        # the wait itself still reads correctly
+                [{"id": rows[0]["id"], "text": rows[0]["text"]},
+                 {"id": None, "text": "A BRAND NEW STEP."},
+                 {"id": rows[1]["id"], "text": rows[1]["text"]}],
+                [{"kind": "chilling", "label": "overnight", "step_id": sid}])
+    w = _waits(kitchen, rid)[0]
+    assert w["step_id"] == sid, "the same row, so the same id"
+    assert w["step_no"] == 3, "and the printed number followed it down the list"
+    assert w["step_ok"] is True
 
 
-def test_the_picker_repairs_the_link_by_clearing_the_check(kitchen, rid):
-    """A fresh pick sends a null check, which is the one thing that makes the server read the
-    snippet off the step again."""
+def test_reordering_the_steps_carries_the_links_with_them(kitchen, rid):
+    """Two linked waits, the steps reversed in one save. Each link follows its own step."""
+    _save_steps(kitchen, rid, ["Mix the dough.", "Rest overnight.", "Bake."], [])
+    rows = _steps(kitchen, rid)
+    a, b = rows[1]["id"], rows[2]["id"]
+    _save_steps(kitchen, rid, [{"id": r["id"], "text": r["text"]} for r in rows],
+                [{"kind": "chilling", "label": "overnight", "step_id": a},
+                 {"kind": "other", "label": "20 min", "step_id": b}])
+    assert [(w["step_id"], w["step_no"]) for w in _waits(kitchen, rid)] == [(a, 2), (b, 3)]
+    # now reverse them, sending the SAME ids in a new order, exactly as a drag does
+    rev = list(reversed(_steps(kitchen, rid)))
+    _save_steps(kitchen, rid, [{"id": r["id"], "text": r["text"]} for r in rev],
+                [{"kind": "chilling", "label": "overnight", "step_id": a},
+                 {"kind": "other", "label": "20 min", "step_id": b}])
+    assert [(w["step_id"], w["step_no"]) for w in _waits(kitchen, rid)] == [(a, 2), (b, 1)]
+
+
+def test_deleting_a_linked_step_clears_ONLY_that_waits_link(kitchen, rid):
+    """The brief's case. The editor still holds the wait pointing at a step the save is removing, so
+    write_plan_ahead drops an id that names no step of this recipe. The other wait is untouched."""
+    _save_steps(kitchen, rid, ["Mix the dough.", "Rest overnight.", "Bake."], [])
+    rows = _steps(kitchen, rid)
+    a, b = rows[1]["id"], rows[2]["id"]
+    _save_steps(kitchen, rid, [{"id": r["id"], "text": r["text"]} for r in rows],
+                [{"kind": "chilling", "label": "overnight", "step_id": a},
+                 {"kind": "other", "label": "20 min", "step_id": b}])
+    # drop the middle step, keeping both waits as the editor would still be holding them
     _save_steps(kitchen, rid,
-                ["Mix the dough.", "A BRAND NEW STEP.", "Wrap in plastic and refrigerate overnight."],
-                [{"kind": "chilling", "label": "overnight", "step_position": 2,
-                  "step_check": None}])
-    w = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
-    assert w["step_no"] == 3 and w["step_ok"] is True
+                [{"id": rows[0]["id"], "text": rows[0]["text"]},
+                 {"id": rows[2]["id"], "text": rows[2]["text"]}],
+                [{"kind": "chilling", "label": "overnight", "step_id": a},
+                 {"kind": "other", "label": "20 min", "step_id": b}])
+    got = _waits(kitchen, rid)
+    assert got[0]["step_id"] is None and got[0]["step_no"] is None, "its step is gone"
+    assert got[0]["label"] == "overnight", "and the wait itself still reads correctly"
+    assert (got[1]["step_id"], got[1]["step_no"]) == (b, 2), "the other wait kept its link"
 
 
-def test_deleting_the_linked_step_drops_the_link(kitchen, rid):
-    _save_steps(kitchen, rid, ["Mix the dough.", "Wrap in plastic and refrigerate overnight."],
-                [{"kind": "chilling", "label": "overnight", "step_position": 1}])
-    check = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]["step_check"]
+def test_a_deleted_step_row_cannot_leave_a_dangling_pointer(kitchen, rid):
+    """⚠️ THE DATABASE'S OWN BACKSTOP, underneath the save path. ON DELETE SET NULL means a step row
+    removed by ANY route clears the waits that named it, not only one that came through the editor.
+    Tested on both dialects before migration 053 was written."""
+    sid = _linked(kitchen, rid, ["Mix the dough.", "Rest overnight."])
+    with kitchen.conn() as c:
+        c.execute("PRAGMA foreign_keys = ON")
+        assert c.execute("SELECT step_id FROM recipe_waits").fetchone()[0] == sid
+        c.execute("DELETE FROM recipe_steps WHERE id=?", (sid,))
+        c.commit()
+        assert c.execute("SELECT step_id FROM recipe_waits").fetchone()[0] is None
+
+
+def test_a_step_id_from_another_recipe_is_refused(kitchen, rid):
+    """The id set is scoped to this recipe, so a stray id becomes null rather than linking across."""
+    other = kitchen.client.post("/api/recipes", json={
+        "name": "Other", "ingredients": [], "steps": ["Not this recipe."]}).get_json()["id"]
+    stolen = _steps(kitchen, other)[0]["id"]
     _save_steps(kitchen, rid, ["Mix the dough."],
-                [{"kind": "chilling", "label": "overnight", "step_position": 1,
-                  "step_check": check}])
-    w = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
-    assert w["step_position"] is None and w["step_no"] is None
+                [{"kind": "chilling", "label": "overnight", "step_id": stolen}])
+    assert _waits(kitchen, rid)[0]["step_id"] is None
 
 
-def test_reformatting_a_step_keeps_the_link(kitchen, rid):
-    """The check compares NORMALIZED text, so markup and spacing changes are not a re-wording."""
-    _save_steps(kitchen, rid, ["Mix the dough.", "Wrap in plastic and refrigerate overnight."],
-                [{"kind": "chilling", "label": "overnight", "step_position": 1}])
-    check = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]["step_check"]
+def test_rewording_a_linked_step_keeps_the_link(kitchen, rid):
+    """⚠️ 051 BROKE HERE, AND THAT WAS THE COST OF ITS MECHANISM. The check compared the FRONT of the
+    step, so rewording the opening of a step nobody meant to unlink dropped the link silently. The id
+    does not care what the step says."""
+    sid = _linked(kitchen, rid, ["Mix the dough.", "Wrap in plastic and refrigerate overnight."])
+    rows = _steps(kitchen, rid)
     _save_steps(kitchen, rid,
-                ["Mix the dough.", "Wrap in   plastic and <b>refrigerate</b>  overnight."],
-                [{"kind": "chilling", "label": "overnight", "step_position": 1,
-                  "step_check": check}])
-    w = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
-    assert w["step_no"] == 2 and w["step_ok"] is True
+                [{"id": rows[0]["id"], "text": rows[0]["text"]},
+                 {"id": sid, "text": "Chill it right through the night, wrapped well."}],
+                [{"kind": "chilling", "label": "overnight", "step_id": sid}])
+    w = _waits(kitchen, rid)[0]
+    assert (w["step_id"], w["step_no"], w["step_ok"]) == (sid, 2, True)
+
+
+def test_the_save_refuses_a_headings_id_outright(kitchen, rid):
+    """⚠️ SO step_ok IS UNREACHABLE THROUGH THE API, which is worth stating rather than implying. The
+    set write_plan_ahead validates against is scoped to is_heading=0, so a heading's id is dropped the
+    same way a deleted step's is, and the wait comes back with no link at all rather than a broken one.
+    A heading is not a step a wait can be read from."""
+    _save_steps(kitchen, rid, [{"heading": "PREP"}, "Mix the dough."], [])
+    rows = _steps(kitchen, rid)
+    head = rows[0]
+    assert head["is_heading"]
+    _save_steps(kitchen, rid,
+                [{"id": r["id"], **({"heading": r["text"]} if r["is_heading"] else {"text": r["text"]})}
+                 for r in rows],
+                [{"kind": "chilling", "label": "overnight", "step_id": head["id"]}])
+    w = _waits(kitchen, rid)[0]
+    assert (w["step_id"], w["step_no"], w["step_ok"]) == (None, None, True)
+
+
+def test_resolve_steps_still_refuses_a_heading_it_is_handed_directly():
+    """The defensive branch, reached as a unit rather than through the API. resolve_steps is a pure
+    function with other callers (the scripts), so it answers honestly for a row the save would never
+    have stored: a link naming a heading, or naming nothing in this recipe, gets no number."""
+    import planahead
+    steps = [{"id": 10, "is_heading": 1, "text": "PREP"},
+             {"id": 11, "is_heading": 0, "text": "Mix."},
+             {"id": 12, "is_heading": 0, "text": "Rest."}]
+    got = planahead.resolve_steps(
+        [{"step_id": 12}, {"step_id": None}, {"step_id": 10}, {"step_id": 999}], steps)
+    assert [(w["step_no"], w["step_ok"]) for w in got] == [
+        (2, True),          # the second ordinary step, heading excluded
+        (None, True),       # no link is not an error
+        (None, False),      # a heading has no number
+        (None, False),      # unknown to this recipe
+    ]
 
 
 def test_a_wait_with_no_step_has_no_number_and_is_not_an_error(kitchen, rid):
     _save_steps(kitchen, rid, ["Mix the dough."],
                 [{"kind": "chilling", "label": "overnight"}])
     w = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
-    assert (w["step_position"], w["step_no"], w["step_ok"]) == (None, None, True)
+    assert (w["step_id"], w["step_no"], w["step_ok"]) == (None, None, True)

@@ -847,3 +847,65 @@ def test_a_created_recipes_baseline_is_byte_equal_to_its_serialization_pg(pg):
         assert app.serialize_recipe_content(s, rid) == stored
         assert app._recipe_annotations(s, rid) == []
     assert all(r["id"] is not None for r in json.loads(stored)["ingredients"])
+
+
+# ---- 15. a wait points at a step ROW, on Postgres (migration 053) ---------------------------------
+
+def test_a_wait_step_link_follows_a_reorder_and_clears_on_delete_pg(pg):
+    """⚠️ THE FOREIGN KEY ACTION IS PG-NATIVE HERE, where on SQLite it is opt-in per connection. This
+    exercises migration 053 through `alembic upgrade head` on the real engine: the link survives a
+    reorder, clears when its step is deleted through the editor, and clears again when the step row is
+    deleted straight out of the table, which is the ON DELETE SET NULL backstop."""
+    c = pg.client
+    rid = c.post("/api/recipes", json={
+        "name": "PG Waits", "is_test": True, "ingredients": [],
+        "steps": ["Mix the dough.", "Rest overnight.", "Bake."]}).get_json()["id"]
+
+    def steps():
+        return c.get(f"/api/recipes/{rid}").get_json()["steps"]
+
+    def waits():
+        return c.get(f"/api/recipes/{rid}").get_json()["waits"]
+
+    def save(step_rows, wait_rows):
+        return c.put(f"/api/recipes/{rid}", json={
+            "name": "PG Waits", "ingredients": [], "steps": step_rows,
+            "waits": wait_rows, "storage": []})
+
+    rows = steps()
+    a, b = rows[1]["id"], rows[2]["id"]
+    keep = [{"id": r["id"], "text": r["text"]} for r in rows]
+    two = [{"kind": "chilling", "label": "overnight", "step_id": a},
+           {"kind": "other", "label": "20 min", "step_id": b}]
+    assert save(keep, two).status_code == 200
+    assert [(w["step_id"], w["step_no"]) for w in waits()] == [(a, 2), (b, 3)]
+
+    # reorder: the same ids in a new order, as a drag sends them
+    assert save(list(reversed(keep)), two).status_code == 200
+    assert [(w["step_id"], w["step_no"]) for w in waits()] == [(a, 2), (b, 1)]
+
+    # delete the step wait A points at, keeping both waits as the editor still holds them
+    assert save([r for r in keep if r["id"] != a], two).status_code == 200
+    got = waits()
+    assert got[0]["step_id"] is None and got[0]["label"] == "overnight"
+    assert got[1]["step_id"] == b, "the other wait kept its link"
+
+    # and the database's own backstop, with the step row removed directly
+    with pg.engine.begin() as conn:
+        conn.execute(text("DELETE FROM recipe_steps WHERE id=:s"), {"s": b})
+        left = conn.execute(text("SELECT step_id FROM recipe_waits WHERE recipe_id=:r "
+                                 "ORDER BY position"), {"r": rid}).scalars().all()
+    assert left == [None, None], f"ON DELETE SET NULL did not fire on PG: {left}"
+
+
+def test_a_dangling_wait_step_id_is_refused_by_the_database_pg(pg):
+    """The other half of the constraint: an id naming no step cannot be stored at all. write_plan_ahead
+    filters these out before they reach the insert, so this asserts the floor under that filter."""
+    c = pg.client
+    rid = c.post("/api/recipes", json={
+        "name": "PG Waits Bad", "is_test": True, "ingredients": [],
+        "steps": ["Mix."]}).get_json()["id"]
+    with pg.engine.begin() as conn:
+        with pytest.raises(IntegrityError):
+            conn.execute(text("INSERT INTO recipe_waits (recipe_id, position, kind, label, step_id) "
+                              "VALUES (:r, 0, 'other', 'x', 999999)"), {"r": rid})

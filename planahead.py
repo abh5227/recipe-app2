@@ -192,6 +192,10 @@ def step_key(text):
     return " ".join(_TAGS.sub(" ", text or "").split()).lower()
 
 
+# ⚠️ BOTH OF THE NEXT TWO ARE RETIRED FROM THE LIVE PATH BY MIGRATION 053. resolve_steps reads
+# step_id and needs no snippet, and app.write_plan_ahead no longer computes one. They stay because
+# scripts/apply_plan_ahead_proposals.py, a one-off that has already run, still imports step_snippet,
+# and because deleting a pure function that a committed script references buys nothing.
 def step_snippet(text, length=SNIPPET_LEN):
     """The stored check: the first `length` characters of the normalized step text.
 
@@ -215,15 +219,31 @@ def step_ok(step_text, check):
 def resolve_steps(waits, steps):
     """Decide each wait's step link against the steps as they stand NOW.
 
-    `steps` is the recipe's rows in position order, each a mapping with position, is_heading, text.
-    Adds two keys to every wait, in place:
+    `steps` is the recipe's rows in position order, each a mapping with id, is_heading, text. Adds two
+    keys to every wait, in place:
       step_no  - the number the page prints ("Step 4"), heading-EXCLUDED to match the CSS counter,
                  or None when there is no usable link
-      step_ok  - False ONLY when a pointer exists and the check failed, so the editor can say so
+      step_ok  - False only when the link names a row that is not a numbered step (see below)
 
-    ⚠️ THE NUMBER IS NOT THE POSITION. Headings sit in the same table and carry positions but are
-    not numbered, so position 4 can print as Step 3.
-    """
+    ⚠️ IT READS step_id NOW, AND THAT DELETED MOST OF THIS FUNCTION'S JOB. It used to take
+    step_position and re-derive whether that slot still held the step the wait came from, by comparing
+    a stored snippet of the text (step_check). Every branch of that was about detecting drift a save
+    had caused, because write_recipe_rows renumbered every step on every save. An id does not drift.
+    Migration 053 retired both columns.
+
+    ⚠️ THE NUMBER IS NOT THE ID, AND IT IS NOT THE POSITION EITHER. Headings sit in the same table as
+    steps and carry positions but are not numbered, so the third row can print as Step 2. The number is
+    counted here, heading-excluded, to match what the CSS counter prints.
+
+    ⚠️ step_ok IS NOW UNREACHABLE THROUGH THE SAVE PATH, and it is kept for the callers that are not
+    the save path. write_plan_ahead validates an incoming step_id against this recipe's is_heading=0
+    rows, so it stores a heading's id and an unknown id as NULL alike, and ON DELETE SET NULL removes
+    the last way a stored pointer could go stale. What is left is a defensive answer for a row this
+    function is handed directly (the plan-ahead scripts do that): a link naming a heading, or naming
+    nothing here, reports no number instead of guessing one. A test pins both halves.
+
+    ⚠️ AND ONE STATE IT USED TO REPORT WAS SIMPLY WRONG. The snippet compared the FRONT of the step, so
+    rewording a step's opening broke a link nobody meant to touch and the wait went quiet."""
     def get(st, key):
         """Rows arrive as dicts, SQLAlchemy RowMappings or ORM objects depending on the caller."""
         try:
@@ -231,25 +251,20 @@ def resolve_steps(waits, steps):
         except (TypeError, KeyError, IndexError):
             return getattr(st, key, None)
 
-    by_pos, number = {}, 0
+    by_id, number = {}, 0
     for st in steps:
-        pos, heading, text = get(st, "position"), get(st, "is_heading"), get(st, "text")
+        heading = get(st, "is_heading")
         if not heading:
             number += 1
-        by_pos[pos] = (None if heading else number, text)
+        by_id[get(st, "id")] = None if heading else number
     for w in waits:
-        pos = w.get("step_position")
+        sid = w.get("step_id")
         w["step_no"], w["step_ok"] = None, True
-        if pos is None or pos not in by_pos:
-            if pos is not None:
-                w["step_ok"] = False          # the step it pointed at is gone
+        if sid is None:
             continue
-        num, text = by_pos[pos]
-        if num is None:                        # it now points at a heading
+        num = by_id.get(sid)
+        if num is None:                        # unknown to this recipe, or it is a heading
             w["step_ok"] = False
             continue
-        if step_ok(text, w.get("step_check")):
-            w["step_no"] = num
-        else:
-            w["step_ok"] = False
+        w["step_no"] = num
     return waits

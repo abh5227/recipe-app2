@@ -2349,6 +2349,10 @@ function pickHTML(list, val, attr, i) {
 // The step picker's options: every ordinary step, numbered as the page numbers them, with enough
 // of its text to recognise. ⚠️ THE VALUE IS THE POSITION, NOT THE NUMBER. Headings carry positions
 // too, so the two sequences diverge the moment a recipe has a heading.
+// ⚠️ THE VALUE IS THE STEP'S ROW ID, NOT ITS POSITION. A position is a slot, and every save renumbers
+// the slots, so a wait linked by position pointed at whatever moved into that slot afterwards. The
+// number shown to the user is still the printed step number, counted heading-excluded here exactly as
+// the CSS counter does — the id is what travels. Migration 053.
 function stepChoices(d) {
   const out = [["", "no step"]];
   let n = 0;
@@ -2356,7 +2360,7 @@ function stepChoices(d) {
     if (st.is_heading) continue;
     n += 1;
     const txt = String(st.text || "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-    out.push([String(st.position), `${n}. ${txt.slice(0, 40)}${txt.length > 40 ? "\u2026" : ""}`]);
+    out.push([String(st.id), `${n}. ${txt.slice(0, 40)}${txt.length > 40 ? "\u2026" : ""}`]);
   }
   return out;
 }
@@ -2371,7 +2375,7 @@ function waitsEditHTML(d) {
       <input class="ie ie-wait-ext" data-wait-ext="${i}" value="${esc(w.ext_label || "")}" placeholder="or overnight if time allows" aria-label="Extension">
       ${pickHTML(WAIT_WHENS, w.when_kind || "always", "wait-when", i)}
       <input class="ie ie-wait-if" data-wait-when-label="${i}" value="${esc(w.when_label || "")}" placeholder="chilled" aria-label="Only if">
-      ${pickHTML(stepChoices(d), w.step_position == null ? "" : String(w.step_position), "wait-step-pick", i)}
+      ${pickHTML(stepChoices(d), w.step_id == null ? "" : String(w.step_id), "wait-step-pick", i)}
       <button type="button" class="ie-x" data-wait-del="${i}" aria-label="Remove this wait">×</button>
     </div>`).join("");
   return `<div class="ie-block"><span class="ie-vlabel">Plan ahead</span>${rows}
@@ -2429,8 +2433,9 @@ function handlePlanAheadInput(el) {
   if (el.dataset.waitStepPick !== undefined) {
     const i = +el.dataset.waitStepPick;
     if (d.waits && d.waits[i]) {
-      d.waits[i].step_position = el.value === "" ? null : +el.value;
-      d.waits[i].step_check = null;     // a fresh pick: the server reads the snippet off this step
+      // ⚠️ NOTHING TO CLEAR ALONGSIDE IT ANY MORE. This used to null step_check too, so the server
+      //    would read a fresh snippet off the newly picked step. The id needs no corroboration.
+      d.waits[i].step_id = el.value === "" ? null : +el.value;
       view.dirty = true;
     }
     return true;
@@ -2955,8 +2960,7 @@ function draftPayload() {
       when_kind: t(w.when_kind) || "always", when_label: t(w.when_label) || null,
       // ⚠️ ROUND-TRIPPED VERBATIM. The server keeps a check it is given and only reads a fresh one
       //    when this is null, which the step picker below is the only thing that does.
-      step_check: t(w.step_check) || null,
-      step_position: w.step_position == null ? null : +w.step_position })),
+      step_id: w.step_id == null ? null : +w.step_id })),
     storage: (view.draft.storage || []).filter((x) => t(x.label)).map((x) => ({
       where_kept: t(x.where_kept) || "fridge", applies_to: t(x.applies_to) || null, label: t(x.label) })),
   };
