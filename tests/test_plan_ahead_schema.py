@@ -435,11 +435,19 @@ def test_rewording_a_linked_step_keeps_the_link(kitchen, rid):
     assert (w["step_id"], w["step_no"], w["step_ok"]) == (sid, 2, True)
 
 
-def test_the_save_refuses_a_headings_id_outright(kitchen, rid):
-    """⚠️ SO step_ok IS UNREACHABLE THROUGH THE API, which is worth stating rather than implying. The
-    set write_plan_ahead validates against is scoped to is_heading=0, so a heading's id is dropped the
-    same way a deleted step's is, and the wait comes back with no link at all rather than a broken one.
-    A heading is not a step a wait can be read from."""
+def test_a_link_to_a_heading_is_STORED_and_never_printed(kitchen, rid):
+    """⚠️ THE RULE CHANGED WHEN THE STEP ROW MENU LEARNED TO CONVERT, and the old one is worth
+    stating because this test used to pin it. write_plan_ahead validated against is_heading=0 rows
+    only, so a heading's id was dropped exactly like a deleted step's. That was right while nothing
+    could convert a step: an id could only arrive that way by mistake.
+
+    A cook can convert a linked step to a heading now, and clearing the pointer would make the
+    conversion one-way — the id lives nowhere else, so converting back could not restore it. The
+    link is kept, and resolve_steps still hands back no number, so it is held without ever being
+    printed as "(step N)". Storing and printing are different questions.
+
+    step_ok therefore becomes REACHABLE through the API, which is the honest form of what the old
+    docstring claimed was impossible."""
     _save_steps(kitchen, rid, [{"heading": "PREP"}, "Mix the dough."], [])
     rows = _steps(kitchen, rid)
     head = rows[0]
@@ -449,7 +457,44 @@ def test_the_save_refuses_a_headings_id_outright(kitchen, rid):
                  for r in rows],
                 [{"kind": "chilling", "label": "overnight", "step_id": head["id"]}])
     w = _waits(kitchen, rid)[0]
-    assert (w["step_id"], w["step_no"], w["step_ok"]) == (None, None, True)
+    assert w["step_id"] == head["id"], "the link is what a convert-back has to restore"
+    assert (w["step_no"], w["step_ok"]) == (None, False), "and it is never printed as a number"
+
+
+def test_a_converted_step_keeps_its_wait_link_and_gets_it_back(kitchen, rid):
+    """The round trip the menu item exists for. The row id is the link, so a conversion that keeps
+    the id keeps the link, and converting back prints the number again with nothing re-entered."""
+    _save_steps(kitchen, rid, ["Soak the beans overnight.", "Drain and rinse."], [])
+    rows = _steps(kitchen, rid)
+    soak = rows[0]
+    as_is = [{"id": r["id"], "text": r["text"]} for r in rows]
+    wait = [{"kind": "soaking", "label": "8 hr", "step_id": soak["id"]}]
+    _save_steps(kitchen, rid, as_is, wait)
+    assert _waits(kitchen, rid)[0]["step_no"] == 1
+
+    to_heading = [dict(x) for x in as_is]
+    to_heading[0] = {"id": soak["id"], "heading": soak["text"]}
+    _save_steps(kitchen, rid, to_heading, wait)
+    w = _waits(kitchen, rid)[0]
+    assert (w["step_id"], w["step_no"]) == (soak["id"], None)
+
+    _save_steps(kitchen, rid, as_is, [{"kind": "soaking", "label": "8 hr", "step_id": w["step_id"]}])
+    assert _waits(kitchen, rid)[0]["step_no"] == 1, "the link came back with the step"
+
+
+def test_a_deleted_steps_id_is_still_dropped(kitchen, rid):
+    """⚠️ THE HALF THAT DID NOT CHANGE, and the reason the set is still filtered at all. A heading is
+    a row this recipe HAS. A deleted step is not, and neither is a step of another recipe, so both
+    still become NULL rather than reaching a foreign key that would refuse the whole save."""
+    _save_steps(kitchen, rid, ["Mix.", "Rest."], [])
+    rows = _steps(kitchen, rid)
+    gone = rows[1]
+    _save_steps(kitchen, rid, [{"id": rows[0]["id"], "text": rows[0]["text"]}],
+                [{"kind": "resting", "label": "1 hr", "step_id": gone["id"]}])
+    assert _waits(kitchen, rid)[0]["step_id"] is None
+    _save_steps(kitchen, rid, [{"id": rows[0]["id"], "text": rows[0]["text"]}],
+                [{"kind": "resting", "label": "1 hr", "step_id": 999999}])
+    assert _waits(kitchen, rid)[0]["step_id"] is None
 
 
 def test_resolve_steps_still_refuses_a_heading_it_is_handed_directly():

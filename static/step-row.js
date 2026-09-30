@@ -41,4 +41,19 @@
     return row;
   }
 
-  export { stepIsBlank, nonEmptySteps, focusIndexAfterRemove, writeStepField };
+  // Lossless step<->heading toggle — the step twin of ingredient-row.js's toggleRowType, and much
+  // shorter than it for a real reason: BOTH step kinds keep their words in `text` (see stepIsBlank
+  // and stepToPayload), so there is no second field to seed from and nothing to leave dormant. The
+  // ingredient version has to move a name into a heading title and back.
+  //
+  // ⚠️ THE ROW ID IS KEPT, WHICH IS THE WHOLE REASON THIS IS A TOGGLE. Delete plus Add step was the
+  // only undo path before, and it mints a NEW id — taking the wait link, the annotation anchor and
+  // any margin mark with it. 67 steps have just become headings, so the undo had to be lossless.
+  // Returns the same (mutated) row.
+  function toggleStepType(row) {
+    if (!row) return row;
+    row.is_heading = row.is_heading ? 0 : 1;
+    return row;
+  }
+
+  export { stepIsBlank, nonEmptySteps, focusIndexAfterRemove, writeStepField, toggleStepType };

@@ -4,7 +4,8 @@
 // Pure transforms in static/step-row.js, so this runs under bare `node --test`.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stepIsBlank, nonEmptySteps, focusIndexAfterRemove, writeStepField } from "../../static/step-row.js";
+import { stepIsBlank, nonEmptySteps, focusIndexAfterRemove, writeStepField,
+         toggleStepType } from "../../static/step-row.js";
 
 test("stepIsBlank: empty and whitespace-only text is blank; real text is not", () => {
   assert.equal(stepIsBlank({ is_heading: 0, text: "" }), true);
@@ -87,4 +88,38 @@ test("writeStepField: an unknown key changes nothing, and a missing row never th
   // The delegated listeners can fire on a stale data-i between a splice and its re-render.
   assert.equal(writeStepField(null, "heading", "x"), null);
   assert.equal(writeStepField(undefined, "heading", "x"), undefined);
+});
+
+// --------------------------------------------------------------------------------------------- //
+// Convert to heading / Convert to step
+// --------------------------------------------------------------------------------------------- //
+
+test("toggleStepType keeps the row id, which is what the conversion has to keep", () => {
+  // ⚠️ THE WHOLE REASON THE MENU ITEM IS A TOGGLE. Delete plus Add step was the only undo path
+  // before, and it mints a NEW id — taking the wait link, the annotation anchor and any margin mark
+  // with it. 67 steps became headings, so the undo had to be lossless.
+  const row = { id: 4555, is_heading: 0, text: "Rise" };
+  assert.equal(toggleStepType(row), row, "mutates in place, like toggleRowType");
+  assert.deepEqual(row, { id: 4555, is_heading: 1, text: "Rise" });
+  toggleStepType(row);
+  assert.deepEqual(row, { id: 4555, is_heading: 0, text: "Rise" });
+});
+
+test("both kinds keep their words in text, so nothing is lost either way", () => {
+  // The step twin is much shorter than toggleRowType for this reason: there is no second field to
+  // seed from and nothing to leave dormant.
+  const row = { id: 9, is_heading: 0, text: "Deseed - trim and discard the stems." };
+  const words = row.text;
+  toggleStepType(row);
+  assert.equal(row.text, words);
+  toggleStepType(row);
+  assert.equal(row.text, words);
+  assert.equal(stepIsBlank(row), false);
+});
+
+test("toggleStepType never throws on a missing row", () => {
+  // The delegated listeners can fire on a stale data-i between a splice and its re-render, which is
+  // the same tolerance writeStepField has and for the same reason.
+  assert.equal(toggleStepType(null), null);
+  assert.equal(toggleStepType(undefined), undefined);
 });

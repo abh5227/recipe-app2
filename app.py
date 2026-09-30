@@ -646,10 +646,21 @@ def write_plan_ahead(s, rid, payload):
     # ⚠️ THE STEP IDS THIS RECIPE ACTUALLY HAS, read AFTER write_recipe_rows so they are the rows this
     #    save just wrote. A payload arrives with the ids the editor was holding, and a step deleted in
     #    this same save is still named by any wait that pointed at it.
+    # ⚠️ HEADINGS ARE IN THIS SET NOW, AND THAT IS THE POINT. It read `is_heading == 0`, which was
+    #    right while nothing could convert a step: a heading's id could only arrive by mistake. The
+    #    step row menu converts one now, and a cook who marks a linked step as a heading and then
+    #    touches the plan-ahead panel would have had the link silently cleared with no way to get it
+    #    back, because the id lives nowhere else. Keeping it stored means converting back restores
+    #    the link, which is what a reversible conversion has to mean.
+    #
+    #    ⚠️ AND IT DOES NOT MAKE A HEADING PRINTABLE. planahead.resolve_steps numbers the ordinary
+    #    steps only and hands back step_no None for a heading, so the link is held but never printed
+    #    as "(step N)". Storing it and printing it are different questions and this answers the
+    #    first. The two things this set still refuses are unchanged: an id naming NO row of this
+    #    recipe (a deleted step) and an id belonging to a DIFFERENT recipe both become NULL.
     step_ids = {m["id"] for m in s.execute(
         select(RecipeStep.__table__.c.id)
-        .where(RecipeStep.__table__.c.recipe_id == rid,
-               RecipeStep.__table__.c.is_heading == 0)).mappings()}
+        .where(RecipeStep.__table__.c.recipe_id == rid)).mappings()}
     for pos, w in enumerate(payload.get("waits") or []):
         label = (w.get("label") or "").strip()
         if not label:

@@ -4,7 +4,8 @@ import {
   formatAmount, group, canonicalizeUnit, amountText, weightText,
 } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
-import { nonEmptySteps, focusIndexAfterRemove, writeStepField } from "./step-row.js";
+import { nonEmptySteps, focusIndexAfterRemove, writeStepField,
+         toggleStepType } from "./step-row.js";
 import { insertIndexFor } from "./row-insert.js";
 import { removedInsertIndex } from "./annotation-place.js";
 import { annotationIndex } from "./annotation-index.js";
@@ -1808,7 +1809,14 @@ function rowMenuItemsHTML(kind, i) {
     <button type="button" data-rm-act="add-heading">Add heading</button>
     <div class="sep"></div>`;
   if (kind === "step") {
-    return `${inserts}<button type="button" class="danger" data-rm-act="delete">Delete</button>`;
+    // ⚠️ THE STEP MENU OFFERED NO CONVERSION AT ALL UNTIL NOW, and the ingredient menu has had one
+    // since A stage 2. That gap stopped mattering the moment 67 steps became headings: the only way
+    // to undo a wrong conversion was Delete plus Add step, which mints a NEW row id and takes the
+    // wait link, the annotation anchor and any margin mark with it.
+    const row = view.draft.steps[i];
+    const isHeading = !!(row && row.is_heading);
+    return `${inserts}<button type="button" data-rm-act="toggle">${isHeading ? "Convert to step" : "Convert to heading"}</button>
+      <div class="sep"></div><button type="button" class="danger" data-rm-act="delete">Delete</button>`;
   }
   const row = view.draft.ingredients[i];
   const toHeading = !(row && row.is_heading);
@@ -1865,6 +1873,7 @@ function handleRowMenuAction(e) {
     return true;
   }
   if (kind === "ing"  && act === "toggle") { toggleIngredientHeading(i); return true; }
+  if (kind === "step" && act === "toggle") { toggleStepHeading(i); return true; }
   if (kind === "step" && act === "delete") { removeStep(i); return true; }
   return true;                                             // an item of this menu, but not one we know
 }
@@ -2940,6 +2949,15 @@ function addStep(at, isHeading) {
 function focusStepHeadingField(i) {
   const el = document.querySelector(`[data-inline-edit-step="heading"][data-i="${i}"]`);
   if (el) { el.focus(); if (el.select) el.select(); }
+}
+// The step twin of toggleIngredientHeading, and it goes through the full rerenderEditSteps cycle
+// for the reason addStep's note gives: a step row is a TipTap island, so changing what a row IS
+// without destroying and re-mounting would leave the editor of the old shape attached to the new one
+// and the next keystroke would write into a row that no longer exists.
+function toggleStepHeading(i) {
+  toggleStepType(view.draft.steps[i]);
+  markDirty(); rerenderEditSteps();
+  if (view.draft.steps[i].is_heading) focusStepHeadingField(i); else focusStepEditor(i);
 }
 function toggleIngredientHeading(i) {
   toggleRowType(view.draft.ingredients[i]);   // lossless in-place flip (Option A1; see ingredient-row.js)
