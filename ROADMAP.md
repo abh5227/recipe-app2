@@ -277,6 +277,23 @@ writes a scraped average into `recipes.rating` has misread this note.
   "structured it wrong."
 - **Harvest parenthetical grams** (e.g. "(226 grams)") as authoritative weights — better than
   volume→weight conversion; feeds 1c.
+- **Step headings and lead-in labels, on the way in.** ⚠️ **PROPOSED, NOT BUILT.** Round A repaired
+  300 recipes by hand and the importer still produces the same three shapes. What it should do:
+  - **A whole step wrapped in emphasis is a heading.** `import_cleanup.strip_emphasis` already
+    recognizes `_x_` and `**x**` and `classify_step` never calls it, so 8 headings over 5 recipes
+    arrived as numbered steps. Unwrap and mark `is_heading`. Confident, no review needed.
+  - **A step opening "Label: text" or "Label – text" becomes a heading plus a step.** Measured on
+    the corpus: 56 colon labels over 16 recipes and 58 dash labels over 15. Two traps the hand sweep
+    hit, both worth pinning in the importer's own tests. A dash BETWEEN TWO NUMBERS is a range
+    ("Bake for 30 – 35 minutes"), not a separator, and 8 steps in the corpus look like labels because
+    of one. And the colon does not always have a space after it, nor the label five words or fewer,
+    which is how two of KFC's labels were missed.
+  - **A step opening `Note:` or `Tip:` is not a step.** 7 of them, and they belong in the recipe's
+    Notes, appended with a blank line, which is 78 of the 79 separators the corpus already uses.
+  - **Every conversion is listed in the import report**, the same way a flagged line is, because a
+    heading that should have been a step is a structural claim and the failure mode has to be
+    "told you what it did", never "restructured it quietly". The decline-over-guess rule applies
+    unchanged: a label the rules cannot place stays a step and gets flagged.
 - **Source field = flexible provenance.** Store whatever's there (cookbook, cookbook+author,
   URL, URL+author, or none); don't require a URL; preserve the raw value + structure what's
   detectable.
@@ -651,6 +668,15 @@ Builds on Phases 8–9.
 - **10b — Filters.** Cuisine/region, tags, dietary, equipment, difficulty, time, favorites.
 - **10c — In-season recipe filter.** Recipes whose linked ingredients are in season now
   (global or local season — see 10g; linked lines only).
+- **10h — Plan-ahead filter, merged with "tonight".** Filter browse by what the waiting asks of you
+  rather than by the dish. Three axes off data the recipes now carry: **wait type** (marinating,
+  rising, chilling, soaking, resting, freezing, brining), **needs an overnight** (a counted wait of
+  8 hr or more, which is 14 recipes today), and **keeps well** (a `recipe_storage` row, 30 recipes).
+  The same control answers the opposite question, which is the one asked most often: **tonight**, a
+  recipe whose counted waits total zero, so nothing has to have been started yesterday.
+  *Depends on:* plan-ahead landing on live. The columns are already there (`recipe_waits.kind`,
+  `min_minutes`, `when_kind`, and `recipe_storage`), so this is a query and a control, not a schema
+  change. Build it after plan-ahead ships, not alongside it.
 - **10d — Surprise me.** Random recipe, optionally honoring active filters.
 - **10e — Pairing / side suggestions.** Accompaniments from the existing ingredient `pairs`
   data; richer version after enrichment (Phase 12).
