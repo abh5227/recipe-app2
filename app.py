@@ -1431,6 +1431,12 @@ def get_recipe(rid):
             "storage": storage,
             "wait_total": {"min_minutes": wait_min, "max_minutes": wait_max,
                            "label": planahead.total_label(waits)},
+            # ⚠️ THE TOTAL IS DECIDED HERE AND COMPUTED AT DISPLAY, NEVER STORED. A stored total goes
+            #    stale the first time a step or a wait is edited and nothing tells the cook it has.
+            #    A stated total is the author's answer and is shown unchanged; otherwise it is
+            #    prep + cook + the counted waits, and missing either part means no total at all.
+            #    Measured over the 300: 14 carry a publisher total, 90 can be computed, 196 cannot.
+            "total": dict(zip(("label", "note"), planahead.recipe_total(r, waits))),
         }
     )
 

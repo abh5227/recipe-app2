@@ -7,6 +7,9 @@ allow 8 hours for a 10-minute marinade.
 ⚠️ A MAXIMUM EXISTS ONLY IF EVERY WAIT HAS ONE. Treating a missing max as equal to the minimum
 turns "at least 2 hours" into a promise of exactly 2.
 """
+import json
+import pathlib
+
 import pytest
 
 import planahead as pa
@@ -216,3 +219,71 @@ def test_a_ceiling_only_wait_adds_nothing_to_the_minimum_total():
     """A floor of 0 is the point: a wait that may be skipped entirely costs no planning time, and
     the ceiling still sums so a maximum stays honest."""
     assert pa.total([_w(60, 60), _w(0, 120)]) == (60, 180)
+
+
+# ---- the Total line (Round A, item 6) ------------------------------------------------------------
+# Driven by tests/fixtures/total-cases.json, the SHARED case table. The server computes the label and
+# the client prints it verbatim (tests/js/total-line.test.js asserts that half), so one table pins
+# both ends of the contract.
+
+_TOTAL_CASES = json.loads((pathlib.Path(__file__).parent / "fixtures" / "total-cases.json").read_text())
+
+
+@pytest.mark.parametrize("case", _TOTAL_CASES, ids=[c["why"][:48] for c in _TOTAL_CASES])
+def test_recipe_total(case):
+    recipe = dict(case["recipe"])
+    recipe.setdefault("total_includes_waits", None)
+    assert pa.recipe_total(recipe, case["waits"]) == (case["label"], case["note"])
+
+
+@pytest.mark.parametrize("text, want", [
+    ("35 min", (35, 35)),
+    ("1 hr 15 min", (75, 75)),
+    ("1 hr, 30 min", (90, 90)),
+    ("15-20 minutes", (15, 20)),
+    ("2 hr 45 min", (165, 165)),
+    ("5.5 hours", (330, 330)),
+    # ⚠️ THE NOTE IS NOT PART OF THE FIGURE. normalize_time keeps it, and a total must not add it.
+    ("35 min (plus 1 hr soaking)", (35, 35)),
+    ("2 hr 25 min plus cooling", (145, 145)),
+    # 2 of the 216 stored times are not times. They read as absent rather than as a guess.
+    ("1 cup", (None, None)),
+    ("", (None, None)),
+    (None, (None, None)),
+])
+def test_clock_minutes(text, want):
+    assert pa.clock_minutes(text) == want
+
+
+def test_clock_minutes_is_not_the_wait_reader():
+    """⚠️ THE TWO READERS ANSWER DIFFERENT QUESTIONS AND MIXING THEM UP WOULD BE SILENT.
+
+    A WAIT box holds what a person typed about time passing, so "2 hr+" is a floor with no ceiling
+    and "up to 30 min" is a ceiling with no floor. A prep or cook column holds a clock figure, where
+    a trailing "+" is decoration and there is no open end to read.
+
+    The measured divergence, which is why these are two functions and not one:
+        "2 hr+"             wait (120, None) open-ended   clock (120, 120) flat
+        "30 min or more"    wait (30, None)  open-ended   clock (30, 30)   flat
+        "up to 30 min"      wait (0, 30)     no floor     clock (None, None) not a figure
+    """
+    assert pa.read_duration("2 hr+") == (120, None)
+    assert pa.clock_minutes("2 hr+") == (120, 120)
+    assert pa.read_duration("up to 30 min") == (0, 30)
+    assert pa.clock_minutes("up to 30 min") == (None, None), "no leading figure to read"
+
+
+def test_the_total_is_never_stored():
+    """The column that exists is a RULING, not a figure. A stored total goes stale the first time a
+    step or a wait is edited and nothing tells the cook it has."""
+    import models
+    cols = {c.name for c in models.Recipe.__table__.columns}
+    assert "total_includes_waits" in cols
+    assert "computed_total" not in cols and "total_minutes" not in cols
+
+
+def test_the_ruling_is_not_in_the_snapshot():
+    """⚠️ A KEY EVERY STORED BASELINE LACKS ENDS THE BYTE-EQUAL SHORT-CIRCUIT FOR ALL 300 AT ONCE.
+    It is a display decision the owner makes, not a word a cook typed."""
+    from snapshot_serialize import SNAPSHOT_RECIPE_FIELDS
+    assert "total_includes_waits" not in SNAPSHOT_RECIPE_FIELDS

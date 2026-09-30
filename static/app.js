@@ -1232,13 +1232,23 @@ function scaleMetaBlock(r) {
   // "10 minutes"), and normalizing on save would edit a cook's own words on their behalf. The
   // editor below deliberately shows the raw value for the same reason. See static/timefmt.js.
   const bindUnits = (v) => v.replace(/(\d)\s+(?=[A-Za-z])/g, "$1\u00a0");
-  const times = [["Prep", r.prep_time], ["Cook", r.cook_time], ["Total", r.total_time]]
+  // ⚠️ TOTAL IS THE SERVER'S ANSWER, NOT r.total_time. A recipe with no stated total still gets one,
+  //    computed from prep + cook + the counted waits, and a recipe whose prep already swallowed its
+  //    marinade can be ruled the other way. That decision needs the waits and a per-recipe ruling, so
+  //    it is made once in planahead.recipe_total and printed here. r.total_time is still what the
+  //    EDITOR shows, because a field being edited must show what is stored.
+  //    The computed label arrives already normalized, so timeParts is a no-op on it and is left in
+  //    place rather than special-cased.
+  const totals = view.data && view.data.total ? view.data.total : {};
+  const times = [["Prep", r.prep_time, ""], ["Cook", r.cook_time, ""],
+                 ["Total", totals.label || "", totals.note || ""]]
     .filter(([, v]) => (v || "").trim())
-    .map(([label, v]) => {
+    .map(([label, v, extraNote]) => {
       // The note is its own span so it can stay at the inherited 400 while .meta-val carries the
       // 600 that makes the figure land. The parentheses and the weight then say the same thing.
       const { value, note } = timeParts(v);
-      const tail = note ? `<span class="meta-note"> (${esc(bindUnits(note))})</span>` : "";
+      const shown = extraNote || note;
+      const tail = shown ? `<span class="meta-note"> (${esc(bindUnits(shown))})</span>` : "";
       return `${label}\u00a0<span class="meta-val">${esc(bindUnits(value))}</span>${tail}`;
     })
     .join(`<span class="meta-sep"> · </span>`);

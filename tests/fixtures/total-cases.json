@@ -1,0 +1,218 @@
+[
+ {
+  "why": "a stated total is the author's answer, shown unchanged",
+  "recipe": {
+   "prep_time": "5 min",
+   "cook_time": "40 min",
+   "total_time": "2 hr 45 min"
+  },
+  "waits": [],
+  "label": "2 hr 45 min",
+  "note": null
+ },
+ {
+  "why": "no-knead-bread: the stated total already includes the rise, so the wait is NOT added",
+  "recipe": {
+   "prep_time": "5 min",
+   "cook_time": "40 min",
+   "total_time": "2 hr 45 min"
+  },
+  "waits": [
+   {
+    "min_minutes": 120,
+    "max_minutes": 180,
+    "when_kind": "always"
+   }
+  ],
+  "label": "2 hr 45 min",
+  "note": null
+ },
+ {
+  "why": "prep + cook with no waits gives a plain total",
+  "recipe": {
+   "prep_time": "20 mins",
+   "cook_time": "10 mins",
+   "total_time": null
+  },
+  "waits": [],
+  "label": "30 min",
+  "note": null
+ },
+ {
+  "why": "beef-and-pepper-stir-fry: prep 35, cook 10, a 30 min marinade",
+  "recipe": {
+   "prep_time": "35 minutes",
+   "cook_time": "10 min",
+   "total_time": null
+  },
+  "waits": [
+   {
+    "min_minutes": 30,
+    "max_minutes": 30,
+    "when_kind": "always"
+   }
+  ],
+  "label": "1 hr 15 min",
+  "note": "incl. plan ahead"
+ },
+ {
+  "why": "an open-ended wait leaves the total open-ended",
+  "recipe": {
+   "prep_time": "20 min",
+   "cook_time": "10 mins",
+   "total_time": null
+  },
+  "waits": [
+   {
+    "min_minutes": 480,
+    "max_minutes": null,
+    "when_kind": "always"
+   }
+  ],
+  "label": "8 hr 30 min+",
+  "note": "incl. plan ahead"
+ },
+ {
+  "why": "brioche-bread: a range carries through both ends",
+  "recipe": {
+   "prep_time": "30 mins",
+   "cook_time": "30 mins",
+   "total_time": null
+  },
+  "waits": [
+   {
+    "min_minutes": 480,
+    "max_minutes": 720,
+    "when_kind": "always"
+   }
+  ],
+  "label": "9 hr – 13 hr",
+  "note": "incl. plan ahead"
+ },
+ {
+  "why": "an optional wait is not time a cook has to set aside",
+  "recipe": {
+   "prep_time": "20 min",
+   "cook_time": "10 min",
+   "total_time": null
+  },
+  "waits": [
+   {
+    "min_minutes": 60,
+    "max_minutes": 60,
+    "when_kind": "optional"
+   }
+  ],
+  "label": "30 min",
+  "note": null
+ },
+ {
+  "why": "an alongside wait happens during another one and is not added twice",
+  "recipe": {
+   "prep_time": "20 min",
+   "cook_time": "10 min",
+   "total_time": null
+  },
+  "waits": [
+   {
+    "min_minutes": 480,
+    "max_minutes": 480,
+    "when_kind": "always"
+   },
+   {
+    "min_minutes": 480,
+    "max_minutes": 480,
+    "when_kind": "alongside",
+    "alongside_step_id": 4
+   }
+  ],
+  "label": "8 hr 30 min",
+  "note": "incl. plan ahead"
+ },
+ {
+  "why": "a missing cook time leaves part of the sum unknown, so there is no total",
+  "recipe": {
+   "prep_time": "20 min",
+   "cook_time": null,
+   "total_time": null
+  },
+  "waits": [
+   {
+    "min_minutes": 30,
+    "max_minutes": 30,
+    "when_kind": "always"
+   }
+  ],
+  "label": null,
+  "note": null
+ },
+ {
+  "why": "no times at all: 189 of the 300 recipes",
+  "recipe": {
+   "prep_time": null,
+   "cook_time": null,
+   "total_time": null
+  },
+  "waits": [],
+  "label": null,
+  "note": null
+ },
+ {
+  "why": "miso-tofu: a stated total ruled to EXCLUDE its marinade, so the wait is added",
+  "recipe": {
+   "prep_time": "15 min",
+   "cook_time": "10 min",
+   "total_time": "25 min",
+   "total_includes_waits": 0
+  },
+  "waits": [
+   {
+    "min_minutes": 15,
+    "max_minutes": 20,
+    "when_kind": "always"
+   }
+  ],
+  "label": "40 min – 45 min",
+  "note": "incl. plan ahead"
+ },
+ {
+  "why": "king-arthur: a stated total with nothing to add is shown unchanged",
+  "recipe": {
+   "prep_time": "5 min",
+   "cook_time": "35 min",
+   "total_time": "35 min"
+  },
+  "waits": [],
+  "label": "35 min",
+  "note": null
+ },
+ {
+  "why": "a ruling of 1 says the prep already swallowed the wait",
+  "recipe": {
+   "prep_time": "20 min",
+   "cook_time": "10 min",
+   "total_time": null,
+   "total_includes_waits": 1
+  },
+  "waits": [
+   {
+    "min_minutes": 60,
+    "max_minutes": 60,
+    "when_kind": "always"
+   }
+  ],
+  "label": "30 min",
+  "note": null
+ },
+ {
+  "why": "a time column that is not a time reads as absent rather than as a guess",
+  "recipe": {
+   "prep_time": "1 cup",
+   "cook_time": "10 min",
+   "total_time": null
+  },
+  "waits": [],
+  "label": null,
+  "note": null
+ }
+]

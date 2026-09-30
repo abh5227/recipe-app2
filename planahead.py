@@ -25,7 +25,7 @@ pair is a cost with nothing buying it.
 """
 import re
 
-from import_cleanup import _TIME_SEG_RE, _TIME_UNITS   # THE shared segment reader
+from import_cleanup import _TIME_JOIN_RE, _TIME_SEG_RE, _TIME_UNITS   # THE shared segment reader
 
 # minutes per unit the segment reader may return, plus the two it does not carry
 _MIN = {"min": 1, "hr": 60, "day": 1440, "week": 10080}
@@ -203,6 +203,105 @@ def total(waits):
     lo = sum(known)
     hi = sum(maxs) if counted and all(m is not None for m in maxs) else None
     return lo, hi
+
+
+def clock_minutes(text):
+    """A prep/cook/total column -> (lo, hi) minutes, or (None, None) if it is not a duration.
+
+    ⚠️ IT IS NOT read_duration, AND MIXING THEM UP WOULD BE SILENT. read_duration reads what a person
+    typed into a WAIT box, where "at least 2 hours" means no ceiling and "up to 1 week" means no
+    floor. A time column is a flat clock figure: "1 hr 15 min" is 75 minutes and nothing about it is
+    open-ended. Running the wait reader over a prep time would turn "up to 30 min" into a floor of 0.
+
+    It mirrors import_cleanup.normalize_time's SEGMENT LOOP, which is the function that decides what
+    counts as a duration in these three columns, so a string that normalizes reads here and a string
+    that does not (2 of the 216 stored times are not times at all) returns (None, None) rather than a
+    guess.
+
+        "35 min"                     -> (35, 35)
+        "1 hr 15 min"                -> (75, 75)
+        "15-20 minutes"              -> (15, 20)
+        "2 hr 45 min"                -> (165, 165)
+        "35 min (plus 1 hr soaking)" -> (35, 35)   the NOTE is not part of the figure
+        "1 cup"                      -> (None, None)
+    """
+    s = (text or "").strip()
+    if not s:
+        return None, None
+    lo = hi = 0.0
+    pos, seen = 0, 0
+    while pos < len(s):
+        probe = _TIME_JOIN_RE.match(s, pos).end() if seen else pos
+        m = _TIME_SEG_RE.match(s, probe)
+        if not m:
+            break
+        unit = _TIME_UNITS.get(m.group("unit").lower())
+        if not unit:
+            break
+        a = float(m.group("lo"))
+        b = float(m.group("hi")) if m.group("hi") else a
+        lo += a * _MIN[unit]
+        hi += b * _MIN[unit]
+        seen += 1
+        pos = m.end()
+    if not seen:
+        return None, None
+    return int(lo), int(hi)
+
+
+# What the Total line says when the plan-ahead waits are inside the figure. A cook seeing
+# "Total 8 hr 30 min" on a stir fry needs to know the eight hours are a marinade, not the cooking.
+INCLUDES_WAITS_NOTE = "incl. plan ahead"
+
+
+def recipe_total(recipe, waits):
+    """The Total the recipe page prints -> (label, note) or (None, None).
+
+    ⚠️ COMPUTED AT DISPLAY AND NEVER STORED. A stored total goes stale the first time a step or a
+    wait is edited, and there is nothing to tell the cook it has.
+
+    THE RULES, in order:
+      * A stated total is the author's answer and is shown unchanged. Adding waits on top of it would
+        contradict them. no-knead-bread says 2 hr 45 min and that figure already includes the rise.
+      * Otherwise, prep AND cook both present -> prep + cook + every COUNTED wait. Missing either one
+        means there is no total to give, because a part of it is unknown.
+      * A range stays a range and an open-ended wait leaves the total open-ended, exactly as
+        planahead.total already decides for the plan-ahead figure itself.
+      * total_includes_waits overrides the first two. It is NULL on 299 of 300 recipes.
+
+    ⚠️ ONE IMPLEMENTATION, SERVER SIDE. The client prints the label it is handed. See the header.
+    """
+    get = (lambda k: recipe.get(k)) if isinstance(recipe, dict) else (lambda k: getattr(recipe, k, None))
+    stated = (get("total_time") or "").strip()
+    ruling = get("total_includes_waits")
+    counted = [w for w in (waits or []) if counts(w)]
+    wlo, whi = total(counted)
+    has_waits = wlo is not None
+
+    if stated and ruling != 0:
+        # The author's own figure, untouched. ruling == 1 says the same thing explicitly.
+        return stated, None
+    plo, phi = clock_minutes(get("prep_time"))
+    clo, chi = clock_minutes(get("cook_time"))
+    if plo is None or clo is None:
+        # ⚠️ A STATED TOTAL STILL WINS EVEN WHEN THE RULING SAYS "ADD THE WAITS", because there is
+        #    nothing to add it to. Showing the author's figure beats showing none.
+        return (stated, None) if stated else (None, None)
+    base_lo, base_hi = plo + clo, phi + chi
+    if not has_waits or ruling == 1:
+        return _range_label(base_lo, base_hi), None
+    lo = base_lo + wlo
+    hi = None if whi is None else base_hi + whi
+    return _range_label(lo, hi), INCLUDES_WAITS_NOTE
+
+
+def _range_label(lo, hi):
+    """(lo, hi) minutes -> the figure the page prints. A None hi is open-ended and gets the '+'."""
+    if lo is None:
+        return None
+    if hi is None:
+        return f"{fmt_minutes(lo)}+"
+    return fmt_minutes(lo) if hi == lo else f"{fmt_minutes(lo)} \u2013 {fmt_minutes(hi)}"
 
 
 def fmt_minutes(m):
