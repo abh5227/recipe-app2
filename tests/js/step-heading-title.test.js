@@ -1,0 +1,46 @@
+// The step heading's display transform: a trailing colon comes off on the way to the screen and the
+// stored text keeps it.
+//
+// ⚠️ 90 OF THE 116 STORED HEADINGS END IN A COLON, and that is not an accident of authorship. A
+// colon is how import_cleanup.is_section RECOGNIZES a heading, so the mark that identified the row
+// is the mark left over once it has a rule under it instead of a sentence beside it.
+import test from "node:test";
+import assert from "node:assert";
+import { readFileSync } from "node:fs";
+
+const APP = readFileSync(new URL("../../static/app.js", import.meta.url), "utf8");
+const src = APP.slice(APP.indexOf("function stepHeadingTitle"));
+const body = src.slice(0, src.indexOf("\n}") + 2);
+const stepHeadingTitle = new Function(`${body}; return stepHeadingTitle;`)();
+
+test("a trailing colon comes off", () => {
+  assert.equal(stepHeadingTitle("Make your roux:"), "Make your roux");
+  assert.equal(stepHeadingTitle("CHICKEN:"), "CHICKEN");
+  assert.equal(stepHeadingTitle("To serve :"), "To serve");
+});
+
+test("a colon inside the heading stays", () => {
+  assert.equal(stepHeadingTitle("Step 1: the dough"), "Step 1: the dough");
+});
+
+test("a heading with no colon is unchanged", () => {
+  assert.equal(stepHeadingTitle("Shaping options"), "Shaping options");
+  assert.equal(stepHeadingTitle("FRY #1"), "FRY #1");
+});
+
+test("other terminal punctuation is the author's and stays", () => {
+  assert.equal(stepHeadingTitle("Make crispy cheesy birria tacos!"), "Make crispy cheesy birria tacos!");
+});
+
+test("empty and null are safe", () => {
+  assert.equal(stepHeadingTitle(""), "");
+  assert.equal(stepHeadingTitle(null), "");
+  assert.equal(stepHeadingTitle(undefined), "");
+});
+
+test("the render calls it and the editor does not", () => {
+  assert.match(APP, /class="group">\$\{esc\(stepHeadingTitle\(row\.text\)\)\}/,
+    "reading mode strips the colon");
+  assert.match(APP, /editStepHeadingField\(i, row\.text\)/,
+    "the editor shows the STORED text, colon and all");
+});

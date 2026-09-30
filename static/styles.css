@@ -1243,9 +1243,15 @@ a:hover { color: var(--berry-lift); }
    use .step-body (it mounts .step-editor-host), so this is reading-view only. */
 .step-body { white-space: pre-wrap; }
 
+/* ⚠️ NORMAL CASE, NOT UPPERCASE, AND THE REASON IS WHAT THE HEADINGS NOW SAY. These used to be a
+   handful of short section labels, where SMALL CAPS reads as a label. About 70 steps are becoming
+   headings and they are sentences a cook reads ("Set up three mixing bowls", "Make the toasted rice
+   powder"). Uppercasing a sentence makes it slower to read and louder than the step under it.
+   The tracking went with the uppercase, which is what it was there for. Bold and the green keep it
+   a heading; the rule under it keeps the section boundary. */
 .steps li.group {
-  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
-  letter-spacing: 0.1em; text-transform: uppercase; color: var(--green);
+  font-family: var(--font-serif); font-size: 16px; font-weight: 700;
+  letter-spacing: normal; text-transform: none; color: var(--green);
   margin: 14px 0 8px; padding: 0 0 5px; border-bottom: 1.5px solid var(--border-defined);   /* "more defined" (B): defined underline */
 }
 

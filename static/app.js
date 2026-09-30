@@ -996,8 +996,18 @@ function stepBodyHTML(row) {
 // rescaled live with the 1a scaler (so they format identically to the ingredient list);
 // "plain" spans are linkified (and may contain [[ingredient]] links). Falls back to raw
 // text if a payload has no spans.
+// ⚠️ THE TRAILING COLON IS DROPPED AT DISPLAY AND KEPT IN STORAGE. 90 of the 116 stored step
+//    headings end in one, because a colon is how the importer RECOGNIZED them as headings in the
+//    first place (import_cleanup.is_section). It is punctuation joining the label to text that is no
+//    longer beside it, so it reads as a stray mark once the heading has a rule under it. Rewriting
+//    90 rows to delete one character each would be a data change that buys nothing, and the editor
+//    has to keep showing what is stored.
+function stepHeadingTitle(text) {
+  return String(text == null ? "" : text).trim().replace(/\s*:+$/, "");
+}
+
 function renderStepRow(row, ann) {
-  if (row.is_heading) return `<li class="group">${esc(row.text)}</li>`;
+  if (row.is_heading) return `<li class="group">${esc(stepHeadingTitle(row.text))}</li>`;
   // O-c-1: an added step -> the whole line in the hand ink (NO "+" marker — a full paragraph of ink
   // against printed prose announces itself; see the .step-add note in styles.css); a reworded step ->
   // the struck original + the Kalam correction. Both are plain prose (no scaling/abbreviation — that's
