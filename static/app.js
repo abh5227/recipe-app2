@@ -1313,7 +1313,9 @@ function scaleMetaBlock(r) {
     //    step, and those read without a link rather than repeating the one above them.
     const extHTML = (w) => (w.ext_label
       ? ` <span class="meta-ext">${esc(bindUnits(w.ext_label))}`
-        + (w.ext_no ? ` <a class="meta-step" href="#" data-wait-step="${w.ext_no}">step ${w.ext_no}</a>` : "")
+        // Parenthesized, so it reads the way the wait's own link above it already does
+        // ("(soak, step 2)"). Bare, it ran on as "…quick soak instead step 3".
+        + (w.ext_no ? ` (<a class="meta-step" href="#" data-wait-step="${w.ext_no}">step ${w.ext_no}</a>)` : "")
         + `</span>` : "");
     const bullet = (w) =>
       `<li class="meta-bullet">${stepTag(w)}<span class="meta-do">${esc(verb(w))}</span> `
