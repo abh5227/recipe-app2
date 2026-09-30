@@ -23,10 +23,10 @@ RECIPE = {k: None for k in (
 RECIPE["name"] = "Test"
 
 
-def ing(pos, *, heading=None, label=None, qty=None):
-    """One ingredient row-like with ALL 11 keys present — a heading pins the other nine to null."""
+def ing(pos, *, heading=None, label=None, qty=None, id=None):
+    """One ingredient row-like with EVERY snapshot key present — a heading pins the others to null."""
     row = {k: None for k in SNAPSHOT_ING_FIELDS}
-    row["position"], row["is_heading"] = pos, 1 if heading else 0
+    row["position"], row["is_heading"], row["id"] = pos, 1 if heading else 0, id
     if heading:
         row["raw_text"] = heading
     else:
@@ -35,8 +35,8 @@ def ing(pos, *, heading=None, label=None, qty=None):
     return row
 
 
-def step(pos, text, heading=False):
-    return {"position": pos, "is_heading": 1 if heading else 0, "text": text}
+def step(pos, text, heading=False, id=None):
+    return {"id": id, "position": pos, "is_heading": 1 if heading else 0, "text": text}
 
 
 def blob(ings, steps):
@@ -353,3 +353,57 @@ def test_a_real_section_heading_is_still_copied_in():
     out = json.loads(sync_heading_layout(base, cur, BASE_STEPS))
     assert [r["raw_text"] for r in out["ingredients"] if r["is_heading"]] == ["FOR THE SAUCE"]
     assert_content_safe(base, json.dumps(out))
+
+
+# ---- option C commit 3: the baseline carries row ids ---------------------------------------------
+
+def test_the_sync_carries_a_baseline_content_rows_id_through():
+    """⚠️ THE IDS ARE THE POINT OF THE BASELINE NOW, and a sync rewrites the whole blob. A content
+    row is copied from the baseline, so it keeps the id the backfill gave it — the sync has no
+    business re-pointing a row it is not allowed to touch."""
+    base = content_blob(RECIPE, [ing(0, label="oil", id=11), ing(1, label="garlic", id=12)],
+                        BASE_STEPS)
+    cur = [ing(0, heading="FOR THE SAUCE", id=99), ing(1, label="oil", id=11),
+           ing(2, label="garlic", id=12)]
+    out = json.loads(sync_heading_layout(base, cur, BASE_STEPS))
+    assert [(r["label"], r["id"]) for r in out["ingredients"] if not r["is_heading"]] \
+        == [("oil", 11), ("garlic", 12)]
+
+
+def test_an_interleaved_heading_carries_the_live_rows_id():
+    """A heading in the new blob IS the live row: the layout is replaced wholesale from current, so
+    the id that comes with it is current's. `null` there would be a row the diff cannot place."""
+    base = content_blob(RECIPE, [ing(0, label="oil", id=11)], BASE_STEPS)
+    cur = [ing(0, heading="FOR THE SAUCE", id=99), ing(1, label="oil", id=11)]
+    out = json.loads(sync_heading_layout(base, cur, BASE_STEPS))
+    assert [(r["raw_text"], r["id"]) for r in out["ingredients"] if r["is_heading"]] \
+        == [("FOR THE SAUCE", 99)]
+
+
+def test_p4_refuses_a_transform_that_repoints_a_content_row():
+    """⚠️ P1 PROJECTS `id` OUT, so without P4 a transform could hand back the right content under the
+    wrong row identity — which after the id-matched diff lands would re-point every annotation on the
+    recipe. The content here is byte-identical and only the id moves."""
+    base = content_blob(RECIPE, [ing(0, label="oil", id=11), ing(1, label="garlic", id=12)],
+                        BASE_STEPS)
+    swapped = content_blob(RECIPE, [ing(0, label="oil", id=12), ing(1, label="garlic", id=11)],
+                           BASE_STEPS)
+    problems = content_safety_problems(base, swapped)
+    assert [p for p in problems if p.startswith("P4")], problems
+    with pytest.raises(HeadingSyncViolation):
+        assert_content_safe(base, swapped)
+
+
+def test_p1_tolerates_a_baseline_written_before_the_ids_existed():
+    """⚠️ THE TOLERANT DIRECTION IS DELIBERATE. All 300 stored baselines were written without an `id`
+    key, and the builder emits "id": null for such a row. A strict dict compare would fail P1 and
+    abort the save with a 500 on a recipe whose content is perfectly intact, so an id the old row
+    does not have may be filled in. An id it DOES have may not change (see P4)."""
+    old = json.loads(content_blob(RECIPE, [ing(0, label="oil"), ing(1, label="garlic")], BASE_STEPS))
+    for row in old["ingredients"] + old["steps"]:
+        del row["id"]                                  # the pre-backfill shape, exactly
+    old_blob = json.dumps(old, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
+    out = sync_heading_layout(old_blob, [ing(0, label="oil", id=11), ing(1, label="garlic", id=12)],
+                              BASE_STEPS)
+    assert content_safety_problems(old_blob, out) == []
+    assert_content_safe(old_blob, out)

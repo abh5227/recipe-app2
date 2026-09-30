@@ -527,3 +527,28 @@ def test_no_source_rating_writes_no_row(kitchen):
     with kitchen.conn() as conn:
         assert conn.execute("SELECT COUNT(*) FROM recipe_source_ratings WHERE recipe_id=?",
                             (plan["recipe"]["id"],)).fetchone()[0] == 0
+
+
+def test_the_import_baseline_carries_the_inserted_row_ids(kitchen):
+    """⚠️ A PLAN ROW HAS NO ID — IT DOES NOT EXIST UNTIL THE INSERT. commit_plan used to serialize the
+    plan, which would now write a baseline full of nulls where the ids belong: every imported recipe
+    would fail the byte-equal short-circuit on the day it landed, and the id-matched diff would have
+    nothing to match on, permanently and invisibly. It reads the rows back instead."""
+    import json
+    c = _cleaned(name="Id Dish", source="BA", categories=["Fish"],
+                 ingredient_lines=["SAUCE:", "2 tbsp oil", "1 cup water"],
+                 directions=["Mix.", "Bake."], servings_raw="4", uid="ID-UID")
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, _plan(c)) is True
+        s.commit()
+    with kitchen.conn() as conn:
+        doc = json.loads(conn.execute(
+            "SELECT content FROM recipe_snapshots WHERE recipe_id='id-dish' AND reason='original'"
+        ).fetchone()["content"])
+        live_ing = [r["id"] for r in conn.execute(
+            "SELECT id FROM recipe_ingredients WHERE recipe_id='id-dish' ORDER BY position, id")]
+        live_step = [r["id"] for r in conn.execute(
+            "SELECT id FROM recipe_steps WHERE recipe_id='id-dish' ORDER BY position, id")]
+    assert live_ing and live_step
+    assert [r["id"] for r in doc["ingredients"]] == live_ing
+    assert [r["id"] for r in doc["steps"]] == live_step

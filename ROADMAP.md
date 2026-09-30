@@ -1510,6 +1510,22 @@ worth knowing before they bite. None of the *data* limitations occur in the curr
   round-trips, and it closes this case by construction. Until then the exposure grows with every
   duplicate-name recipe that gains a link a rebuild cannot reproduce.
 
+- **24 baseline rows carry no id, so the id-matched diff must keep the text fallback.** Option C
+  commit 3 gave all 300 reason='original' baselines their row ids by matching content, consume-once,
+  with no similarity tier. Measured over live: 3,446 of 3,571 ingredient rows matched on exact
+  content and 102 more on the app's own reading of the row (an empty string against null, a library
+  link migration 046 cleared, a richer `raw_text` behind an unchanged label), leaving **23 ingredient
+  rows and 1 step row with a null id, over 19 recipes**. Those are rows genuinely edited or removed
+  since the recipe was born, and a null is the right answer for them — `tacos`'s garlic went from
+  `2` / `garlic cloves , minced` to `2 cloves` / `garlic , minced` in the qty/unit re-split, which is
+  a real change the page already marks. ⚠️ **The trap is in commit 4.** Today the text diff reports
+  that row as one `modified` amount plus one `modified` name. A diff that matched on id ALONE would
+  find no partner for a null and emit `removed` plus `added` instead, which is worse output for the
+  same edit, and `_suppress_moves` cannot rescue it because the text differs. Commit 4 must match by
+  id where both sides have one and fall back to today's text matching where either side does not.
+  The row-by-row record of which baseline row got which id, and why, is in
+  `docs/data-repairs/baseline-row-ids-2026-09-29.csv`.
+
 - **The row menus differ between ingredients and steps, and neither offers undo.** The `⋯` menu on
   an ingredient row and on a step row grew separately and do not offer the same things in the same
   order. A step has no **Convert to heading** at all, so the only way to make a step a section title

@@ -25,8 +25,26 @@ SNAPSHOT_RECIPE_FIELDS = (
     "name", "author", "source_url", "category", "servings", "prep_time",
     "cook_time", "total_time", "descr", "notes", "image",
 )
+# ⚠️ `id` IS THE ROW'S DATABASE PRIMARY KEY, AND IT IS THE WHOLE POINT OF OPTION C. Every other key
+# here describes the row's CONTENT. This one says WHICH ROW IT IS, which is the question text could
+# never answer: two rows can read "1 tsp salt" and a renamed row reads as a stranger. A save now
+# updates the rows it was given in place (write_recipe_rows matches by id), so a live row keeps its id
+# for life, and a baseline row carrying that id is bound to its live counterpart no matter how the
+# text is edited afterwards.
+#
+# ⚠️ ADDING IT CHANGED THE BYTES OF ALL 300 STORED BASELINES, WHICH IS WHY IT SHIPPED WITH A BACKFILL.
+# _recipe_annotations short-circuits when the stored baseline equals the recipe's current
+# serialization, so a key that current emits and the baselines lack would end that short-circuit for
+# every recipe at once. The waits/storage keys dodged this by being omitted when empty (see
+# content_blob) and a row id cannot: NULL is a meaningful answer here, not an absence.
+# scripts/backfill_baseline_row_ids.py wrote the ids into all 300 in the same commit, and
+# docs/data-repairs/ holds the row-by-row audit of what it assigned.
+#
+# ⚠️ THE DIFF STILL MATCHES ON TEXT. Nothing in snapshot_diff reads this key yet — it compares named
+# keys and derived text, never whole rows, so an id cannot add or remove an annotation on its own.
+# Matching by id is commit 4, and kind_change_key below is the one line that swaps over.
 SNAPSHOT_ING_FIELDS = (
-    "position", "is_heading", "qty", "ingredient_id", "label", "note",
+    "id", "position", "is_heading", "qty", "ingredient_id", "label", "note",
     "raw_text", "grams", "secondary_measure", "quantity", "unit",
 )
 
@@ -38,7 +56,7 @@ def _get(row, key):
     return getattr(row, key, None)
 
 
-SNAPSHOT_STEP_FIELDS = ("position", "is_heading", "text")
+SNAPSHOT_STEP_FIELDS = ("id", "position", "is_heading", "text")   # `id` — see the note above
 
 
 def kind_change_key(row):

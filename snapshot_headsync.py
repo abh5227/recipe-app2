@@ -31,9 +31,7 @@ the baseline's.
 import json
 
 from snapshot_diff import _split                      # the ONE heading/content partitioner — not a second copy
-from snapshot_serialize import (
-    SNAPSHOT_ING_FIELDS, content_blob, kind_change_key, snapshot_ing_row, snapshot_step_row,
-)
+from snapshot_serialize import content_blob, kind_change_key, snapshot_ing_row, snapshot_step_row
 
 # The step row's three keys (snapshot_serialize spells them inline in its steps projection).
 # SNAPSHOT_STEP_FIELDS moved to snapshot_serialize, beside the ingredient list and the two row
@@ -50,10 +48,6 @@ def _get(row, key):
     if isinstance(row, dict):
         return row.get(key)
     return getattr(row, key, None)
-
-
-def _as_dict(row, fields):
-    return {k: _get(row, k) for k in fields}
 
 
 def _load(blob):
@@ -98,7 +92,14 @@ def _reinterleave(old_rows, current_rows, row_of, key_of=None):
     skipped the projection content_blob applies. Migration 052 let a converted heading keep the
     line's source text in raw_text and hold its title in `heading`, so the plain copy wrote
     "125 g milk lukewarm (95-104°F)" into the BASELINE as a section title. Taking the builder means
-    a second copy of the projection cannot drift from the first, because there is no second copy."""
+    a second copy of the projection cannot drift from the first, because there is no second copy.
+    (The generic `_as_dict(row, fields)` helper this used to lean on has been deleted, so there is no
+    field-copy builder left in this module for the next change to reach for by mistake.)
+
+    ⚠️ ROW IDS RIDE THROUGH ON BOTH SIDES, and taking the builder is what makes that free. A baseline
+    CONTENT row keeps the id the backfill gave it, because the builder copies the key it finds. A
+    CURRENT heading contributes its own live id, which is right: the baseline's heading layout is
+    replaced wholesale from current, so the heading in the new blob IS that live row."""
     content = [row_of(r) for r in old_rows if not _get(r, "is_heading")]
     heads = _content_ordinal_of_headings(current_rows)
     if key_of is not None:
@@ -167,8 +168,17 @@ def sync_heading_layout(old_blob, current_ingredients, current_steps):
 
 # ---- the postcondition ---------------------------------------------------------------------------
 
+# ⚠️ POSITION AND ID ARE BOTH PROJECTED OUT OF P1, FOR DIFFERENT REASONS. A correct sync renumbers
+#    position (see P1's docstring). `id` comes out because P1 is a check on CONTENT and an id is not
+#    content — and because projecting it keeps the check honest about a baseline written before the
+#    ids existed: such a row has no `id` key at all, while the builder emits `"id": null` for it, so a
+#    strict dict compare would fail P1 and abort the save with a 500 on a recipe whose content is
+#    perfectly intact. P4 below checks the ids separately, in the tolerant direction.
+_BARE_EXCLUDE = ("position", "id")
+
+
 def _strip_pos(rows):
-    return [{k: v for k, v in r.items() if k != "position"} for r in rows]
+    return [{k: v for k, v in r.items() if k not in _BARE_EXCLUDE} for r in rows]
 
 
 def content_safety_problems(old_blob, new_blob):
@@ -241,6 +251,23 @@ def content_safety_problems(old_blob, new_blob):
         problems.append(
             f"P3: the sync dropped top-level key(s) {missing} — a heading sync must carry every "
             f"key it does not interleave straight through")
+
+    # P4 — A CONTENT ROW KEEPS ITS ID.
+    # ⚠️ THE ONE-WAY FORM IS DELIBERATE: an id the old row HAS must survive, and an id it lacks may be
+    #    filled in. P1 cannot carry this check because it projects `id` out (see above), and without it
+    #    a transform could hand back the right content under the wrong row identity — which after
+    #    commit 4, where the diff matches on id, would silently re-point every annotation on the
+    #    recipe. Stated over the rows P1 already found comparable, so it never fires on a count change.
+    for name in ("ingredients", "steps"):
+        o_content, _ = _split(old.get(name) or [])
+        n_content, _ = _split(new.get(name) or [])
+        if len(o_content) != len(n_content):
+            continue                                       # P1 already reported it
+        for i, (a, b) in enumerate(zip(o_content, n_content)):
+            if a.get("id") is not None and a.get("id") != b.get("id"):
+                problems.append(
+                    f"P4 {name}[{i}]: content row id changed {a.get('id')} -> {b.get('id')} — "
+                    f"a heading sync must never re-point a content row")
     return problems
 
 

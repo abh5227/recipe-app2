@@ -311,7 +311,7 @@ def commit_plan(executor, plan, owner_id=None, snapshot=True):
     # annotations diff (O-c) — in THIS import batch transaction (atomic). The blob uses the SHARED
     # serializer (snapshot_serialize.content_blob), byte-identical to the ORM path (app.serialize_recipe_
     # content), so an import-origin original diffs cleanly against an app-origin current. content_blob
-    # needs no change here: it already reads mappings OR ORM rows, and the input is still the plan dict.
+    # reads mappings OR ORM rows, so the DB rows read back below go in unmapped.
     # Guarded so a recipe's original is captured once (belt-and-suspenders; commit_plan is create-only —
     # uid-dedup skips existing recipes, so the false branch is unreachable through this function).
     # cook_log_id NULL; user_id = the import owner; created_at = the recipe's birth timestamp.
@@ -319,9 +319,22 @@ def commit_plan(executor, plan, owner_id=None, snapshot=True):
     exists = snapshot and executor.execute(
         select(snap.c.id).where(snap.c.recipe_id == r["id"], snap.c.reason == "original")).first()
     if snapshot and not exists:
+        # ⚠️ THE ROWS ARE READ BACK FROM THE DATABASE, NOT TAKEN FROM THE PLAN, AND THAT IS FORCED.
+        # The snapshot format carries each row's database id (snapshot_serialize.SNAPSHOT_ING_FIELDS),
+        # and a plan row has no id — the id does not exist until the INSERT above assigns it. Serializing
+        # the plan would write a baseline full of nulls where the ids belong, so every imported recipe
+        # would fail the byte-equal short-circuit on the day it landed and carry a permanent, invisible
+        # handicap: the annotations diff would run on every page view and the row matching would have
+        # nothing to match on. Reading back is one select per table, inside the caller's transaction,
+        # after the inserts. tests/test_import_write.py pins it byte-for-byte against the ORM path.
+        ri, rs = RecipeIngredient.__table__, RecipeStep.__table__
+        ing_rows = executor.execute(select(ri).where(ri.c.recipe_id == r["id"])
+                                    .order_by(ri.c.position, ri.c.id)).mappings().all()
+        step_rows = executor.execute(select(rs).where(rs.c.recipe_id == r["id"])
+                                     .order_by(rs.c.position, rs.c.id)).mappings().all()
         executor.execute(insert(snap).values(
             recipe_id=r["id"], cook_log_id=None, user_id=owner_id, reason="original",
-            content=snapshot_serialize.content_blob(r, plan["ingredients"], plan["steps"]),
+            content=snapshot_serialize.content_blob(r, ing_rows, step_rows),
             created_at=r["created_at"]))
     # ⚠️ AN IMPORTED RATING GETS A COOK TO HANG ON, and that is the whole of the fix. This used to
     # insert a recipe-level ratings row with no cook behind it, which is how 107 verdicts ended up

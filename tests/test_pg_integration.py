@@ -799,3 +799,51 @@ def test_a_foreign_row_id_is_refused_pg(pg):
     r = _put(c, rid, got)
     assert r.status_code == 400 and str(stolen) in r.get_json()["error"]
     assert _row_ids(pg.engine, "recipe_ingredients", rid) == before
+
+
+# ---- 14. the baseline carries row ids, on Postgres (option C commit 3) ----------------------------
+
+def test_the_import_baseline_carries_the_inserted_row_ids_pg(pg):
+    """⚠️ THE READ-BACK IS NEW CODE ON BOTH DIALECTS. commit_plan used to serialize the import PLAN,
+    whose rows have no id because the id does not exist until the INSERT. It now selects the rows back
+    inside the caller's transaction, and this is the leg where a sequence, a returned type or a
+    read-your-own-writes assumption would differ. import_write's own note says the Postgres CI leg
+    never reaches the importer, which is exactly why this lives here."""
+    import json
+    owner = harness.ensure_test_user()
+    plan = _plan(_cleaned(name="PG Ids Dish", uid="PG-IDS-1",
+                          ingredient_lines=["SAUCE:", "2 tbsp oil", "1 cup water"],
+                          directions=["Mix.", "Bake."]))
+    rid = plan["recipe"]["id"]
+    with app.orm_session() as s:
+        assert iw.commit_plan(s, plan, owner) is True
+        s.commit()
+    with pg.engine.connect() as conn:
+        blob = json.loads(conn.execute(text(
+            "SELECT content FROM recipe_snapshots WHERE recipe_id=:r AND reason='original'"),
+            {"r": rid}).scalar_one())
+        live_ing = [r[0] for r in conn.execute(text(
+            "SELECT id FROM recipe_ingredients WHERE recipe_id=:r ORDER BY position, id"), {"r": rid})]
+        live_step = [r[0] for r in conn.execute(text(
+            "SELECT id FROM recipe_steps WHERE recipe_id=:r ORDER BY position, id"), {"r": rid})]
+    assert live_ing and live_step
+    assert [r["id"] for r in blob["ingredients"]] == live_ing
+    assert [r["id"] for r in blob["steps"]] == live_step
+
+
+def test_a_created_recipes_baseline_is_byte_equal_to_its_serialization_pg(pg):
+    """The byte-equal short-circuit, on Postgres, with ids in the format. A recipe born through the
+    app must short-circuit immediately, or every page view runs the diff for no reason."""
+    import json
+    c = pg.client
+    rid = c.post("/api/recipes", json={
+        "name": "PG Id Baseline", "is_test": True,
+        "ingredients": [{"heading": "BASE"}, {"qty": "1 cup", "text": "flour"}],
+        "steps": [{"heading": "PREP"}, "mix"]}).get_json()["id"]
+    with pg.engine.connect() as conn:
+        stored = conn.execute(text("SELECT content FROM recipe_snapshots WHERE recipe_id=:r "
+                                      "AND reason='original'"), {"r": rid}).scalar_one()
+    with app.orm_session() as s:
+        assert app.serialize_recipe_content(s, rid) == stored
+        assert app._recipe_annotations(s, rid) == []
+    assert all(r["id"] is not None for r in json.loads(stored)["ingredients"])

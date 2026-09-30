@@ -975,14 +975,35 @@ def write_recipe_rows(s, rid, clean, stored=None):
     if gone:
         s.execute(delete(ri).where(ri.c.id.in_(gone)))
 
-    # Steps carry nothing, so there is no carry tier and nothing to preserve across a rewrite. A
-    # step with a known id is updated, and a step with none is a new row — which is every step of
-    # every save before this, so an older client's payload behaves exactly as it always did.
+    # ⚠️ A STEP CARRIES NO COLUMNS, AND IT STILL HAS SOMETHING TO PRESERVE: ITS ID. This read
+    # "steps carry nothing, so there is no carry tier and nothing to preserve across a rewrite",
+    # which was true when a step row's id meant nothing to anything outside this table. The
+    # reason='original' baseline now records every step row's id, so deleting an unchanged step and
+    # inserting it again costs the recipe its byte-equal short-circuit for good — every page view
+    # runs the diff, and after the id-matched diff lands, every step of that recipe reads as removed
+    # and re-added. The app's own client sends an id on every existing step, so this fallback is for
+    # a caller that does not (the string wire form, which is still legal).
+    #
+    # ONE TIER, EXACT, CONSUME-ONCE, IN ORDER. An id-less step whose kind and text match a stored row
+    # the id pass did not claim updates THAT row. No similarity tier, unlike _Carry's second pass: a
+    # step with changed text and no id is a new row exactly as it was before, so the only behaviour
+    # this changes is the one case where preserving the id is unambiguously right.
     step_by_id = {o["id"]: o for o in stored_step}
+    prepared_steps = [(_step_parts(step),
+                       step_by_id.get(step.get("id") if isinstance(step, dict) else None))
+                      for step in clean["steps"]]
+    step_claimed = {o["id"] for _, o in prepared_steps if o is not None}
+    step_carry = {}
+    for o in stored_step:
+        if o["id"] not in step_claimed:
+            step_carry.setdefault((bool(o["is_heading"]), o["text"] or ""), []).append(o)
+
     kept = set()
-    for pos, step in enumerate(clean["steps"]):
-        text_val, is_heading = _step_parts(step)
-        into = step_by_id.get(step.get("id") if isinstance(step, dict) else None)
+    for pos, ((text_val, is_heading), into) in enumerate(prepared_steps):
+        if into is None:
+            pool = step_carry.get((bool(is_heading), text_val or ""))
+            if pool:
+                into = pool.pop(0)                      # consume-once, first stored row wins
         if into is not None:
             if into["id"] in kept:                      # see the ingredient guard above
                 raise RuntimeError(f"two payload steps resolved to stored row {into['id']}")
@@ -1016,7 +1037,12 @@ def serialize_recipe_content(s, rid):
         .order_by(RecipeIngredient.position, RecipeIngredient.id)
     ).scalars())
     steps = [
-        {"position": row.position, "is_heading": row.is_heading, "text": row.body}   # .body = the DB "text" column
+        # ⚠️ `id` IS NAMED HERE BECAUSE THIS PATH HAND-BUILDS ITS STEP DICTS. The ORM maps the DB
+        # "text" column to .body (models.py renames it to avoid shadowing sqlalchemy.text), so a step
+        # row cannot be handed to the serializer as-is the way an ingredient row is — every key the
+        # snapshot format wants has to be spelled out on this line, and a new one is silently null
+        # otherwise. Ingredients need no such line: they go in as ORM rows and _get reads the attribute.
+        {"id": row.id, "position": row.position, "is_heading": row.is_heading, "text": row.body}
         for row in s.execute(
             select(RecipeStep).where(RecipeStep.recipe_id == rid)
             .order_by(RecipeStep.position, RecipeStep.id)
@@ -1097,9 +1123,12 @@ def sync_original_heading_layout(s, rid):
     ri, rs = RecipeIngredient.__table__, RecipeStep.__table__
     ingredients = [dict(m) for m in s.execute(
         select(ri).where(ri.c.recipe_id == rid).order_by(ri.c.position, ri.c.id)).mappings()]
+    # ⚠️ THE WHOLE ROW, NOT A HAND-PICKED COLUMN LIST. This named position/is_heading/text and so
+    # omitted the row id the snapshot format now carries, which put "id":null on every heading the
+    # sync interleaved. Selecting the table lets snapshot_step_row decide what the snapshot needs,
+    # the same way the ingredient select above already does.
     steps = [dict(m) for m in s.execute(
-        select(rs.c.position, rs.c.is_heading, rs.c.text)
-        .where(rs.c.recipe_id == rid).order_by(rs.c.position, rs.c.id)).mappings()]
+        select(rs).where(rs.c.recipe_id == rid).order_by(rs.c.position, rs.c.id)).mappings()]
 
     synced = snapshot_headsync.sync_heading_layout(stored, ingredients, steps)
     snapshot_headsync.assert_content_safe(stored, synced)   # raises -> the whole save aborts

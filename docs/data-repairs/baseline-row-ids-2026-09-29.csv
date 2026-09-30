@@ -1,0 +1,179 @@
+recipe_id,kind,baseline_position,assigned_id,tier,differs_on,text
+aloo-gobhi,ingredient,0,8931,quirk,ingredient_id,"2 medium russet potatoes, cut into 2-inch sticks"
+aloo-gobhi,ingredient,1,8932,quirk,ingredient_id,"1 medium head cauliflower, cut into small florets"
+aloo-gobhi,ingredient,2,8933,quirk,note,"3 + 2 tbsp olive oil, divided"
+aloo-gobhi,ingredient,3,8934,quirk,ingredient_id note,1 tsp cumin seeds
+aloo-gobhi,ingredient,4,8935,quirk,ingredient_id note,½ tsp ground turmeric
+aloo-gobhi,ingredient,5,8936,quirk,ingredient_id,"1 small yellow onion, finely diced"
+aloo-gobhi,ingredient,6,8937,quirk,ingredient_id,pinch asafetida
+aloo-gobhi,ingredient,7,8938,quirk,ingredient_id note,pinch red chile powder
+aloo-gobhi,ingredient,8,8939,quirk,ingredient_id,"1 tbsp fresh ginger, julienned"
+aloo-gobhi,ingredient,9,8940,quirk,ingredient_id,1 tbsp lime juice
+aloo-gobhi,ingredient,10,8941,quirk,note,"1 teaspoon kosher salt, plus more if needed"
+aloo-gobhi,ingredient,11,8942,quirk,ingredient_id,"½ cup fresh cilantro, chopped, for garnish"
+asparagus-with-eggs-and-za-atar-halayone-w-bayd,ingredient,0,9071,quirk,note,2 tablespoons olive oil or any neutral oil
+asparagus-with-eggs-and-za-atar-halayone-w-bayd,ingredient,1,9072,quirk,note,"2 banana shallots (about 2 oz/70g total prepared weight), finely chopped"
+asparagus-with-eggs-and-za-atar-halayone-w-bayd,ingredient,2,9073,quirk,note,"1 clove garlic, crushed"
+asparagus-with-eggs-and-za-atar-halayone-w-bayd,ingredient,3,9074,quirk,note,"8 oz asparagus, chopped into ¾ in/2cm pieces"
+asparagus-with-eggs-and-za-atar-halayone-w-bayd,ingredient,4,9075,quirk,note qty,sea salt
+asparagus-with-eggs-and-za-atar-halayone-w-bayd,ingredient,5,9076,quirk,note qty,freshly ground black pepper
+asparagus-with-eggs-and-za-atar-halayone-w-bayd,ingredient,6,9077,quirk,note,5 eggs
+asparagus-with-eggs-and-za-atar-halayone-w-bayd,ingredient,7,9078,quirk,note,2 teaspoons za'atar
+asparagus-with-eggs-and-za-atar-halayone-w-bayd,ingredient,8,9079,quirk,note qty,extra virgin olive oil
+baked-tofu,ingredient,0,9086,quirk,note,"1 (14- to 16-ounce) package firm or extra-firm tofu, drained"
+baked-tofu,ingredient,1,9087,quirk,note,2 tablespoons reduced-sodium soy sauce
+baked-tofu,ingredient,2,,unassigned,,"1 tablespoon vegetable oil, plus more for baking sheet"
+baked-tofu,ingredient,3,,unassigned,,½ teaspoon garlic powder
+baked-tofu,ingredient,4,,unassigned,,½ teaspoon onion powder
+baked-tofu,ingredient,5,,unassigned,,3 tablespoons cornstarch
+basic-hummus,ingredient,5,7615,quirk,ingredient_id,"4 cloves garlic, crushed"
+bbq-gulf-snapper,ingredient,6,8500,quirk,raw_text,¼ cup white wine
+bbq-gulf-snapper,ingredient,7,8499,quirk,label qty raw_text unit,3 tbsp fresh lemon juice
+birria-tacos,ingredient,5,,unassigned,,"5 garlic cloves , peeled"
+bo-luc-lac-shaking-beef,ingredient,6,2988,exact-dup,,1 tablespoon oyster sauce
+bo-luc-lac-shaking-beef,ingredient,18,3000,exact-dup,,1 tablespoon oyster sauce
+brioche-bread,ingredient,6,3020,exact-dup,,5 large eggs approx. 260g-270g excluding shell.
+brioche-bread,ingredient,8,3022,exact-dup,,Egg wash
+brioche-bread,ingredient,9,3023,exact-dup,,1 large egg
+brioche-bread,ingredient,10,3024,exact-dup,,1 Tablespoon water
+brioche-bread,ingredient,17,3031,exact-dup,,5 large eggs approx. 260g-270g excluding shell.
+brioche-bread,ingredient,19,3033,exact-dup,,Egg wash
+brioche-bread,ingredient,20,3034,exact-dup,,1 large egg
+brioche-bread,ingredient,21,3035,exact-dup,,1 Tablespoon water
+bulgogi-bowls,ingredient,0,8967,quirk,note,500 g / 1 lb beef mince (ground beef)
+bulgogi-bowls,ingredient,1,,unassigned,,"1 tbsp vegetable oil, + 2 tsp (to wilt the spinach)"
+bulgogi-bowls,ingredient,2,,unassigned,,1 tbsp onion
+bulgogi-bowls,ingredient,3,8970,quirk,ingredient_id,"3 tbsp Asian pear, finely grated"
+bulgogi-bowls,ingredient,4,8971,quirk,ingredient_id,"3 cloves garlic, finely grated"
+bulgogi-bowls,ingredient,5,8972,quirk,ingredient_id,"1 tsp ginger, finely grated"
+bulgogi-bowls,ingredient,6,8973,quirk,ingredient_id,2½ tbsp soy sauce
+bulgogi-bowls,ingredient,7,8974,quirk,ingredient_id note,1 tbsp sesame oil
+bulgogi-bowls,ingredient,8,8975,quirk,ingredient_id note,1 tbsp mirin
+bulgogi-bowls,ingredient,9,8976,quirk,note,1 tbsp brown sugar
+bulgogi-bowls,ingredient,10,8977,quirk,note,⅛ tsp black pepper
+bulgogi-bowls,ingredient,12,8979,quirk,ingredient_id note,2 tbsp soy sauce
+bulgogi-bowls,ingredient,13,8980,quirk,ingredient_id note,1 tbsp sesame oil
+bulgogi-bowls,ingredient,14,8981,quirk,note,2 tsp brown sugar
+bulgogi-bowls,ingredient,15,8982,quirk,ingredient_id note,2 tsp lime (or lemon) juice
+bulgogi-bowls,ingredient,17,,unassigned,,white rice (medium or short grain if you can)
+bulgogi-bowls,ingredient,18,8985,quirk,ingredient_id,4 large handfuls baby spinach
+bulgogi-bowls,ingredient,19,8986,quirk,ingredient_id,"1 large carrot, peeled and julienned"
+bulgogi-bowls,ingredient,20,8987,quirk,ingredient_id,"1 avocado, mashed"
+bulgogi-bowls,ingredient,21,8988,quirk,note,"1½ cups lettuce, torn into bite-size pieces"
+bulgogi-bowls,ingredient,22,8989,quirk,ingredient_id note,1 tsp white sesame seeds
+bulgogi-bowls,ingredient,23,8990,quirk,ingredient_id,"1 green onion, finely sliced"
+chicken-and-broccoli-with-brown-sauce,ingredient,3,3270,exact-dup,,1 tablespoon oyster sauce
+chicken-and-broccoli-with-brown-sauce,ingredient,12,3279,exact-dup,,1 tablespoon oyster sauce
+chicken-nachos,ingredient,10,,unassigned,,"2 garlic cloves , minced"
+chicken-tikka-masala,ingredient,8,3405,exact-dup,,1 teaspoon Kashmiri chili
+chicken-tikka-masala,ingredient,9,3406,exact-dup,,1 teaspoon salt
+chicken-tikka-masala,ingredient,22,3419,exact-dup,,1 teaspoon Kashmiri chili
+chicken-tikka-masala,ingredient,24,3421,exact-dup,,1 teaspoon salt
+cinnamon-scones,ingredient,9,7389,exact-dup,,½ teaspoon vanilla
+cinnamon-scones,ingredient,12,7392,exact-dup,,½ teaspoon vanilla
+country-ham-croquettes-with-parsley-salad,ingredient,11,3618,exact-dup,,pepper
+country-ham-croquettes-with-parsley-salad,ingredient,21,3628,exact-dup,,pepper
+gai-yang,ingredient,0,8991,quirk,note,"8 bone-in, skin-on chicken thighs"
+gai-yang,ingredient,2,8993,quirk,ingredient_id note,1½ tsp white peppercorns
+gai-yang,ingredient,3,8994,quirk,ingredient_id note,2 tsp toasted coriander seeds
+gai-yang,ingredient,4,8995,quirk,ingredient_id,"1 stalk lemongrass, bottom half only, thinly sliced"
+gai-yang,ingredient,5,8996,quirk,ingredient_id note,5 cloves garlic
+gai-yang,ingredient,6,8997,quirk,ingredient_id note,3 tbsp soy sauce
+gai-yang,ingredient,7,8998,quirk,ingredient_id note,3 tbsp fish sauce
+gai-yang,ingredient,8,8999,quirk,note,1 tbsp black (dark) soy sauce
+gai-yang,ingredient,9,9000,quirk,note,1 Tbsp sugar
+gai-yang,ingredient,10,9001,quirk,note,½ cup water
+gai-yang,ingredient,11,9002,quirk,note,2 Tbsp neutral oil
+gai-yang,ingredient,13,9004,quirk,ingredient_id,2 tbsp tamarind paste
+gai-yang,ingredient,14,,unassigned,,1 tbsp palm sugar
+gai-yang,ingredient,15,9006,quirk,ingredient_id note,1 tbsp fish sauce
+gai-yang,ingredient,16,9007,quirk,ingredient_id note,1 tbsp lime juice
+gai-yang,ingredient,17,9008,quirk,note,"to taste Chili flakes, to taste"
+gai-yang,ingredient,18,9009,quirk,ingredient_id,"1 tbsp shallots, finely chopped"
+gai-yang,ingredient,19,9010,quirk,ingredient_id,"1 tbsp green onion, chopped"
+gai-yang,ingredient,20,9011,quirk,ingredient_id,"3 sprigs cilantro, chopped"
+gai-yang,ingredient,21,9012,quirk,note,1 Tbsp toasted rice powder
+garlic-rice,ingredient,1,,unassigned,,"5 garlic cloves , finely minced"
+kachumber-tilapia,ingredient,6,4142,exact-dup,,½ teaspoon kosher salt
+kachumber-tilapia,ingredient,12,4148,exact-dup,,½ teaspoon kosher salt
+kfc-spicy-chicken-rice-bowl,ingredient,3,4196,exact-dup,,1 teaspoon sugar
+kfc-spicy-chicken-rice-bowl,ingredient,21,4214,exact-dup,,1 teaspoon sugar
+kuku-paka-african-chicken-curry,ingredient,1,,unassigned,,"4 chicken thigh fillets , skin-on and bone-in (~250g/8oz each)"
+kuku-paka-african-chicken-curry,ingredient,8,,unassigned,,"3 garlic cloves , finely minced"
+leek-and-potato-soup,ingredient,1,,unassigned,,"2 garlic cloves , large, finely minced"
+leek-and-potato-soup,ingredient,4,,unassigned,,"1.5 litre / 1.5 qt chicken or vegetable stock , low sodium"
+morning-buns-with-orange-blossom-glaze,step,0,2941,exact-dup,,Lightly flour a work surface.
+morning-buns-with-orange-blossom-glaze,step,8,2949,exact-dup,,Lightly flour a work surface.
+mussakhan,ingredient,0,9013,quirk,note,"2 lb / 1 kg chicken thighs and drumsticks, skin on"
+mussakhan,ingredient,1,9014,quirk,note,"3 tbsp extra-virgin olive oil, plus more to serve"
+mussakhan,ingredient,2,9015,quirk,ingredient_id note,½ tsp ground cumin
+mussakhan,ingredient,3,9016,quirk,ingredient_id note,½ tsp ground allspice
+mussakhan,ingredient,4,9017,quirk,ingredient_id note,¼ tsp ground cinnamon
+mussakhan,ingredient,5,9018,quirk,ingredient_id,1½ tbsp sumac
+mussakhan,ingredient,6,9019,quirk,ingredient_id,"1 lemon, juiced"
+mussakhan,ingredient,7,9020,quirk,ingredient_id,"4 cloves garlic, crushed"
+mussakhan,ingredient,8,9021,quirk,note,sea salt and freshly ground black pepper
+mussakhan,ingredient,9,9022,quirk,ingredient_id,"2 large red onions, finely sliced into half-moons"
+mussakhan,ingredient,10,9023,quirk,ingredient_id note,2 tbsp pine nuts
+mussakhan,ingredient,11,9024,quirk,note,1 tablespoon olive oil or any neutral oil
+mussakhan,ingredient,12,9025,quirk,note,"naan or Arabic taboon bread, to serve"
+mussakhan,ingredient,13,9026,quirk,ingredient_id note,chopped parsley leaves
+nandos-portuguese-chicken-and-rice,ingredient,13,,unassigned,,"2 garlic cloves , finely minced"
+no-knead-bread,ingredient,0,7352,quirk,ingredient_id,450 g bread flour
+no-knead-bread,ingredient,1,7353,quirk,ingredient_id,2 tsp instant or rapid-rise yeast
+palak-chicken-recipe-dhaba-style-saag-wala-chicken,ingredient,2,6965,exact-dup,,"Salt, to taste"
+palak-chicken-recipe-dhaba-style-saag-wala-chicken,ingredient,27,6990,exact-dup,,"Salt, to taste"
+panang-curry,ingredient,8,,unassigned,,"5 garlic cloves , finely minced"
+pastina,ingredient,3,7398,exact-dup,,1 Tablespoon of Unsalted Butter
+pastina,ingredient,4,7399,exact-dup,,1/4 Cup of Grated Parmigiano reggiano
+pastina,ingredient,5,7400,exact-dup,,Salt and Pepper To taste
+pastina,ingredient,6,7401,exact-dup,,Extra Virgin Olive Oil
+pastina,ingredient,15,7410,exact-dup,,1 Tablespoon of Unsalted Butter
+pastina,ingredient,16,7411,exact-dup,,1/4 Cup of Grated Parmigiano reggiano
+pastina,ingredient,17,7412,exact-dup,,Salt and Pepper To taste
+pastina,ingredient,18,7413,exact-dup,,Extra Virgin Olive Oil
+pepperoni-rolls,ingredient,1,,unassigned,,"2 tablespoons olive oil, plus more for dough resting"
+pepperoni-rolls,ingredient,2,9058,quirk,note,1 tablespoon active dry yeast
+pepperoni-rolls,ingredient,3,9059,quirk,note,1 tablespoon honey
+pepperoni-rolls,ingredient,4,9061,quirk,note,"1½ to 2 cups water, at room temperature"
+pepperoni-rolls,ingredient,5,,unassigned,,"4 cups all-purpose flour, plus more for kneading and rolling 1½ teaspoons kosher salt"
+pepperoni-rolls,ingredient,6,9062,quirk,note,2 large eggs
+pepperoni-rolls,ingredient,7,9065,quirk,note,"1 pound pepperoni in stick form, spicy is nice"
+pepperoni-rolls,ingredient,9,9066,quirk,note,1 pound sliced provolone
+pepperoni-rolls,ingredient,10,9068,quirk,note qty,Fresh basil
+pepperoni-rolls,ingredient,12,9070,quirk,note qty,Fresh ricotta
+quick-easy-hainanese-chicken-rice-khao-mun-gai,ingredient,3,5156,exact-dup,,1/2 tsp salt
+quick-easy-hainanese-chicken-rice-khao-mun-gai,ingredient,7,5160,exact-dup,,1/2 tsp salt
+shepherds-pie,ingredient,16,7446,exact-dup,,Sea Salt
+shepherds-pie,ingredient,24,7454,exact-dup,,Sea Salt
+spiced-fish-pilaf-with-caramelized-onions-sayadieh,ingredient,12,5562,exact-dup,,2 tablespoons olive oil or any neutral oil
+spiced-fish-pilaf-with-caramelized-onions-sayadieh,ingredient,15,5565,exact-dup,,2 tablespoons olive oil or any neutral oil
+spiced-pumpkin-olive-oil-and-orange-cake,ingredient,4,5579,exact-dup,,finely grated zest of ½ organic or unwaxed orange
+spiced-pumpkin-olive-oil-and-orange-cake,ingredient,14,5589,exact-dup,,1 teaspoon lemon juice
+spiced-pumpkin-olive-oil-and-orange-cake,ingredient,17,5592,exact-dup,,finely grated zest of ½ organic or unwaxed orange
+spiced-pumpkin-olive-oil-and-orange-cake,ingredient,19,5594,exact-dup,,1 teaspoon lemon juice
+spiced-scallops-with-saffron-beurre-blanc,ingredient,1,9189,quirk,note,7 oz button mushrooms
+spiced-scallops-with-saffron-beurre-blanc,ingredient,2,9190,quirk,note,2 tsp fennel seeds
+spiced-scallops-with-saffron-beurre-blanc,ingredient,3,9191,quirk,note,1 tsp ground ginger
+spiced-scallops-with-saffron-beurre-blanc,ingredient,4,9192,quirk,note,1 tsp salt
+spiced-scallops-with-saffron-beurre-blanc,ingredient,6,9194,quirk,note,small pinch saffron strands
+spiced-scallops-with-saffron-beurre-blanc,ingredient,7,9195,quirk,note,3 tbsp white wine vinegar
+spiced-scallops-with-saffron-beurre-blanc,ingredient,8,,unassigned,,4 tosp white wine
+spiced-scallops-with-saffron-beurre-blanc,ingredient,9,9197,quirk,note,"1 shallot, finely diced"
+spiced-scallops-with-saffron-beurre-blanc,ingredient,10,9198,quirk,note,6 black peppercorns
+spiced-scallops-with-saffron-beurre-blanc,ingredient,11,9199,quirk,note,"¾ cup unsalted butter, cubed"
+spiced-scallops-with-saffron-beurre-blanc,ingredient,12,9200,quirk,note,½ lemon
+spiced-scallops-with-saffron-beurre-blanc,ingredient,14,9202,quirk,note,"12 large scallops, roe removed"
+spiced-scallops-with-saffron-beurre-blanc,ingredient,15,9203,quirk,note,2 tbsp extra virgin olive oil
+spiced-scallops-with-saffron-beurre-blanc,ingredient,16,9204,quirk,note,4 tbsp mushroom and spice mix
+spiced-scallops-with-saffron-beurre-blanc,ingredient,17,9205,quirk,note,"2 tbsp chives, snipped"
+spiced-scallops-with-saffron-beurre-blanc,step,4,,unassigned,,"For the beurre blanc, pour the vinegar and wine into a small pan and add the diced shallot and peppercorns. Bring to a boil, and then simmer for 4 6 minutes, until it has reduced to 1-2 tablespoons and looks syrupy."
+stir-fried-green-beans-with-pork,ingredient,4,5674,exact-dup,,1 tablespoon light soy sauce
+stir-fried-green-beans-with-pork,ingredient,6,5676,exact-dup,,2 tablespoons water
+stir-fried-green-beans-with-pork,ingredient,18,5688,exact-dup,,1 tablespoon light soy sauce
+stir-fried-green-beans-with-pork,ingredient,21,5691,exact-dup,,2 tablespoons water
+tacos,ingredient,2,,unassigned,,"2 garlic cloves , minced"
+tahini-brioche-loaves-and-dinner-rolls,ingredient,4,7459,exact-dup,,2 eggs
+tahini-brioche-loaves-and-dinner-rolls,ingredient,15,7470,exact-dup,,2 eggs
+thai-basil-chicken-2,ingredient,3,,unassigned,,"2 garlic cloves , large, finely chopped"
+vietnamese-caramelised-pork,ingredient,3,,unassigned,,"2 garlic cloves , minced"

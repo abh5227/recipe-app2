@@ -854,3 +854,91 @@ def test_a_renamed_conversion_is_still_reported(kitchen):
     assert _save(kitchen, rid, rows=rows).status_code == 200
     got = _annotations(kitchen, rid)
     assert any(c["kind"] == "ingredient" and c["type"] == "removed" for c in got), got
+
+
+# ---- option C commit 3: the baseline carries row ids ---------------------------------------------
+
+def _baseline(kitchen, rid):
+    with kitchen.conn() as c:
+        return json.loads(c.execute(
+            "SELECT content FROM recipe_snapshots WHERE recipe_id=? AND reason='original'",
+            (rid,)).fetchone()["content"])
+
+
+def test_the_birth_baseline_records_every_row_id(kitchen):
+    """⚠️ A BASELINE ROW AND ITS LIVE ROW USED TO BE CONNECTED BY NOTHING BUT THEIR TEXT. Option C
+    gave each row an id that survives a save, and the baseline records it, so a renamed row is still
+    recognisable as the row it always was. Both tables, headings included."""
+    rid = kitchen.client.post("/api/recipes", json={
+        "name": "Id Baseline",
+        "ingredients": [{"heading": "FOR THE BASE"}, {"qty": "2", "text": "eggs"}],
+        "steps": [{"heading": "PREP"}, "Beat the eggs."],
+    }).get_json()["id"]
+    doc = _baseline(kitchen, rid)
+    with kitchen.conn() as c:
+        live_ing = [r["id"] for r in c.execute(
+            "SELECT id FROM recipe_ingredients WHERE recipe_id=? ORDER BY position, id", (rid,))]
+        live_step = [r["id"] for r in c.execute(
+            "SELECT id FROM recipe_steps WHERE recipe_id=? ORDER BY position, id", (rid,))]
+    assert [r["id"] for r in doc["ingredients"]] == live_ing
+    assert [r["id"] for r in doc["steps"]] == live_step
+    assert None not in live_ing + live_step
+
+
+def test_a_no_edit_save_leaves_the_baseline_byte_identical_including_ids(kitchen):
+    """The byte-equal short-circuit is what keeps an unedited recipe's "your changes" empty without
+    running the diff. Adding ids to the format would end it for every recipe at once if a save
+    churned them, so this is the test that the ids are stable across a save, not just present."""
+    rid = _seed(kitchen, name="Id Stable")
+    _settle(kitchen, rid)
+    before = _baseline(kitchen, rid)
+    assert _save(kitchen, rid, name="Id Stable").status_code == 200
+    import app as app_module
+    with app_module.orm_session() as s:
+        current = app_module.serialize_recipe_content(s, rid)
+    assert json.loads(current) == before, "a no-edit save must leave the ids where they were"
+    assert _annotations(kitchen, rid) == []
+
+
+def test_an_id_less_step_payload_keeps_the_step_row_ids(kitchen):
+    """⚠️ THE STRING WIRE FORM IS STILL LEGAL, AND IT USED TO RECREATE EVERY STEP ROW. A step carries
+    no columns, so there was nothing to preserve across a rewrite — until the baseline started
+    recording step ids, at which point an id-less save cost the recipe its short-circuit for good.
+    An id-less step whose kind and text match a stored row now updates THAT row."""
+    rid = kitchen.client.post("/api/recipes", json={
+        "name": "Id Less Steps", "ingredients": [{"qty": "2", "text": "eggs"}],
+        "steps": [{"heading": "PREP"}, "Beat the eggs.", "Fold in the flour."],
+    }).get_json()["id"]
+    with kitchen.conn() as c:
+        before = [r["id"] for r in c.execute(
+            "SELECT id FROM recipe_steps WHERE recipe_id=? ORDER BY position", (rid,))]
+    # the same steps again, in the id-less string/heading form the client no longer sends
+    assert kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Id Less Steps", "ingredients": [{"qty": "2", "text": "eggs"}],
+        "steps": [{"heading": "PREP"}, "Beat the eggs.", "Fold in the flour."],
+    }).status_code == 200
+    with kitchen.conn() as c:
+        after = [r["id"] for r in c.execute(
+            "SELECT id FROM recipe_steps WHERE recipe_id=? ORDER BY position", (rid,))]
+    assert after == before
+    assert _annotations(kitchen, rid) == []
+
+
+def test_an_id_less_step_whose_text_changed_is_still_a_new_row(kitchen):
+    """ONE TIER, EXACT. The carry is not a similarity match: a reworded step arriving with no id is a
+    new row exactly as it was before, so the only behaviour that changed is the unambiguous one."""
+    rid = kitchen.client.post("/api/recipes", json={
+        "name": "Id Less Edit", "ingredients": [{"qty": "2", "text": "eggs"}],
+        "steps": ["Beat the eggs."],
+    }).get_json()["id"]
+    with kitchen.conn() as c:
+        before = [r["id"] for r in c.execute(
+            "SELECT id FROM recipe_steps WHERE recipe_id=?", (rid,))]
+    assert kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Id Less Edit", "ingredients": [{"qty": "2", "text": "eggs"}],
+        "steps": ["Beat the eggs well."],
+    }).status_code == 200
+    with kitchen.conn() as c:
+        after = [r["id"] for r in c.execute(
+            "SELECT id FROM recipe_steps WHERE recipe_id=?", (rid,))]
+    assert after != before
