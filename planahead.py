@@ -319,6 +319,10 @@ def resolve_steps(waits, steps):
         # the page shows, not a position and not an id. A pointer at a heading or at nothing resolves
         # to None and the wait simply reads without the phrase, rather than reading a wrong number.
         w["alongside_no"] = by_id.get(w.get("alongside_step_id")) if w.get("alongside_step_id") else None
+        # ⚠️ AND THE ALTERNATIVE'S STEP, resolved the same way and reported separately. ext_no is the
+        # PRINTED number of the step that describes the alternative, which exists only when the
+        # alternative lives somewhere other than the wait's own step.
+        w["ext_no"] = by_id.get(w.get("ext_step_id")) if w.get("ext_step_id") else None
         if sid is None:
             continue
         num = by_id.get(sid)

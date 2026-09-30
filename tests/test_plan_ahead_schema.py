@@ -506,7 +506,11 @@ def test_the_table_rebuilds_kept_every_index_key_and_guard(kitchen):
     assert idx == ["idx_recipe_waits_min", "idx_recipe_waits_recipe", "idx_recipe_waits_when",
                    "sqlite_autoindex_recipe_waits_1"]
     assert "UNIQUE (recipe_id, position)" in sql
-    assert sql.count("ON DELETE SET NULL") == 2, "step_id AND alongside_step_id"
+    # ⚠️ NAMED, NOT COUNTED, for the reason in this test's own docstring. The count was 2 and 057
+    #    made it 3, which is the second time a tally here broke on an addition that was correct.
+    for col in ("step_id", "alongside_step_id", "ext_step_id"):
+        assert f"{col}" in sql and "ON DELETE SET NULL" in sql, f"{col} lost its FK"
+    assert sql.count("ON DELETE SET NULL") == 3, "step_id, alongside_step_id AND ext_step_id"
     assert "ON DELETE CASCADE" in sql, "the recipe_id cascade"
     for guard in (
             "when_kind IN ('always','optional','only_if','alongside')",
@@ -656,3 +660,77 @@ def test_alongside_reads_as_a_qualifier_not_a_second_step_link():
     assert planahead.alongside_label({"alongside_no": 3}) == " alongside step 3"
     assert planahead.alongside_label({"alongside_no": None}) == ""
     assert planahead.alongside_label({}) == ""
+
+
+# ---- 057: the ALTERNATIVE points at the step that describes it -----------------------------------
+# Measured over the 7 stored extensions: 5 state the alternative in the wait's own step, 2 describe
+# it somewhere else (beans' quick soak at step 3, brioche-bread's shorter option at step 11).
+
+def _ext_wait(kitchen, rid, *, ext_step="pick"):
+    """Two steps, a wait on the first, and its alternative described by the second."""
+    _save_steps(kitchen, rid, ["Soak overnight.", "Or quick soak for 90 minutes."], [])
+    rows = _steps(kitchen, rid)
+    soak, quick = rows[0]["id"], rows[1]["id"]
+    target = {"pick": quick, "self": soak, "none": None}[ext_step]
+    _save_steps(kitchen, rid, [{"id": r["id"], "text": r["text"]} for r in rows],
+                [{"kind": "soaking", "label": "8 hr or overnight", "step_id": soak,
+                  "ext_label": "or a 90 minute quick soak instead", "ext_step_id": target}])
+    return soak, quick
+
+
+def test_the_alternative_names_its_own_step(kitchen, rid):
+    soak, quick = _ext_wait(kitchen, rid)
+    w = _waits(kitchen, rid)[0]
+    assert w["ext_step_id"] == quick
+    assert w["ext_no"] == 2, "the PRINTED number of the step describing the alternative"
+    assert w["step_no"] == 1, "and the wait's own step number is unaffected"
+
+
+def test_an_alternative_in_the_waits_own_step_stores_no_link(kitchen, rid):
+    """⚠️ NULL RATHER THAN A COPY OF step_id. 5 of the 7 extensions say the alternative in the same
+    sentence as the wait, and printing "(step 1)" a second time on that line says nothing."""
+    _ext_wait(kitchen, rid, ext_step="self")
+    w = _waits(kitchen, rid)[0]
+    assert (w["ext_step_id"], w["ext_no"]) == (None, None)
+
+
+def test_a_link_with_no_alternative_to_hang_on_is_dropped(kitchen, rid):
+    """Same rule the extension minutes already follow: no ext_label, no extension."""
+    _save_steps(kitchen, rid, ["Soak overnight.", "Something else."], [])
+    rows = _steps(kitchen, rid)
+    _save_steps(kitchen, rid, [{"id": r["id"], "text": r["text"]} for r in rows],
+                [{"kind": "soaking", "label": "overnight", "step_id": rows[0]["id"],
+                  "ext_step_id": rows[1]["id"]}])
+    assert _waits(kitchen, rid)[0]["ext_step_id"] is None
+
+
+def test_deleting_the_alternatives_step_clears_the_link(kitchen, rid):
+    """The same treatment step_id and alongside_step_id get. A step that is gone cannot be named."""
+    soak, quick = _ext_wait(kitchen, rid)
+    _save_steps(kitchen, rid, [{"id": soak, "text": "Soak overnight."}],
+                [{"kind": "soaking", "label": "8 hr or overnight", "step_id": soak,
+                  "ext_label": "or a 90 minute quick soak instead", "ext_step_id": quick}])
+    w = _waits(kitchen, rid)[0]
+    assert (w["ext_step_id"], w["ext_no"]) == (None, None)
+    assert w["step_id"] == soak, "the wait's own link is untouched"
+
+
+def test_an_ext_step_id_from_another_recipe_is_refused(kitchen, rid):
+    """The step-id set is scoped to this recipe, exactly as it is for the other two pointers."""
+    soak, quick = _ext_wait(kitchen, rid)
+    other = kitchen.client.post("/api/recipes", json={
+        "name": "Other", "ingredients": [], "steps": ["Its own step."]}).get_json()["id"]
+    foreign = _steps(kitchen, other)[0]["id"]
+    _save_steps(kitchen, rid, [{"id": soak, "text": "Soak overnight."}],
+                [{"kind": "soaking", "label": "overnight", "step_id": soak,
+                  "ext_label": "or quick", "ext_step_id": foreign}])
+    assert _waits(kitchen, rid)[0]["ext_step_id"] is None
+
+
+def test_the_alternatives_link_is_not_in_the_snapshot():
+    """⚠️ PROVENANCE, NOT CONTENT, the same call step_position lost. Moving a step would otherwise
+    read as an edit to the wait."""
+    from snapshot_serialize import SNAPSHOT_WAIT_FIELDS
+    assert "ext_step_id" not in SNAPSHOT_WAIT_FIELDS
+    assert "step_id" not in SNAPSHOT_WAIT_FIELDS
+    assert "alongside_step_id" not in SNAPSHOT_WAIT_FIELDS

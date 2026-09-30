@@ -691,10 +691,19 @@ def write_plan_ahead(s, rid, payload):
             when_kind = "always"
         if when_kind != "alongside":
             aside = None
+        # ⚠️ THE ALTERNATIVE'S OWN STEP, AND NULL WHEN IT WOULD REPEAT step_id. 5 of the 7 stored
+        #    extensions state the alternative in the wait's own step ("marinate 10 minutes to an
+        #    hour, or overnight if time allows"), and a second "(step 1)" on that line says nothing.
+        #    Only an alternative that is described SOMEWHERE ELSE carries a link: beans puts its
+        #    quick soak at step 3, brioche-bread puts its shorter option at step 11.
+        #    A link with no ext_label to hang on is dropped too, for the same reason the extension
+        #    minutes are dropped without one.
+        esid = w.get("ext_step_id")
+        esid = esid if (ext and esid in step_ids and esid != sid) else None
         s.execute(insert(rw).values(
             recipe_id=rid, position=pos, kind=kind, label=label,
             min_minutes=lo, max_minutes=hi, step_id=sid, alongside_step_id=aside,
-            ext_label=ext, ext_min_minutes=elo, ext_max_minutes=ehi,
+            ext_label=ext, ext_min_minutes=elo, ext_max_minutes=ehi, ext_step_id=esid,
             when_kind=when_kind, when_label=when_label))
     for pos, x in enumerate(payload.get("storage") or []):
         label = (x.get("label") or "").strip()

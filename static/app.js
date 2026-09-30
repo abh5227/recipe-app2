@@ -1282,8 +1282,14 @@ function scaleMetaBlock(r) {
     //    "(soak, step 2)or a 90 minute quick soak" with nothing between the two spans. On screen
     //    the block display hid that, and a copy of the line showed it. A block element is one CSS
     //    line away from not being one, and the text should read correctly either way.
+    // ⚠️ THE ALTERNATIVE CAN CARRY ITS OWN STEP LINK. beans soaks overnight at step 2 and describes
+    //    its 90 minute quick soak at step 3, so the alternative has somewhere to send the cook that
+    //    the wait's own link does not. ext_no is null for the 5 extensions stated in the wait's own
+    //    step, and those read without a link rather than repeating the one above them.
     const extHTML = (w) => (w.ext_label
-      ? ` <span class="meta-ext">${esc(bindUnits(w.ext_label))}</span>` : "");
+      ? ` <span class="meta-ext">${esc(bindUnits(w.ext_label))}`
+        + (w.ext_no ? ` <a class="meta-step" href="#" data-wait-step="${w.ext_no}">step ${w.ext_no}</a>` : "")
+        + `</span>` : "");
     const bullet = (w) =>
       `<li class="meta-bullet">${stepTag(w)}<span class="meta-do">${esc(verb(w))}</span> `
       // ⚠️ label_text, NOT label. The server decides what a wait PRINTS (planahead.display_label),
@@ -2396,6 +2402,7 @@ function waitsEditHTML(d) {
       <input class="ie ie-wait-if" data-wait-when-label="${i}" value="${esc(w.when_label || "")}" placeholder="chilled" aria-label="Only if">
       ${pickHTML(stepChoices(d), w.step_id == null ? "" : String(w.step_id), "wait-step-pick", i)}
       ${pickHTML(stepChoices(d, "alongside which step?"), w.alongside_step_id == null ? "" : String(w.alongside_step_id), "wait-aside-pick", i)}
+      ${pickHTML(stepChoices(d, "the alternative's step?"), w.ext_step_id == null ? "" : String(w.ext_step_id), "wait-ext-pick", i)}
       <button type="button" class="ie-x" data-wait-del="${i}" aria-label="Remove this wait">×</button>
     </div>`).join("");
   return `<div class="ie-block"><span class="ie-vlabel">Plan ahead</span>${rows}
@@ -2450,6 +2457,18 @@ function handlePlanAheadInput(el) {
     return set(d.waits, +el.dataset.waitWhen, "when_kind");
   }
   if (el.dataset.waitWhenLabel !== undefined) return set(d.waits, +el.dataset.waitWhenLabel, "when_label");
+  if (el.dataset.waitExtPick !== undefined) {
+    // ⚠️ THE STEP THAT DESCRIBES THE ALTERNATIVE, and it is left blank for most waits on purpose.
+    //    5 of the 7 stored extensions say the alternative in the wait's own step, and the server
+    //    stores NULL rather than a repeat of step_id, so a second link only ever appears where
+    //    there is a second step worth reading.
+    const i = +el.dataset.waitExtPick;
+    if (d.waits && d.waits[i]) {
+      d.waits[i].ext_step_id = el.value === "" ? null : +el.value;
+      view.dirty = true;
+    }
+    return true;
+  }
   if (el.dataset.waitAsidePick !== undefined) {
     // ⚠️ THE STEP THIS WAIT RUNS ALONGSIDE, for when_kind='alongside'. It names a STEP and never
     //    another wait: waits are deleted and reinserted on every save, so a wait id survives nothing.
@@ -2992,7 +3011,8 @@ function draftPayload() {
       // ⚠️ ROUND-TRIPPED VERBATIM. The server keeps a check it is given and only reads a fresh one
       //    when this is null, which the step picker below is the only thing that does.
       step_id: w.step_id == null ? null : +w.step_id,
-      alongside_step_id: w.alongside_step_id == null ? null : +w.alongside_step_id })),
+      alongside_step_id: w.alongside_step_id == null ? null : +w.alongside_step_id,
+      ext_step_id: w.ext_step_id == null ? null : +w.ext_step_id })),
     storage: (view.draft.storage || []).filter((x) => t(x.label)).map((x) => ({
       where_kept: t(x.where_kept) || "fridge", applies_to: t(x.applies_to) || null, label: t(x.label) })),
   };

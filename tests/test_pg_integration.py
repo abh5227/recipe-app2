@@ -909,3 +909,39 @@ def test_a_dangling_wait_step_id_is_refused_by_the_database_pg(pg):
         with pytest.raises(IntegrityError):
             conn.execute(text("INSERT INTO recipe_waits (recipe_id, position, kind, label, step_id) "
                               "VALUES (:r, 0, 'other', 'x', 999999)"), {"r": rid})
+
+
+def test_the_alternatives_step_link_clears_on_delete_pg(pg):
+    """Migration 057 on the real database. ext_step_id names the step that DESCRIBES a wait's
+    alternative, and the SET NULL is what stops a deleted step leaving a dangling pointer."""
+    c = pg.client
+    rid = c.post("/api/recipes", json={
+        "name": "PG Ext Step", "is_test": True, "ingredients": [],
+        "steps": ["Soak overnight.", "Or quick soak 90 minutes."]}).get_json()["id"]
+    steps = c.get(f"/api/recipes/{rid}").get_json()["steps"]
+    soak, quick = steps[0]["id"], steps[1]["id"]
+    assert c.put(f"/api/recipes/{rid}", json={
+        "name": "PG Ext Step", "ingredients": [], "storage": [],
+        "steps": [{"id": s["id"], "text": s["text"]} for s in steps],
+        "waits": [{"kind": "soaking", "label": "8 hr or overnight", "step_id": soak,
+                   "ext_label": "or a 90 minute quick soak instead",
+                   "ext_step_id": quick}]}).status_code == 200
+    got = c.get(f"/api/recipes/{rid}").get_json()["waits"][0]
+    assert (got["ext_step_id"], got["ext_no"]) == (quick, 2)
+    with pg.engine.begin() as conn:
+        conn.execute(text("DELETE FROM recipe_steps WHERE id=:i"), {"i": quick})
+        left = conn.execute(text("SELECT ext_step_id, step_id FROM recipe_waits "
+                                 "WHERE recipe_id=:r"), {"r": rid}).first()
+    assert left.ext_step_id is None, "ON DELETE SET NULL cleared it"
+    assert left.step_id == soak, "the wait's own link is untouched"
+
+
+def test_a_dangling_ext_step_id_is_refused_by_the_database_pg(pg):
+    c = pg.client
+    rid = c.post("/api/recipes", json={
+        "name": "PG Ext Bad", "is_test": True, "ingredients": [],
+        "steps": ["Mix."]}).get_json()["id"]
+    with pg.engine.begin() as conn:
+        with pytest.raises(IntegrityError):
+            conn.execute(text("INSERT INTO recipe_waits (recipe_id, position, kind, label, ext_step_id) "
+                              "VALUES (:r, 0, 'other', 'x', 999999)"), {"r": rid})
