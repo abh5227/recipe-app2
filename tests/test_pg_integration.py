@@ -945,3 +945,17 @@ def test_a_dangling_ext_step_id_is_refused_by_the_database_pg(pg):
         with pytest.raises(IntegrityError):
             conn.execute(text("INSERT INTO recipe_waits (recipe_id, position, kind, label, ext_step_id) "
                               "VALUES (:r, 0, 'other', 'x', 999999)"), {"r": rid})
+
+
+def test_the_step_heading_level_column_defaults_to_a_section_pg(pg):
+    """Migration 059 through `alembic upgrade head` on the real engine. NOT NULL DEFAULT 1 is the
+    whole reason 059 ships without a backfill, and a default is exactly the kind of thing the two
+    dialects spell differently, so it is asserted here rather than assumed from SQLite."""
+    c = pg.client
+    rid = c.post("/api/recipes", json={
+        "name": "PG Levels", "is_test": True, "ingredients": [],
+        "steps": [{"heading": "Make the sauce"}, "Whisk it."]}).get_json()["id"]
+    with pg.engine.begin() as conn:
+        rows = conn.execute(text("SELECT text, is_heading, heading_level FROM recipe_steps "
+                                 "WHERE recipe_id=:r ORDER BY position"), {"r": rid}).all()
+    assert [(r.is_heading, r.heading_level) for r in rows] == [(1, 1), (0, 1)]

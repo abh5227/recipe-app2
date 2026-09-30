@@ -1,0 +1,34 @@
+-- 059_step_heading_level.sql - a step heading is a section or a subheading.
+--
+-- ⚠️ TWO LEVELS BECAUSE THE HEADINGS NOW COME FROM TWO DIFFERENT PLACES, which is a fact about the
+--    data rather than a preference. 116 of the headings were recognized by the importer as section
+--    titles and stand on their own ("Make the sauce:", "For the dough:"). 104 more are lead-in labels
+--    lifted out of the front of a single step, 46 joined to their step by a colon and 58 by a dash
+--    ("Deseed - Trim and discard stems..."). A lifted label names ONE step and belongs tight to it. A
+--    section title opens a group. Rendering both at the same weight makes the one-step labels read as
+--    section boundaries, so a recipe with twelve of them looks like twelve sections.
+--
+-- ⚠️ IT IS FOR OTHER PEOPLE'S RECIPES, NOT ONLY THIS CORPUS. An import can carry either shape, or
+--    both, and there is no rule that turns one into the other. A level the user can set is what lets
+--    a recipe keep the structure its author wrote.
+--
+--      1 -> a section heading. Larger, a rule under it, opens a group. The DEFAULT.
+--      2 -> a subheading. Smaller, bold, tight to the step below it.
+--
+-- ⚠️ NOT NULL DEFAULT 1, WHICH MATCHES is_heading ON THE SAME TABLE and means every existing row is
+--    correct the moment the column exists. The 116 headings the importer found are sections, and a
+--    non-heading step carries 1 too: the value is only read when is_heading is 1, and storing NULL on
+--    2,286 ordinary steps to say "not applicable" buys nothing a reader of this table would use.
+--
+-- ⚠️ NO CHECK, FOR 057'S REASON EXACTLY. SQLite cannot add one without recreating the table, and the
+--    save path already narrows an incoming level to 1 or 2 (app._step_parts). Recreating a table to
+--    restate a rule the writer enforces trades a real risk for no gain.
+--
+-- ⚠️ IT IS NOT IN THE SNAPSHOT UNLESS IT IS 2. snapshot_serialize omits the key at level 1, so all
+--    300 stored baselines stay byte-identical to their recipe's current serialization and the
+--    byte-equal short-circuit in _recipe_annotations survives untouched. Adding the key
+--    unconditionally would have ended that short-circuit for every recipe at once, which is the cost
+--    the row-id key had to pay with a backfill. Level 1 and "no key" mean the same thing, so the
+--    waits-and-storage trick is available here and it is used.
+
+ALTER TABLE recipe_steps ADD COLUMN heading_level INTEGER NOT NULL DEFAULT 1;
