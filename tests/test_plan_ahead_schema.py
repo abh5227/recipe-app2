@@ -475,3 +475,42 @@ def test_a_wait_with_no_step_has_no_number_and_is_not_an_error(kitchen, rid):
                 [{"kind": "chilling", "label": "overnight"}])
     w = kitchen.client.get(f"/api/recipes/{rid}").get_json()["waits"][0]
     assert (w["step_id"], w["step_no"], w["step_ok"]) == (None, None, True)
+
+
+# ---------------------------------------------------------------------------------------------
+# migration 054: the old pointer is gone.
+# ---------------------------------------------------------------------------------------------
+
+def test_the_old_step_pointer_columns_are_gone(kitchen):
+    """⚠️ 053 LEFT THEM IN PLACE TO STAY ADDITIVE AND 054 REMOVES THEM. Live held 0 recipe_waits rows,
+    so both columns were empty everywhere and this was the cheapest moment they will ever be."""
+    with kitchen.conn() as c:
+        cols = [r[1] for r in c.execute("PRAGMA table_info(recipe_waits)")]
+    assert "step_position" not in cols
+    assert "step_check" not in cols
+    assert "step_id" in cols
+
+
+def test_dropping_them_left_every_index_key_and_check_in_place(kitchen):
+    """SQLite rewrites the table to drop a column, so the things that came along for the ride are
+    worth asserting rather than assuming: the four indexes, the seven CHECKs, the uniqueness of
+    (recipe_id, position), and step_id's ON DELETE SET NULL."""
+    with kitchen.conn() as c:
+        sql = c.execute("SELECT sql FROM sqlite_master WHERE name='recipe_waits'").fetchone()[0]
+        idx = sorted(r[0] for r in c.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='recipe_waits'"))
+        assert c.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert c.execute("PRAGMA foreign_key_check").fetchall() == []
+    assert idx == ["idx_recipe_waits_min", "idx_recipe_waits_recipe", "idx_recipe_waits_when",
+                   "sqlite_autoindex_recipe_waits_1"]
+    assert sql.count("CHECK") == 7
+    assert "UNIQUE (recipe_id, position)" in sql
+    assert "ON DELETE SET NULL" in sql
+
+
+def test_the_model_no_longer_declares_them():
+    """The ORM and the schema have to agree, or a select names a column that is not there."""
+    from models import RecipeWait
+    cols = {c.name for c in RecipeWait.__table__.columns}
+    assert "step_position" not in cols and "step_check" not in cols
+    assert "step_id" in cols

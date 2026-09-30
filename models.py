@@ -250,19 +250,15 @@ class RecipeWait(Base):
     label = Column(Text, nullable=False)
     min_minutes = Column(Integer)
     max_minutes = Column(Integer)
-    # ⚠️ RETIRED BY MIGRATION 053, AND LEFT IN PLACE. Nothing reads or writes step_position or
-    # step_check any more. They were a slot number plus a snippet of the step's text, and the snippet
-    # existed only to notice that a save had renumbered the steps under the slot. step_id below is the
-    # step row itself. The columns stay so 053 could be purely additive; dropping them is a separate
-    # decision with its own migration.
-    step_position = Column(Integer)
+    # step_position was here, with step_check below it: a slot number plus a snippet of the step's
+    # text, where the snippet existed only to notice that a save had renumbered the steps under the
+    # slot. 053 replaced both with step_id and 054 dropped them.
     ext_label = Column(Text)
     ext_min_minutes = Column(Integer)
     ext_max_minutes = Column(Integer)
     # ⚠️ ONLY 'always' REACHES THE TOTAL. See migration 050 and planahead.counts.
     when_kind = Column(Text, nullable=False, server_default="always")
     when_label = Column(Text)
-    step_check = Column(Text)           # retired with step_position — see the note above
     # ⚠️ THE STEP THIS WAIT WAS READ FROM, AS A ROW RATHER THAN A SLOT. Migration 053.
     # ON DELETE SET NULL, so a deleted step cannot leave a dangling pointer behind. That is the
     # database's backstop: through the editor, write_plan_ahead refuses a step_id that names no step of
