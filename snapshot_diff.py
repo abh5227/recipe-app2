@@ -96,6 +96,17 @@ def diff_snapshots(old_blob, new_blob):
     o_step_pos, n_step_pos = _indexer(o_steps), _indexer(n_steps)   # heading-EXCLUDED real-step index
     o_sh_pos, n_sh_pos = _indexer(o_step_h), _indexer(n_step_h)     # step-headings sequence
     step_section = _section_lookup(old.get("steps") or [], step_text)
+    # ⚠️ THE SAME SUPPRESSION THE INGREDIENTS GET, AND IT WAS MISSING HERE. The rule that a heading
+    # change carries no annotation was implemented on one side of the page only. Measured against the
+    # real diff before this line existed: converting one step to a heading emitted 2 entries (the step
+    # struck through as removed, plus a heading added), and lifting a lead-in label into a heading
+    # above its step emitted 4. The identical ingredient conversion emitted 0.
+    #
+    # It did not matter while nothing could convert a step. sync_heading_layout says so in as many
+    # words, and the editor's step row menu still offers only Add step / Add heading / Delete. It
+    # matters now, because ~70 steps are about to become headings and a cook who converts one back
+    # should not be told they deleted a step.
+    o_steps, o_step_h, n_steps, n_step_h = suppress_kind_changes(o_steps, o_step_h, n_steps, n_step_h)
     step_pairs, o_steps, n_steps = _id_split(o_steps, n_steps)
     for o, n in step_pairs:
         if units.compare_text(step_text(o)) != units.compare_text(step_text(n)):

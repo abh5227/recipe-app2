@@ -751,3 +751,47 @@ def test_a_step_reorder_emits_nothing_and_a_step_edit_still_marks():
     edited = _blob(steps=[_istep(1, "Chop.", 0), _istep(2, "Cook slowly.", 1), _istep(3, "Serve.", 2)])
     got = diff_snapshots(old, edited)
     assert [(e["kind"], e["type"], e["row_id"]) for e in got] == [("step", "modified", 2)]
+
+
+# ---- a step that only changed KIND (Round A, item 9) ---------------------------------------------
+# The rule that a heading change carries no annotation was implemented for ingredients only. These
+# pin the step half of it. Measured before the fix: the first case emitted 2 entries and the undo
+# emitted 2, which is a cook being told they deleted a step they had only restyled.
+
+def test_a_step_that_becomes_a_heading_emits_nothing():
+    old = _blob(steps=[_istep(1, "Mix the dough", 0), _istep(2, "_Cold Proof_", 1),
+                       _istep(3, "Bake it", 2)])
+    new = _blob(steps=[_istep(1, "Mix the dough", 0), _istep(2, "Cold Proof", 1, is_heading=1),
+                       _istep(3, "Bake it", 2)])
+    assert diff_snapshots(old, new) == []
+
+
+def test_a_heading_turned_back_into_a_step_emits_nothing():
+    """The UNDO direction, which is the one a cook reaches for after a wrong conversion."""
+    old = _blob(steps=[_istep(1, "Mix", 0), _istep(2, "Cold Proof", 1, is_heading=1)])
+    new = _blob(steps=[_istep(1, "Mix", 0), _istep(2, "Cold Proof", 1)])
+    assert diff_snapshots(old, new) == []
+
+
+def test_a_step_conversion_that_also_retitles_emits_nothing():
+    """The id carries it. The text changes on every real conversion here (an emphasis wrap comes
+    off, a lead-in label is lifted out), so a name-only key would report a stranger."""
+    old = _blob(steps=[_istep(7, "**For Same Day Baking**", 0), _istep(8, "Shape them", 1)])
+    new = _blob(steps=[_istep(7, "For Same Day Baking", 0, is_heading=1), _istep(8, "Shape them", 1)])
+    assert diff_snapshots(old, new) == []
+
+
+def test_a_step_conversion_does_not_hide_a_real_edit_elsewhere():
+    old = _blob(steps=[_istep(1, "Mix", 0), _istep(2, "Rise", 1), _istep(3, "Bake 30 min", 2)])
+    new = _blob(steps=[_istep(1, "Mix", 0), _istep(2, "Rise", 1, is_heading=1),
+                       _istep(3, "Bake 40 min", 2)])
+    assert [(e["kind"], e["type"], e["row_id"]) for e in diff_snapshots(old, new)] == \
+           [("step", "modified", 3)]
+
+
+def test_a_deleted_step_heading_is_still_reported():
+    """Suppression pairs a conversion. A heading that simply went away has no counterpart and must
+    still read as removed, or deleting a section would go silent."""
+    old = _blob(steps=[_istep(1, "Mix", 0), _istep(2, "Cold Proof", 1, is_heading=1)])
+    new = _blob(steps=[_istep(1, "Mix", 0)])
+    assert [(e["kind"], e["type"]) for e in diff_snapshots(old, new)] == [("heading", "removed")]

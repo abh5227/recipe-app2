@@ -407,3 +407,42 @@ def test_p1_tolerates_a_baseline_written_before_the_ids_existed():
                               BASE_STEPS)
     assert content_safety_problems(old_blob, out) == []
     assert_content_safe(old_blob, out)
+
+
+# ---- a CONVERTED STEP is not duplicated into the baseline either (Round A, item 9) ---------------
+# The step arm of _reinterleave used to copy every current heading in regardless, on the stated
+# ground that nothing could convert a step. The heading conversions do exactly that, so the step arm
+# now skips a converted row for the same reason the ingredient arm always has.
+
+def test_a_converted_step_is_not_duplicated_into_the_baseline():
+    """The baseline holds the row as a CONTENT step. Current holds the same row (same id) as a
+    heading. Copying the heading in would leave the baseline carrying it twice."""
+    old = blob([], [step(0, "Mix the dough", id=1), step(1, "_Cold Proof_", id=2),
+                    step(2, "Bake it", id=3)])
+    current = [step(0, "Mix the dough", id=1), step(1, "Cold Proof", heading=True, id=2),
+               step(2, "Bake it", id=3)]
+    out = rows(sync_heading_layout(old, [], current), "steps")
+    assert len(out) == 3, out
+    assert [r["id"] for r in out] == [1, 2, 3]
+    assert [r["is_heading"] for r in out] == [0, 0, 0], "the baseline keeps it as content"
+    assert [r["position"] for r in out] == [0, 1, 2]
+
+
+def test_a_genuinely_new_step_heading_is_still_copied_in():
+    """The skip pairs a CONVERSION. A section title that exists only in current, matching no
+    baseline content row, is a real heading and still has to be interleaved."""
+    old = blob([], [step(0, "Mix", id=1), step(1, "Bake", id=2)])
+    current = [step(0, "Mix", id=1), step(1, "To finish", heading=True, id=77), step(2, "Bake", id=2)]
+    out = rows(sync_heading_layout(old, [], current), "steps")
+    assert [(r["id"], r["is_heading"], r["text"]) for r in out] == \
+           [(1, 0, "Mix"), (77, 1, "To finish"), (2, 0, "Bake")]
+    assert [r["position"] for r in out] == [0, 1, 2]
+
+
+def test_a_converted_step_that_was_also_retitled_is_matched_by_id():
+    """The emphasis wrap comes off in the same move, so the text differs on the two sides and only
+    the id can pair them."""
+    old = blob([], [step(0, "**For Same Day Baking**", id=5), step(1, "Shape", id=6)])
+    current = [step(0, "For Same Day Baking", heading=True, id=5), step(1, "Shape", id=6)]
+    out = rows(sync_heading_layout(old, [], current), "steps")
+    assert [(r["id"], r["is_heading"]) for r in out] == [(5, 0), (6, 0)], out

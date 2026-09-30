@@ -170,9 +170,13 @@ def sync_heading_layout(old_blob, current_ingredients, current_steps):
         old.get("recipe") or {},
         _reinterleave(old.get("ingredients") or [], current_ingredients, snapshot_ing_row,
                       skip_converted=True),
-        # Steps do not skip: nothing converts a step to a heading or back (the editor has no such
-        # action — see the row-menu entry in ROADMAP), so there is no duplicate to avoid.
-        _reinterleave(old.get("steps") or [], current_steps, snapshot_step_row),
+        # ⚠️ STEPS SKIP TOO NOW. This read "nothing converts a step to a heading or back", which was
+        # true of the editor and is no longer true of the data: the heading conversions convert steps
+        # in place, keeping the row id. Without the skip the baseline would come out holding a
+        # converted row twice, as a content step AND as a title, which is the exact duplicate the
+        # ingredient note below describes and the same compounding damage.
+        _reinterleave(old.get("steps") or [], current_steps, snapshot_step_row,
+                      skip_converted=True),
         old.get("waits"),
         old.get("storage"),
     )

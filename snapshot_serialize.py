@@ -85,8 +85,18 @@ def kind_change_name_key(row):
     its `label`, falling back to raw_text for the handful of live rows that have none. A heading
     converted from a line keeps that same `label` dormant beside its title (migration 052), and a
     heading that was BORN one has no label, so it falls back to raw_text — which for a born heading
-    IS its title. The same read answers "what is this row called" on either side of a conversion."""
-    name = _get(row, "label") or _get(row, "raw_text") or ""
+    IS its title. The same read answers "what is this row called" on either side of a conversion.
+
+    ⚠️ AND `text` ANSWERS IT FOR A STEP, which is the third arm. A step row carries neither `label`
+    nor `raw_text`, so before this arm existed every step keyed to "" and the fallback was useless
+    for the kind it was about to be asked about. An ingredient row never carries `text`, so the arm
+    is a pure addition on that side rather than a change of meaning.
+
+    ⚠️ IT IS THE WEAKER HALF FOR A STEP, ON PURPOSE. Converting a step to a heading usually REWRITES
+    its text (an emphasis wrap comes off, a lead-in label is lifted out), so the name will not match
+    across the conversion and the id is what carries it. Exactly one baseline step row in 300
+    recipes has no id, so the id is available for 2,366 of 2,367."""
+    name = _get(row, "label") or _get(row, "raw_text") or _get(row, "text") or ""
     return " ".join(name.split()).lower()
 
 
