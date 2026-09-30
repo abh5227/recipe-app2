@@ -60,21 +60,32 @@ SNAPSHOT_STEP_FIELDS = ("id", "position", "is_heading", "text")   # `id` — see
 
 
 def kind_change_key(row):
-    """The one thing that identifies a row across an ingredient <-> heading conversion.
+    """THE row identity across an ingredient <-> heading conversion: the database id.
+
+    ⚠️ THIS WAS THE ROW'S NAME UNTIL COMMIT 4, and the id answers the question the name only
+    approximated. A conversion that ALSO retitles the row was invisible to the name key, so it read as
+    the ingredient being removed and an unrelated heading appearing. The id does not care what the row
+    is called.
+
+    ⚠️ None IS NOT A KEY, AND kind_change_name_key BELOW IS WHY THAT IS SAFE. 24 baseline rows over 19
+    recipes carry no id, because the commit-3 backfill found no content match for them. Two nulls are
+    not a match, so those rows keep the name matching they have always used.
+
+    ⚠️ IT LIVES HERE, in the module that owns the snapshot row format, because BOTH readers need the
+    same answer: snapshot_diff, to recognize a row that only changed kind, and snapshot_headsync, to
+    avoid writing a heading into the baseline for a row the baseline already holds as a line."""
+    return _get(row, "id")
+
+
+def kind_change_name_key(row):
+    """The FALLBACK key, for a row on either side that has no id. This was kind_change_key's whole
+    body before commit 4 and its reasoning is unchanged.
 
     ⚠️ ONE EXPRESSION FOR BOTH KINDS, AND IT WORKS BECAUSE OF WHAT EACH KIND KEEPS. A line's name is
     its `label`, falling back to raw_text for the handful of live rows that have none. A heading
     converted from a line keeps that same `label` dormant beside its title (migration 052), and a
     heading that was BORN one has no label, so it falls back to raw_text — which for a born heading
-    IS its title. The same read answers "what is this row called" on either side of a conversion.
-
-    ⚠️ IT LIVES HERE, in the module that owns the snapshot row format, because BOTH readers need the
-    same answer: snapshot_diff, to recognize a row that only changed kind, and snapshot_headsync, to
-    avoid writing a heading into the baseline for a row the baseline already holds as a line.
-
-    ⚠️ IT IS TEXT, AND IT IS TEMPORARY. Commit 3 puts the row's database id in the baseline, at which
-    point this becomes `row.get("id")` and the matching stops depending on text at all. That is the
-    only line that needs to change, which is why the key is a function of its own."""
+    IS its title. The same read answers "what is this row called" on either side of a conversion."""
     name = _get(row, "label") or _get(row, "raw_text") or ""
     return " ".join(name.split()).lower()
 
@@ -115,13 +126,17 @@ def snapshot_ing_row(row):
     return out
 
 
+# `id` here for the same reason it is on a row above, and at no cost: both keys are OMITTED from the
+# snapshot entirely when the list is empty (see content_blob), and live holds 0 waits and 0 storage
+# rows, so not one of the 300 stored baselines carries either key to be invalidated. This is the shape
+# the feature lands on rather than a change to anything currently stored.
 SNAPSHOT_WAIT_FIELDS = (
-    "position", "kind", "label", "min_minutes", "max_minutes",
+    "id", "position", "kind", "label", "min_minutes", "max_minutes",
     "ext_label", "ext_min_minutes", "ext_max_minutes",
     "when_kind", "when_label",
 )
 SNAPSHOT_STORAGE_FIELDS = (
-    "position", "where_kept", "applies_to", "label", "min_minutes", "max_minutes",
+    "id", "position", "where_kept", "applies_to", "label", "min_minutes", "max_minutes",
 )
 
 

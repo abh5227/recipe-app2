@@ -45,7 +45,7 @@ CHANGE OBJECT SHAPE (a flat, ordered list):
 import json
 from difflib import SequenceMatcher
 
-from snapshot_serialize import kind_change_key   # noqa: F401  (re-exported, see below)
+from snapshot_serialize import kind_change_key, kind_change_name_key   # noqa: F401  (re-exported)
 import units   # pure unit abbreviator (mirrors scaler.js) — canonical amount COMPARE, kills unit-repr phantoms
 
 # The modified-vs-(added+removed) boundary for UNLINKED rows / steps, tuned via the unit tests: a reword
@@ -81,32 +81,37 @@ def diff_snapshots(old_blob, new_blob):
     # kind is dropped from the MATCHING only — every surviving row keeps the ordinal it renders at,
     # because _indexer is keyed on id(row) and the same objects flow through.
     o_lines, o_ing_h, n_lines, n_ing_h = suppress_kind_changes(o_lines, o_ing_h, n_lines, n_ing_h)
+    # ⚠️ THE ROW-ID PASS, AND EVERYTHING AFTER IT IS THE FALLBACK. _id_split takes out every pair the
+    # two sides agree on by id and hands back only the rows that need guessing about. A reorder, a
+    # rename and a duplicate name all stop being matching problems here rather than downstream.
+    ing_pairs, o_lines, n_lines = _id_split(o_lines, n_lines)
+    for o, n in ing_pairs:
+        changes += _ingredient_pair_changes(o, n, n_line_pos(n), o_line_pos(o))
     changes += _diff_ingredients(o_lines, n_lines, o_line_pos, n_line_pos, ing_section)
-    changes += _diff_seq(                                   # ingredient headings, kept OUT of line matching
-        o_ing_h, n_ing_h, ing_h,
-        on_pair=lambda o, n: [_mod("heading", ing_h(o), ing_h(n), n_ih_pos(n), o_ih_pos(o))],
-        on_add=lambda r: _added("heading", ing_h(r), n_ih_pos(r)),
-        on_remove=lambda r: _removed("heading", ing_h(r), o_ih_pos(r), None),
-    )
+    changes += _diff_headings(o_ing_h, n_ing_h, ing_h, o_ih_pos, n_ih_pos)
 
     step_text = lambda r: r.get("text") or ""
     o_steps, o_step_h = _split(old.get("steps") or [])
     n_steps, n_step_h = _split(new.get("steps") or [])
     o_step_pos, n_step_pos = _indexer(o_steps), _indexer(n_steps)   # heading-EXCLUDED real-step index
+    o_sh_pos, n_sh_pos = _indexer(o_step_h), _indexer(n_step_h)     # step-headings sequence
     step_section = _section_lookup(old.get("steps") or [], step_text)
+    step_pairs, o_steps, n_steps = _id_split(o_steps, n_steps)
+    for o, n in step_pairs:
+        if units.compare_text(step_text(o)) != units.compare_text(step_text(n)):
+            changes.append(_mod("step", step_text(o), step_text(n),
+                                n_step_pos(n), o_step_pos(o), _rid(n)))
     changes += _diff_seq(
         o_steps, n_steps, step_text,
-        on_pair=lambda o, n: [_mod("step", step_text(o), step_text(n), n_step_pos(n), o_step_pos(o))],
-        on_add=lambda r: _added("step", step_text(r), n_step_pos(r)),
+        # Conditional for the same reason _diff_headings' is — see the note there.
+        on_pair=lambda o, n: ([_mod("step", step_text(o), step_text(n),
+                                    n_step_pos(n), o_step_pos(o), _rid(n))]
+                              if units.compare_text(step_text(o)) != units.compare_text(step_text(n))
+                              else []),
+        on_add=lambda r: _added("step", step_text(r), n_step_pos(r), _rid(r)),
         on_remove=lambda r: _removed("step", step_text(r), o_step_pos(r), step_section(r.get("position"))),
     )
-    o_sh_pos, n_sh_pos = _indexer(o_step_h), _indexer(n_step_h)     # step-headings sequence
-    changes += _diff_seq(
-        o_step_h, n_step_h, step_text,
-        on_pair=lambda o, n: [_mod("heading", step_text(o), step_text(n), n_sh_pos(n), o_sh_pos(o))],
-        on_add=lambda r: _added("heading", step_text(r), n_sh_pos(r)),
-        on_remove=lambda r: _removed("heading", step_text(r), o_sh_pos(r), None),
-    )
+    changes += _diff_headings(o_step_h, n_step_h, step_text, o_sh_pos, n_sh_pos)
     return _suppress_moves(changes)
 
 
@@ -152,23 +157,36 @@ def suppress_kind_changes(o_lines, o_heads, n_lines, n_heads):
     every anchor below it stays aligned."""
     used, changed = set(), set()
 
-    def pair(froms, tos):
+    def pair(froms, tos, key_of, record):
         pool = {}
         for r in tos:
-            pool.setdefault(kind_change_key(r), []).append(r)
+            k = key_of(r)
+            if k is not None:
+                pool.setdefault(k, []).append(r)
         for r in froms:
-            key = kind_change_key(r)
+            key = key_of(r)
+            if key is None:
+                continue                       # no key on this side, so nothing to match it against
             bucket = pool.get(key) or []
             while bucket:
                 other = bucket.pop(0)
-                if id(other) not in used:
+                if id(other) not in used and id(r) not in used:
                     used.add(id(r))
                     used.add(id(other))
-                    changed.add(key)
+                    if record:
+                        changed.add(key)
                     break
 
-    pair(o_lines, n_heads)          # a line became a heading
-    pair(o_heads, n_lines)          # and the other way
+    # ⚠️ TWO PASSES, THE ID FIRST, AND THE SECOND IS NOT A SIMILARITY TIER. A row with an id is
+    # matched on it alone, so a conversion that also retitles the row is still one row. The 24
+    # baseline rows the commit-3 backfill left with a null id have no such key, so they fall back to
+    # the name matching that has always handled them. Only the name pass feeds the twin trimming
+    # below, because a baseline cannot hold the same id twice (proven over all 300) and so cannot
+    # produce an id twin.
+    for froms, tos in ((o_lines, n_heads), (o_heads, n_lines)):
+        pair(froms, tos, kind_change_key, record=False)
+    for froms, tos in ((o_lines, n_heads), (o_heads, n_lines)):
+        pair(froms, tos, kind_change_name_key, record=True)
 
     keep = lambda rows: [r for r in rows if id(r) not in used]
     o_lines, o_heads, n_lines, n_heads = (keep(o_lines), keep(o_heads),
@@ -186,11 +204,11 @@ def suppress_kind_changes(o_lines, o_heads, n_lines, n_heads):
     # the user deleted. Only the OLD side can carry one — the twin is created in the baseline, and
     # converting BACK removes it again, which is why that direction needs nothing.
     for key in changed:
-        excess = (sum(1 for r in o_heads if kind_change_key(r) == key)
-                  - sum(1 for r in n_heads if kind_change_key(r) == key))
+        excess = (sum(1 for r in o_heads if kind_change_name_key(r) == key)
+                  - sum(1 for r in n_heads if kind_change_name_key(r) == key))
         while excess > 0:
             for i, r in enumerate(o_heads):
-                if kind_change_key(r) == key:
+                if kind_change_name_key(r) == key:
                     o_heads.pop(i)
                     break
             excess -= 1
@@ -202,16 +220,92 @@ def _similar(a, b):
     return SequenceMatcher(None, a or "", b or "").ratio()
 
 
-def _mod(kind, frm, to, new_pos=None, old_pos=None):
-    return {"kind": kind, "type": "modified", "from": frm, "to": to, "new_pos": new_pos, "old_pos": old_pos}
+def _diff_headings(o_heads, n_heads, text_of, o_pos, n_pos):
+    """Section headings, by row id first and then by text. Both heading sequences of both kinds come
+    through here, which is why it is a function rather than four call sites.
+
+    Heading entries are computed and NOT rendered (annotationIndex ignores kind:"heading" — a heading
+    change is organizational by existing ruling), so what this really guarantees is that a heading
+    never disturbs the matching of the rows around it."""
+    out = []
+    pairs, o_left, n_left = _id_split(o_heads, n_heads)
+    for o, n in pairs:
+        if units.compare_text(text_of(o)) != units.compare_text(text_of(n)):
+            out.append(_mod("heading", text_of(o), text_of(n), n_pos(n), o_pos(o), _rid(n)))
+    out += _diff_seq(
+        o_left, n_left, text_of,
+        # ⚠️ CONDITIONAL, unlike the pre-commit-4 version. A 'replace' block can now pair two rows
+        # whose text differs only in whitespace, and an unconditional _mod would report that as a
+        # rename the cook cannot see.
+        on_pair=lambda o, n: ([_mod("heading", text_of(o), text_of(n), n_pos(n), o_pos(o), _rid(n))]
+                              if units.compare_text(text_of(o)) != units.compare_text(text_of(n))
+                              else []),
+        on_add=lambda r: _added("heading", text_of(r), n_pos(r), _rid(r)),
+        on_remove=lambda r: _removed("heading", text_of(r), o_pos(r), None),
+    )
+    return out
 
 
-def _added(kind, text, new_pos):
-    return {"kind": kind, "type": "added", "text": text, "new_pos": new_pos, "old_pos": None}
+# ⚠️ row_id IS THE CURRENT ROW'S DATABASE ID, AND IT IS WHAT THE CLIENT ANCHORS ON. The ledger used to
+# place a mark by new_pos, the heading-excluded ordinal, which means the client had to count its rendered
+# rows exactly as the diff counted its own and skip headings in the same places. Two independent counters
+# agreeing by convention. The row id is the row, so the client looks the mark up directly. A REMOVED entry
+# has no current row, so its row_id is None and it is still placed by `section` — unchanged.
+def _mod(kind, frm, to, new_pos=None, old_pos=None, row_id=None):
+    return {"kind": kind, "type": "modified", "from": frm, "to": to, "new_pos": new_pos,
+            "old_pos": old_pos, "row_id": row_id}
+
+
+def _added(kind, text, new_pos, row_id=None):
+    return {"kind": kind, "type": "added", "text": text, "new_pos": new_pos, "old_pos": None,
+            "row_id": row_id}
 
 
 def _removed(kind, text, old_pos, section):
-    return {"kind": kind, "type": "removed", "text": text, "new_pos": None, "old_pos": old_pos, "section": section}
+    return {"kind": kind, "type": "removed", "text": text, "new_pos": None, "old_pos": old_pos,
+            "section": section, "row_id": None}
+
+
+def _rid(row):
+    return row.get("id") if row else None
+
+
+def _id_split(old_rows, new_rows):
+    """(pairs, old_left, new_left) — the ROW-ID pass, which runs before any text matching.
+
+    ⚠️ THIS IS WHAT THE WHOLE OF OPTION C WAS FOR. A row keeps its database id across every save, and
+    the reason='original' baseline records the id each of its rows was born as, so "is this the same
+    row" is now a lookup rather than a guess. Everything difflib and the similarity threshold were
+    doing for these rows was an approximation of this answer.
+
+    What it fixes, in order of how much it mattered:
+      - A REORDER emits nothing. Dragging a row changed its position, which changed which baseline row
+        difflib lined it up against, so a pure reorder could report a removal and an addition. The
+        pair is found by id wherever either row sits.
+      - A RENAME stays one row. Rewriting a name past the 0.6 similarity threshold split one row into
+        a removal plus an addition. Matched by id, it is one row with a changed name.
+      - A DUPLICATE NAME cannot be confused. brioche-bread lists 9 names twice. Text matching has to
+        pair them by order and hope.
+
+    ⚠️ CONSUME-ONCE AND NULL IS NEVER A KEY. A null id means the backfill found no partner for that
+    baseline row (24 rows over 19 recipes), and two nulls are not a match — they fall through to the
+    text matching they have always used. The bucket-per-id form is defensive: the backfill proved no
+    id repeats within a recipe, and a repeat would pair in order rather than raise."""
+    by_id = {}
+    for r in new_rows:
+        i = _rid(r)
+        if i is not None:
+            by_id.setdefault(i, []).append(r)
+    pairs, old_left, claimed = [], [], set()
+    for o in old_rows:
+        bucket = by_id.get(_rid(o)) if _rid(o) is not None else None
+        if bucket:
+            n = bucket.pop(0)
+            pairs.append((o, n))
+            claimed.add(id(n))
+        else:
+            old_left.append(o)
+    return pairs, old_left, [n for n in new_rows if id(n) not in claimed]
 
 
 def _indexer(rows):
@@ -246,11 +340,15 @@ def _section_lookup(rows, text_of):
 
 
 def _diff_fields(o, n):
+    """The 11 recipe header fields. Compared through units.compare_text, so null and empty are the same
+    absence (they always were here) and so is a re-wrap: a headnote whose only difference is trailing
+    whitespace or a collapsed line break reads identically once the page lays it out."""
     out = []
     for f in CONTENT_FIELDS:
         ov, nv = o.get(f), n.get(f)
-        if (ov or "") != (nv or ""):                       # None and "" are both "empty" (no spurious change)
-            out.append({"kind": "field", "type": "modified", "field": f, "from": ov, "to": nv})
+        if units.compare_text(ov) != units.compare_text(nv):
+            out.append({"kind": "field", "type": "modified", "field": f, "from": ov, "to": nv,
+                        "row_id": None})
     return out
 
 
@@ -283,21 +381,40 @@ def when_suffix(r):
     return ""
 
 
+def _differ(o, n, fields):
+    return any(units.compare_text(o.get(f)) != units.compare_text(n.get(f)) for f in fields)
+
+
 def _diff_rows(kind, old_rows, new_rows, fields):
-    """Positional, because these are short ordered lists a person edits by hand. A row that moves
-    reads as two modifications, which is honest for a list of two or three items and cheaper than
-    pretending to track identity across a table with no stable key in the snapshot."""
+    """Waits and storage. BY ROW ID FIRST, then positionally over whatever is left.
+
+    ⚠️ THE POSITIONAL FALLBACK USED TO BE THE WHOLE THING, and its reason has expired. It read "these
+    are short ordered lists a person edits by hand, and tracking identity across a table with no stable
+    key in the snapshot is not worth it" — true while the snapshot held no key. It holds one now, so a
+    reordered wait is one row that moved rather than two modifications.
+
+    Positions still come from the UNFILTERED lists, so a row the id pass took out does not shift the
+    ordinal of a row it left behind. Both tables are empty on live today (0 rows, and the keys are
+    omitted from the snapshot entirely when empty), so this is the shape the feature will land on
+    rather than a repair of anything currently visible."""
+    o_pos = {id(r): i for i, r in enumerate(old_rows)}
+    n_pos = {id(r): i for i, r in enumerate(new_rows)}
+    pairs, old_left, new_left = _id_split(old_rows, new_rows)
     out = []
-    for i in range(max(len(old_rows), len(new_rows))):
-        o = old_rows[i] if i < len(old_rows) else None
-        n = new_rows[i] if i < len(new_rows) else None
+    for o, n in pairs:
+        if _differ(o, n, fields):
+            out.append(_mod(kind, _row_text(o, fields), _row_text(n, fields),
+                            n_pos[id(n)], o_pos[id(o)], _rid(n)))
+    for i in range(max(len(old_left), len(new_left))):
+        o = old_left[i] if i < len(old_left) else None
+        n = new_left[i] if i < len(new_left) else None
         if o is None:
-            out.append(_added(kind, _row_text(n, fields), i))
+            out.append(_added(kind, _row_text(n, fields), n_pos[id(n)], _rid(n)))
         elif n is None:
-            out.append(_removed(kind, _row_text(o, fields), i, None))
-        elif any((o.get(f) if o.get(f) != "" else None) != (n.get(f) if n.get(f) != "" else None)
-                 for f in fields):
-            out.append(_mod(kind, _row_text(o, fields), _row_text(n, fields), i, i))
+            out.append(_removed(kind, _row_text(o, fields), o_pos[id(o)], None))
+        elif _differ(o, n, fields):
+            out.append(_mod(kind, _row_text(o, fields), _row_text(n, fields),
+                            n_pos[id(n)], o_pos[id(o)], _rid(n)))
     return out
 
 
@@ -315,13 +432,19 @@ def _ing_line(r):
 
 
 def _canon_amount(qty):
-    """The canonical COMPARISON form of an amount — unit-abbreviated + lowercased + trimmed (units.
-    canon_unit_str), mirroring the client's canonicalizeUnit. The client re-canonicalizes units on EVERY
-    save ("1 teaspoon" -> stored "1 tsp"), so an untouched row's baseline-vs-current differs in the unit
-    STRING only; comparing canonical forms means that representation-only drift doesn't read as an amount
-    edit. Detection only — the emitted from/to keep the RAW strings, so a genuine change shows real values.
-    The number is never touched (only unit words match the rules), so a real amount change still differs."""
-    return units.canon_unit_str(qty or "")
+    """The canonical COMPARISON form of an amount: units.compare_key, which abbreviates the unit word,
+    normalizes the fraction glyph, collapses whitespace, trims and lowercases.
+
+    ⚠️ IT COMPARES WHAT THE COOK SEES, NOT WHAT IS STORED, AND THAT IS THE POINT. The client
+    re-canonicalizes units on every save ("1 teaspoon" is stored back as "1 tsp"), and the reading view
+    runs every amount through toUnicodeFractions before printing it, so "1/2 tsp" and "½ tsp" are the
+    same characters on the page. Comparing the raw strings put a mark on a row reading "½ tsp -> ½ tsp",
+    which is a change the cook cannot see and did not make. Measured on live: 608 amounts hold a vulgar
+    glyph and 288 an ascii spelling.
+
+    Detection only. The emitted from/to keep the RAW stored strings, so a genuine change shows the real
+    values, and the NUMBER is never touched by any of these rules."""
+    return units.compare_key(qty)
 
 
 def _ing_line_canon(r):
@@ -340,16 +463,19 @@ def _ingredient_pair_changes(o, n, new_pos=None, old_pos=None):
     coherent change from `qty`; name and note are their own changes. Emits only the aspects that differ.
     new_pos/old_pos are the heading-excluded real-ingredient indices (the O-c-1 anchor)."""
     label = _ing_name(n) or _ing_name(o)
-    out = []
-    if _canon_amount(o.get("qty")) != _canon_amount(n.get("qty")):   # canonical compare: unit-repr drift is NOT a change
+    rid, out = _rid(n), []
+    if _canon_amount(o.get("qty")) != _canon_amount(n.get("qty")):   # what the cook sees, not what is stored
         out.append({"kind": "ingredient", "type": "modified", "field": "amount", "label": label,
-                    "from": o.get("qty") or "", "to": n.get("qty") or "", "new_pos": new_pos, "old_pos": old_pos})
-    if _ing_name(o) != _ing_name(n):
+                    "from": o.get("qty") or "", "to": n.get("qty") or "", "new_pos": new_pos,
+                    "old_pos": old_pos, "row_id": rid})
+    if units.compare_text(_ing_name(o)) != units.compare_text(_ing_name(n)):
         out.append({"kind": "ingredient", "type": "modified", "field": "name", "label": label,
-                    "from": _ing_name(o), "to": _ing_name(n), "new_pos": new_pos, "old_pos": old_pos})
-    if (o.get("note") or "") != (n.get("note") or ""):
+                    "from": _ing_name(o), "to": _ing_name(n), "new_pos": new_pos,
+                    "old_pos": old_pos, "row_id": rid})
+    if units.compare_text(o.get("note")) != units.compare_text(n.get("note")):
         out.append({"kind": "ingredient", "type": "modified", "field": "note", "label": label,
-                    "from": o.get("note") or "", "to": n.get("note") or "", "new_pos": new_pos, "old_pos": old_pos})
+                    "from": o.get("note") or "", "to": n.get("note") or "", "new_pos": new_pos,
+                    "old_pos": old_pos, "row_id": rid})
     return out
 
 
@@ -376,9 +502,10 @@ def _diff_ingredients(old_lines, new_lines, o_pos, n_pos, section_of=lambda p: N
         o_left, n_left, _ing_line_canon,   # MATCH on the canonical line (qty unit-normalized); emit raw text below
         on_pair=lambda o, n: _ingredient_pair_changes(o, n, n_pos(n), o_pos(o)),
         on_add=lambda r: {"kind": "ingredient", "type": "added", "text": _ing_line(r), "label": _ing_name(r),
-                          "new_pos": n_pos(r), "old_pos": None},
+                          "new_pos": n_pos(r), "old_pos": None, "row_id": _rid(r)},
         on_remove=lambda r: {"kind": "ingredient", "type": "removed", "text": _ing_line(r), "label": _ing_name(r),
-                             "new_pos": None, "old_pos": o_pos(r), "section": section_of(r.get("position"))},
+                             "new_pos": None, "old_pos": o_pos(r), "section": section_of(r.get("position")),
+                             "row_id": None},
         # The ONE opt-in: `note` is not in the match key, so a note-only edit lands in an 'equal' block
         # and its pair never reaches _ingredient_pair_changes (whose note branch has always worked, and
         # is reachable today only via phase-1's ingredient_id match — i.e. on 1.5% of real rows). Safe
@@ -402,7 +529,8 @@ def _move_key(entry):
     numbers or names, so a moved-AND-edited row still differs and survives (see the tests).
     Steps/headings compare raw: their text carries no amount for a unit rule to touch."""
     text = entry.get("text") or ""
-    return (entry["kind"], units.canon_unit_str(text) if entry["kind"] == "ingredient" else text)
+    return (entry["kind"],
+            units.compare_key(text) if entry["kind"] == "ingredient" else units.compare_text(text))
 
 
 def _suppress_moves(changes):

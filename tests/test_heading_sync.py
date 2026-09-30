@@ -258,10 +258,10 @@ def test_broken_positions_are_caught_by_p2():
 # waits then reported as "added" in "your changes" for good. P1 and P2 read ingredients and steps
 # only, so content_safety_problems reported no problem and the save went through.
 
-WAITS = [{"position": 0, "kind": "rising", "label": "1 hr", "min_minutes": 60, "max_minutes": 60,
+WAITS = [{"id": None, "position": 0, "kind": "rising", "label": "1 hr", "min_minutes": 60, "max_minutes": 60,
           "ext_label": None, "ext_min_minutes": None, "ext_max_minutes": None,
           "when_kind": "always", "when_label": None}]
-STORAGE = [{"position": 0, "where_kept": "fridge", "applies_to": None, "label": "up to 1 week",
+STORAGE = [{"id": None, "position": 0, "where_kept": "fridge", "applies_to": None, "label": "up to 1 week",
             "min_minutes": 0, "max_minutes": 10080}]
 
 

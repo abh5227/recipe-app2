@@ -1406,12 +1406,40 @@ def get_recipe(rid):
     )
 
 
+# The 10 header fields a PUT may change, beside `name` (required and validated, so never null and
+# never absent). The tuple exists so the write cannot fall out of step with the keep rule.
+EDITABLE_HEADER_FIELDS = ("author", "source_url", "category", "servings", "prep_time", "cook_time",
+                          "total_time", "descr", "notes", "image")
+
+
+def _kept(new, old):
+    """The value to write for a header field, keeping what is stored when the payload means the same.
+
+    ⚠️ A SAVE WITH NO EDITS MUST WRITE NOTHING, AND THIS IS WHERE THAT WAS LOST. The client sends every
+    header field as a trimmed string, so a column stored as NULL came back as "" and the save wrote the
+    "". Measured on live: a no-edit save touched 10 columns on 270 of 300 recipes. Nothing looked wrong,
+    since every reader treats "" and NULL as empty and the diff folds them together, and the cost was
+    paid somewhere else entirely. The recipe's serialization stopped matching its baseline byte for
+    byte, so _recipe_annotations lost its short-circuit for that recipe permanently. That is how
+    brioche-bread came to hold "" in descr, image and total_time against a baseline holding NULL.
+
+    ⚠️ THE WEAKEST TEST THAT FIXES IT, ON PURPOSE. Null and empty mean the same thing, so keep what is
+    stored. It does NOT fold whitespace, and it must not: a user who re-wrapped a headnote has made a
+    real edit, and a keep rule that collapsed whitespace would discard it silently. The diff's own
+    comparison DOES fold whitespace (units.compare_text), so no mark appears for one either way. That
+    division is deliberate. Compare loosely, write faithfully."""
+    return old if (new or "") == (old or "") else new
+
+
 @app.route("/api/recipes/<rid>", methods=["PUT"])
 def update_recipe(rid):
     """Edit an app-owned recipe. The slug (id) stays fixed so references don't break."""
     payload = request.get_json(silent=True) or {}
     with orm_session() as s:
-        row = s.execute(select(Recipe.source, Recipe.owner).where(Recipe.id == rid)).first()
+        # The WHOLE row, because the header write below keeps a field the payload did not really
+        # change (see _kept) and needs the stored value to compare against.
+        row = s.execute(select(Recipe.__table__)
+                        .where(Recipe.__table__.c.id == rid)).mappings().first()
         if row is None:
             return jsonify({"error": "recipe not found"}), 404
         # TIER first, then OWNERSHIP — the two gates refuse DISJOINT sets and neither subsumes the
@@ -1421,9 +1449,9 @@ def update_recipe(rid):
         # of the recipe, ownership a property of the relationship — refusing on the intrinsic one first
         # yields the truer message. It also keeps test_seed_recipe_is_read_only / test_gate_parity_*
         # testing the SEED gate rather than passing on an ownership 403 that happens to share a status.
-        if row.source not in EDITABLE_SOURCES:
+        if row["source"] not in EDITABLE_SOURCES:
             return jsonify({"error": "this recipe is from seed.py and is read-only here — edit it in seed.py"}), 403
-        if row.owner != current_user.id:                     # default-deny: only the owner may edit
+        if row["owner"] != current_user.id:                  # default-deny: only the owner may edit
             return jsonify({"error": "not your recipe"}), 403
         # The [[key]]s this recipe's steps already carry. An edit may keep them even if nothing in
         # `ingredients` answers to them any more, and may not introduce a NEW one that names nothing.
@@ -1435,10 +1463,8 @@ def update_recipe(rid):
         if err:
             return jsonify({"error": err}), 400
         s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rid).values(
-            name=clean["name"], author=payload.get("author"), source_url=payload.get("source_url"),
-            category=payload.get("category"), servings=payload.get("servings"), prep_time=payload.get("prep_time"),
-            cook_time=payload.get("cook_time"), total_time=payload.get("total_time"), descr=payload.get("descr"),
-            notes=payload.get("notes"), image=payload.get("image"),
+            name=clean["name"],
+            **{f: _kept(payload.get(f), row[f]) for f in EDITABLE_HEADER_FIELDS},
         ))
         # The rows as they stand. write_recipe_rows matches each incoming line to one of them by id
         # and updates it in place, falls back to the two-tier _Carry for a line that arrives without

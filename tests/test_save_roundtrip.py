@@ -841,19 +841,26 @@ def test_a_real_edit_alongside_a_conversion_still_marks(kitchen):
     assert got[0]["to"] == "9 tbsp"
 
 
-def test_a_renamed_conversion_is_still_reported(kitchen):
-    """⚠️ NOT A GAP. Convert a line AND retype the heading, and that ingredient's name is no longer
-    anywhere on the page, so the removal is the honest report. The key is the row's NAME, so there is
-    nothing to recognize. Commit 3 puts the row id in the baseline, after which the same row IS
-    recognizable across a rename and this becomes a decision rather than a consequence."""
+def test_a_renamed_conversion_emits_nothing(kitchen):
+    """⚠️ THIS TEST USED TO ASSERT THE OPPOSITE, AND THE INVERSION IS THE DECISION. Convert a line AND
+    retype the heading: before the baseline carried row ids the key was the row's NAME, so there was
+    nothing left to recognise and the removal was the honest report. The id recognises the row however
+    it is retitled, and the standing ruling on headings is that a kind change carries no annotation, so
+    the honest report is now nothing at all. Same row, same words on the page, different style.
+
+    The two halves that make it work are in different modules, which is why this test is at the seam
+    rather than in the pure suite: snapshot_diff.suppress_kind_changes retires the pair by id, and
+    snapshot_headsync._reinterleave declines to copy the new heading into the baseline as a section."""
     rid = _seed(kitchen)
     _save(kitchen, rid)
     _settle(kitchen, rid)
     rows = copy.deepcopy(FIX["rows"])
     rows[3] = _heading_payload(9004, "FOR THE BRINE")
     assert _save(kitchen, rid, rows=rows).status_code == 200
-    got = _annotations(kitchen, rid)
-    assert any(c["kind"] == "ingredient" and c["type"] == "removed" for c in got), got
+    assert _annotations(kitchen, rid) == []
+    # and again, to prove it is stable rather than merely quiet on the first save
+    assert _save(kitchen, rid, rows=rows).status_code == 200
+    assert _annotations(kitchen, rid) == []
 
 
 # ---- option C commit 3: the baseline carries row ids ---------------------------------------------
@@ -942,3 +949,78 @@ def test_an_id_less_step_whose_text_changed_is_still_a_new_row(kitchen):
         after = [r["id"] for r in c.execute(
             "SELECT id FROM recipe_steps WHERE recipe_id=?", (rid,))]
     assert after != before
+
+
+# ---- option C commit 4: a no-edit save writes nothing to the recipe row ---------------------------
+
+HEADER = ("author", "source_url", "category", "servings", "prep_time", "cook_time",
+          "total_time", "descr", "notes", "image")
+
+
+def _header(kitchen, rid):
+    with kitchen.conn() as c:
+        return dict(c.execute(f"SELECT {','.join(HEADER)} FROM recipes WHERE id=?", (rid,)).fetchone())
+
+
+def test_a_no_edit_save_leaves_a_null_header_field_null(kitchen):
+    """⚠️ THE DEFECT THIS CLOSES COST A RECIPE ITS SHORT-CIRCUIT FOR GOOD. The client sends every header
+    field as a trimmed string, so a column stored as NULL came back as "" and the save wrote it.
+    Measured on live: 10 columns on 270 of 300 recipes, for a save that changed nothing. Nothing looked
+    wrong, and brioche-bread's serialization stopped matching its baseline byte for byte, so its "your
+    changes" ran the full diff on every page view from then on."""
+    rid = _seed(kitchen, name="Null Header")
+    with kitchen.conn() as c:
+        c.execute(f"UPDATE recipes SET {', '.join(f'{f}=NULL' for f in HEADER)} WHERE id=?", (rid,))
+        c.commit()
+    before = _header(kitchen, rid)
+    assert set(before.values()) == {None}
+    # the client's own shape: every header field present, as a trimmed string
+    payload = {"name": "Null Header", **{f: "" for f in HEADER},
+               "ingredients": [r["payload"] for r in FIX["rows"]],
+               "steps": [s["payload"] for s in FIX["steps"]]}
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=payload).status_code == 200
+    assert _header(kitchen, rid) == before, "a save with no edits must write nothing"
+
+
+def test_a_header_field_holding_empty_string_is_left_alone_too(kitchen):
+    """The rule keeps what is STORED, in either direction, so a column already holding "" is not
+    quietly converted to NULL either. The point is that nothing is written, not that NULL wins."""
+    rid = _seed(kitchen, name="Empty Header")
+    with kitchen.conn() as c:
+        c.execute("UPDATE recipes SET descr='', notes=NULL WHERE id=?", (rid,))
+        c.commit()
+    payload = {"name": "Empty Header", "descr": "", "notes": "",
+               "ingredients": [r["payload"] for r in FIX["rows"]],
+               "steps": [s["payload"] for s in FIX["steps"]]}
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=payload).status_code == 200
+    got = _header(kitchen, rid)
+    assert got["descr"] == "" and got["notes"] is None
+
+
+def test_a_real_header_edit_is_still_written(kitchen):
+    """The control. Keeping an unchanged field must not keep a changed one."""
+    rid = _seed(kitchen, name="Real Header")
+    payload = {"name": "Real Header", "descr": "A rich, eggy loaf.", "servings": "8",
+               "ingredients": [r["payload"] for r in FIX["rows"]],
+               "steps": [s["payload"] for s in FIX["steps"]]}
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=payload).status_code == 200
+    got = _header(kitchen, rid)
+    assert got["descr"] == "A rich, eggy loaf." and got["servings"] == "8"
+
+
+def test_a_whitespace_only_header_edit_is_written_but_marks_nothing(kitchen):
+    """⚠️ THE TWO HALVES PULL OPPOSITE WAYS ON PURPOSE. The keep rule is the WEAKEST one that fixes the
+    defect: null and empty are the same, and whitespace is NOT folded, because a user who re-wrapped a
+    headnote made a real edit and a keep rule that collapsed whitespace would discard it. The DIFF folds
+    whitespace, so no mark appears for it. Compare loosely, write faithfully."""
+    rid = _seed(kitchen, name="Space Header")
+    with kitchen.conn() as c:
+        c.execute("UPDATE recipes SET descr='A rich loaf.' WHERE id=?", (rid,))
+        c.commit()
+    _settle(kitchen, rid)
+    payload = {"name": "Space Header", "descr": "A rich  loaf. ",
+               "ingredients": [r["payload"] for r in FIX["rows"]],
+               "steps": [s["payload"] for s in FIX["steps"]]}
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=payload).status_code == 200
+    assert _header(kitchen, rid)["descr"] == "A rich  loaf. ", "the user's edit is stored as typed"
+    assert _annotations(kitchen, rid) == [], "and the cook sees no change, so there is no mark"

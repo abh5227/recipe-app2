@@ -7,6 +7,7 @@ import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingre
 import { nonEmptySteps, focusIndexAfterRemove, writeStepField } from "./step-row.js";
 import { insertIndexFor } from "./row-insert.js";
 import { removedInsertIndex } from "./annotation-place.js";
+import { annotationIndex } from "./annotation-index.js";
 import { wordDiffParts } from "./word-diff.js";
 import { editedAmountParts, removedAmountText, stepSpanTexts } from "./annotation-amount.js";
 import { timeParts } from "./timefmt.js";
@@ -832,45 +833,6 @@ function lineBodyHTML(row) {
   return `${esc(row.label || row.raw_text || "")}${readNote(row)}`;
 }
 
-// O-c-1: index the current-vs-original annotations (view.data.annotations) by heading-EXCLUDED new_pos,
-// per kind, for the PRESENT-position cases the reading view renders (amount/name modified, added). A
-// removed entry has no current row to attach to (new_pos=null), so it is collected SEPARATELY and placed
-// by `section` (stage 3, see insertRemovedRows); heading entries aren't rendered here. A single new_pos may
-// carry BOTH an amount and a name edit; they're grouped into one slot so a row shows both.
-function annotationIndex(anns) {
-  const ing = new Map();
-  const step = new Map();
-  const removedIng = [];
-  const removedStep = [];
-  for (const a of (anns || [])) {
-    if (a.type === "removed") {
-      // no new_pos to key on — kept as a flat list, placed at its original section's bottom. Ordered by
-      // old_pos so several removals out of one section keep their original relative order. (kind
-      // "heading" falls through both branches: a removed HEADING is not rendered in the ledger.)
-      if (a.kind === "ingredient") removedIng.push(a);
-      else if (a.kind === "step") removedStep.push(a);
-      continue;
-    }
-    if (a.new_pos == null) continue;
-    if (a.kind === "ingredient") {
-      const slot = ing.get(a.new_pos) || {};
-      if (a.type === "added") slot.added = a;
-      else if (a.type === "modified" && (a.field === "amount" || a.field === "name")) slot[a.field] = a;
-      ing.set(a.new_pos, slot);
-    } else if (a.kind === "step") {
-      const slot = step.get(a.new_pos) || {};
-      if (a.type === "added") slot.added = a;
-      else if (a.type === "modified") slot.mod = a;
-      step.set(a.new_pos, slot);
-    }
-    // kind === "heading": not rendered in the reading ledger — ignored.
-  }
-  const byOldPos = (x, y) => (x.old_pos == null ? 0 : x.old_pos) - (y.old_pos == null ? 0 : y.old_pos);
-  removedIng.sort(byOldPos);
-  removedStep.sort(byOldPos);
-  return { ing, step, removedIng, removedStep };
-}
-
 // O-c-1 stage 3: place synthesized REMOVED rows at the BOTTOM of their original section — after the
 // heading whose text matches entry.section, just before the NEXT heading (or the list end). A null
 // section, or a section since renamed/removed (no match), falls back to the very bottom of the list.
@@ -975,15 +937,14 @@ function plainRow(row, ann) {
 // model has no "switch person"; every recipe is your own, edited directly via the recipe editor).
 // Re-rendered on its own (e.g. on a scale change) so the rest of the page doesn't flicker.
 function ingredientsSectionInner(view) {
-  const { ing, removedIng } = annotationIndex(view.data.annotations);   // O-c-1: edits keyed by new_pos + removals
-  let i = 0;                                                 // heading-EXCLUDED index == snapshot_diff new_pos
-  // Headings are tracked alongside each row so a removed entry can find its section (exact-string match on
-  // the heading's raw_text). The counter advances ONLY on real non-heading rows — synthesized removed rows
-  // are spliced in afterwards and never touch it, so every other anchor stays aligned.
+  const { ing, removedIng } = annotationIndex(view.data.annotations);   // O-c-1: edits keyed by ROW ID
+  // Headings are tracked alongside each row so a removed entry can find its section (exact-string match
+  // on the heading's raw_text). ⚠️ NO COUNTER ANY MORE: a mark is looked up by the row's own id, so
+  // nothing here has to agree with the diff about where headings sit or which inserted rows to skip.
   const items = view.data.ingredients.map((row) => ({
     isHeading: !!row.is_heading,
     headingText: row.is_heading ? headingText(row) : null,
-    html: row.is_heading ? plainRow(row) : plainRow(row, ing.get(i++)),
+    html: row.is_heading ? plainRow(row) : plainRow(row, ing.get(row.id)),
   }));
   insertRemovedRows(items, removedIng, removedIngredientRow);
   const rows = items.map((x) => x.html).join("");
@@ -1075,12 +1036,11 @@ function jumpToStep(n) {
 }
 
 function renderStepsList(steps) {
-  const { step, removedStep } = annotationIndex(view.data.annotations);
-  let i = 0;   // heading-EXCLUDED step index (its OWN sequence); synthesized removals never advance it
+  const { step, removedStep } = annotationIndex(view.data.annotations);   // keyed by ROW ID
   const items = steps.map((row) => ({
     isHeading: !!row.is_heading,
     headingText: row.is_heading ? (row.text || "") : null,
-    html: row.is_heading ? renderStepRow(row) : renderStepRow(row, step.get(i++)),
+    html: row.is_heading ? renderStepRow(row) : renderStepRow(row, step.get(row.id)),
   }));
   insertRemovedRows(items, removedStep, removedStepRow);
   return items.map((x) => x.html).join("");

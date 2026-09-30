@@ -31,7 +31,9 @@ the baseline's.
 import json
 
 from snapshot_diff import _split                      # the ONE heading/content partitioner — not a second copy
-from snapshot_serialize import content_blob, kind_change_key, snapshot_ing_row, snapshot_step_row
+from snapshot_serialize import (
+    content_blob, kind_change_key, kind_change_name_key, snapshot_ing_row, snapshot_step_row,
+)
 
 # The step row's three keys (snapshot_serialize spells them inline in its steps projection).
 # SNAPSHOT_STEP_FIELDS moved to snapshot_serialize, beside the ingredient list and the two row
@@ -82,7 +84,7 @@ def _content_ordinal_of_headings(rows):
     return out
 
 
-def _reinterleave(old_rows, current_rows, row_of, key_of=None):
+def _reinterleave(old_rows, current_rows, row_of, skip_converted=False):
     """Baseline CONTENT rows (order and values untouched) + CURRENT headings, re-interleaved by
     content ordinal, then renumbered so `position` is the row's index in the combined list —
     exactly how write_recipe_rows assigns it (enumerate over the heading-INCLUSIVE list).
@@ -102,7 +104,7 @@ def _reinterleave(old_rows, current_rows, row_of, key_of=None):
     replaced wholesale from current, so the heading in the new blob IS that live row."""
     content = [row_of(r) for r in old_rows if not _get(r, "is_heading")]
     heads = _content_ordinal_of_headings(current_rows)
-    if key_of is not None:
+    if skip_converted:
         # ⚠️ A CONVERTED ROW IS NOT A SECTION, AND COPYING IT IN DUPLICATES IT. The baseline holds
         # the recipe's BIRTH content, where this row was an ingredient LINE and still is, above.
         # Current holds it as a heading because the user converted it. Copying current's heading in
@@ -118,8 +120,18 @@ def _reinterleave(old_rows, current_rows, row_of, key_of=None):
         # Skipping it leaves the baseline's heading layout differing from current by exactly the
         # converted rows, which is correct: in the baseline's world those rows are content, and the
         # layout exists only so a REMOVED row can name the section it lived in.
-        known = {key_of(r) for r in content}
-        heads = [(o, h) for o, h in heads if key_of(h) not in known]
+        # ⚠️ BY ID *OR* BY NAME, AND None IS NEVER A KEY. kind_change_key became the row id in
+        # commit 4, and keying on it alone broke this: a baseline content row with a null id and a
+        # current heading with a null id both keyed as None, so EVERY heading matched and every one
+        # was dropped from the baseline. The two checks answer different halves. The id catches a
+        # conversion that also RETITLED the row, which the name can never see. The name catches the
+        # case where the baseline row is one of the 24 with no id to match on. Their union is the
+        # behaviour this had before commit 4 plus the retitle case, so it is never less correct.
+        ids = {kind_change_key(r) for r in content} - {None}
+        names = {kind_change_name_key(r) for r in content}
+        converted = lambda h: (kind_change_key(h) in ids
+                               or kind_change_name_key(h) in names)
+        heads = [(o, h) for o, h in heads if not converted(h)]
 
     merged, ci = [], 0
     for ordinal, h in heads:
@@ -157,9 +169,9 @@ def sync_heading_layout(old_blob, current_ingredients, current_steps):
     return content_blob(
         old.get("recipe") or {},
         _reinterleave(old.get("ingredients") or [], current_ingredients, snapshot_ing_row,
-                      kind_change_key),
-        # No key_of for steps: nothing converts a step to a heading or back (the editor has no
-        # such action — see the row-menu entry in ROADMAP), so there is no duplicate to avoid.
+                      skip_converted=True),
+        # Steps do not skip: nothing converts a step to a heading or back (the editor has no such
+        # action — see the row-menu entry in ROADMAP), so there is no duplicate to avoid.
         _reinterleave(old.get("steps") or [], current_steps, snapshot_step_row),
         old.get("waits"),
         old.get("storage"),

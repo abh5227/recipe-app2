@@ -36,7 +36,7 @@ def test_field_change_servings_only():
     old = _blob(recipe={"servings": "4", "prep_time": "10 min"})
     new = _blob(recipe={"servings": "6", "prep_time": "10 min"})
     assert diff_snapshots(old, new) == [
-        {"kind": "field", "type": "modified", "field": "servings", "from": "4", "to": "6"}]
+        {"kind": "field", "row_id": None, "type": "modified", "field": "servings", "from": "4", "to": "6"}]
 
 
 def test_identical_snapshots_no_changes():
@@ -54,7 +54,7 @@ def test_linked_amount_change_is_ONE_coherent_entry_not_three():
     new = _blob(ingredients=[_ing(ingredient_id="sugar", label="sugar", qty="¾ cup",
                                   quantity="¾", unit="cup", raw_text="¾ cup sugar")])
     ch = diff_snapshots(old, new)
-    assert ch == [{"kind": "ingredient", "type": "modified", "field": "amount", "label": "sugar",
+    assert ch == [{"kind": "ingredient", "row_id": None, "type": "modified", "field": "amount", "label": "sugar",
                    "from": "1 cup", "to": "¾ cup", "new_pos": 0, "old_pos": 0}]
     assert len(ch) == 1                                    # NOT qty + quantity + unit field-noise
 
@@ -77,7 +77,7 @@ def test_insert_at_top_is_one_added_linked():
                              _ing(ingredient_id="flour", label="flour", qty="2 cups"),
                              _ing(ingredient_id="salt", label="salt", qty="1 tsp")])
     assert diff_snapshots(old, new) == [
-        {"kind": "ingredient", "type": "added", "text": "2 eggs", "label": "eggs", "new_pos": 0, "old_pos": None}]
+        {"kind": "ingredient", "row_id": None, "type": "added", "text": "2 eggs", "label": "eggs", "new_pos": 0, "old_pos": None}]
 
 
 def test_insert_at_top_is_one_added_unlinked():
@@ -85,14 +85,14 @@ def test_insert_at_top_is_one_added_unlinked():
     new = _blob(ingredients=[_ing(qty="2", raw_text="eggs"),
                              _ing(qty="2 cups", raw_text="flour"), _ing(qty="1 tsp", raw_text="salt")])
     assert diff_snapshots(old, new) == [
-        {"kind": "ingredient", "type": "added", "text": "2 eggs", "label": "eggs", "new_pos": 0, "old_pos": None}]
+        {"kind": "ingredient", "row_id": None, "type": "added", "text": "2 eggs", "label": "eggs", "new_pos": 0, "old_pos": None}]
 
 
 def test_remove_ingredient_is_one_removed():
     old = _blob(ingredients=[_ing(qty="2 cups", raw_text="flour"), _ing(qty="1 tsp", raw_text="salt")])
     new = _blob(ingredients=[_ing(qty="2 cups", raw_text="flour")])
     assert diff_snapshots(old, new) == [                    # old_pos 1 = salt is the 2nd real ingredient
-        {"kind": "ingredient", "type": "removed", "text": "1 tsp salt", "label": "salt",
+        {"kind": "ingredient", "row_id": None, "type": "removed", "text": "1 tsp salt", "label": "salt",
          "new_pos": None, "old_pos": 1, "section": None}]
 
 
@@ -102,7 +102,7 @@ def test_unlinked_amount_change_matched_by_similarity_is_modified():
     old = _blob(ingredients=[_ing(qty="1 cup", raw_text="sugar")])
     new = _blob(ingredients=[_ing(qty="¾ cup", raw_text="sugar")])
     assert diff_snapshots(old, new) == [                    # matched, not removed+added
-        {"kind": "ingredient", "type": "modified", "field": "amount", "label": "sugar",
+        {"kind": "ingredient", "row_id": None, "type": "modified", "field": "amount", "label": "sugar",
          "from": "1 cup", "to": "¾ cup", "new_pos": 0, "old_pos": 0}]
 
 
@@ -126,7 +126,7 @@ def test_step_reword_is_modified():
     old = _blob(steps=[_step("Beat the eggs")])
     new = _blob(steps=[_step("Beat the eggs well")])
     assert diff_snapshots(old, new) == [
-        {"kind": "step", "type": "modified", "from": "Beat the eggs", "to": "Beat the eggs well",
+        {"kind": "step", "row_id": None, "type": "modified", "from": "Beat the eggs", "to": "Beat the eggs well",
          "new_pos": 0, "old_pos": 0}]
 
 
@@ -134,14 +134,14 @@ def test_step_insert_is_one_added_not_cascade():
     old = _blob(steps=[_step("Preheat the oven"), _step("Bake for 20 minutes")])
     new = _blob(steps=[_step("Preheat the oven"), _step("Grease the pan"), _step("Bake for 20 minutes")])
     assert diff_snapshots(old, new) == [                    # new_pos 1 = inserted at the 2nd real-step slot
-        {"kind": "step", "type": "added", "text": "Grease the pan", "new_pos": 1, "old_pos": None}]
+        {"kind": "step", "row_id": None, "type": "added", "text": "Grease the pan", "new_pos": 1, "old_pos": None}]
 
 
 def test_step_remove_is_one_removed():
     old = _blob(steps=[_step("Preheat the oven"), _step("Bake for 20 minutes")])
     new = _blob(steps=[_step("Preheat the oven")])
     assert diff_snapshots(old, new) == [                    # old_pos 1 = the 2nd real step
-        {"kind": "step", "type": "removed", "text": "Bake for 20 minutes",
+        {"kind": "step", "row_id": None, "type": "removed", "text": "Bake for 20 minutes",
          "new_pos": None, "old_pos": 1, "section": None}]
 
 
@@ -153,7 +153,7 @@ def test_heading_change_is_heading_kind_and_line_untouched():
     new = _blob(ingredients=[_ing(is_heading=1, raw_text="For the batter"),
                              _ing(qty="1 cup", raw_text="sugar", position=1)])
     assert diff_snapshots(old, new) == [                    # new_pos/old_pos = index in the headings sequence
-        {"kind": "heading", "type": "modified", "from": "For the base", "to": "For the batter",
+        {"kind": "heading", "row_id": None, "type": "modified", "from": "For the base", "to": "For the batter",
          "new_pos": 0, "old_pos": 0}]
 
 
@@ -162,7 +162,7 @@ def test_heading_change_is_heading_kind_and_line_untouched():
 def test_threshold_boundary_reword_vs_replacement():
     reword = diff_snapshots(_blob(steps=[_step("Fold in the cream gently")]),
                             _blob(steps=[_step("Fold in the cream")]))
-    assert reword == [{"kind": "step", "type": "modified", "new_pos": 0, "old_pos": 0,
+    assert reword == [{"kind": "step", "row_id": None, "type": "modified", "new_pos": 0, "old_pos": 0,
                        "from": "Fold in the cream gently", "to": "Fold in the cream"}]   # >= threshold
     swap = diff_snapshots(_blob(steps=[_step("Fold in the cream")]),
                           _blob(steps=[_step("Roast the whole chicken")]))
@@ -186,7 +186,7 @@ def test_accepts_json_string_blobs():
     old = json.dumps(_blob(recipe={"servings": "4"}))
     new = json.dumps(_blob(recipe={"servings": "6"}))
     assert diff_snapshots(old, new) == [
-        {"kind": "field", "type": "modified", "field": "servings", "from": "4", "to": "6"}]
+        {"kind": "field", "row_id": None, "type": "modified", "field": "servings", "from": "4", "to": "6"}]
 
 
 # ---- O-c-0: POSITION + section identity on each change ------------------------------------------
@@ -427,7 +427,7 @@ def test_note_only_change_on_an_unlinked_row_is_emitted():
     old = _blob(ingredients=[_ing(qty="4 cups", label="flour", raw_text="4 cups flour")])
     new = _blob(ingredients=[_ing(qty="4 cups", label="flour", note="sifted", raw_text="4 cups flour")])
     assert diff_snapshots(old, new) == [
-        {"kind": "ingredient", "type": "modified", "field": "note", "label": "flour",
+        {"kind": "ingredient", "row_id": None, "type": "modified", "field": "note", "label": "flour",
          "from": "", "to": "sifted", "new_pos": 0, "old_pos": 0}]
 
 
@@ -439,7 +439,7 @@ def test_note_change_on_one_of_two_identical_unlinked_rows():
     old = _blob(ingredients=[a, dict(b)])
     new = _blob(ingredients=[dict(a), dict(b, note="for frying")])
     assert diff_snapshots(old, new) == [
-        {"kind": "ingredient", "type": "modified", "field": "note", "label": "oil",
+        {"kind": "ingredient", "row_id": None, "type": "modified", "field": "note", "label": "oil",
          "from": "", "to": "for frying", "new_pos": 1, "old_pos": 1}]
 
 
@@ -589,7 +589,165 @@ def test_positions_below_a_converted_row_stay_aligned():
     assert got[0]["new_pos"] == 1        # and is the 2nd after, the heading not being counted
 
 
-def test_the_kind_change_key_reads_both_kinds_the_same_way():
-    assert sd.kind_change_key(_line("Milk  Lukewarm", "1 cup", 0)) == "milk lukewarm"
-    assert sd.kind_change_key(_head("Milk  Lukewarm", 0)) == "milk lukewarm"
-    assert sd.kind_change_key(_head("A TITLE", 0, label="Milk Lukewarm")) == "milk lukewarm"
+def test_the_kind_change_key_is_the_row_id():
+    """Commit 4: the id, which does not care what the row is called, so a conversion that also
+    retitles the row is still one row."""
+    assert sd.kind_change_key(dict(_line("milk", "1 cup", 0), id=7)) == 7
+    assert sd.kind_change_key(_line("milk", "1 cup", 0)) is None, "no id means no key, not a match"
+
+
+def test_the_kind_change_name_key_reads_both_kinds_the_same_way():
+    assert sd.kind_change_name_key(_line("Milk  Lukewarm", "1 cup", 0)) == "milk lukewarm"
+    assert sd.kind_change_name_key(_head("Milk  Lukewarm", 0)) == "milk lukewarm"
+    assert sd.kind_change_name_key(_head("A TITLE", 0, label="Milk Lukewarm")) == "milk lukewarm"
+
+
+# ---- option C commit 4: matched by row id, compared as the cook sees it ---------------------------
+# Every fixture ABOVE this line is id-less on purpose, so the whole file already pins the TEXT fallback
+# unchanged. These add ids, which is the only way to reach the id pass.
+
+def _iline(rid, name, qty, position, note=""):
+    return dict(_line(name, qty, position), id=rid, note=note)
+
+
+def _ihead(rid, title, position, label=None):
+    return dict(_head(title, position, label=label), id=rid)
+
+
+def _istep(rid, text, position, is_heading=0):
+    return dict(_step(text, position, is_heading), id=rid)
+
+
+def test_a_reorder_emits_nothing():
+    """⚠️ THE ROW IS FOUND WHEREVER IT SITS. A reorder used to be handled by _suppress_moves, a post-pass
+    that pairs a removal with an addition when their canonical text matches — so it worked, and it
+    worked by accident of the text agreeing. Matched by id there is no removal and no addition to pair."""
+    old = _blob(ingredients=[_iline(1, "oil", "1 tbsp", 0), _iline(2, "garlic", "2", 1),
+                             _iline(3, "salt", "1 tsp", 2)])
+    new = _blob(ingredients=[_iline(3, "salt", "1 tsp", 0), _iline(1, "oil", "1 tbsp", 1),
+                             _iline(2, "garlic", "2", 2)])
+    assert diff_snapshots(old, new) == []
+
+
+def test_a_row_that_moved_and_was_edited_is_ONE_modification():
+    """⚠️ THE CASE _suppress_moves CANNOT REACH, and the reason the id pass is not redundant with it.
+    It pairs a removal and an addition only when the canonical text matches, so a row that moved AND
+    changed stayed split into a removal plus an addition — two marks for one edit, and the row reported
+    as deleted from a recipe it is still in."""
+    old = _blob(ingredients=[_iline(1, "oil", "1 tbsp", 0), _iline(2, "garlic", "2", 1),
+                             _iline(3, "salt", "1 tsp", 2)])
+    new = _blob(ingredients=[_iline(3, "salt", "2 tsp", 0), _iline(1, "oil", "1 tbsp", 1),
+                             _iline(2, "garlic", "2", 2)])
+    got = diff_snapshots(old, new)
+    assert [(e["type"], e.get("field")) for e in got] == [("modified", "amount")]
+    assert (got[0]["from"], got[0]["to"], got[0]["row_id"]) == ("1 tsp", "2 tsp", 3)
+
+
+def test_a_rename_past_the_similarity_threshold_is_ONE_modification():
+    """Text matching splits a rename it cannot recognize into a removal plus an addition. The id does
+    not care how far the name travelled."""
+    old = _blob(ingredients=[_iline(1, "milk lukewarm", "125 g", 0)])
+    new = _blob(ingredients=[_iline(1, "smoked paprika and ancho chile", "125 g", 0)])
+    got = diff_snapshots(old, new)
+    assert [(e["type"], e.get("field")) for e in got] == [("modified", "name")]
+
+
+def test_an_amount_respelled_with_an_ascii_fraction_emits_nothing():
+    """⚠️ "½ tsp" AND "1/2 tsp" ARE THE SAME CHARACTERS ON THE PAGE. The reading view runs every amount
+    through toUnicodeFractions, so comparing the raw strings put a mark on a row reading
+    "½ tsp -> ½ tsp". Measured on live: 608 amounts hold a glyph and 288 an ascii spelling."""
+    for a, b in (("½ tsp", "1/2 tsp"), ("1½ cups", "1 1/2 cups"), ("¼ cup", "1/4 cup"),
+                 ("2 ½ teaspoons", "2 1/2 tsp")):
+        old = _blob(ingredients=[_iline(1, "salt", a, 0)])
+        new = _blob(ingredients=[_iline(1, "salt", b, 0)])
+        assert diff_snapshots(old, new) == [], f"{a!r} vs {b!r}"
+
+
+def test_a_real_amount_change_still_marks():
+    """The control. Normalizing the representation must not normalize the NUMBER away."""
+    old = _blob(ingredients=[_iline(1, "salt", "½ tsp", 0)])
+    new = _blob(ingredients=[_iline(1, "salt", "1 tsp", 0)])
+    got = diff_snapshots(old, new)
+    assert [(e["field"], e["from"], e["to"]) for e in got] == [("amount", "½ tsp", "1 tsp")]
+
+
+def test_whitespace_only_differences_emit_nothing():
+    """A step re-wrapped, a name with a doubled space, a note with a trailing one. Same words."""
+    old = _blob(ingredients=[_iline(1, "brown  sugar", "1 cup", 0, note="packed")],
+                steps=[_istep(9, "Mix the eggs.", 0)])
+    new = _blob(ingredients=[_iline(1, "brown sugar", "1 cup", 0, note=" packed ")],
+                steps=[_istep(9, "Mix\nthe  eggs. ", 0)])
+    assert diff_snapshots(old, new) == []
+
+
+def test_null_against_empty_emits_nothing_on_a_row_or_a_field():
+    old = _blob(recipe={"descr": None, "total_time": None},
+                ingredients=[dict(_iline(1, "salt", "1 tsp", 0), note=None)])
+    new = _blob(recipe={"descr": "", "total_time": ""},
+                ingredients=[dict(_iline(1, "salt", "1 tsp", 0), note="")])
+    assert diff_snapshots(old, new) == []
+
+
+def test_a_conversion_that_also_retitles_emits_nothing():
+    """Item 2. The name key could never see this: the row's name is gone from the page, so it read as
+    an ingredient removed plus a heading added. The id recognizes the row whatever it is called, and a
+    kind change carries no annotation by standing ruling."""
+    old = _blob(ingredients=[_iline(1, "milk", "125 g", 0), _iline(2, "flour", "500 g", 1)])
+    new = _blob(ingredients=[_ihead(1, "FOR THE DOUGH", 0, label="FOR THE DOUGH"),
+                             _iline(2, "flour", "500 g", 1)])
+    assert diff_snapshots(old, new) == []
+
+
+def test_a_null_id_baseline_row_still_matches_by_text():
+    """⚠️ THE 24 ROWS THE COMMIT-3 BACKFILL COULD NOT BIND. This is tacos' garlic: the baseline holds
+    `2` / "garlic cloves , minced" and live holds `2 cloves` / "garlic , minced" after the qty/unit
+    re-split. Matching by id ALONE would find no partner for the null and emit a removal plus an
+    addition, which is worse output than the text diff gives today. It falls back instead."""
+    old = _blob(ingredients=[_line("garlic cloves , minced", "2", 0)])          # no id
+    new = _blob(ingredients=[_iline(5, "garlic , minced", "2 cloves", 0)])
+    got = diff_snapshots(old, new)
+    assert sorted(e["field"] for e in got) == ["amount", "name"]
+    assert all(e["type"] == "modified" for e in got), got
+
+
+def test_a_null_id_row_converted_to_a_heading_still_emits_nothing():
+    """The same fallback for kind changes: a null-id baseline row keeps the NAME key it always had, so
+    switching kind_change_key to the id did not cost those 24 rows their conversion suppression."""
+    old = _blob(ingredients=[_line("milk", "125 g", 0), _iline(2, "flour", "500 g", 1)])
+    new = _blob(ingredients=[_ihead(7, "milk", 0, label="milk"), _iline(2, "flour", "500 g", 1)])
+    assert diff_snapshots(old, new) == []
+
+
+def test_two_rows_with_the_same_name_cannot_be_confused():
+    """brioche-bread lists 9 names twice. Text matching has to pair duplicates by order and hope; the
+    id says which is which, so editing the SECOND salt marks the second row and not the first."""
+    old = _blob(ingredients=[_iline(1, "salt", "1 tsp", 0), _iline(2, "salt", "1 tsp", 1)])
+    new = _blob(ingredients=[_iline(1, "salt", "1 tsp", 0), _iline(2, "salt", "2 tsp", 1)])
+    got = diff_snapshots(old, new)
+    assert [(e["field"], e["row_id"], e["from"], e["to"]) for e in got] == \
+        [("amount", 2, "1 tsp", "2 tsp")]
+
+
+def test_every_entry_carries_the_current_rows_id():
+    """Item 7: the client anchors a mark by the row's id, so an entry without one cannot be placed.
+    A removal is the one exception and is placed by `section` instead."""
+    old = _blob(ingredients=[_iline(1, "salt", "1 tsp", 0), _iline(2, "oil", "1 tbsp", 1)],
+                steps=[_istep(9, "Mix.", 0)])
+    new = _blob(ingredients=[_iline(1, "salt", "2 tsp", 0), _iline(3, "pepper", "1 tsp", 1)],
+                steps=[_istep(9, "Mix well.", 0)])
+    got = diff_snapshots(old, new)
+    assert got, "expected some changes"
+    for e in got:
+        if e["type"] == "removed":
+            assert e["row_id"] is None
+        else:
+            assert e["row_id"] is not None, e
+
+
+def test_a_step_reorder_emits_nothing_and_a_step_edit_still_marks():
+    old = _blob(steps=[_istep(1, "Chop.", 0), _istep(2, "Cook.", 1), _istep(3, "Serve.", 2)])
+    moved = _blob(steps=[_istep(3, "Serve.", 0), _istep(1, "Chop.", 1), _istep(2, "Cook.", 2)])
+    assert diff_snapshots(old, moved) == []
+    edited = _blob(steps=[_istep(1, "Chop.", 0), _istep(2, "Cook slowly.", 1), _istep(3, "Serve.", 2)])
+    got = diff_snapshots(old, edited)
+    assert [(e["kind"], e["type"], e["row_id"]) for e in got] == [("step", "modified", 2)]
