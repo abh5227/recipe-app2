@@ -959,3 +959,33 @@ def test_the_step_heading_level_column_defaults_to_a_section_pg(pg):
         rows = conn.execute(text("SELECT text, is_heading, heading_level FROM recipe_steps "
                                  "WHERE recipe_id=:r ORDER BY position"), {"r": rid}).all()
     assert [(r.is_heading, r.heading_level) for r in rows] == [(1, 1), (0, 1)]
+
+
+def test_a_subheading_survives_a_save_on_the_real_engine_pg(pg):
+    """The level through the whole save path on Postgres, including the convert-back. The row id is
+    kept both ways, which is what a wait link and an annotation anchor are bound to."""
+    c = pg.client
+    rid = c.post("/api/recipes", json={
+        "name": "PG Sub", "is_test": True, "ingredients": [],
+        "steps": [{"heading": "Prep the chillis"}, "Deseed them.", "Simmer."]}).get_json()["id"]
+    steps = c.get(f"/api/recipes/{rid}").get_json()["steps"]
+    assert [s["heading_level"] for s in steps] == [1, 1, 1]
+
+    as_sub = [{"id": steps[0]["id"], "heading": steps[0]["text"], "level": 2},
+              {"id": steps[1]["id"], "text": steps[1]["text"]},
+              {"id": steps[2]["id"], "text": steps[2]["text"]}]
+    assert c.put(f"/api/recipes/{rid}", json={
+        "name": "PG Sub", "ingredients": [], "storage": [], "waits": [],
+        "steps": as_sub}).status_code == 200
+    after = c.get(f"/api/recipes/{rid}").get_json()["steps"]
+    assert [(s["is_heading"], s["heading_level"]) for s in after] == [(1, 2), (0, 1), (0, 1)]
+    assert [s["id"] for s in after] == [s["id"] for s in steps], "the ids are the anchors"
+
+    # Convert the subheading back to an ordinary step: the level goes to 1, the id does not move.
+    back = [{"id": steps[0]["id"], "text": steps[0]["text"]}] + as_sub[1:]
+    assert c.put(f"/api/recipes/{rid}", json={
+        "name": "PG Sub", "ingredients": [], "storage": [], "waits": [],
+        "steps": back}).status_code == 200
+    final = c.get(f"/api/recipes/{rid}").get_json()["steps"]
+    assert [(s["is_heading"], s["heading_level"]) for s in final] == [(0, 1), (0, 1), (0, 1)]
+    assert [s["id"] for s in final] == [s["id"] for s in steps]

@@ -73,9 +73,13 @@
   /* ⚠️ THE DESCRIPTION'S OWN SIZE, SPLIT OUT OF --fs-headnote. That token was doing three jobs at
      once: the description (.dek), the Prep/Cook/Plan-ahead line (.meta-stack) and the editor's
      description field (.ie-prose). Moving the description alone was impossible without moving the
-     time line with it. This value is DELIBERATELY IDENTICAL to --fs-headnote for now, so the split
-     lands with no visual change at all and the size is chosen separately. */
-  --fs-descr:    16px;     /* the recipe description, reading view and editor */
+     time line with it, and the split is what made this number choosable.
+     ⚠️ 14px IS ANDY'S PICK, MADE IN THE BROWSER against 14 / 14.5 / 15 / 16 on the real corpus. The
+     description is the publisher's blurb above the recipe, not the recipe, and at the headnote's
+     16px it competed with the method for the top of the page. THE EDITOR'S FIELD FOLLOWS IT because
+     .ie-prose reads the same token, which is the reason the token exists. The Prep/Cook line does
+     NOT: .meta-stack keeps --fs-headnote, so it is unmoved. */
+  --fs-descr:    14px;     /* the recipe description, reading view and editor */
   --fs-body:     18.5px;   /* a step up — the primary read was a touch small */
   --fs-amount:   15px;     /* mono, tabular — nudged with the body so ledger figures keep proportion */
   --fs-label:    12px;     /* mono, uppercase, tracked */
@@ -84,7 +88,11 @@
 
   --page-measure: 760px;   /* recipe content column */
   --hand-gutter:  0px;     /* Round 2: right margin reserved for the hand-layer margin-notes */
-  --col-amount:   5rem;    /* ledger amount column (fixed; fits the widest dual "2 lb / 1 kg") */
+  /* ⚠️ 7rem IS ANDY'S PICK, AND IT IS ONE VALUE FOR EVERY SCREEN SIZE. At 5rem, 23 amounts over 22
+     recipes wrapped to a second line ("1 medium clove garlic" on chicken-chow-fun was the one he
+     found). The column is declared once here and no media query overrides it, so phone and desktop
+     move together by construction rather than by a rule that has to be kept in step. */
+  --col-amount:   7rem;    /* ledger amount column (fixed; fits the widest dual "2 lb / 1 kg") */
   --col-weight:   3.5rem;  /* ledger weight column — snug; weight right-aligns to hug the name */
 
   /* compatibility aliases — older rules keep rendering; each is retired as Stages B–D
@@ -1249,10 +1257,28 @@ a:hover { color: var(--berry-lift); }
    powder"). Uppercasing a sentence makes it slower to read and louder than the step under it.
    The tracking went with the uppercase, which is what it was there for. Bold and the green keep it
    a heading; the rule under it keeps the section boundary. */
+/* ⚠️ THE BASE RULE IS THE SECTION HEADING, NOT A SHARED CORE, so a .group that somehow reaches the
+   method column without a level class still renders as one. Level 1 is the column's default
+   (migration 059) and a bare .group means "no level was stated", which is the same answer. */
 .steps li.group {
-  font-family: var(--font-serif); font-size: 16px; font-weight: 700;
+  font-family: var(--font-serif); font-size: 17px; font-weight: 700;
   letter-spacing: normal; text-transform: none; color: var(--green);
-  margin: 14px 0 8px; padding: 0 0 5px; border-bottom: 1.5px solid var(--border-defined);   /* "more defined" (B): defined underline */
+  margin: 22px 0 10px; padding: 0 0 5px; border-bottom: 1.5px solid var(--border-defined);   /* "more defined" (B): defined underline */
+}
+/* A section OPENS A GROUP, which is space above rather than a second rule. 22px against the step
+   list's 16px row gap reads as a break; the first heading needs none, because the method column's
+   own heading is already above it. */
+.steps li.group:first-child { margin-top: 0; }
+/* ⚠️ A SUBHEADING IS A LABEL LIFTED OFF ONE STEP, so it belongs TO that step rather than over a
+   group of them, and the spacing is what says so: 4px below against 22px above the next section.
+   104 of the ~220 headings are these (46 joined to their step by a colon, 58 by a dash), and at the
+   section's weight a recipe like birria-tacos with twelve of them read as twelve sections.
+   NO RULE, deliberately: the rule is the section boundary, and drawing one under a label that owns
+   the single step below it draws the boundary in the wrong place. Smaller and bold is enough to
+   separate it from the step, because the step is neither. */
+.steps li.group.h2 {
+  font-size: 15px;
+  margin: 16px 0 4px; padding: 0; border-bottom: none;
 }
 
 /* Stage 1a: per-step TipTap editor host (edit mode only). Inherits step typography and borrows the
@@ -1302,6 +1328,10 @@ a:hover { color: var(--berry-lift); }
    heading's is at line 343, this padding would lose its reason entirely and must be re-derived from
    whatever the row looks like then — not carried over on the assumption it still applies. */
 .steps li.group.step-edit { padding-bottom: 9px; }
+/* ⚠️ AND THE SUBHEADING TAKES IT BACK, because the 9px above is justified BY the section's underline
+   and says so in as many words. A subheading paints no rule, so there is nothing for the control to
+   sit on and the padding would only push the row apart from the step it names. */
+.steps li.group.h2.step-edit { padding-bottom: 0; }
 /* Editor parity: the step heading's editable field (a plain input — see editStepHeadingField).
    letter-spacing + text-transform are NOT decorative repetition and must not be "cleaned up": `.ie`
    gives the field `font: inherit`, which carries li.group's family/size/weight, and `color: inherit`
@@ -1315,8 +1345,14 @@ a:hover { color: var(--berry-lift); }
    trade — --rule-soft survives on every li.erow there; this column has no such fallback. The colour
    is zeroed rather than the border BOX so the field's geometry is identical either way (and a
    none-style side can't be repainted by a colour-only rule — the bug that bit the trash's hover). */
-.e-step-heading { display: block; width: 100%; letter-spacing: 0.1em; text-transform: uppercase;
-  border-bottom-color: transparent; }
+/* ⚠️ THE letter-spacing AND text-transform OVERRIDES ARE GONE, and their removal is the fix for a
+   defect this file's own comment predicted. They existed because the UA stylesheet resets both on a
+   form control, and li.group used to be tracked uppercase, so the field had to restate them or the
+   heading read lowercase and un-tracked while editing. li.group became normal case and normal
+   tracking when the headings stopped being short labels, and these two were left behind — so the
+   editor kept shouting a heading the reading view had already quietened. The UA reset now lands on
+   exactly the values li.group wants, so the right number of declarations here is none. */
+.e-step-heading { display: block; width: 100%; border-bottom-color: transparent; }
 /* (A stage 2 removed the two `.steps li.step-edit .rbtn.rm` overrides that lived here — they unfenced
    the step trash, which was alone in its cluster. There is no step trash any more: delete is a .danger
    item in the row ⋯ menu. The lesson they recorded is still live in .rbtn.rm above — drop a fence's

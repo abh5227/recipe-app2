@@ -80,9 +80,20 @@ const ROWS = [
 ];
 
 const STEPS = [
-  { id: 9101, position: 0, is_heading: 1, text: "MAKE THE SAUCE" },
+  { id: 9101, position: 0, is_heading: 1, text: "MAKE THE SAUCE", heading_level: 1 },
   { id: 9102, position: 1, is_heading: 0, text: "Whisk it." },
   { id: 9103, position: 2, is_heading: 0, text: "Rest.\n\nAIR FRYER OPTION:\nShake off excess." },
+  // migration 059: a SUBHEADING, the shape 104 lifted lead-in labels have.
+  { id: 9104, position: 3, is_heading: 1, text: "Deseed", heading_level: 2 },
+  // A heading whose level the editor never set — a row from before 059, and the shape a stale
+  // bundle still posts. It must read as a section rather than as "no level".
+  { id: 9105, position: 4, is_heading: 1, text: "For the dough:" },
+  // ⚠️ NO DORMANT-LEVEL ROW HERE, AND THAT IS THE FIXTURE'S SCOPE RATHER THAN AN OMISSION. These
+  // are DATABASE rows, and a non-heading carrying level 2 is not a state the database holds:
+  // app.py's _step_parts stores 1 on every ordinary step, so the writer normalizes it away. A DRAFT
+  // row can carry one, after a convert-and-convert-back, and that case is asserted directly in
+  // tests/js/save-payload-sync.test.js where it belongs.
+  { id: 9106, position: 5, is_heading: 0, text: "Knead for 10 minutes." },
 ];
 
 const out = {

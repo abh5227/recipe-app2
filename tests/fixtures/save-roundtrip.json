@@ -314,11 +314,13 @@
     "id": 9101,
     "position": 0,
     "is_heading": 1,
-    "text": "MAKE THE SAUCE"
+    "text": "MAKE THE SAUCE",
+    "heading_level": 1
    },
    "payload": {
     "id": 9101,
-    "heading": "MAKE THE SAUCE"
+    "heading": "MAKE THE SAUCE",
+    "level": 1
    }
   },
   {
@@ -343,6 +345,45 @@
    "payload": {
     "id": 9103,
     "text": "Rest.\n\nAIR FRYER OPTION:\nShake off excess."
+   }
+  },
+  {
+   "row": {
+    "id": 9104,
+    "position": 3,
+    "is_heading": 1,
+    "text": "Deseed",
+    "heading_level": 2
+   },
+   "payload": {
+    "id": 9104,
+    "heading": "Deseed",
+    "level": 2
+   }
+  },
+  {
+   "row": {
+    "id": 9105,
+    "position": 4,
+    "is_heading": 1,
+    "text": "For the dough:"
+   },
+   "payload": {
+    "id": 9105,
+    "heading": "For the dough:",
+    "level": 1
+   }
+  },
+  {
+   "row": {
+    "id": 9106,
+    "position": 5,
+    "is_heading": 0,
+    "text": "Knead for 10 minutes."
+   },
+   "payload": {
+    "id": 9106,
+    "text": "Knead for 10 minutes."
    }
   }
  ]

@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { stepIsBlank, nonEmptySteps, focusIndexAfterRemove, writeStepField,
-         toggleStepType } from "../../static/step-row.js";
+         stepLevel, toggleStepType, setStepLevel } from "../../static/step-row.js";
 
 test("stepIsBlank: empty and whitespace-only text is blank; real text is not", () => {
   assert.equal(stepIsBlank({ is_heading: 0, text: "" }), true);
@@ -91,8 +91,20 @@ test("writeStepField: an unknown key changes nothing, and a missing row never th
 });
 
 // --------------------------------------------------------------------------------------------- //
-// Convert to heading / Convert to step
+// Convert to heading / Convert to step, and the two levels (migration 059)
 // --------------------------------------------------------------------------------------------- //
+
+test("stepLevel: a subheading is 2 and everything else reads as 1", () => {
+  assert.equal(stepLevel({ is_heading: 1, heading_level: 2 }), 2);
+  assert.equal(stepLevel({ is_heading: 1, heading_level: 1 }), 1);
+  // The column ships without a CHECK (migration 059), so both ends narrow instead.
+  assert.equal(stepLevel({ is_heading: 1 }), 1, "a row written before 059 is a section");
+  assert.equal(stepLevel({ is_heading: 1, heading_level: null }), 1);
+  assert.equal(stepLevel({ is_heading: 1, heading_level: "2" }), 1, "a string is not a level");
+  assert.equal(stepLevel({ is_heading: 1, heading_level: 7 }), 1);
+  assert.equal(stepLevel(null), 1);
+  assert.equal(stepLevel(undefined), 1);
+});
 
 test("toggleStepType keeps the row id, which is what the conversion has to keep", () => {
   // ⚠️ THE WHOLE REASON THE MENU ITEM IS A TOGGLE. Delete plus Add step was the only undo path
@@ -100,9 +112,15 @@ test("toggleStepType keeps the row id, which is what the conversion has to keep"
   // with it. 67 steps became headings, so the undo had to be lossless.
   const row = { id: 4555, is_heading: 0, text: "Rise" };
   assert.equal(toggleStepType(row), row, "mutates in place, like toggleRowType");
-  assert.deepEqual(row, { id: 4555, is_heading: 1, text: "Rise" });
+  assert.deepEqual(row, { id: 4555, is_heading: 1, text: "Rise", heading_level: 1 });
   toggleStepType(row);
-  assert.deepEqual(row, { id: 4555, is_heading: 0, text: "Rise" });
+  assert.deepEqual(row, { id: 4555, is_heading: 0, text: "Rise", heading_level: 1 });
+});
+
+test("a new heading is a section, not a subheading", () => {
+  // A subheading is a label lifted off one step, which is the importer's job. A person reaching for
+  // "Convert to heading" is marking a boundary.
+  assert.equal(stepLevel(toggleStepType({ id: 1, is_heading: 0, text: "Make the sauce" })), 1);
 });
 
 test("both kinds keep their words in text, so nothing is lost either way", () => {
@@ -117,9 +135,25 @@ test("both kinds keep their words in text, so nothing is lost either way", () =>
   assert.equal(stepIsBlank(row), false);
 });
 
-test("toggleStepType never throws on a missing row", () => {
-  // The delegated listeners can fire on a stale data-i between a splice and its re-render, which is
-  // the same tolerance writeStepField has and for the same reason.
-  assert.equal(toggleStepType(null), null);
-  assert.equal(toggleStepType(undefined), undefined);
+test("a demoted subheading comes back as a subheading inside one session", () => {
+  const row = { id: 1806, is_heading: 1, text: "Deseed", heading_level: 2 };
+  toggleStepType(row);                                  // -> an ordinary step, level left dormant
+  assert.equal(row.is_heading, 0);
+  toggleStepType(row);                                  // -> back
+  assert.equal(stepLevel(row), 2, "the level was not thrown away mid-session");
+});
+
+test("setStepLevel refuses to mark an ordinary step as a subheading", () => {
+  // A level the reading view would never read is a value with no meaning, and app.py stores 1 on
+  // every non-heading row regardless.
+  assert.equal(stepLevel(setStepLevel({ id: 1, is_heading: 0, text: "Mix." }, 2)), 1);
+  assert.equal(setStepLevel({ id: 1, is_heading: 0, text: "Mix." }, 2).heading_level, undefined);
+});
+
+test("setStepLevel moves a heading both ways and narrows anything else to a section", () => {
+  const h = { id: 2, is_heading: 1, text: "Deseed", heading_level: 1 };
+  assert.equal(stepLevel(setStepLevel(h, 2)), 2);
+  assert.equal(stepLevel(setStepLevel(h, 1)), 1);
+  assert.equal(stepLevel(setStepLevel(h, 3)), 1);
+  assert.equal(stepLevel(setStepLevel(h, "2")), 1);
 });

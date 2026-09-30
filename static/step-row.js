@@ -41,19 +41,41 @@
     return row;
   }
 
+  // ---- heading level (migration 059) ------------------------------------------------------------
+
+  // A heading's level, normalized. 1 = a section heading, 2 = a subheading. Anything else reads as 1,
+  // mirroring app.py's _step_parts: the column ships without a CHECK, so both ends narrow instead.
+  function stepLevel(row) {
+    return (row && row.heading_level) === 2 ? 2 : 1;
+  }
+
   // Lossless step<->heading toggle — the step twin of ingredient-row.js's toggleRowType, and much
   // shorter than it for a real reason: BOTH step kinds keep their words in `text` (see stepIsBlank
   // and stepToPayload), so there is no second field to seed from and nothing to leave dormant. The
   // ingredient version has to move a name into a heading title and back.
   //
-  // ⚠️ THE ROW ID IS KEPT, WHICH IS THE WHOLE REASON THIS IS A TOGGLE. Delete plus Add step was the
-  // only undo path before, and it mints a NEW id — taking the wait link, the annotation anchor and
-  // any margin mark with it. 67 steps have just become headings, so the undo had to be lossless.
-  // Returns the same (mutated) row.
+  // ⚠️ THE LEVEL IS LEFT ALONE, so a heading demoted to a step and promoted back inside one editing
+  // session returns as the subheading it was. It does NOT survive a save: app.py stores 1 on every
+  // non-heading row, because a level is only meaningful on a heading and a dormant 2 on an ordinary
+  // step is a value no reader of that column would use. A convert-back after a reload gives a
+  // section heading, which is the level a new heading gets anyway.
+  //
+  // ⚠️ A NEW HEADING IS A SECTION, NOT A SUBHEADING. A subheading is a label lifted off one step and
+  // the importer is what creates those; a person reaching for "Convert to heading" is marking a
+  // boundary. Returns the same (mutated) row.
   function toggleStepType(row) {
     if (!row) return row;
     row.is_heading = row.is_heading ? 0 : 1;
+    if (row.is_heading && !row.heading_level) row.heading_level = 1;
     return row;
   }
 
-  export { stepIsBlank, nonEmptySteps, focusIndexAfterRemove, writeStepField, toggleStepType };
+  // Set a heading's level. Only meaningful on a heading row, so it refuses to mark an ordinary step
+  // as a subheading rather than storing a value the reading view would ignore.
+  function setStepLevel(row, level) {
+    if (row && row.is_heading) row.heading_level = level === 2 ? 2 : 1;
+    return row;
+  }
+
+  export { stepIsBlank, nonEmptySteps, focusIndexAfterRemove, writeStepField,
+           stepLevel, toggleStepType, setStepLevel };

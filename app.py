@@ -382,10 +382,11 @@ def _promote_library_row(s, library_id, known):
 
 
 def _step_parts(step):
-    """(text, is_heading) for ONE payload step, in either wire form.
+    """(text, is_heading, heading_level) for ONE payload step, in either wire form.
 
     ⚠️ TWO WIRE FORMS, AND BOTH ARE LIVE.
       {"heading": "MAKE THE SAUCE"}   a section heading. The original form, unchanged.
+      {"heading": "Deseed", "level": 2}   a SUBHEADING (migration 059).
       {"text": "Whisk it."}           a method step (option C, commit 1). Carries the row's `id`.
       "Whisk it."                     a method step as a BARE STRING. The original form, and it is
                                       not going away: the import review posts plain text, every
@@ -396,13 +397,25 @@ def _step_parts(step):
     SILENTLY IN BOTH. write_recipe_rows read a step as `step if isinstance(step, str) else ""`, so
     a {"text": ...} step would have been written BLANK, and nonEmptySteps treats a blank step as a
     deletion. resolve_recipe_payload's [[key]] scan read `(step or {}).get("heading", "")`, so the
-    links inside an object step would not have been checked at all. One reader now, not two."""
+    links inside an object step would not have been checked at all. One reader now, not two.
+
+    ⚠️ THE LEVEL IS NARROWED HERE, AND THAT IS THE ONLY GUARD THERE IS. Migration 059 ships without a
+    CHECK, because SQLite cannot add one without recreating the table. Anything that is not 2 reads
+    as 1, so a missing key, a null, a string and a 7 all land on the default rather than in the
+    column. A NON-HEADING step is always 1: the level is meaningless there, and a step that carries 2
+    dormantly from a conversion must not put a key on a content row (see snapshot_step_row).
+
+    ⚠️ AN OLD BUNDLE POSTS NO LEVEL AND THAT IS WHY THE DEFAULT IS 1, not "whatever was stored". A
+    browser holding the pre-059 bundle across a deploy sends {"heading": "Deseed"} for a row that IS
+    a subheading, and honouring the absence would silently promote it. The cost is the honest one: a
+    save from a stale bundle flattens the levels it did not know about, which is visible and fixable,
+    where the alternative is a payload that can never demote a heading at all."""
     if isinstance(step, dict):
         heading = step.get("heading")
         if heading:
-            return heading, True
-        return (step.get("text") or ""), False
-    return (step if isinstance(step, str) else ""), False
+            return heading, True, (2 if step.get("level") == 2 else 1)
+        return (step.get("text") or ""), False, 1
+    return (step if isinstance(step, str) else ""), False, 1
 
 
 def resolve_recipe_payload(s, payload, standing_step_links=frozenset()):
@@ -482,7 +495,7 @@ def resolve_recipe_payload(s, payload, standing_step_links=frozenset()):
     #    as a button from the TEXT alone and never checks that the key resolves, so a step reads
     #    identically either way. The step text is stored verbatim, so nothing about it moves.
     for step in steps:
-        text, _ = _step_parts(step)
+        text, _, _ = _step_parts(step)
         for m in re.finditer(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]", text or ""):
             key = m.group(1).strip()
             if key not in known and key not in standing_step_links:
@@ -1031,7 +1044,11 @@ def write_recipe_rows(s, rid, clean, stored=None):
             step_carry.setdefault((bool(o["is_heading"]), o["text"] or ""), []).append(o)
 
     kept = set()
-    for pos, ((text_val, is_heading), into) in enumerate(prepared_steps):
+    # ⚠️ THE CARRY KEY IS STILL (kind, text) AND heading_level IS NOT IN IT, on purpose. The key
+    #    answers "is this the same row I already had", and a level is a property of the row rather
+    #    than its identity: a heading whose level the user just changed is the same heading, and
+    #    adding the level would make it read as a delete plus an insert and lose the row id.
+    for pos, ((text_val, is_heading, level), into) in enumerate(prepared_steps):
         if into is None:
             pool = step_carry.get((bool(is_heading), text_val or ""))
             if pool:
@@ -1040,11 +1057,13 @@ def write_recipe_rows(s, rid, clean, stored=None):
             if into["id"] in kept:                      # see the ingredient guard above
                 raise RuntimeError(f"two payload steps resolved to stored row {into['id']}")
             s.execute(update(rs).where(rs.c.id == into["id"]).values(
-                position=pos, is_heading=1 if is_heading else 0, text=text_val))
+                position=pos, is_heading=1 if is_heading else 0, text=text_val,
+                heading_level=level))
             kept.add(into["id"])
         else:
             s.execute(insert(rs).values(recipe_id=rid, position=pos,
-                                        is_heading=1 if is_heading else 0, text=text_val))
+                                        is_heading=1 if is_heading else 0, text=text_val,
+                                        heading_level=level))
 
     gone = [o["id"] for o in stored_step if o["id"] not in kept]
     if gone:
@@ -1074,7 +1093,11 @@ def serialize_recipe_content(s, rid):
         # row cannot be handed to the serializer as-is the way an ingredient row is — every key the
         # snapshot format wants has to be spelled out on this line, and a new one is silently null
         # otherwise. Ingredients need no such line: they go in as ORM rows and _get reads the attribute.
-        {"id": row.id, "position": row.position, "is_heading": row.is_heading, "text": row.body}
+        # heading_level is one of those keys, and it is read from the row rather than defaulted:
+        # snapshot_step_row omits it at level 1, so a missing value here would read as level 1 on a
+        # subheading and the baseline would silently disagree with the live row.
+        {"id": row.id, "position": row.position, "is_heading": row.is_heading, "text": row.body,
+         "heading_level": row.heading_level}
         for row in s.execute(
             select(RecipeStep).where(RecipeStep.recipe_id == rid)
             .order_by(RecipeStep.position, RecipeStep.id)

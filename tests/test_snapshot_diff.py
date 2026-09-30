@@ -789,6 +789,39 @@ def test_a_step_conversion_does_not_hide_a_real_edit_elsewhere():
            [("step", "modified", 3)]
 
 
+# ---- the heading LEVEL (migration 059) ----------------------------------------------------------
+
+def test_changing_a_headings_level_emits_nothing():
+    """⚠️ A LEVEL IS ORGANIZATION, NOT CONTENT, which is the same ruling headings have always had.
+    The diff compares a heading by its TEXT, so a level change reaches no comparison at all and the
+    answer falls out rather than being special-cased. This test exists because that is exactly the
+    kind of correctness that breaks quietly the next time the heading comparison gains a key."""
+    old = _blob(steps=[_istep(1, "Mix", 0),
+                       dict(_istep(2, "Deseed", 1, is_heading=1), heading_level=1)])
+    new = _blob(steps=[_istep(1, "Mix", 0),
+                       dict(_istep(2, "Deseed", 1, is_heading=1), heading_level=2)])
+    assert diff_snapshots(old, new) == []
+    assert diff_snapshots(new, old) == [], "and demoting back is silent too"
+
+
+def test_a_level_change_does_not_hide_a_real_edit():
+    old = _blob(steps=[_istep(1, "Mix", 0),
+                       dict(_istep(2, "Deseed", 1, is_heading=1), heading_level=1),
+                       _istep(3, "Bake 30 min", 2)])
+    new = _blob(steps=[_istep(1, "Mix", 0),
+                       dict(_istep(2, "Deseed", 1, is_heading=1), heading_level=2),
+                       _istep(3, "Bake 40 min", 2)])
+    assert [(e["kind"], e["type"], e["row_id"]) for e in diff_snapshots(old, new)] == \
+           [("step", "modified", 3)]
+
+
+def test_a_renamed_subheading_is_still_reported():
+    """The level is silent. The WORDS are not, and a heading rename has always been reported."""
+    old = _blob(steps=[dict(_istep(2, "Deseed", 0, is_heading=1), heading_level=2)])
+    new = _blob(steps=[dict(_istep(2, "Deseed and chop", 0, is_heading=1), heading_level=2)])
+    assert [(e["kind"], e["type"]) for e in diff_snapshots(old, new)] == [("heading", "modified")]
+
+
 def test_a_deleted_step_heading_is_still_reported():
     """Suppression pairs a conversion. A heading that simply went away has no counterpart and must
     still read as removed, or deleting a section would go silent."""

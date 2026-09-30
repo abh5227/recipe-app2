@@ -57,6 +57,14 @@ def _get(row, key):
 
 
 SNAPSHOT_STEP_FIELDS = ("id", "position", "is_heading", "text")   # `id` — see the note above
+# ⚠️ heading_level IS NOT IN THAT TUPLE, AND IT IS STILL IN THE SNAPSHOT. snapshot_step_row adds the
+# key ONLY when the level is 2, which is what keeps all 300 stored baselines byte-identical to their
+# recipe's current serialization. Emitting it unconditionally would have made every recipe differ
+# from its baseline on the day migration 059 shipped, ending _recipe_annotations' byte-equal
+# short-circuit for all of them at once — the exact cost the row-id key had to pay with a backfill
+# (see the note above SNAPSHOT_ING_FIELDS). Level 1 is the default and "no key" means the same
+# thing, so the trick the waits and storage keys use is available here, and it is used.
+SNAPSHOT_STEP_LEVEL_DEFAULT = 1
 
 
 def kind_change_key(row):
@@ -101,8 +109,22 @@ def kind_change_name_key(row):
 
 
 def snapshot_step_row(row):
-    """One step row, projected for the snapshot. Public for the same reason snapshot_ing_row is."""
-    return {k: _get(row, k) for k in SNAPSHOT_STEP_FIELDS}
+    """One step row, projected for the snapshot. Public for the same reason snapshot_ing_row is.
+
+    ⚠️ heading_level IS EMITTED ONLY WHEN IT IS 2, for the reason stated above the field tuple: a key
+    every row carried would have ended the byte-equal short-circuit for all 300 recipes at once.
+    A subheading is the only state worth recording, and a recipe that gains one stops being
+    byte-equal to its baseline, which is correct when the change came from a cook and is why the
+    lockstep conversion writes the key into both halves together.
+
+    ⚠️ AND ONLY ON A HEADING. The column is NOT NULL, so an ordinary step carries 1 and a converted
+    one could carry 2 dormantly, exactly as a converted ingredient heading keeps its label. Reading
+    the level on a non-heading row would put a key on a content row, where snapshot_headsync's P1
+    compares old against new byte for byte and would report the content as changed."""
+    out = {k: _get(row, k) for k in SNAPSHOT_STEP_FIELDS}
+    if out.get("is_heading") and _get(row, "heading_level") == 2:
+        out["heading_level"] = 2
+    return out
 
 
 def snapshot_ing_row(row):

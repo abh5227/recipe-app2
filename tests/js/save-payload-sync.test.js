@@ -114,3 +114,27 @@ test("a heading payload carries the title and nothing else", () => {
                              qty: "1 tsp", quantity: "1", unit: "tsp", note: "flaky" });
   assert.deepEqual(Object.keys(out).sort(), ["heading", "id"]);
 });
+
+// --------------------------------------------------------------------------------------------- //
+// Migration 059: the heading level goes back with the heading
+// --------------------------------------------------------------------------------------------- //
+test("a heading's level goes back, and a section heading says so explicitly", () => {
+  const headings = FIX.steps.filter((x) => x.row.is_heading);
+  assert.ok(headings.length >= 3, "the fixture lost its heading shapes");
+  for (const { row, payload } of headings) {
+    assert.equal(payload.level, row.heading_level === 2 ? 2 : 1);
+  }
+  // ⚠️ A HEADING WITH NO STORED LEVEL SENDS 1, NOT NOTHING. Every row written before 059 is in that
+  // shape, and an absent key would leave the server guessing at the exact moment it must not.
+  const preMigration = FIX.steps.find((x) => x.row.is_heading && x.row.heading_level === undefined);
+  assert.equal(preMigration.payload.level, 1);
+});
+
+test("an ordinary step sends no level, even carrying a dormant one", () => {
+  // ⚠️ A DRAFT ROW, NOT A FIXTURE ROW, BECAUSE THE DATABASE NEVER HOLDS THIS. toggleStepType leaves
+  // heading_level alone so a heading demoted and promoted again inside one session comes back as
+  // the subheading it was, which puts a dormant 2 on a row that is currently an ordinary step.
+  // app.py stores 1 on every non-heading, so sending the key would be sending something discarded.
+  const dormant = { id: 9201, is_heading: 0, text: "Knead for 10 minutes.", heading_level: 2 };
+  assert.deepEqual(stepToPayload(dormant), { id: 9201, text: "Knead for 10 minutes." });
+});

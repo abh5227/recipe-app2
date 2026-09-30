@@ -237,6 +237,9 @@ class RecipeStep(Base):
     recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
     position = Column(Integer, nullable=False)
     is_heading = Column(Integer, nullable=False, server_default=text("0"))
+    # 1 = a section heading, 2 = a subheading. Read only when is_heading is 1; an ordinary step
+    # carries 1 because the column is NOT NULL and "not applicable" is not a level. See migration 059.
+    heading_level = Column(Integer, nullable=False, server_default=text("1"))
     # DB column is "text"; the attribute is renamed to avoid shadowing sqlalchemy.text.
     body = Column("text", Text, nullable=False)
     __table_args__ = (

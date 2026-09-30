@@ -5,7 +5,7 @@ import {
 } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
 import { nonEmptySteps, focusIndexAfterRemove, writeStepField,
-         toggleStepType } from "./step-row.js";
+         stepLevel, toggleStepType, setStepLevel } from "./step-row.js";
 import { insertIndexFor } from "./row-insert.js";
 import { removedInsertIndex } from "./annotation-place.js";
 import { annotationIndex } from "./annotation-index.js";
@@ -1007,8 +1007,15 @@ function stepHeadingTitle(text) {
   return String(text == null ? "" : text).trim().replace(/\s*:+$/, "");
 }
 
+// A heading's level as a class (migration 059). .h1 is a section heading, .h2 a subheading; both
+// keep .group so every existing selector, the annotation reader and the edit-mode row all still see
+// the row they always saw.
+function stepHeadingClass(row) {
+  return `group h${stepLevel(row)}`;
+}
+
 function renderStepRow(row, ann) {
-  if (row.is_heading) return `<li class="group">${esc(stepHeadingTitle(row.text))}</li>`;
+  if (row.is_heading) return `<li class="${stepHeadingClass(row)}">${esc(stepHeadingTitle(row.text))}</li>`;
   // O-c-1: an added step -> the whole line in the hand ink (NO "+" marker — a full paragraph of ink
   // against printed prose announces itself; see the .step-add note in styles.css); a reworded step ->
   // the struck original + the Kalam correction. Both are plain prose (no scaling/abbreviation — that's
@@ -1103,7 +1110,7 @@ function editStepRowTools(i) {
 function renderStepEditHost(row, i) {
   const tools = editStepRowTools(i);
   // Grip-only: the row is NOT a drag source (see the note above editStepRowTools).
-  if (row.is_heading) return `<li class="group step-edit">${editStepHeadingField(i, row.text)}${tools}</li>`;
+  if (row.is_heading) return `<li class="${stepHeadingClass(row)} step-edit">${editStepHeadingField(i, row.text)}${tools}</li>`;
   return `<li class="step step-edit"><div class="step-editor-host" data-i="${i}"></div>${tools}</li>`;
 }
 
@@ -1812,10 +1819,13 @@ function rowMenuItemsHTML(kind, i) {
     // ⚠️ THE STEP MENU OFFERED NO CONVERSION AT ALL UNTIL NOW, and the ingredient menu has had one
     // since A stage 2. That gap stopped mattering the moment 67 steps became headings: the only way
     // to undo a wrong conversion was Delete plus Add step, which mints a NEW row id and takes the
-    // wait link, the annotation anchor and any margin mark with it.
+    // wait link, the annotation anchor and any margin mark with it. The toggle keeps the id both
+    // ways, which is the whole reason it is a toggle and not a delete-and-insert.
     const row = view.draft.steps[i];
     const isHeading = !!(row && row.is_heading);
+    const level = `<button type="button" data-rm-act="level">${stepLevel(row) === 2 ? "Make section heading" : "Make subheading"}</button>`;
     return `${inserts}<button type="button" data-rm-act="toggle">${isHeading ? "Convert to step" : "Convert to heading"}</button>
+      ${isHeading ? level : ""}
       <div class="sep"></div><button type="button" class="danger" data-rm-act="delete">Delete</button>`;
   }
   const row = view.draft.ingredients[i];
@@ -1874,6 +1884,7 @@ function handleRowMenuAction(e) {
   }
   if (kind === "ing"  && act === "toggle") { toggleIngredientHeading(i); return true; }
   if (kind === "step" && act === "toggle") { toggleStepHeading(i); return true; }
+  if (kind === "step" && act === "level")  { toggleStepHeadingLevel(i); return true; }
   if (kind === "step" && act === "delete") { removeStep(i); return true; }
   return true;                                             // an item of this menu, but not one we know
 }
@@ -2959,6 +2970,14 @@ function toggleStepHeading(i) {
   markDirty(); rerenderEditSteps();
   if (view.draft.steps[i].is_heading) focusStepHeadingField(i); else focusStepEditor(i);
 }
+// One item, not two: a heading is a section or a subheading and nothing else, so the menu names the
+// state it would move to, exactly as Convert to heading / Convert to ingredient does.
+function toggleStepHeadingLevel(i) {
+  const row = view.draft.steps[i];
+  setStepLevel(row, stepLevel(row) === 2 ? 1 : 2);
+  markDirty(); rerenderEditSteps();
+  focusStepHeadingField(i);
+}
 function toggleIngredientHeading(i) {
   toggleRowType(view.draft.ingredients[i]);   // lossless in-place flip (Option A1; see ingredient-row.js)
   markDirty(); rerenderEditIngredients();
@@ -3220,7 +3239,7 @@ function ingToRow(x) {
   return ingRow({ type: "line", qty: x.qty, text: x.label || x.raw_text });
 }
 function stepToRow(x) {
-  if (x.is_heading) return stepRow({ type: "heading", heading: x.text });
+  if (x.is_heading) return stepRow({ type: "heading", heading: x.text, level: stepLevel(x) });
   return stepRow({ type: "step", text: x.text });
 }
 

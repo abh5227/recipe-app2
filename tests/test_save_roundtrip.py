@@ -51,9 +51,13 @@ def _seed(kitchen, rows=None, steps=None, name="Round Trip"):
                       (row.get("id"), rid, *[row.get(k) for k in COLS]))
         for s in steps:
             st = s["row"]
-            c.execute("INSERT INTO recipe_steps (id, recipe_id, position, is_heading, text) "
-                      "VALUES (?,?,?,?,?)",
-                      (st.get("id"), rid, st["position"], st["is_heading"], st["text"]))
+            # heading_level defaults to 1, so the fixture's level-1 and its non-heading rows can
+            # leave the key out and still seed the state the column actually holds.
+            c.execute("INSERT INTO recipe_steps "
+                      "(id, recipe_id, position, is_heading, heading_level, text) "
+                      "VALUES (?,?,?,?,?,?)",
+                      (st.get("id"), rid, st["position"], st["is_heading"],
+                       st.get("heading_level", 1), st["text"]))
         c.commit()
     return rid
 
@@ -68,8 +72,8 @@ def _rows(kitchen, rid):
 def _steps(kitchen, rid):
     with kitchen.conn() as c:
         return [dict(r) for r in c.execute(
-            "SELECT id, position, is_heading, text FROM recipe_steps WHERE recipe_id=? "
-            "ORDER BY position, id", (rid,))]
+            "SELECT id, position, is_heading, heading_level, text FROM recipe_steps "
+            "WHERE recipe_id=? ORDER BY position, id", (rid,))]
 
 
 def _strip_ids(rows):
@@ -347,7 +351,15 @@ def test_a_step_sent_as_an_object_keeps_its_text(kitchen):
     rid = _seed(kitchen)
     assert _save(kitchen, rid).status_code == 200
     assert [x["text"] for x in _steps(kitchen, rid)] == [x["row"]["text"] for x in FIX["steps"]]
-    assert [x["is_heading"] for x in _steps(kitchen, rid)] == [1, 0, 0]
+    # ⚠️ DERIVED FROM THE FIXTURE, NOT RESTATED. This read [1, 0, 0] and broke the moment migration
+    #    059 added three step shapes to the fixture, which is the second time a literal tally in a
+    #    test has gone red on a correct addition. The fixture is the source of truth for the shapes
+    #    the save must survive, so the expectation reads it.
+    assert [x["is_heading"] for x in _steps(kitchen, rid)] == \
+           [x["row"]["is_heading"] for x in FIX["steps"]]
+    assert [x["heading_level"] for x in _steps(kitchen, rid)] == \
+           [(x["row"].get("heading_level", 1) if x["row"]["is_heading"] else 1)
+            for x in FIX["steps"]], "a level is stored on a heading and never on an ordinary step"
 
 
 def test_a_step_sent_as_a_bare_string_still_works(kitchen):
@@ -429,8 +441,9 @@ def test_a_reorder_keeps_every_id_and_only_moves_the_positions(kitchen):
     after = {r["id"]: r["raw_text"] for r in _rows(kitchen, rid)}
     assert after == before                                    # same ids, same lines on them
     assert [r["position"] for r in _rows(kitchen, rid)] == list(range(len(FIX["rows"])))
+    order = [0, 2, 1] + list(range(3, len(FIX["steps"])))     # the swap above, then the rest as-is
     assert [x["text"] for x in _steps(kitchen, rid)] == \
-           [FIX["steps"][i]["row"]["text"] for i in (0, 2, 1)]
+           [FIX["steps"][i]["row"]["text"] for i in order]
     assert sorted(_step_ids(kitchen, rid)) == sorted(x["row"]["id"] for x in FIX["steps"])
 
 
@@ -561,8 +574,9 @@ def test_a_deleted_step_is_deleted_and_the_survivors_keep_their_ids(kitchen):
     steps = copy.deepcopy(FIX["steps"])
     del steps[1]
     assert _save(kitchen, rid, steps=steps).status_code == 200
-    assert _step_ids(kitchen, rid) == [9101, 9103]
-    assert [x["position"] for x in _steps(kitchen, rid)] == [0, 1]
+    survivors = [x["row"]["id"] for i, x in enumerate(FIX["steps"]) if i != 1]
+    assert _step_ids(kitchen, rid) == survivors
+    assert [x["position"] for x in _steps(kitchen, rid)] == list(range(len(survivors)))
 
 
 def test_a_new_line_gets_a_new_id_and_takes_nobody_elses(kitchen):

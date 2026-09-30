@@ -39,8 +39,21 @@ test("empty and null are safe", () => {
 });
 
 test("the render calls it and the editor does not", () => {
-  assert.match(APP, /class="group">\$\{esc\(stepHeadingTitle\(row\.text\)\)\}/,
+  // ⚠️ THE CLASS IS NO LONGER A LITERAL, which is why this matches the call and not the whole tag.
+  // A heading now carries its level (migration 059), so the tag is built from stepHeadingClass(row).
+  assert.match(APP, /\$\{esc\(stepHeadingTitle\(row\.text\)\)\}/,
     "reading mode strips the colon");
+  assert.match(APP, /stepHeadingClass\(row\)\}">\$\{esc\(stepHeadingTitle/,
+    "and it does so inside the levelled heading tag, not somewhere else");
   assert.match(APP, /editStepHeadingField\(i, row\.text\)/,
     "the editor shows the STORED text, colon and all");
+});
+
+test("the heading level reaches both views through one helper", () => {
+  // Reading and edit mode must agree about what a heading looks like, and they agree by calling the
+  // same function rather than by two tags being kept in step by hand.
+  assert.match(APP, /function stepHeadingClass\(row\) \{\s*return `group h\$\{stepLevel\(row\)\}`/);
+  // The interpolation, so the function's own declaration is not counted as a call site.
+  const uses = APP.match(/\$\{stepHeadingClass\(row\)\}/g) || [];
+  assert.equal(uses.length, 2, "the reading row and the edit row, and nothing else");
 });

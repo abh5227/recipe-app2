@@ -21,6 +21,7 @@ import { canonicalizeUnit } from "./scaler.js";
 // back as the section title and renamed the heading on the next save. headingText is the one
 // definition of "which string is the title", and the server's _heading_title mirrors it.
 import { headingText } from "./ingredient-row.js";
+import { stepLevel } from "./step-row.js";
 
 // A row the user just added has no id yet. `undefined` and `null` are the same answer here, and
 // sending the key always means the server never has to tell "no id" from "the key is missing".
@@ -46,5 +47,11 @@ export function ingToPayload(x) {
 // app.py _step_parts, which reads both forms and is the only place that knows about either.
 export function stepToPayload(x) {
   const id = rowId(x);
-  return x.is_heading ? { id, heading: x.text || "" } : { id, text: x.text || "" };
+  // ⚠️ THE LEVEL RIDES ON THE HEADING FORM ONLY, and `level` rather than `heading_level` because the
+  // wire form has always named the field for what it is on THIS object ({heading: ...} for a row
+  // whose column is `text`). A non-heading sends none: app.py's _step_parts stores 1 on every
+  // ordinary step, so a dormant level would be a key the server throws away.
+  return x.is_heading
+    ? { id, heading: x.text || "", level: stepLevel(x) }
+    : { id, text: x.text || "" };
 }

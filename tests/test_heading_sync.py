@@ -446,3 +446,53 @@ def test_a_converted_step_that_was_also_retitled_is_matched_by_id():
     current = [step(0, "For Same Day Baking", heading=True, id=5), step(1, "Shape", id=6)]
     out = rows(sync_heading_layout(old, [], current), "steps")
     assert [(r["id"], r["is_heading"]) for r in out] == [(5, 0), (6, 0)], out
+
+
+# ---- the heading LEVEL (migration 059) -----------------------------------------------------------
+
+def test_a_level_one_heading_serializes_exactly_as_it_did_before_059():
+    """⚠️ THE BYTE-EQUAL SHORT-CIRCUIT IS WHAT THIS PROTECTS, and it is worth a test of its own.
+    _recipe_annotations returns [] without running the diff when a recipe's current serialization
+    equals its stored baseline, which holds for 275 of the 300 recipes. All 300 baselines were
+    written before heading_level existed, so a key emitted on every row would have made every one of
+    them differ on the day 059 shipped — the exact cost the row-id key had to pay with a backfill.
+    snapshot_step_row omits the key at level 1, so "level 1" and "no level" are the same bytes."""
+    pre_059 = blob([], [step(0, "Mix", id=1), step(1, "To finish", heading=True, id=2)])
+    with_level = blob([], [dict(step(0, "Mix", id=1), heading_level=1),
+                           dict(step(1, "To finish", heading=True, id=2), heading_level=1)])
+    assert with_level == pre_059
+
+
+def test_a_subheading_is_the_only_row_that_carries_the_key():
+    """And it is carried on the HEADING only. A non-heading row with a dormant level would put a key
+    on a CONTENT row, where content_safety_problems' P1 compares old against new byte for byte and
+    would report the recipe's own content as changed."""
+    out = rows(blob([], [dict(step(0, "Knead", id=1), heading_level=2),
+                         dict(step(1, "Deseed", heading=True, id=2), heading_level=2),
+                         dict(step(2, "To finish", heading=True, id=3), heading_level=1)]), "steps")
+    assert ["heading_level" in r for r in out] == [False, True, False]
+    assert out[1]["heading_level"] == 2
+
+
+def test_the_sync_carries_a_subheadings_level_through():
+    """⚠️ THE BASELINE'S HEADING LAYOUT IS REPLACED WHOLESALE FROM CURRENT, so a level set in the
+    editor reaches the baseline on the next save for free — _reinterleave takes the snapshot's own
+    row builder rather than a field tuple, which is what makes a new key ride through without this
+    module naming it. A level lifted into the baseline is what keeps the recipe byte-equal."""
+    old = blob([], [step(0, "Mix", id=1), step(1, "Bake", id=2)])
+    current = [step(0, "Mix", id=1),
+               dict(step(1, "Deseed", heading=True, id=77), heading_level=2),
+               step(2, "Bake", id=2)]
+    out = rows(sync_heading_layout(old, [], current), "steps")
+    assert [(r["id"], r["is_heading"], r.get("heading_level")) for r in out] == \
+           [(1, 0, None), (77, 1, 2), (2, 0, None)]
+
+
+def test_the_sync_is_still_content_safe_with_a_level():
+    """P1 compares content rows only, and the level never lands on one, so a subheading arriving in
+    the layout must not read as the recipe's content changing."""
+    old = blob([], [step(0, "Mix", id=1), step(1, "Bake", id=2)])
+    current = [step(0, "Mix", id=1),
+               dict(step(1, "Deseed", heading=True, id=77), heading_level=2),
+               step(2, "Bake", id=2)]
+    assert content_safety_problems(old, sync_heading_layout(old, [], current)) == []
