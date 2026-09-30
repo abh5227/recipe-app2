@@ -26,6 +26,7 @@ pytestmark = pytest.mark.skipif(
 )
 
 import app                       # noqa: E402
+import import_cleanup as cleanup  # noqa: E402
 import harness                   # noqa: E402  (auth-3b: reserved-user create + client login helpers)
 import import_write as iw        # noqa: E402  (W4: the import write path, exercised on PG below)
 import pg_harness                # noqa: E402
@@ -439,7 +440,9 @@ def test_import_commit_plan_writes_all_six_tables_pg(pg):
     steps = _fetch(pg.engine, "SELECT position, is_heading, text FROM recipe_steps "
                               "WHERE recipe_id=:r ORDER BY position", r=rid)
     assert [(s_["position"], s_["is_heading"], s_["text"]) for s_ in steps] == [
-        (0, 1, "PREP:"), (1, 0, "Chop the onion."), (2, 0, "Cook it.")]
+        # "Prep:", not "PREP:" — the importer stores a heading in sentence case now
+        # (import_cleanup.plan_step_rows rule 5), the same rule the corpus repair applied.
+        (0, 1, "Prep:"), (1, 0, "Chop the onion."), (2, 0, "Cook it.")]
 
     # 4. recipe_snapshots — the O-a original baseline, owner + the RECIPE's birth stamp (not now())
     snaps = _fetch(pg.engine, "SELECT * FROM recipe_snapshots WHERE recipe_id=:r", r=rid)
@@ -458,11 +461,20 @@ def test_import_commit_plan_writes_all_six_tables_pg(pg):
     assert _fetch(pg.engine, "SELECT * FROM ratings WHERE recipe_id=:r", r=rid) == []
 
     # 6. import_flags — a LINE flag carries its line's position; recipe-level flags carry NULL
+    # ⚠️ AND A STEP-STRUCTURE FLAG CARRIES A STEP'S POSITION, not a line's. One nullable column,
+    #    two row kinds, so "position is not None" is no longer enough to mean "an ingredient line".
+    #    The importer's own reporters make the same split (import_cleanup.STEP_STRUCTURE_FLAGS), and
+    #    this test would have passed silently while the dry-run report marked the wrong ingredient.
     flags = _fetch(pg.engine, "SELECT position, flag, reason FROM import_flags WHERE recipe_id=:r", r=rid)
-    line = [f for f in flags if f["position"] is not None]
+    line = [f for f in flags
+            if f["position"] is not None and f["flag"] not in cleanup.STEP_STRUCTURE_FLAGS]
     assert [f["flag"] for f in line] == ["multiplier"]
     assert line[0]["position"] == 2 and line[0]["reason"]       # the flagged line's own position + hint
     assert all(f["reason"] is None for f in flags if f["position"] is None)
+    # "PREP:" is recased on the way in, and that conversion is surfaced with the step's position.
+    steps_flagged = [f for f in flags if f["flag"] in cleanup.STEP_STRUCTURE_FLAGS]
+    assert [f["flag"] for f in steps_flagged] == ["step_heading_recased"]
+    assert steps_flagged[0]["position"] == 0 and "PREP:" in steps_flagged[0]["reason"]
 
 
 def test_import_step_rows_use_the_text_column_pg(pg):
@@ -480,7 +492,9 @@ def test_import_step_rows_use_the_text_column_pg(pg):
     rows = _fetch(pg.engine, "SELECT position, is_heading, text FROM recipe_steps "
                              "WHERE recipe_id=:r ORDER BY position", r=plan["recipe"]["id"])
     assert [(x["position"], x["is_heading"], x["text"]) for x in rows] == [
-        (0, 1, "PREP:"), (1, 0, "Chop."), (2, 0, "Cook.")]
+        # "Prep:", not "PREP:" — the importer stores a heading in sentence case now
+        # (import_cleanup.plan_step_rows rule 5), the same rule the corpus repair applied.
+        (0, 1, "Prep:"), (1, 0, "Chop."), (2, 0, "Cook.")]
     assert all(x["text"] for x in rows)          # not NULL/'' — a silently-defaulted column would show here
 
 

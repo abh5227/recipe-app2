@@ -2930,7 +2930,8 @@ def preview_body(plan, provenance, duplicate):
         "ingredients": [{k: row[k] for k in ("position", "is_heading", "qty", "quantity", "unit",
                                              "label", "raw_text", "grams", "secondary_measure")}
                         for row in plan["ingredients"]],
-        "steps": plan["steps"],                      # position / is_heading / text — already the shape
+        # position / is_heading / heading_level / text — already the shape
+        "steps": plan["steps"],
         "recipe_flags": plan["recipe_flags"],
         "review_flags": plan["review_flags"],
         "read_by": provenance["layer"],

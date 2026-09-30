@@ -362,13 +362,65 @@ def test_commit_writes_step_rows_text_heading_and_order(kitchen):
         s.commit()
     with kitchen.conn() as conn:
         rows = conn.execute(
-            "SELECT position, is_heading, text FROM recipe_steps WHERE recipe_id='stepped-dish' "
-            "ORDER BY position").fetchall()
+            "SELECT position, is_heading, heading_level, text FROM recipe_steps "
+            "WHERE recipe_id='stepped-dish' ORDER BY position").fetchall()
     assert [tuple(r) for r in rows] == [
-        (0, 1, "PREP:"),                                 # ALL-CAPS colon line -> a step heading
-        (1, 0, "Chop the onion."),
-        (2, 0, "Cook it."),
+        # ⚠️ "Prep:", NOT "PREP:". An ALL-CAPS colon line is still a heading, and the heading is now
+        #    stored in sentence case (import_cleanup.plan_step_rows rule 5). The corpus had 49 of
+        #    these shouting at the reader, and the repair pass and the importer share the rule so a
+        #    recipe imported tomorrow matches the corpus that was just repaired.
+        (0, 1, 1, "Prep:"),                              # a SECTION heading
+        (1, 0, 1, "Chop the onion."),
+        (2, 0, 1, "Cook it."),
     ]
+
+
+def test_an_imported_lead_in_label_becomes_a_subheading_above_its_step(kitchen):
+    """The shape birria-tacos and butter-chicken arrive in. The label names ONE step, so it is a
+    level 2 heading and the step under it keeps the author's remaining words."""
+    c = _cleaned(name="Labelled Dish", ingredient_lines=["1 egg"],
+                 directions=["Deseed – Trim and discard the stems.",
+                             "Bake for 30 – 35 minutes.",
+                             "Marinade: Mix the chicken with the yogurt."])
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, _plan(c)) is True
+        s.commit()
+    with kitchen.conn() as conn:
+        rows = conn.execute(
+            "SELECT position, is_heading, heading_level, text FROM recipe_steps "
+            "WHERE recipe_id='labelled-dish' ORDER BY position").fetchall()
+    assert [tuple(r) for r in rows] == [
+        (0, 1, 2, "Deseed"),
+        (1, 0, 1, "Trim and discard the stems."),
+        # ⚠️ A NUMERIC RANGE IS NOT A LABEL. Without that guard this row would have become a heading
+        #    reading "Bake for 30" with "35 minutes." as the step under it.
+        (2, 0, 1, "Bake for 30 – 35 minutes."),
+        (3, 1, 2, "Marinade"),
+        (4, 0, 1, "Mix the chicken with the yogurt."),
+    ]
+
+
+def test_an_imported_note_step_moves_into_the_notes(kitchen):
+    """bagel's yeast note and KFC's serving note are both steps that are not instructions. They go
+    where a reader looks for them, blank-line separated from whatever the publisher already wrote."""
+    c = _cleaned(name="Noted Dish", ingredient_lines=["1 egg"],
+                 directions=["Mix it.", "Note: Check your brand of yeast."], notes="Keeps 3 days.")
+    plan = _plan(c)
+    assert plan["recipe"]["notes"] == "Keeps 3 days.\n\nCheck your brand of yeast."
+    assert [r["text"] for r in plan["steps"]] == ["Mix it."]
+    moved = [f for f in plan["review_flags"] if f["flag"] == "step_note_moved"]
+    assert len(moved) == 1 and "Check your brand of yeast" in moved[0]["reason"]
+
+
+def test_every_structural_conversion_reaches_the_review_queue(kitchen):
+    """⚠️ THE QUEUE IS THE UNDO PATH. An importer that restructures a recipe silently leaves the
+    owner with no way to know it happened, and the step row menu can only undo what they can see."""
+    c = _cleaned(name="Flagged Dish", ingredient_lines=["1 egg"],
+                 directions=["**FOR THE SAUCE**", "Simmer – Reduce by half.", "Tip: Use a wide pan."])
+    plan = _plan(c)
+    flags = {f["flag"] for f in plan["review_flags"]}
+    assert {"step_heading_unwrapped", "step_label_lifted", "step_note_moved",
+            "step_heading_recased"} <= flags
 
 
 def test_commit_writes_every_ingredient_column(kitchen):

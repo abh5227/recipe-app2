@@ -1122,3 +1122,135 @@ def test_a_new_import_stores_the_normalized_time():
         "prep_time": "10 mins", "cook_time": "1 hour", "total_time": "",
     })
     assert cleaned["times"] == {"prep": "10 min", "cook": "1 hr", "total": ""}
+
+
+# ================================================================================================ #
+# STEP STRUCTURE (migration 059) — the rules a new import applies, and the SAME rules the repair
+# pass applies. scripts/convert_step_headings.py imports these names, so a recipe imported tomorrow
+# is structured the way the 300 already-imported recipes were just repaired to be.
+# ================================================================================================ #
+
+def _plan(lines, notes=""):
+    rows, out_notes, conv = ic.plan_step_rows(lines, notes)
+    shape = [(r["heading_level"] if r["is_heading"] else 0, r["text"]) for r in rows]
+    return shape, out_notes, {c["flag"] for c in conv}
+
+
+def test_birria_shape_an_emphasized_title_and_two_dash_labels():
+    """⚠️ THE NUMERIC RANGE IS THE ONE THAT MATTERS HERE. "Bake for 30 - 35 minutes" is a duration,
+    and without the guard it becomes a heading reading "Bake for 30" with "35 minutes" under it.
+    8 of the 62 dash candidates in the corpus review were this shape."""
+    shape, _, flags = _plan([
+        "**MAKE CRISPY CHEESY BIRRIA TACOS!**",
+        "Deseed – Trim and discard stems. Cut lengthwise, remove the seeds.",
+        "Simmer – Put chillis in a large saucepan of boiling water.",
+        "Bake for 30 – 35 minutes, until the cheese melts.",
+    ])
+    assert shape == [
+        (1, "Make crispy cheesy birria tacos!"),          # unwrapped AND recased
+        (2, "Deseed"),
+        (0, "Trim and discard stems. Cut lengthwise, remove the seeds."),
+        (2, "Simmer"),
+        (0, "Put chillis in a large saucepan of boiling water."),
+        (0, "Bake for 30 – 35 minutes, until the cheese melts."),
+    ]
+    assert flags == {"step_heading_unwrapped", "step_label_lifted", "step_heading_recased"}
+
+
+def test_butter_chicken_shape_a_colon_label_and_a_dash_label_are_the_same_thing():
+    shape, _, flags = _plan([
+        "Marinade: Mix the chicken with the yogurt and spices.",
+        "Optional blitz – blend the sauce until smooth.",
+        "Cook the chicken for 20 minutes.",
+    ])
+    assert shape == [
+        (2, "Marinade"), (0, "Mix the chicken with the yogurt and spices."),
+        (2, "Optional blitz"), (0, "blend the sauce until smooth."),
+        (0, "Cook the chicken for 20 minutes."),
+    ]
+    assert flags == {"step_label_lifted"}
+
+
+def test_beans_shape_an_all_caps_section_a_label_and_a_note():
+    shape, notes, flags = _plan([
+        "THE PREP",
+        "Rinse: Tip the beans into a colander and rinse well.",
+        "Soak the beans overnight in plenty of cold water.",
+        "Note: Pick over the beans for stones first.",
+    ])
+    assert shape == [
+        (1, "The prep"),                                  # ALL CAPS, no colon -> a SECTION
+        (2, "Rinse"), (0, "Tip the beans into a colander and rinse well."),
+        (0, "Soak the beans overnight in plenty of cold water."),
+    ]
+    assert notes == "Pick over the beans for stones first."
+    assert flags == {"step_label_lifted", "step_note_moved", "step_heading_recased"}
+
+
+def test_bagel_shape_an_italic_heading_and_two_notes_joined_to_existing_notes():
+    """⚠️ A BLANK LINE, MEASURED. 78 of the 79 newline runs in the corpus's notes are one blank
+    line, so a moved note joins the convention already there rather than inventing one."""
+    shape, notes, flags = _plan([
+        "_Cold Proof_",
+        "Shape them into rounds.",
+        "Note: Please see directions on your brand of yeast.",
+        "Tip - a wetter dough gives a chewier crumb.",
+    ], notes="Keeps 3 days in a paper bag.")
+    assert shape == [(1, "Cold Proof"), (0, "Shape them into rounds.")]
+    assert notes == ("Keeps 3 days in a paper bag.\n\n"
+                     "Please see directions on your brand of yeast.\n\n"
+                     "a wetter dough gives a chewier crumb.")
+    assert flags == {"step_heading_unwrapped", "step_note_moved"}
+
+
+def test_a_note_is_checked_before_the_label_rule():
+    """⚠️ ORDER IS LOAD-BEARING. "Note: Check your yeast" matches the lead-in label shape exactly, so
+    a label-first reading lifts "Note" into a heading and leaves the note standing as an
+    instruction — the opposite of what it is."""
+    shape, notes, _ = _plan(["Note: Check your yeast."])
+    assert shape == []
+    assert notes == "Check your yeast."
+
+
+def test_a_short_title_like_step_is_left_alone():
+    """⚠️ A DECISION, NOT A GAP. "Prepare the pan" and "Chop everything" are the same shape, one a
+    heading and one an instruction, and no length or verb rule told them apart on the corpus without
+    also catching real steps. The repair converted 21 of these from a reviewed list; an importer has
+    no reviewer, so it leaves them as steps. That error is visible and fixable in the step row menu.
+    The opposite error hides an instruction inside a heading."""
+    shape, _, flags = _plan(["Prepare the pan", "Chop everything", "Make the crust"])
+    assert shape == [(0, "Prepare the pan"), (0, "Chop everything"), (0, "Make the crust")]
+    assert flags == set()
+
+
+def test_a_hyphenated_word_is_not_a_label():
+    """The dash separator needs spaces on both sides. Without that, "Slow-cook the beef" lifts
+    "Slow" into a heading."""
+    shape, _, _ = _plan(["Slow-cook the beef until it shreds."])
+    assert shape == [(0, "Slow-cook the beef until it shreds.")]
+
+
+def test_a_label_carrying_an_ingredient_link_is_refused():
+    """⚠️ A HEADING IS ESCAPED AND NEVER LINKIFIED (app.js renderStepRow), so lifting a label that
+    contains [[spinach]] puts raw markup on the page. bulgogi-bowls is stored exactly this way, and
+    an earlier run of the repair pass shipped a heading reading "Wilt the [[spinach]]"."""
+    shape, _, flags = _plan(["Wilt the [[spinach]]: heat 2 tsp oil in a large pan."])
+    assert shape == [(0, "Wilt the [[spinach]]: heat 2 tsp oil in a large pan.")]
+    assert flags == set()
+
+
+def test_positions_are_the_index_in_the_heading_inclusive_list():
+    """The same rule write_recipe_rows uses, so an imported recipe and a saved one number alike."""
+    rows, _, _ = ic.plan_step_rows(["Deseed – Trim the stems.", "Simmer it."])
+    assert [r["position"] for r in rows] == [0, 1, 2]
+
+
+def test_every_conversion_says_which_row_and_what_it_did():
+    """The review queue is the undo path, so a conversion with no position and no detail is a
+    conversion the owner cannot find."""
+    _, _, _ = _plan(["Deseed – Trim the stems."])
+    rows, _, conv = ic.plan_step_rows(["**FOR THE SAUCE**", "Simmer – Reduce by half."])
+    for c in conv:
+        assert c["position"] is not None and c["reason"] and c["detail"]
+    assert {c["flag"] for c in conv} == {"step_heading_unwrapped", "step_label_lifted",
+                                         "step_heading_recased"}

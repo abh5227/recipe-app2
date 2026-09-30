@@ -57,48 +57,17 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import snapshot_serialize                                        # noqa: E402
+# ⚠️ THE RULES COME FROM THE IMPORTER, NOT FROM A SECOND COPY HERE. This pass repairs 300 recipes
+#    that were already imported, and import_cleanup.plan_step_rows applies the same rules to the
+#    next recipe someone imports. Two copies would mean a corpus repaired to one shape and an
+#    importer producing another, with nothing to say so.
+from import_cleanup import (NOTE_SEPARATOR, SECTION, SUBHEADING,  # noqa: E402
+                            is_caps, sentence_case, split_lead_label, strip_emphasis)
 
 REPAIRS = pathlib.Path(__file__).resolve().parent.parent / "docs" / "data-repairs"
 HEADINGS_CSV = REPAIRS / "step-headings-candidates-2026-09-30.csv"
 LABELS_CSV = REPAIRS / "step-leadin-labels-2026-09-30.csv"
 DASH_CSV = REPAIRS / "step-dash-labels-2026-09-30.csv"
-
-# The two heading levels migration 059 defines.
-SECTION, SUBHEADING = 1, 2
-
-# ⚠️ A BLANK LINE, MEASURED RATHER THAN CHOSEN. Of the 79 newline runs inside the 92 recipes that
-#    have notes, 78 are a single blank line and one is a four-newline gap on one recipe. A new note
-#    joins the convention the corpus already keeps.
-NOTE_SEPARATOR = "\n\n"
-
-# A lead-in label: a short capitalized phrase, a colon, then the step's own words.
-LEAD = re.compile(r"^([A-Z][^:.!?]{0,60}?):\s+(\S.*)$", re.S)
-# A whole step wrapped in one matched pair of emphasis markers.
-EMPHASIS = re.compile(r"^(\*\*|__|\*|_)(.+?)\1$", re.S)
-
-
-def _is_caps(text):
-    """Letters, and not one of them lowercase. "FRY #1" yes, "Finish with COLD butter" no."""
-    t = (text or "").strip()
-    return bool(t) and any(c.isalpha() for c in t) and t == t.upper()
-
-
-def sentence_case(text):
-    """ALL CAPS -> sentence case, keeping the punctuation and any digits.
-
-    ⚠️ IT LOWERCASES PROPER NOUNS TOO, and that is accepted rather than solved. "MAKE CRISPY CHEESY
-    BIRRIA TACOS!" becomes "Make crispy cheesy birria tacos!". Guessing which words are names is the
-    kind of rule that gets one wrong quietly, so every change this makes is listed in the run's
-    report for a person to read.
-    """
-    t = (text or "").strip()
-    if not t:
-        return t
-    lowered = t.lower()
-    for i, ch in enumerate(lowered):
-        if ch.isalpha():
-            return lowered[:i] + ch.upper() + lowered[i + 1:]
-    return lowered
 
 
 def _decisions(path, column, wanted):
@@ -134,57 +103,6 @@ def _live_steps(c, rid):
         "ORDER BY position, id", (rid,))]
 
 
-# The separator between a lead-in label and the step's own words, in every shape the corpus uses.
-# Measured over the 58 approved dash rows: 56 are a spaced en dash, 1 is a colon with a space and 1 a
-# colon with NO space (both KFC's, both missed by the phase-1 colon sweep). The 46 colon rows are all
-# "Label: rest".
-_SEP = re.compile(r"^\s*(?::|[\u2013\u2014-])\s*")
-# ⚠️ A DIGIT ON BOTH SIDES OF THE DASH IS A RANGE, NOT A LABEL. "Bake for 30 - 35 minutes" and
-#    "Simmer for 3 - 4 hours" are durations, and the first cut of the review CSV marked all 62
-#    candidates "yes" including 8 of these. The discriminator is the one that produced the 58.
-_RANGE = re.compile(r"\d\s*[\u2013\u2014-]\s*\d")
-
-
-# An ingredient link as it is STORED in a step: [[key]] or [[key|label]]. See app.js linkify.
-_LINK = re.compile(r"\[\[[^\]]+\]\]")
-
-
-def _split_label(text, label):
-    """(label, rest) for a step whose approved label is `label`, or a REASON STRING when it cannot be
-    lifted. A string means refuse and say why; a tuple means go ahead.
-
-    ⚠️ READ FROM THE LIVE ROW, NOT TAKEN FROM THE CSV'S text_without_label COLUMN. The CSV is the
-    decision; the row is the truth. A row edited between the review and the run would otherwise have
-    the reviewer's stale copy of its words written back over it, silently.
-    """
-    flat = " ".join((text or "").split())
-    label = " ".join((label or "").split())
-    if not label:
-        return "the decision names no label"
-    if not flat.startswith(label):
-        # ⚠️ THE CSV'S LABEL CAME FROM THE RENDERED TEXT AND THE ROW HOLDS THE STORED TEXT, which
-        #    differ on exactly one of the 104 approved rows: bulgogi-bowls step 5765 is stored as
-        #    "Wilt the [[spinach]]: heat 2 tsp oil..." and reviewed as "Wilt the spinach". An earlier
-        #    run matched the raw text with a regex and lifted a heading reading "Wilt the
-        #    [[spinach]]" — renderStepRow escapes a heading and never linkifies it, so the page
-        #    showed the markup. Refusing is the right answer rather than a cautious one: stripping
-        #    the link would delete the recipe's only spinach link, which is a content change nobody
-        #    asked for, and keeping it renders as punctuation. A person picks.
-        if _LINK.search(flat[:len(label) + 12]):
-            return "the label contains an ingredient link, which a heading cannot render"
-        return "the live text does not start with the approved label"
-    rest = flat[len(label):]
-    m = _SEP.match(rest)
-    if not m:
-        return "no label separator after the approved label"
-    rest = rest[m.end():].strip()
-    if not rest:
-        return "nothing left under the label"           # the whole step IS the label
-    if _RANGE.search(f"{label[-1:]}{m.group(0)}{rest[:1]}"):
-        return "a numeric range, not a label"           # "Bake for 30 - 35 minutes"
-    return label, rest
-
-
 def _lift(c, log, csv_path, tag):
     """Lift an approved lead-in label out of its step and into a SUBHEADING above it.
 
@@ -207,7 +125,7 @@ def _lift(c, log, csv_path, tag):
         if live is None:
             log["skipped"].append((rid, sid, f"{tag}: no such live step"))
             continue
-        parts = _split_label(live["text"], r.get("label") or "")
+        parts = split_lead_label(live["text"], r.get("label") or "")
         if isinstance(parts, str):
             log["skipped"].append((rid, sid, f"{tag}: {parts}"))
             continue
@@ -320,9 +238,8 @@ def run(db, apply_it):
             "SELECT id, recipe_id, text FROM recipe_steps WHERE is_heading=1 ORDER BY recipe_id, position")]:
         raw = (row["text"] or "").strip()
         # An emphasis wrap on an EXISTING heading comes off in the same pass. 2 rows carry one.
-        m = EMPHASIS.match(raw)
-        unwrapped = m.group(2).strip() if m else raw
-        title = sentence_case(unwrapped) if _is_caps(unwrapped) else unwrapped
+        unwrapped = strip_emphasis(raw)
+        title = sentence_case(unwrapped) if is_caps(unwrapped) else unwrapped
         if title == row["text"]:
             continue
         body = _baseline(c, row["recipe_id"])

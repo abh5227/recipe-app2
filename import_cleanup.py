@@ -767,11 +767,215 @@ def normalize_time(raw):
 def classify_step(text):
     """A direction line -> (is_heading, clean_text). Heading if colon-terminated / ALL-CAPS
     (is_section) OR ending in a trailing dash ("prepare your pan -"); the trailing dash is
-    stripped. STEPS only — never applied to ingredient lines."""
+    stripped. STEPS only — never applied to ingredient lines.
+
+    This answers "is this whole line a heading". plan_step_rows below is the full rule set, and it
+    calls this first."""
     t = (text or "").strip()
     if _TRAILING_DASH.search(t):
         return True, _TRAILING_DASH.sub("", t).strip()
     return is_section(t), t
+
+
+# ================================================================================================ #
+# STEP STRUCTURE — the rules a new import applies, and the SAME rules the repair pass applies.
+#
+# ⚠️ ONE DEFINITION, IMPORTED BY BOTH, AND THAT IS THE WHOLE POINT OF PUTTING THEM HERE.
+#    scripts/convert_step_headings.py repaired 300 already-imported recipes with these rules written
+#    out inside it. A second copy in the importer would mean the next recipe someone imports is
+#    structured differently from the corpus that was just repaired to match it, and nothing would
+#    say so. The script imports these names now.
+#
+# ⚠️ THEY EXIST BECAUSE OTHER PEOPLE'S RECIPES CARRY BOTH SHAPES. A publisher who writes section
+#    titles and a publisher who writes "Deseed - trim the stems" are both common, and no rule turns
+#    one into the other. The levels let a recipe keep the structure its author wrote.
+# ================================================================================================ #
+
+# The two heading levels (migration 059).
+SECTION, SUBHEADING = 1, 2
+
+# What the review queue is told, per conversion. Every one of these is a structural change the
+# importer made on its own, so every one is surfaced where the import flags already show and can be
+# undone with the step row menu's Convert to step / Make section heading.
+STEP_STRUCTURE_REASONS = {
+    "step_heading_unwrapped":
+        "a whole step wrapped in bold or italics became a section heading",
+    "step_label_lifted":
+        "a lead-in label was lifted out of its step and became a subheading above it",
+    "step_note_moved":
+        "a Note or Tip step was moved into the recipe's notes",
+    "step_heading_recased":
+        "a heading stored in capitals was rewritten in sentence case",
+}
+
+# ⚠️ position MEANS A DIFFERENT THING ON A STEP FLAG THAN ON A LINE FLAG, which is why this set
+#    exists. import_flags has ONE nullable `position` column, and _line_flag_rows fills it with the
+#    INGREDIENT line's index. A step flag's position is the STEP row's index, so a reporter that
+#    reads position as "which ingredient line" would mark an unrelated ingredient. Both reporters in
+#    import_write skip these when they interpret a position that way.
+STEP_STRUCTURE_FLAGS = frozenset(STEP_STRUCTURE_REASONS)
+
+# ⚠️ A BLANK LINE, MEASURED RATHER THAN CHOSEN. Of the 79 newline runs inside the 92 corpus recipes
+#    that have notes, 78 are a single blank line and one is a four-newline gap on one recipe. A moved
+#    note joins the convention the corpus already keeps.
+NOTE_SEPARATOR = "\n\n"
+
+# A step that is nothing but a note. "Note:", "Tip -", "Notes:" all count.
+_NOTE_STEP = re.compile(r"^(?:note|tip)s?\s*[:.\u2013\u2014-]\s*(\S.*)$", re.IGNORECASE | re.DOTALL)
+
+# A lead-in label: a capitalized phrase, then a colon OR a spaced dash, then the step's own words.
+# The colon needs no following space (KFC stores "Double fry:(Only double fry what you eat now)").
+# The dash DOES, so a hyphenated word ("Slow-cook the beef") is not a label.
+_LEAD_LABEL = re.compile(r"^([A-Z][^:.!?\n]{0,60}?)(?::\s*|\s[\u2013\u2014-]\s)(\S.*)$", re.DOTALL)
+
+# ⚠️ A DIGIT ON BOTH SIDES OF THE DASH IS A RANGE, NOT A LABEL. "Bake for 30 - 35 minutes" and
+#    "Simmer for 3 - 4 hours" are durations. Measured on the corpus review: 8 of 62 dash candidates
+#    were these, and without this guard all 8 would have become headings reading "Bake for 30".
+_NUMERIC_RANGE = re.compile(r"\d\s*[\u2013\u2014-]\s*\d")
+
+# An ingredient link as it is STORED in a step. A heading is escaped and never linkified
+# (app.js renderStepRow), so a label carrying one cannot be lifted without showing the markup.
+_STEP_LINK = re.compile(r"\[\[[^\]]+\]\]")
+
+
+def is_caps(text):
+    """Letters, and not one of them lowercase. "FRY #1" yes, "Finish with COLD butter" no."""
+    t = (text or "").strip()
+    return bool(t) and any(c.isalpha() for c in t) and t == t.upper()
+
+
+def sentence_case(text):
+    """ALL CAPS -> sentence case, keeping the punctuation and any digits.
+
+    ⚠️ IT LOWERCASES PROPER NOUNS TOO, and that is accepted rather than solved. "MAKE CRISPY CHEESY
+    BIRRIA TACOS!" becomes "Make crispy cheesy birria tacos!". Guessing which words are names is the
+    kind of rule that gets one wrong quietly, so every change this makes is surfaced in the review
+    queue for a person to read."""
+    t = (text or "").strip()
+    if not t:
+        return t
+    lowered = t.lower()
+    for i, ch in enumerate(lowered):
+        if ch.isalpha():
+            return lowered[:i] + ch.upper() + lowered[i + 1:]
+    return lowered
+
+
+def split_lead_label(text, label=None):
+    """A step line -> (label, rest) when a lead-in label can be lifted, else a REASON STRING.
+
+    A string means refuse and say why; a tuple means go ahead. `label` pins the expected label (the
+    repair pass passes the reviewed one); left out, the label is read from the line.
+
+    ⚠️ REFUSING IS A REAL ANSWER HERE, NOT A CAUTIOUS ONE. Each refusal below is a shape where
+    lifting would change what the recipe SAYS rather than how it is laid out.
+    """
+    flat = " ".join((text or "").split())
+    if label is not None:
+        label = " ".join(label.split())
+        if not label:
+            return "the decision names no label"
+        if not flat.startswith(label):
+            # ⚠️ A REVIEWED LABEL COMES FROM THE RENDERED TEXT AND THE ROW HOLDS THE STORED TEXT.
+            #    They differ wherever the label contains an ingredient link: bulgogi-bowls is stored
+            #    as "Wilt the [[spinach]]: heat 2 tsp oil..." and was reviewed as "Wilt the spinach".
+            if _STEP_LINK.search(flat[:len(label) + 12]):
+                return "the label contains an ingredient link, which a heading cannot render"
+            return "the live text does not start with the approved label"
+        rest = flat[len(label):]
+        m = re.match(r"^(?::\s*|\s*[\u2013\u2014-]\s*)", rest)
+        if not m:
+            return "no label separator after the approved label"
+        rest = rest[m.end():].strip()
+        sep = m.group(0)
+    else:
+        m = _LEAD_LABEL.match(flat)
+        if not m:
+            return "no lead-in label"
+        label, rest = m.group(1).strip(), m.group(2).strip()
+        sep = flat[len(label):len(flat) - len(rest)]
+    if not rest:
+        return "nothing left under the label"                  # the whole line IS the label
+    if _STEP_LINK.search(label):
+        return "the label contains an ingredient link, which a heading cannot render"
+    if _NUMERIC_RANGE.search(f"{label[-1:]}{sep}{rest[:1]}"):
+        return "a numeric range, not a label"
+    return label, rest
+
+
+def plan_step_rows(directions, notes=""):
+    """The full step-structure rule set. -> (rows, notes, conversions).
+
+    `rows` are {position, is_heading, heading_level, text}, positions renumbered over the
+    heading-INCLUSIVE list exactly as app.write_recipe_rows assigns them. `notes` is the recipe's
+    notes with any moved Note steps appended. `conversions` are {position, flag, reason, detail}
+    for the review queue.
+
+    THE RULES, in order:
+      1  A whole step wrapped in _x_ or **x** -> a SECTION heading, unwrapped.
+      2  A colon-terminated or ALL-CAPS line -> a SECTION heading (classify_step, unchanged).
+      3  A Note:/Tip: step -> the recipe's notes, blank-line separated.
+      4  A lead-in "Label:" or "Label - " -> a SUBHEADING above the step, which keeps the rest.
+      5  Heading text in capitals -> sentence case. Runs over the headings rules 1 to 4 just made.
+
+    ⚠️ A SHORT TITLE-LIKE STEP IS NOT CONVERTED, and that is a decision rather than a gap. "Prepare
+    the pan" and "Chop everything" are the same shape, one a heading and one an instruction, and no
+    length or verb rule told them apart on the corpus without also catching real steps. The corpus
+    repair converted 21 of these BY HAND from a reviewed list. An importer has no reviewer, so it
+    leaves them as steps, which is the error a person can see and fix rather than the one that
+    quietly hides an instruction in a heading.
+    """
+    rows, conversions = [], []
+    notes = notes or ""
+
+    def note(flag, detail):
+        conversions.append({"position": len(rows), "flag": flag,
+                            "reason": STEP_STRUCTURE_REASONS[flag], "detail": detail})
+
+    for text in directions or []:
+        raw = (text or "").strip()
+        if not raw:
+            continue
+        # 1 — a whole step wrapped in emphasis is a section title the author styled by hand.
+        unwrapped = strip_emphasis(raw)
+        if unwrapped != raw and unwrapped:
+            note("step_heading_unwrapped", unwrapped)
+            rows.append({"is_heading": 1, "heading_level": SECTION, "text": unwrapped})
+            continue
+        # 3 — a note is not a step. Checked BEFORE the label rule, which would otherwise lift
+        #     "Note" into a heading and leave the note's words as an instruction.
+        m = _NOTE_STEP.match(raw)
+        if m:
+            body = " ".join(m.group(1).split())
+            note("step_note_moved", body)
+            notes = body if not notes.strip() else f"{notes.rstrip()}{NOTE_SEPARATOR}{body}"
+            continue
+        # 2 — the existing whole-line heading rule.
+        is_h, clean = classify_step(raw)
+        if is_h:
+            rows.append({"is_heading": 1, "heading_level": SECTION, "text": clean})
+            continue
+        # 4 — a lead-in label becomes a subheading above the step it names.
+        parts = split_lead_label(raw)
+        if not isinstance(parts, str):
+            label, rest = parts
+            note("step_label_lifted", label)
+            rows.append({"is_heading": 1, "heading_level": SUBHEADING, "text": label})
+            rows.append({"is_heading": 0, "heading_level": SECTION, "text": rest})
+            continue
+        rows.append({"is_heading": 0, "heading_level": SECTION, "text": raw})
+
+    # 5 — capitals become sentence case, over every heading including the ones just made.
+    for i, row in enumerate(rows):
+        if row["is_heading"] and is_caps(row["text"]):
+            was = row["text"]
+            row["text"] = sentence_case(was)
+            conversions.append({"position": i, "flag": "step_heading_recased",
+                                "reason": STEP_STRUCTURE_REASONS["step_heading_recased"],
+                                "detail": f"{was} -> {row['text']}"})
+    for i, row in enumerate(rows):
+        row["position"] = i
+    return rows, notes, conversions
 
 
 def _section_key(text):

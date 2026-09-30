@@ -91,7 +91,11 @@ def test_preview_keeps_step_heading_flags(kitchen, monkeypatch):
     stub_fetch(monkeypatch, fetched("hot-thai-kitchen.com"))
     body = preview(kitchen, MANIFEST["hot-thai-kitchen.com"]["url"]).get_json()
     assert sum(s["is_heading"] for s in body["steps"]) == 2
-    assert all({"position", "is_heading", "text"} == set(s) for s in body["steps"])
+    # heading_level joins the set (migration 059): the client draws a section and a subheading
+    # differently, so the preview has to carry which one this is.
+    assert all({"position", "is_heading", "heading_level", "text"} == set(s)
+               for s in body["steps"])
+    assert {s["heading_level"] for s in body["steps"]} <= {1, 2}
 
 
 def test_preview_ingredient_rows_carry_the_split_amount(kitchen, monkeypatch):

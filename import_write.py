@@ -181,14 +181,27 @@ def _ingredient_rows(cleaned):
 
 
 def _step_rows(cleaned):
-    """directions (already split into lines by the cleanup core) -> recipe_steps rows: plain
-    text, position-ordered, NO {{...}} markup. A heading line (colon / ALL-CAPS, or a trailing
-    dash) -> is_heading=1, with the trailing dash stripped from the text (cleanup.classify_step)."""
-    rows = []
-    for pos, text in enumerate(cleaned["directions"]):
-        is_h, clean = cleanup.classify_step(text)
-        rows.append({"position": pos, "is_heading": 1 if is_h else 0, "text": clean})
-    return rows
+    """directions (already split into lines by the cleanup core) -> (recipe_steps rows, notes,
+    review-queue rows). Plain text, position-ordered, NO {{...}} markup.
+
+    ⚠️ ONE LINE CAN NOW PRODUCE TWO ROWS, WHICH IS WHY THIS RETURNS THREE THINGS. A lead-in label
+    ("Deseed - Trim and discard stems") becomes a subheading above a step that keeps the rest, and a
+    Note step leaves the list entirely for the recipe's notes. Both change the recipe's notes or its
+    row count, so neither could be a per-line map any more.
+
+    ⚠️ THE RULES LIVE IN import_cleanup.plan_step_rows, NOT HERE. The same function repaired the 300
+    already-imported recipes (scripts/convert_step_headings.py imports it too), so a recipe imported
+    tomorrow is structured the way the corpus was just repaired to be. A second copy here would be a
+    second place for the two to drift, silently.
+
+    ⚠️ EVERY CONVERSION IS SURFACED IN THE REVIEW QUEUE, which is the undo path: the queue is where
+    an import's judgement calls already show, and the step row menu can convert a heading back or
+    change its level without losing the row id."""
+    rows, notes, conversions = cleanup.plan_step_rows(cleaned["directions"], cleaned.get("notes"))
+    flags = [{"position": c["position"], "flag": c["flag"],
+              "reason": f"{c['reason']} ({c['detail']})" if c.get("detail") else c["reason"]}
+             for c in conversions]
+    return rows, notes, flags
 
 
 def plan_recipe(cleaned, uid_index, taken_slugs, now=None):
@@ -208,6 +221,7 @@ def plan_recipe(cleaned, uid_index, taken_slugs, now=None):
     now = now or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     slug = mint_slug(cleaned["name"], taken_slugs)
     ing_rows, line_flags = _ingredient_rows(cleaned)
+    step_rows, step_notes, step_flags = _step_rows(cleaned)
     recipe_flag_rows = [{"position": None, "flag": f, "reason": None}
                         for f in cleaned["recipe_flags"]]
 
@@ -223,7 +237,9 @@ def plan_recipe(cleaned, uid_index, taken_slugs, now=None):
         "cook_time": cleaned["times"]["cook"] or None,
         "total_time": cleaned["times"]["total"] or None,
         "descr": cleaned["description"] or None,
-        "notes": cleaned["notes"] or None,
+        # ⚠️ step_notes, NOT cleaned["notes"]: a Note step moved out of the directions is appended
+        #    to whatever the publisher already put in the notes field (see _step_rows).
+        "notes": step_notes or None,
         # ALWAYS NULL AT INSERT, and for the URL path that is the design rather than a gap: the hero
         # is fetched AFTER this row is committed (app._attach_imported_hero -> url_image), so a dead
         # or refused image url cannot take a good import down with it. Paprika's photos[] is still
@@ -238,13 +254,13 @@ def plan_recipe(cleaned, uid_index, taken_slugs, now=None):
         "decision": "write",
         "recipe": recipe_row,
         "ingredients": ing_rows,
-        "steps": _step_rows(cleaned),
+        "steps": step_rows,
         "rating": _rating_row(cleaned["rating"]),
         # The publisher's number, carried as the reader found it. Written to its own table by
         # commit_plan, never near the cook's verdict.
         "source_rating": cleaned.get("source_rating"),
         "recipe_flags": cleaned["recipe_flags"],
-        "review_flags": line_flags + recipe_flag_rows,
+        "review_flags": line_flags + step_flags + recipe_flag_rows,
     }
 
 
@@ -306,7 +322,12 @@ def commit_plan(executor, plan, owner_id=None, snapshot=True):
         # dict form, not kwargs: "text" is the COLUMN name (attribute `body`) — see the note above.
         executor.execute(insert(RecipeStep.__table__).values(
             {"recipe_id": r["id"], "position": row["position"],
-             "is_heading": row["is_heading"], "text": row["text"]}))
+             "is_heading": row["is_heading"], "text": row["text"],
+             # ⚠️ NAMED EXPLICITLY, like every other key on this line, and for the same reason the
+             #    note above gives: this insert is spelled out rather than splatted, so a column the
+             #    plan carries and this dict forgets is silently defaulted. A lifted label would
+             #    have landed as a SECTION heading and read as a boundary over one step.
+             "heading_level": row.get("heading_level", 1)}))
     # O-a: capture the recipe's PRISTINE ORIGINAL baseline (reason='original') for the recipe-page
     # annotations diff (O-c) — in THIS import batch transaction (atomic). The blob uses the SHARED
     # serializer (snapshot_serialize.content_blob), byte-identical to the ORM path (app.serialize_recipe_
@@ -515,7 +536,10 @@ def print_plan(plan, index):
         print("       uid %s already held by '%s' (%s)" % (plan["uid"], t["slug"], t["name"]))
         return
     _print_recipe_fields(index, plan["recipe"])
-    flagged_pos = {f["position"] for f in plan["review_flags"] if f["position"] is not None}
+    # ⚠️ INGREDIENT-LINE FLAGS ONLY. A step-structure flag's position indexes the STEP rows, and
+    #    passing it here marked an unrelated ingredient line as flagged. See STEP_STRUCTURE_FLAGS.
+    flagged_pos = {f["position"] for f in plan["review_flags"]
+                   if f["position"] is not None and f["flag"] not in cleanup.STEP_STRUCTURE_FLAGS}
     _print_ingredient_rows(plan["ingredients"], flagged_pos)
     steps = plan["steps"]
     sh = [s["text"] for s in steps if s["is_heading"]]
@@ -632,7 +656,9 @@ def summarize_all(plans, reader_errors):
     for p in writes:
         positions = set()
         for fl in p["review_flags"]:
-            if fl["position"] is not None:
+            # Same split as the per-recipe report above: "lines flagged" counts ingredient lines,
+            # and a step-structure flag's position is a step index, not a line one.
+            if fl["position"] is not None and fl["flag"] not in cleanup.STEP_STRUCTURE_FLAGS:
                 line_flag_counts[fl["flag"]] += 1
                 positions.add(fl["position"])
         if positions:
