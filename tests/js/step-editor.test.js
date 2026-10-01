@@ -9,7 +9,7 @@
 // json.dumps (ASCII, so copy-exact — no risk of mis-transcribing sauté / en-dash / ½ ¼ / em-dash).
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { stepTextToDoc, docToStepText } from "../../static/step-adapter.js";
+import { stepTextToDoc, docToStepText, showLinksAsWords } from "../../static/step-adapter.js";
 
 const roundTrip = (t) => docToStepText(stepTextToDoc(t));
 
@@ -82,4 +82,58 @@ test("adjacent links produce no zero-length text node", () => {
 
 test("a plain [[key|label]] serializes back to the same text", () => {
   assert.equal(docToStepText(stepTextToDoc("[[pine_nut|pine nuts]]")), "[[pine_nut|pine nuts]]");
+});
+
+
+// ---- showLinksAsWords: a heading's display text (review fix 2) --------------------------------
+// The third function in this module, and it is here because it reads the SAME grammar. A heading is
+// escaped and never linkified, so a step converted to a heading by the row menu would print its
+// brackets. The stored text keeps the markup and every heading renderer runs it through this, which
+// is what makes the conversion reversible — see the note in step-adapter.js.
+
+test("every one of the 14 real linked steps loses its brackets and keeps its words", () => {
+  for (const t of REAL_STEPS) {
+    const shown = showLinksAsWords(t);
+    assert.ok(!shown.includes("[["), `brackets survived: ${shown.slice(0, 60)}`);
+    assert.ok(!shown.includes("]]"), `brackets survived: ${shown.slice(0, 60)}`);
+    // the label (or the key) is what is left behind, so the sentence still reads
+    for (const m of t.matchAll(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g)) {
+      assert.ok(shown.includes((m[2] || m[1]).trim()),
+        `lost the words of ${m[0]} in: ${shown.slice(0, 60)}`);
+    }
+  }
+});
+
+test("a no-label link shows its key and a labelled one shows its label", () => {
+  assert.equal(showLinksAsWords("Wilt the [[spinach]]"), "Wilt the spinach");
+  assert.equal(showLinksAsWords("the [[chile_powder|red chile powder]]"), "the red chile powder");
+  assert.equal(showLinksAsWords("[[pine_nut|pine nuts]] and [[lemon]]"), "pine nuts and lemon");
+});
+
+test("text with no markup is returned verbatim, and null is safe", () => {
+  assert.equal(showLinksAsWords("To Boil and Bake the Bagels"), "To Boil and Bake the Bagels");
+  assert.equal(showLinksAsWords(""), "");
+  assert.equal(showLinksAsWords(null), "");
+  assert.equal(showLinksAsWords(undefined), "");
+});
+
+test("it is a DISPLAY transform: the stored text still round-trips to itself", () => {
+  // The whole reason this is lossless. The display never feeds the store.
+  for (const t of REAL_STEPS) assert.equal(roundTrip(t), t);
+});
+
+test("an unclosed bracket is left exactly as it is rather than half-eaten", () => {
+  assert.equal(showLinksAsWords("Pour the batter in (it'll be thick [[garlic"),
+               "Pour the batter in (it'll be thick [[garlic");
+});
+
+test("it reads the grammar linkify reads, including the cases linkify reads loosely", () => {
+  // ⚠️ NOT A SEPARATE OPINION ABOUT WHAT A LINK IS. "a [[ and a ]]" has no key anyone meant, and
+  // linkify makes a button out of it; this makes the same words out of it. Agreeing with linkify
+  // matters more than either answer, because a heading and a step show the same stored text and a
+  // second reading of the grammar is how two readers of one rule drift apart.
+  const linkify = (t) => String(t).replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g,
+    (_, k, l) => (l || k).trim());
+  for (const t of ["a [[ and a ]]", "[[x]][[y]]", "[[a|b]] [[c]]", "no markup at all"])
+    assert.equal(showLinksAsWords(t), linkify(t));
 });

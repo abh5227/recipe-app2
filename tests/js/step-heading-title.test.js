@@ -7,11 +7,14 @@
 import test from "node:test";
 import assert from "node:assert";
 import { readFileSync } from "node:fs";
+// The REAL one, imported rather than re-spelled: stepHeadingTitle calls it, so a copy here would let
+// the two drift and this file would still pass. See showLinksAsWords in step-adapter.js.
+import { showLinksAsWords } from "../../static/step-adapter.js";
 
 const APP = readFileSync(new URL("../../static/app.js", import.meta.url), "utf8");
 const src = APP.slice(APP.indexOf("function stepHeadingTitle"));
 const body = src.slice(0, src.indexOf("\n}") + 2);
-const stepHeadingTitle = new Function(`${body}; return stepHeadingTitle;`)();
+const stepHeadingTitle = new Function("showLinksAsWords", `${body}; return stepHeadingTitle;`)(showLinksAsWords);
 
 test("a trailing colon comes off", () => {
   assert.equal(stepHeadingTitle("Make your roux:"), "Make your roux");
@@ -46,7 +49,39 @@ test("the render calls it and the editor does not", () => {
   assert.match(APP, /stepHeadingClass\(row\)\}">\$\{esc\(stepHeadingTitle/,
     "and it does so inside the levelled heading tag, not somewhere else");
   assert.match(APP, /editStepHeadingField\(i, row\.text\)/,
-    "the editor shows the STORED text, colon and all");
+    "the editor is handed the STORED text, colon and all");
+});
+
+
+// ---- link markup never prints its brackets (review fix 2) ------------------------------------
+// A heading is escaped and never linkified, so a converted step carrying [[garlic]] would have
+// printed "[[garlic]]" on the page. The text keeps its markup in the database and every heading
+// renderer runs it through showLinksAsWords, so converting back to a step restores the link.
+
+test("a heading renders a link as its words", () => {
+  assert.equal(stepHeadingTitle("Wilt the [[spinach]]"), "Wilt the spinach");
+  assert.equal(stepHeadingTitle("Add the [[chile_powder|red chile powder]]"),
+               "Add the red chile powder");
+  assert.equal(stepHeadingTitle("Mix the [[bread_flour|flour]] and [[yeast]]"),
+               "Mix the flour and yeast");
+});
+
+test("the markup comes off BEFORE the trailing colon rule, so the colon is still seen", () => {
+  assert.equal(stepHeadingTitle("Wilt the [[spinach]]:"), "Wilt the spinach");
+  assert.equal(stepHeadingTitle("[[garlic|Garlic]]:"), "Garlic");
+});
+
+test("no heading render site emits the stored text unfiltered", () => {
+  // The three sites that put a heading on the page. A fourth would have to be added here, which is
+  // the point of asserting over the source rather than over three return values.
+  assert.match(APP, /\$\{esc\(stepHeadingTitle\(row\.text\)\)\}/,
+    "the step heading, reading view");
+  assert.match(APP, /value="\$\{esc\(showLinksAsWords\(text\)\)\}"/,
+    "the step heading, inline editor");
+  assert.match(APP, /\$\{esc\(showLinksAsWords\(headingText\(row\)\)\)\}/,
+    "the ingredient heading, reading view");
+  assert.match(APP, /ieCell\("heading", i, showLinksAsWords\(headingText\(x\)\)/,
+    "the ingredient heading, inline editor");
 });
 
 test("the heading level reaches both views through one helper", () => {

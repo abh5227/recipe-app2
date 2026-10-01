@@ -45,3 +45,24 @@ export function docToStepText(docJson) {
     }).join("");
   }).join("\n");
 }
+
+// A heading's WORDS: [[key|label]] -> the label, [[key]] -> the key, everything else verbatim.
+//
+// ⚠️ THIS IS A DISPLAY TRANSFORM AND THE STORED TEXT KEEPS ITS MARKUP. A heading is escaped and
+// never linkified (a clickable button inside an uppercase section label is not a thing this app
+// draws), so a converted step carrying [[garlic]] printed its brackets on the page. The importer and
+// the corpus pass avoid that by MOVING the link out when they lift a lead-in label, which is right
+// for a label whose referent is in the step below it. The step row menu has no such move available:
+// it converts a whole step, markup and all, and the cook can convert it straight back. Rewriting the
+// text on conversion would spend the link to buy the brackets, and nothing would bring it back.
+//
+// So the text is stored verbatim and every heading renderer runs it through here. Converting back to
+// a step restores the link, because the link was never removed.
+//
+// It lives beside the two round-trip functions because they own this grammar — the regex is the same
+// one stepTextToDoc and app.js's linkify use, and a third spelling of it is how the two readers of a
+// shared rule drift apart.
+export function showLinksAsWords(text) {
+  return String(text == null ? "" : text)
+    .replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, key, label) => (label || key).trim());
+}

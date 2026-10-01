@@ -4,6 +4,7 @@ import {
   formatAmount, group, canonicalizeUnit, amountText, weightText,
 } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
+import { showLinksAsWords } from "./step-adapter.js";
 import { nonEmptySteps, focusIndexAfterRemove, writeStepField,
          stepLevel, toggleStepType, setStepLevel } from "./step-row.js";
 import { insertIndexFor } from "./row-insert.js";
@@ -911,7 +912,10 @@ function plainRow(row, ann) {
   // headingText, not raw_text: since migration 052 a heading converted from a line keeps the line's
   // source text in raw_text and its title in `heading`. A heading renders as its TITLE and nothing
   // else — the dormant amount, weight, note and links never reach the page.
-  if (row.is_heading) return headingText(row).trim() ? `<li class="group">${esc(headingText(row))}</li>` : "";
+  // showLinksAsWords for the same reason the step heading gets it: no heading is linkified, so any
+  // markup that reached one would print its brackets. No live ingredient heading carries any, and
+  // the rule is stated over headings rather than over the rows that happen to have some.
+  if (row.is_heading) return headingText(row).trim() ? `<li class="group">${esc(showLinksAsWords(headingText(row)))}</li>` : "";
   if (!(row.label || row.raw_text || "").trim()) return "";
   // Added ingredient: the whole current line in the hand ink, "+"-prefixed (see li.added CSS).
   if (ann && ann.added) return `<li class="added">${ledgerCells(row.qty, row.grams_per_ml)}<span class="iname">${lineBodyHTML(row)}</span></li>`;
@@ -1009,7 +1013,9 @@ function stepBodyHTML(row) {
 //    90 rows to delete one character each would be a data change that buys nothing, and the editor
 //    has to keep showing what is stored.
 function stepHeadingTitle(text) {
-  return String(text == null ? "" : text).trim().replace(/\s*:+$/, "");
+  // showLinksAsWords FIRST: a trailing "[[garlic]]:" has to lose its brackets before the colon rule
+  // can see the colon. See the note on showLinksAsWords — the markup stays in the stored text.
+  return showLinksAsWords(text).trim().replace(/\s*:+$/, "");
 }
 
 // A heading's level as a class (migration 059). .h1 is a section heading, .h2 a subheading; both
@@ -1154,7 +1160,13 @@ function renderStepEditHost(row, i) {
 // step heading spans the full method column and is short. Placeholder copy matches the ingredient
 // heading's, so the two columns read the same when empty.
 function editStepHeadingField(i, text) {
-  return `<input type="text" class="ie e-step-heading" data-inline-edit-step="heading" data-i="${i}" value="${esc(text || "")}" placeholder="Section heading" aria-label="Section heading" spellcheck="false">`;
+  // ⚠️ THE WORDS, NOT THE MARKUP, AND THAT COSTS NOTHING BECAUSE THIS FIELD ONLY WRITES ON `input`.
+  // The delegated handler flushes sh.value into the draft row when the user TYPES; a heading nobody
+  // touches keeps the text it was rendered from, markup included. So the brackets are never on
+  // screen and the link still comes back if the row is converted to a step again. A cook who does
+  // edit the heading gets exactly the words they see, which is the only honest answer for a field
+  // whose value is written back verbatim.
+  return `<input type="text" class="ie e-step-heading" data-inline-edit-step="heading" data-i="${i}" value="${esc(showLinksAsWords(text))}" placeholder="Section heading" aria-label="Section heading" spellcheck="false">`;
 }
 
 // Editor parity stage 3: the step list's adder — the SAME .adder control the ingredient list ends with,
@@ -2647,7 +2659,7 @@ function amountZoneHTML(x, i) {
 function editIngRowHTML(x, i) {
   if (x.is_heading) {
     return `<li class="erow group-row">
-      ${ieCell("heading", i, headingText(x), "e-heading", "Section heading")}
+      ${ieCell("heading", i, showLinksAsWords(headingText(x)), "e-heading", "Section heading")}
       <span class="tail">${editIngRowTools(i)}</span>
     </li>`;
   }
@@ -3243,6 +3255,11 @@ function ingRow(o) {
   </div>`;
 }
 
+// ⚠️ THIS FORM SHOWS THE STORED TEXT, MARKUP AND ALL, AND THAT IS THE RIGHT ANSWER HERE. It is the
+// source-editing form (#/new and #/edit/<slug>), whose step textarea already shows [[garlic]] and
+// whose placeholder tells you to write it. It also reads EVERY field's value on submit, so a
+// display-only heading value would be written straight back and the link would be gone. The inline
+// editor is the one that renders a heading as a heading, and that is where showLinksAsWords belongs.
 function stepRow(o) {
   o = o || {};
   const heading = (o.type || "step") === "heading";

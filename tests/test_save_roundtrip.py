@@ -1038,3 +1038,66 @@ def test_a_whitespace_only_header_edit_is_written_but_marks_nothing(kitchen):
     assert kitchen.client.put(f"/api/recipes/{rid}", json=payload).status_code == 200
     assert _header(kitchen, rid)["descr"] == "A rich  loaf. ", "the user's edit is stored as typed"
     assert _annotations(kitchen, rid) == [], "and the cook sees no change, so there is no mark"
+
+
+# ---- a converted heading KEEPS its link markup (review fix 2) ------------------------------------
+# ⚠️ THE LOSSLESS HALF OF THE FIX, AND THE REASON IT WAS NOT DONE IN _step_parts. The brackets must
+# never print, and there were two ways to get there. Stripping the markup on the way in (the server
+# applying move_link_out_of_label the way the importer does when it LIFTS a lead-in label) would
+# spend the link to buy it: the step row menu converts a WHOLE step, the cook can convert it
+# straight back, and nothing would bring the link back. So the markup is stored verbatim and the
+# heading renderers show its words (showLinksAsWords, pinned in tests/js/step-editor.test.js). This
+# file pins the other side of that contract: the save path does not touch it.
+
+def _link_steps(kitchen, text="Wilt the [[egg_pasta]] in the pan."):
+    rid = _seed(kitchen, rows=[], steps=[{"row": {"id": 9100, "position": 0, "is_heading": 0,
+                                                  "text": text}}])
+    return rid
+
+
+def test_a_step_converted_to_a_heading_keeps_its_link_markup(kitchen):
+    rid = _link_steps(kitchen)
+    r = kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Round Trip", "ingredients": [],
+        "steps": [{"id": 9100, "heading": "Wilt the [[egg_pasta]] in the pan.", "level": 1}]})
+    assert r.status_code == 200, r.get_json()
+    rows = _steps(kitchen, rid)
+    assert [(x["is_heading"], x["text"]) for x in rows] == \
+           [(1, "Wilt the [[egg_pasta]] in the pan.")], "the save rewrote a heading's text"
+
+
+def test_converting_back_to_a_step_restores_a_working_link(kitchen):
+    rid = _link_steps(kitchen)
+    assert kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Round Trip", "ingredients": [],
+        "steps": [{"id": 9100, "heading": "Wilt the [[egg_pasta]] in the pan.", "level": 1}]
+    }).status_code == 200
+    assert kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Round Trip", "ingredients": [],
+        "steps": [{"id": 9100, "text": "Wilt the [[egg_pasta]] in the pan."}]
+    }).status_code == 200
+    rows = _steps(kitchen, rid)
+    assert [(x["is_heading"], x["text"]) for x in rows] == \
+           [(0, "Wilt the [[egg_pasta]] in the pan.")]
+
+
+def test_a_heading_may_carry_a_link_the_recipe_already_stands_on(kitchen):
+    """The standing-link let-through reads BOTH wire forms (_step_parts), so a conversion cannot be
+    refused on a key the step it came from was already allowed to carry."""
+    rid = _seed(kitchen, rows=[], steps=[{"row": {"id": 9101, "position": 0, "is_heading": 0,
+                                                  "text": "Fold in the [[gone_away]]."}}])
+    r = kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Round Trip", "ingredients": [],
+        "steps": [{"id": 9101, "heading": "Fold in the [[gone_away]].", "level": 1}]})
+    assert r.status_code == 200, r.get_json()
+
+
+def test_a_heading_naming_a_link_that_exists_nowhere_is_still_refused(kitchen):
+    """Keeping the markup must not open a hole in the gate: a NEW key in a heading names nothing and
+    is refused, exactly as it is in a step."""
+    rid = _link_steps(kitchen)
+    r = kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Round Trip", "ingredients": [],
+        "steps": [{"id": 9100, "heading": "Wilt the [[nonesuch]].", "level": 1}]})
+    assert r.status_code == 400
+    assert "nonesuch" in r.get_json()["error"]
