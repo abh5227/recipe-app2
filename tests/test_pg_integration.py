@@ -1003,3 +1003,51 @@ def test_a_subheading_survives_a_save_on_the_real_engine_pg(pg):
     final = c.get(f"/api/recipes/{rid}").get_json()["steps"]
     assert [(s["is_heading"], s["heading_level"]) for s in final] == [(0, 1), (0, 1), (0, 1)]
     assert [s["id"] for s in final] == [s["id"] for s in steps]
+
+
+def test_a_wait_keeps_its_row_id_across_a_save_on_postgres(pg):
+    """⚠️ THE POSITION DANCE IS DIALECT-SENSITIVE, which is why it is asked here too.
+    recipe_waits carries UNIQUE (recipe_id, position) on BOTH dialects, and Postgres checks it at
+    the end of each statement with no deferral, so a reorder written straight back fails there as
+    surely as on SQLite. _apply_rows pushes the survivors to negative positions first.
+
+    The rule being proved is the one found on live: a save that changes nothing must leave the row
+    ids alone, because the snapshot carries the wait id and a new id costs the recipe its
+    byte-equal short-circuit."""
+    # a recipe this user OWNS, since a PUT to a seeded one is 403 and this test is about the save
+    slug = pg.client.post("/api/recipes", json={
+        "name": "Wait identity", "ingredients": [{"qty": "1", "text": "flour"}],
+        "steps": ["Mix.", "Wait."]}).get_json()["id"]
+    got = pg.client.get(f"/api/recipes/{slug}").get_json()
+    body = {
+        "name": got["recipe"]["name"],
+        "ingredients": [{"id": x["id"], "quantity": x["quantity"] or "", "unit": x["unit"] or "",
+                         "text": x["label"] or x["raw_text"]} for x in got["ingredients"]],
+        "steps": [{"id": st["id"], "text": st["text"]} for st in got["steps"]],
+        "waits": [{"kind": "rising", "label": "first wait"},
+                  {"kind": "resting", "label": "second wait"},
+                  {"kind": "chilling", "label": "third wait"}],
+    }
+    assert pg.client.put(f"/api/recipes/{slug}", json=body).status_code == 200
+
+    def rows():
+        with pg.engine.connect() as c:
+            return [(r[0], r[1], r[2]) for r in c.execute(text(
+                "SELECT id, position, label FROM recipe_waits WHERE recipe_id=:r "
+                "ORDER BY position"), {"r": slug})]
+
+    planted = rows()
+    assert [r[2] for r in planted] == ["first wait", "second wait", "third wait"]
+
+    # a save that changes nothing keeps every id
+    assert pg.client.put(f"/api/recipes/{slug}", json=body).status_code == 200
+    assert rows() == planted, "an unchanged save changed the row ids on Postgres"
+
+    # and a rotation keeps them too, which is what the UNIQUE constraint makes awkward
+    body["waits"] = [body["waits"][2], body["waits"][0], body["waits"][1]]
+    assert pg.client.put(f"/api/recipes/{slug}", json=body).status_code == 200
+    rotated = rows()
+    assert [r[2] for r in rotated] == ["third wait", "first wait", "second wait"]
+    assert [r[1] for r in rotated] == [0, 1, 2]
+    assert {r[2]: r[0] for r in rotated} == {r[2]: r[0] for r in planted}, \
+        "a rotation minted new row ids on Postgres"

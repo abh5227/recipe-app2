@@ -653,33 +653,96 @@ def _label_key(text):
     return " ".join((text or "").split())
 
 
-def _minute_carry(s, table, rid, own, ext):
-    """The stored minutes for this recipe's rows, keyed by wording, each usable ONCE.
+def _match_rows(stored, incoming, has_ext):
+    """Pair each incoming row with the stored row it CONTINUES, or None when it is genuinely new.
 
-    Returns a function take(label, ext_label) -> (own_minutes, ext_minutes), where each is a dict of
-    the stored column values when the wording matches and None when it does not. Consume-once for the
-    same reason the ingredient carry is: a recipe may hold two waits whose labels read identically,
-    and the first incoming one must not take the second's row twice.
+    TWO PASSES, AND THEIR ORDER IS THE WHOLE RULE:
+
+      1. by WORDING, each stored row usable ONCE. An unchanged save and a pure reorder land entirely
+         here, which is what keeps every id and leaves the snapshot bytes untouched. Consume-once
+         because a recipe may hold two waits reading identically, and the first incoming one must
+         not take the second's row twice.
+      2. by ORDER, over whatever is left. A REWORDED row is an edit of the row that was sitting
+         there, not a deletion and an addition. Matching it keeps its id, so the page reports a
+         change instead of one row vanishing and another appearing, and the id sequence stops
+         climbing every time someone fixes a typo.
+
+    Returns (pairs, leftovers) where pairs is [(stored row or None, matched_by_wording)] aligned
+    with `incoming`, and leftovers is the stored rows nothing claimed, which are the deletions.
+
+    ⚠️ matched_by_wording IS NOT THE SAME QUESTION AS matched. It decides whether the stored MINUTES
+    still describe the row's words. A row matched in pass 2 keeps its id and is RE-READ, because its
+    wording is what changed. A row matched in pass 1 keeps both. Collapsing the two would either
+    re-read a wait nobody edited, which is the defect decision 1 fixed, or carry a stale figure onto
+    wording it no longer describes."""
+    pool = {}
+    for m in stored:
+        pool.setdefault(_label_key(m["label"]), []).append(m)
+
+    pairs = [None] * len(incoming)
+    claimed = set()
+    for i, (label, _ext) in enumerate(incoming):
+        bucket = pool.get(_label_key(label))
+        if bucket:
+            row = bucket.pop(0)
+            claimed.add(row["id"])
+            pairs[i] = (row, True)
+
+    spare = [m for m in stored if m["id"] not in claimed]
+    for i, pair in enumerate(pairs):
+        if pair is None and spare:
+            row = spare.pop(0)
+            claimed.add(row["id"])
+            pairs[i] = (row, False)
+    pairs = [pr if pr is not None else (None, False) for pr in pairs]
+    return pairs, [m for m in stored if m["id"] not in claimed]
+
+
+def _stored_rows(s, table, rid):
+    return list(s.execute(select(table).where(table.c.recipe_id == rid)
+                          .order_by(table.c.position)).mappings())
+
+
+def _kept_minutes(pair, has_ext, ext_label):
+    """(own minutes or None, extension minutes or None) for a matched row.
 
     ⚠️ THE TWO HALVES ARE DECIDED SEPARATELY, because they are two pieces of wording on one row. A
     cook who rewrites the extension and leaves the wait alone has edited the extension only, so the
     wait's own minutes still describe its own words and are kept."""
-    pool = {}
-    for m in s.execute(select(table).where(table.c.recipe_id == rid)).mappings():
-        pool.setdefault(_label_key(m["label"]), []).append(m)
+    row, by_wording = pair
+    if row is None or not by_wording:
+        return None, None
+    own = (row["min_minutes"], row["max_minutes"])
+    ext = None
+    if has_ext and _label_key(row["ext_label"]) == _label_key(ext_label):
+        ext = (row["ext_min_minutes"], row["ext_max_minutes"])
+    return own, ext
 
-    def take(label, ext_label):
-        bucket = pool.get(_label_key(label))
-        if not bucket:
-            return None, None
-        row = bucket.pop(0)
-        mine = {k: row[k] for k in own}
-        theirs = None
-        if ext is not None and _label_key(row["ext_label"]) == _label_key(ext_label):
-            theirs = {k: row[k] for k in ext}
-        return mine, theirs
 
-    return take
+def _apply_rows(s, table, plan, doomed):
+    """Write one of a recipe's child lists: UPDATE what was matched, INSERT only what is new, DELETE
+    only what nothing claimed. `plan` is a list of (stored row or None, values).
+
+    ⚠️ THE SURVIVORS' POSITIONS ARE PUSHED OUT OF THE WAY FIRST. recipe_waits and recipe_storage both
+    carry UNIQUE (recipe_id, position), so writing a reordered list straight back collides the moment
+    two rows swap places, and a new row taking position 0 collides with the survivor still sitting
+    there. Every matched row goes to a negative position first (-1 - its own, so they stay distinct
+    and cannot meet the final 0..n-1 range), and then each row takes its final place. There is no
+    CHECK on position, so the negative is legal in passing.
+
+    recipe_steps has no such constraint, which is why write_recipe_rows can assign positions directly
+    and why this dance lives here rather than there."""
+    for m in doomed:
+        s.execute(delete(table).where(table.c.id == m["id"]))
+    for m, _v in plan:
+        if m is not None:
+            s.execute(update(table).where(table.c.id == m["id"])
+                      .values(position=-1 - m["position"]))
+    for m, v in plan:
+        if m is None:
+            s.execute(insert(table).values(**v))
+        else:
+            s.execute(update(table).where(table.c.id == m["id"]).values(**v))
 
 
 def write_plan_ahead(s, rid, payload):
@@ -693,8 +756,10 @@ def write_plan_ahead(s, rid, payload):
     ⚠️ THE EXTENSION IS READ SEPARATELY AND NEVER FOLDED INTO THE RANGE. "or overnight if time
     allows" becomes ext_min 480 beside a normal range of 10 to 60, not a range of 10 to 480.
 
-    Delete-and-reinsert, like the ingredient rows: these are short ordered lists a person edits by
-    hand, and there is no identity to carry across a save.
+    ⚠️ UPDATE IN PLACE, matched by wording the same way the minutes are carried. This said
+    "delete-and-reinsert ... there is no identity to carry across a save", and the row id IS an
+    identity the snapshot records, so replacing the rows moved a recipe's bytes on a save that
+    changed nothing.
 
     ⚠️ AN ABSENT KEY IS NOT AN EMPTY LIST, AND READING IT AS ONE DELETED EVERY WAIT ON THE RECIPE.
     This read `payload.get("waits") or []` and deleted first, so a PUT that simply did not mention
@@ -723,13 +788,22 @@ def write_plan_ahead(s, rid, payload):
     #    THE RULE: stored minutes are kept unless that wait's own wording changed. Only an edited
     #    wait is re-read. read_duration is untouched — its reading of that sentence is a separate
     #    defect and it is on the roadmap with the Round B parser item.
-    carry_w = _minute_carry(s, rw, rid, ("min_minutes", "max_minutes"),
-                            ("ext_min_minutes", "ext_max_minutes"))
-    carry_s = _minute_carry(s, rs, rid, ("min_minutes", "max_minutes"), None)
-    if "waits" in payload:
-        s.execute(delete(rw).where(rw.c.recipe_id == rid))
-    if "storage" in payload:
-        s.execute(delete(rs).where(rs.c.recipe_id == rid))
+    #    ⚠️ AND THE ROW IS UPDATED IN PLACE RATHER THAN REPLACED, which is the other half of the
+    #    same rule. Deleting every row and inserting fresh ones gave each wait a NEW id on a save
+    #    that changed nothing, and the snapshot carries the wait id, so the recipe's bytes moved and
+    #    it dropped out of the byte-equal short-circuit for good. A row only gets a new id when it is
+    #    genuinely new, and a row nothing matched is deleted. See _row_carry and _apply_rows.
+    #    ⚠️ THE ROWS ARE MATCHED AND UPDATED IN PLACE, NOT REPLACED, which is the other half of the
+    #    same rule. Deleting every row and inserting fresh ones gave each wait a NEW id on a save
+    #    that changed nothing, and the snapshot carries the wait id, so the recipe's bytes moved and
+    #    it dropped out of the byte-equal short-circuit for good. See _match_rows and _apply_rows.
+    in_w = [(((w.get("label") or "").strip()), ((w.get("ext_label") or "").strip() or None))
+            for w in (payload.get("waits") or ()) if (w.get("label") or "").strip()]
+    in_s = [(((x.get("label") or "").strip()), None)
+            for x in (payload.get("storage") or ()) if (x.get("label") or "").strip()]
+    pairs_w, doomed_w = _match_rows(_stored_rows(s, rw, rid), in_w, True)
+    pairs_s, doomed_s = _match_rows(_stored_rows(s, rs, rid), in_s, False)
+    plan_w, plan_s = [], []
     # ⚠️ THE STEP IDS THIS RECIPE ACTUALLY HAS, read AFTER write_recipe_rows so they are the rows this
     #    save just wrote. A payload arrives with the ids the editor was holding, and a step deleted in
     #    this same save is still named by any wait that pointed at it.
@@ -748,19 +822,20 @@ def write_plan_ahead(s, rid, payload):
     step_ids = {m["id"] for m in s.execute(
         select(RecipeStep.__table__.c.id)
         .where(RecipeStep.__table__.c.recipe_id == rid)).mappings()}
-    for pos, w in enumerate(payload.get("waits") or ()):          # absent -> nothing to insert
+    pos = -1
+    for w in (payload.get("waits") or ()):                        # absent -> nothing to insert
         label = (w.get("label") or "").strip()
         if not label:
             continue
-        # ⚠️ KEPT, NOT RE-READ, WHEN THE WORDING IS THE SAME. See the note above the carry.
+        pos += 1
+        # ⚠️ KEPT, NOT RE-READ, WHEN THE WORDING IS THE SAME. See the note above _match_rows.
         ext = (w.get("ext_label") or "").strip() or None
-        kept, kept_ext = carry_w(label, ext)
-        if kept is not None:
-            lo, hi = kept["min_minutes"], kept["max_minutes"]
-        else:
-            lo, hi = planahead.read_duration(label)
-        if kept_ext is not None:
-            elo, ehi = kept_ext["ext_min_minutes"], kept_ext["ext_max_minutes"]
+        pair = pairs_w[pos]
+        kept = pair[0]
+        own, ext_kept = _kept_minutes(pair, True, ext)
+        lo, hi = own if own is not None else planahead.read_duration(label)
+        if ext_kept is not None:
+            elo, ehi = ext_kept
         else:
             elo, ehi = planahead.read_duration(ext) if ext else (None, None)
         kind = w.get("kind") if w.get("kind") in planahead.KINDS else "other"
@@ -806,25 +881,35 @@ def write_plan_ahead(s, rid, payload):
         #    minutes are dropped without one.
         esid = w.get("ext_step_id")
         esid = esid if (ext and esid in step_ids and esid != sid) else None
-        s.execute(insert(rw).values(
+        plan_w.append((kept, dict(
             recipe_id=rid, position=pos, kind=kind, label=label,
             min_minutes=lo, max_minutes=hi, step_id=sid, alongside_step_id=aside,
             ext_label=ext, ext_min_minutes=elo, ext_max_minutes=ehi, ext_step_id=esid,
-            when_kind=when_kind, when_label=when_label))
-    for pos, x in enumerate(payload.get("storage") or ()):        # absent -> nothing to insert
+            when_kind=when_kind, when_label=when_label)))
+    pos = -1
+    for x in (payload.get("storage") or ()):                      # absent -> nothing to insert
         label = (x.get("label") or "").strip()
         if not label:
             continue
+        pos += 1
         # ⚠️ STORAGE RE-DERIVES ON SAVE TOO, so it gets the same rule. A storage row has one piece of
         #    wording and no extension, so there is one half to decide.
-        kept, _ = carry_s(label, None)
-        lo, hi = ((kept["min_minutes"], kept["max_minutes"]) if kept is not None
-                  else planahead.read_duration(label))
+        pair = pairs_s[pos]
+        kept = pair[0]
+        own, _ = _kept_minutes(pair, False, None)
+        lo, hi = own if own is not None else planahead.read_duration(label)
         where = x.get("where_kept") if x.get("where_kept") in planahead.WHERES else "other"
-        s.execute(insert(rs).values(
+        plan_s.append((kept, dict(
             recipe_id=rid, position=pos, where_kept=where,
             applies_to=(x.get("applies_to") or "").strip() or None,
-            label=label, min_minutes=lo, max_minutes=hi))
+            label=label, min_minutes=lo, max_minutes=hi)))
+    # ⚠️ EACH LIST IS WRITTEN ONLY WHEN THE PAYLOAD NAMES IT. An absent key is not an empty list,
+    #    which is the rule the docstring above spends its length on, and it is now the thing that
+    #    decides whether unmatched rows are deleted at all.
+    if "waits" in payload:
+        _apply_rows(s, rw, plan_w, doomed_w)
+    if "storage" in payload:
+        _apply_rows(s, rs, plan_s, doomed_s)
 
 
 def _check_row_ids(clean, stored_ing, stored_step):
