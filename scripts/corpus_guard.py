@@ -12,11 +12,87 @@ ordinary `pytest` run and a real migration of the 300-recipe live database. For
 `apply_plan_ahead_proposals`, which wrote by default, there was not even an `--apply` to withhold.
 `refuse_live` is a pure function and the test calls it directly.
 """
+import functools
 import os
 import pathlib
+import subprocess
 import sys
 
 BASE = pathlib.Path(__file__).resolve().parent.parent
+
+LIVE_DB_NAME = "recipes.db"
+LIVE_DB_ENV = "RECIPE_APP_LIVE_DB"
+LIVE_DB_CONFIG = pathlib.Path("~/.config/chefs-choice/live-db")
+
+
+class LiveLocationUnknown(RuntimeError):
+    """Where the live database lives could not be determined, so no path may be assumed safe."""
+
+
+@functools.cache
+def _main_worktree(start):
+    """The MAIN checkout, found through git, which is the same answer from every worktree.
+
+    A linked worktree's COMMON git dir is the main checkout's `.git`, so its parent is the main
+    working tree. `scripts/serve_live.py` already finds the live data this way from the pinned
+    checkout. Cached because `tests/dbguard.py` asks the guard on every `sqlite3.connect`, and a
+    `git` subprocess per connection would cost the suite minutes.
+    """
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(start), "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if out.returncode != 0:
+        return None
+    common = pathlib.Path(out.stdout.strip() or ".")
+    return common.parent if common.name == ".git" else None
+
+
+def live_db():
+    """The ONE absolute path of the live database, the same answer from every checkout.
+
+    ⚠️ THE GUARD USED TO ASK ITS OWN CHECKOUT, WHICH IS WHY THIS FUNCTION EXISTS. `is_live` compared
+    against `BASE / "recipes.db"`, and BASE is the repo root of the file it was imported from. From
+    the main working tree it answered correctly. From a detached worktree it answered
+    `is_live(real live) == False`, because it looked for `recipes.db` beside its own copy of this
+    file and found nothing, so a script run out of a worktree and pointed at the real path was NOT
+    refused. Measured 2026-10-01 from two worktrees, False in both, with the real 328MB database
+    sitting where it always was. Three checkouts had three different ideas of what live meant, and
+    the pinned `../recipe-app-serve` is a worktree that exists to run against live.
+
+    Resolution order, first answer wins:
+      1. $RECIPE_APP_LIVE_DB                an explicit absolute path, for an odd layout or a test
+      2. ~/.config/chefs-choice/live-db     one line holding that path, read by every checkout
+      3. git                                the main working tree's recipes.db, the normal answer
+
+    Raises LiveLocationUnknown when none of the three answers, which the callers read as "every
+    path might be live" rather than "no path is live".
+    """
+    env = (os.environ.get(LIVE_DB_ENV) or "").strip()
+    if env:
+        return pathlib.Path(env).expanduser()
+    try:
+        cfg = LIVE_DB_CONFIG.expanduser()
+        if cfg.is_file():
+            line = cfg.read_text(encoding="utf-8").strip()
+            if line:
+                return pathlib.Path(line).expanduser()
+    except OSError:
+        pass
+    main = _main_worktree(BASE)
+    if main is not None:
+        return main / LIVE_DB_NAME
+    raise LiveLocationUnknown(
+        f"cannot tell where the live database is, so no path can be called safe.\n"
+        f"  Set {LIVE_DB_ENV} to its absolute path, or put that path in\n"
+        f"  {LIVE_DB_CONFIG}.")
+
+
+def reset_live_db_cache():
+    """Forget the cached git lookup, for a test that moves the repo or changes the environment."""
+    _main_worktree.cache_clear()
 
 
 def _identity(path):
@@ -29,24 +105,34 @@ def _identity(path):
     link IS the file under a second name and resolving it gives that second name back."""
     try:
         st = os.stat(path)
-    except OSError:
+    except (OSError, TypeError, ValueError):
         return None
     return (st.st_dev, st.st_ino)
 
 
 def is_live(db, base=None):
-    """True when `db` names the live database, whatever it is spelled as.
+    """True when `db` names the live database, whatever it is spelled as and whichever checkout asks.
 
-    Live is `recipes.db` in the repo root and nothing else. A copy under any other name or in any
-    other directory passes straight through, which is what every rehearsal relies on.
+    Live is the ONE file `live_db()` names. A copy under any other name or in any other directory
+    passes straight through, which is what every rehearsal relies on.
 
     TWO TESTS, AND THE UNION OF THEM, because each answers a case the other cannot:
       * file identity  catches every alias of an EXISTING file, including a hard link.
       * resolved path  catches live BEFORE IT EXISTS, which is the fresh-clone case, where there is
                        no inode to compare and `migrate.py --db recipes.db` would create it.
+
+    `base` names a repo root explicitly and is the test seam for the fresh-clone case. Without it
+    the answer comes from `live_db()`, and a location that cannot be determined FAILS CLOSED: every
+    path is treated as live, so a write needs the sentence typed out.
     """
-    root = pathlib.Path(base or BASE).resolve()
-    live = root / "recipes.db"
+    if base is not None:
+        live = pathlib.Path(base).resolve() / LIVE_DB_NAME
+    else:
+        try:
+            live = live_db()
+        except LiveLocationUnknown:
+            return True
+    live = pathlib.Path(live).resolve()
     if pathlib.Path(db).resolve() == live:
         return True
     here = _identity(db)
@@ -54,9 +140,16 @@ def is_live(db, base=None):
 
 
 def refuse_live(db, i_mean_live, base=None):
-    """Exit unless the caller said `--i-mean-live`, when `db` is the live database."""
-    if is_live(db, base) and not i_mean_live:
-        sys.exit("refusing to write live recipes.db without --i-mean-live")
+    """Exit unless the caller said `--i-mean-live`, when `db` is (or might be) the live database."""
+    if i_mean_live:
+        return
+    if base is None:
+        try:
+            live_db()
+        except LiveLocationUnknown as e:
+            sys.exit(f"refusing to write {db} without --i-mean-live.\n  {e}")
+    if is_live(db, base):
+        sys.exit(f"refusing to write live {LIVE_DB_NAME} without --i-mean-live")
 
 
 # ---- where a report may land (H4) ---------------------------------------------------------------

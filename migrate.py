@@ -83,9 +83,12 @@ def main(argv=None):
     #    "this is live, say so out loud". It is imported here rather than at module scope so that
     #    importing migrate (build_db.py, the test harness) still touches nothing: a command line run
     #    is the only thing that can reach live by accident.
+    #    ⚠️ AND IT ASKS THE GUARD, NOT THIS CHECKOUT. It used to pass base=BASE_DIR, so run from a
+    #    worktree it compared the target against THAT tree's absent recipes.db and refused nothing.
+    #    corpus_guard.live_db() is the one absolute answer, the same from every checkout.
     sys.path.insert(0, str(BASE_DIR / "scripts"))
     from corpus_guard import refuse_live
-    refuse_live(db, a.i_mean_live, base=BASE_DIR)
+    refuse_live(db, a.i_mean_live)
     migrate(db=db)
 
 

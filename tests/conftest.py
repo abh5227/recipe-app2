@@ -19,7 +19,15 @@ netguard.install()
 # ⚠️ AND THE SAME WALL IN FRONT OF THE LIVE DATABASE. The harness redirects app.DB / build_db.DB /
 # migrate.DB, and a test that names a path itself reaches straight past that redirect — one did. See
 # tests/dbguard.py. Installed at import for the same reason netguard is.
-dbguard.install(Path(__file__).resolve().parent.parent / "recipes.db")
+# ⚠️ AND IT ASKS THE SHARED GUARD WHERE LIVE IS, NOT ITS OWN PARENT DIRECTORY. `parent.parent` is
+# THIS checkout, so a suite run from a worktree guarded that worktree's absent recipes.db and left
+# the real one open. corpus_guard.live_db() is the one absolute answer from any checkout, and a
+# location it cannot determine raises, which is louder than guarding the wrong file.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+
+import corpus_guard                                                            # noqa: E402
+
+dbguard.install(corpus_guard.live_db())
 
 
 def pytest_configure(config):
