@@ -1259,10 +1259,19 @@ a:hover { color: var(--berry-lift); }
    a heading; the rule under it keeps the section boundary. */
 /* ⚠️ THE BASE RULE IS THE SECTION HEADING, NOT A SHARED CORE, so a .group that somehow reaches the
    method column without a level class still renders as one. Level 1 is the column's default
-   (migration 059) and a bare .group means "no level was stated", which is the same answer. */
+   (migration 059) and a bare .group means "no level was stated", which is the same answer.
+
+   ⚠️ A SECTION IS THE INGREDIENT HEADING'S STYLE, AND THAT IS WHAT RESOLVES THE ARGUMENT THIS RULE
+   HAS HAD WITH ITSELF TWICE. It was a 12px tracked small-caps label, which read wrong once ~70
+   sentences became headings. It became 17px serif normal case, which read wrong for the short
+   section titles it had been right for. The levels are what make both true at once: a SECTION is a
+   short label naming a part of the recipe ("The prep", "How to cook"), so it takes the same
+   treatment the ingredient column's sections already take and the two columns finally match. A
+   SUBHEADING is a sentence lifted off one step, so it takes the step's own size in bold. Keep these
+   two in step with .ingredient-list li.group — they are now one decision, not two. */
 .steps li.group {
-  font-family: var(--font-serif); font-size: 17px; font-weight: 700;
-  letter-spacing: normal; text-transform: none; color: var(--green);
+  font-family: var(--font-mono); font-size: var(--fs-step-section, 12px); font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--green);
   margin: 22px 0 10px; padding: 0 0 5px; border-bottom: 1.5px solid var(--border-defined);   /* "more defined" (B): defined underline */
 }
 /* A section OPENS A GROUP, which is space above rather than a second rule. 22px against the step
@@ -1277,7 +1286,8 @@ a:hover { color: var(--berry-lift); }
    the single step below it draws the boundary in the wrong place. Smaller and bold is enough to
    separate it from the step, because the step is neither. */
 .steps li.group.h2 {
-  font-size: 15px;
+  font-family: var(--font-serif); font-size: var(--fs-step-sub, 15px); font-weight: 700;
+  letter-spacing: normal; text-transform: none;
   margin: 16px 0 4px; padding: 0; border-bottom: none;
 }
 
@@ -1352,7 +1362,13 @@ a:hover { color: var(--berry-lift); }
    tracking when the headings stopped being short labels, and these two were left behind — so the
    editor kept shouting a heading the reading view had already quietened. The UA reset now lands on
    exactly the values li.group wants, so the right number of declarations here is none. */
-.e-step-heading { display: block; width: 100%; border-bottom-color: transparent; }
+.e-step-heading { display: block; width: 100%; border-bottom-color: transparent;
+  letter-spacing: 0.1em; text-transform: uppercase; }
+/* ⚠️ AND THE SUBHEADING TAKES THEM BACK OFF. The UA stylesheet resets both on a form control, so a
+   section's field has to restate them (it is tracked uppercase again) and a subheading's field has
+   to cancel that restatement rather than inherit it. This pair is why the two declarations above
+   are not simply deleted: they are correct for one level and wrong for the other. */
+.steps li.group.h2 .e-step-heading { letter-spacing: normal; text-transform: none; }
 /* (A stage 2 removed the two `.steps li.step-edit .rbtn.rm` overrides that lived here — they unfenced
    the step trash, which was alone in its cluster. There is no step trash any more: delete is a .danger
    item in the row ⋯ menu. The lesson they recorded is still live in .rbtn.rm above — drop a fence's
