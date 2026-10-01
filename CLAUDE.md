@@ -343,6 +343,25 @@ How this project is run:
   round, on a script that did not yet have one, and only the fact that the pass had nothing to do kept
   it harmless. Point every command at the copy, and read live's sha256 and counts at the start of a
   session, at the end, and immediately before the first live write.
+- **A SAVE KEEPS THE ROWS IT WAS GIVEN.** `write_plan_ahead` deleted every wait and storage row and
+  inserted fresh ones, so each came back with a new AUTOINCREMENT id, and `serialize_recipe_content`
+  records the wait id. A save that changed NOTHING therefore moved the snapshot bytes and cost the
+  recipe its byte-equal short-circuit permanently. Observed on live: brioche-bread's entire
+  difference from its baseline was `"id": 12` becoming `108` and `"id": 13` becoming `109`.
+  **Rows are matched and UPDATED in place.** `_match_rows` pairs incoming rows to stored ones in two
+  passes, and the order is the rule: **by wording first**, each stored row usable once, which is
+  where an unchanged save and a pure reorder land entirely, then **by order** over what is left, so
+  a reworded row is an EDIT that keeps its id rather than a deletion plus an addition. A new id means
+  a genuinely new row, and a stored row nothing claimed is deleted.
+  ⚠️ **"MATCHED" AND "MATCHED BY WORDING" ARE DIFFERENT QUESTIONS.** The second decides whether the
+  stored MINUTES still describe the row's words. A row matched by order keeps its id and is RE-READ.
+  Collapsing them would either re-read a wait nobody edited, which is the defect decision 1 fixed, or
+  carry a reviewed figure onto wording it no longer describes.
+  ⚠️ **AND THE POSITIONS ARE PUSHED OUT OF THE WAY FIRST.** `recipe_waits` and `recipe_storage` both
+  carry `UNIQUE (recipe_id, position)` on BOTH dialects, so writing a reordered list straight back
+  collides the moment two rows swap. Survivors go to negative positions in one pass and take their
+  final places in a second. `recipe_steps` has no such constraint, which is why `write_recipe_rows`
+  can assign positions directly and this dance lives only here.
 - **LOCKSTEP: A MACHINE REPAIR MAKES NO MARK.** The page's "your changes" is
   `diff(reason='original' snapshot, current rows)`, so a pass that rewrites a row without rewriting
   that baseline is indistinguishable from the cook having hand-edited it. Every corpus pass patches
@@ -351,6 +370,16 @@ How this project is run:
   ⚠️ **The baseline is patched SURGICALLY, never rebuilt.** 16 of the 300 have drifted on purpose and
   rebuilding from current content would declare each recipe born in its edited state, erasing exactly
   the annotations the layer exists to show.
+- **A GATE COMPARES THE SHORT-CIRCUIT SET AGAINST THE BEFORE-STATE OF THE SAME RUN, NEVER A FIXED
+  NUMBER.** "short-circuit 275 of 300" was quoted as a gate figure for a whole round, and it is not
+  a property of the corpus. It is a property of which recipes have been saved. A save used to give
+  every wait a new row id, the snapshot carries that id, so one spot-check save of brioche-bread took
+  the number to 274 with **0 annotation entries and nothing visible on the page**. The save path
+  keeps row ids now (`_match_rows`, `_apply_rows`), so an unchanged save leaves the bytes alone, but
+  the rule stands on its own: read the set before the chain, read it after, and compare the two SETS.
+  A count that drifts for a legitimate reason teaches everyone to ignore the gate.
+  ⚠️ **AND COMPARE THE SET, NOT ITS SIZE.** One recipe leaving while another joins holds the count
+  still and is exactly the kind of thing a corpus pass should have to explain.
 - **A DECISION A PASS READS IS COMMITTED. A REVIEW LIST IS NOT.** Two kinds of file live in
   `docs/data-repairs/`, and the difference is whether code opens it.
   - **A recorded decision** is an input to a pass. It **must be committed**, because a pass that
