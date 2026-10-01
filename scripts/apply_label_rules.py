@@ -36,6 +36,7 @@ import sqlite3
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+BASE = pathlib.Path(__file__).resolve().parent.parent
 import snapshot_serialize                                        # noqa: E402
 from import_cleanup import (SECTION, SUBHEADING, _ALTERNATIVE,   # noqa: E402
                             capitalize_first_visible, label_level,
@@ -334,11 +335,23 @@ def run(db, apply_it):
     return log
 
 
+def refuse_live(db, i_mean_live):
+    """⚠️ A CORPUS PASS NAMES ITS DATABASE AND THE LIVE ONE IS NOT A DEFAULT. Three of these four
+    scripts would write to live recipes.db from a mistyped path, with --apply and no further word.
+    The fourth (apply_plan_ahead_proposals) has carried this guard since round 3; this is the same
+    one, so all four refuse the same way and a live run is a sentence a person had to type."""
+    p = pathlib.Path(db).resolve()
+    if p.name == "recipes.db" and p.parent == BASE and not i_mean_live:
+        sys.exit("refusing to write live recipes.db without --i-mean-live")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("db")
     ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--i-mean-live", action="store_true")
     a = ap.parse_args()
+    refuse_live(a.db, a.i_mean_live)
     log = run(a.db, a.apply)
     print(f"{'APPLIED' if a.apply else 'DRY RUN'}  {a.db}")
     for key, title in (("promote", "7  lifted labels promoted to sections"),

@@ -1,0 +1,38 @@
+recipe_id,step_row_id,position,tier,signal,words,current_text,proposed_heading,wait_points_here,has_hand_edit,DECISION_convert_yes_no
+biscuits,1823,1,2 judgement,short-titlelike,5,Preheat oven to 425 degrees,Preheat oven to 425 degrees,,,no
+brioche-bread,1873,9,1 confident,marker-wrapped,2,_Cold Proof_,Cold Proof,,,yes
+brioche-bread,1876,12,2 judgement,short-titlelike,2,Shaping options,Shaping options,,,yes
+brioche-cinnamon-rolls,5961,7,1 confident,marker-wrapped,1,_Shaping_,Shaping,,,yes
+brioche-cinnamon-rolls,5969,15,1 confident,marker-wrapped,2,_The frosting:_,The frosting,,,yes
+brussel-sprouts,1934,0,2 judgement,short-titlelike,5,Preheat oven to 425 degrees,Preheat oven to 425 degrees,,,no
+brussel-sprouts,1935,1,2 judgement,short-titlelike,3,Blanche brussel sprouts,Blanche brussel sprouts,,,no
+brussel-sprouts,1937,3,2 judgement,short-titlelike,4,Remove into ice bath,Remove into ice bath,,,no
+brussel-sprouts,1940,6,2 judgement,short-titlelike,5,Smush with metal measuring cup,Smush with metal measuring cup,,,no
+cappuccino-muffins,1983,1,1 confident,marker-wrapped,1,_Streusel_,Streusel,,,yes
+cappuccino-muffins,1986,4,1 confident,marker-wrapped,1,_Muffins_,Muffins,,,yes
+cheesy-congee,2016,0,2 judgement,short-titlelike,5,Cook rice in rice cooker,Cook rice in rice cooker,,,no
+chicken-pepperoni,2112,2,2 judgement,short-titlelike,6,"Sauté garlic, peppers, onions and mushrooms","Sauté garlic, peppers, onions and mushrooms",,,no
+chickpea-rice-pilaf,2141,0,2 judgement,short-titlelike,5,Steam rice in rice cooker,Steam rice in rice cooker,,,no
+cinnamon-scones,4567,1,2 judgement,short-titlelike,6,In a medium bowl beat eggs,In a medium bowl beat eggs,,,no
+earl-grey-tea-cake,2352,17,2 judgement,short-titlelike,4,To finish the frosting,To finish the frosting,,,yes
+egg-fried-rice,2367,1,2 judgement,short-titlelike,6,Fry garlic and shallot until fragrant,Fry garlic and shallot until fragrant,,,no
+egg-fried-rice,2368,2,2 judgement,short-titlelike,6,Add egg and cook until fluffy,Add egg and cook until fluffy,,,no
+egg-fried-rice,2369,3,2 judgement,short-titlelike,4,Add rice and stir,Add rice and stir,,,no
+french-baguette,2433,4,2 judgement,short-titlelike,6,Repeat this procedure another 3 times,Repeat this procedure another 3 times,,,no
+kfc-spicy-chicken-rice-bowl,2659,8,2 judgement,short-titlelike,1,Assembly,Assembly,,,yes
+khaliat-nahal-honeycomb-bread,2672,9,2 judgement,short-titlelike,5,Preheat the oven to 400°F,Preheat the oven to 400°F,,,no
+oven-baked-quesadillas,3038,1,2 judgement,short-titlelike,1,Filling,Filling,,,yes
+oven-baked-quesadillas,3045,8,2 judgement,short-titlelike,2,Assemble quesadillas,Assemble quesadillas,,,yes
+pastina,4577,0,2 judgement,short-titlelike,2,Childhood Pastina,Childhood Pastina,,,yes
+pastina,4582,5,2 judgement,short-titlelike,2,Adult Pastina,Adult Pastina,,,yes
+penne-alla-vodka,3182,1,2 judgement,short-titlelike,4,then add the onion,then add the onion,,,no
+shepherds-pie,4605,1,2 judgement,short-titlelike,3,Cook the potatoes,Cook the potatoes,,,no
+sunday-sauce,3659,0,2 judgement,short-titlelike,4,Start the Sauce First,Start the Sauce First,,,yes
+tahini-brioche-loaves-and-dinner-rolls,4619,0,2 judgement,short-titlelike,1,Sponge,Sponge,,,yes
+tahini-brioche-loaves-and-dinner-rolls,4624,5,2 judgement,short-titlelike,1,Dough,Dough,,,yes
+tahini-brioche-loaves-and-dinner-rolls,4633,14,2 judgement,short-titlelike,1,Loaves,Loaves,,,yes
+tahini-brioche-loaves-and-dinner-rolls,4641,22,2 judgement,short-titlelike,1,Rolls,Rolls,,,yes
+the-best-new-york-style-bagel,3787,9,1 confident,marker-wrapped,4,**For Same Day Baking**,For Same Day Baking,,,yes
+the-best-new-york-style-bagel,3789,11,1 confident,marker-wrapped,4,**For Next Day Baking**,For Next Day Baking,,,yes
+the-best-new-york-style-bagel,3791,13,1 confident,marker-wrapped,6,**To Boil and Bake the Bagels**,To Boil and Bake the Bagels,,,yes
+warm-buttered-hummus,3891,6,2 judgement,short-titlelike,1,Additions,Additions,,,yes

@@ -131,3 +131,25 @@ def test_a_heading_whose_link_has_no_later_mention_is_flagged_and_still_cleaned(
 
     assert _steps(db)[0]["text"] == "Wilt the spinach"
     assert any("needs re-linking" in str(f) for f in log["flagged"])
+
+
+@pytest.mark.parametrize("script", ["add_missed_waits", "apply_label_rules",
+                                    "apply_plan_ahead_proposals", "convert_step_headings"])
+def test_a_corpus_pass_refuses_live_without_being_told(script, tmp_path, monkeypatch):
+    """All four name their database, and none of them takes live as a typo.
+
+    ⚠️ Three of these had no guard at all. apply_plan_ahead_proposals has carried one since round 3
+    and the other three would have written to live recipes.db from a mistyped path with --apply and
+    no further word. A live run is now a sentence a person had to type.
+    """
+    import importlib
+
+    mod = importlib.import_module(script)
+    live = str(BASE / "recipes.db")
+    with pytest.raises(SystemExit) as e:
+        if script == "apply_plan_ahead_proposals":
+            monkeypatch.setattr("sys.argv", [script, live])
+        else:
+            monkeypatch.setattr("sys.argv", [script, live, "--apply"])
+        mod.main()
+    assert "--i-mean-live" in str(e.value)

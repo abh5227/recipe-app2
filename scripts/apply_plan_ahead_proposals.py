@@ -29,7 +29,14 @@ sys.path.insert(0, str(BASE))
 import planahead                                                      # noqa: E402
 import snapshot_serialize                                             # noqa: E402
 
-CSV_PATH = BASE / "previews" / "plan-ahead-proposals-v3.csv"
+# ⚠️ THE PROPOSALS ARE AN INPUT TO A LIVE WRITE, SO THEY LIVE IN THE REPO. They sat in previews/,
+# which .gitignore excludes, so the 94 waits and 30 storage rows this script writes over 90 recipes
+# existed on one machine and in no commit. A corpus pass that cannot be re-run from a clone is a
+# hand edit with more steps. The previews path is still read when the repo copy is absent, so an
+# older checkout keeps working.
+CSV_PATH = BASE / "docs" / "data-repairs" / "plan-ahead-proposals-v3-2026-09-27.csv"
+if not CSV_PATH.exists():
+    CSV_PATH = BASE / "previews" / "plan-ahead-proposals-v3.csv"
 
 # ⚠️ step_id, NOT step_position AND step_check. Migration 053 replaced the slot-plus-snippet pointer
 # with the step row's id and 054 dropped the two columns, so this list is what the table now has. The
