@@ -255,6 +255,17 @@ See the deferred entry under Known limitations and tech debt in `ROADMAP.md`.
 
 How this project is run:
 
+- **FIX BY RULE, NOT BY ROW.** Every data or display correction is written as a rule that (1) runs
+  over every existing recipe, (2) runs in the importer for new recipes, because other people will
+  import, and (3) has tests. Where a rule cannot decide, it **flags** the recipe (an import flag and
+  a review list) instead of guessing. A person decides once, and that decision is recorded as data
+  the corpus pass reads, never as a hand edit to one row. One-off row fixes are allowed **only** as
+  recorded decisions on flagged cases.
+  *Why:* a hand-fixed row is invisible to the next import and to the next corpus pass, so the same
+  defect returns on the next recipe and nothing says it was ever decided. The 300-recipe heading
+  repair and the importer that now shares its rules
+  (`import_cleanup.plan_step_rows`, imported by `scripts/convert_step_headings.py`) are the shape
+  this takes: one rule set, two callers, one review CSV per decision a rule could not make.
 - **Read-only inspection first.** Inspect and report before changing anything; see the real
   data before acting.
 - **Preview-first for visual/UX work.** Before building any visual or UI change for real, build a
