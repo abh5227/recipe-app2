@@ -496,3 +496,60 @@ def test_the_sync_is_still_content_safe_with_a_level():
                dict(step(1, "Deseed", heading=True, id=77), heading_level=2),
                step(2, "Bake", id=2)]
     assert content_safety_problems(old, sync_heading_layout(old, [], current)) == []
+
+
+# ---- a heading converted BACK is KEPT, not dropped (review fix 1) --------------------------------
+# The skip above covers one direction. Dropping every baseline heading is lossless only while
+# CURRENT still holds an equivalent heading to re-interleave. When current holds that very row as a
+# CONTENT row, nothing re-adds it and the baseline loses the row altogether, so the diff reports a
+# step the cook never wrote. See the note in _reinterleave.
+
+def test_a_step_heading_converted_back_to_a_step_stays_in_the_baseline():
+    """The baseline holds the row as a HEADING (its birth state). Current holds the same row (same
+    id) as a content step. The baseline must still hold it, as the heading it was born as."""
+    old = blob([], [step(0, "PREP", heading=True, id=2), step(1, "Beat the eggs.", id=3),
+                    step(2, "Fold the flour.", id=4)])
+    current = [step(0, "PREP", id=2), step(1, "Beat the eggs.", id=3), step(2, "Fold the flour.", id=4)]
+    out = rows(sync_heading_layout(old, [], current), "steps")
+    assert [(r["id"], r["is_heading"], r["text"]) for r in out] == \
+           [(2, 1, "PREP"), (3, 0, "Beat the eggs."), (4, 0, "Fold the flour.")]
+    assert [r["position"] for r in out] == [0, 1, 2]
+
+
+def test_an_ingredient_heading_converted_back_to_a_line_stays_in_the_baseline():
+    """The same defect on the ingredient arm, which shares _reinterleave."""
+    old = blob([ing(0, heading="SAUCE", id=7), ing(1, label="oil", qty="1 tbsp", id=8)], [])
+    current = [ing(0, label="SAUCE", qty="", id=7), ing(1, label="oil", qty="1 tbsp", id=8)]
+    out = rows(sync_heading_layout(old, current, []), "ingredients")
+    assert [(r["id"], r["is_heading"]) for r in out] == [(7, 1), (8, 0)], out
+
+
+def test_a_heading_the_user_actually_deleted_is_still_dropped():
+    """The keep pairs a CONVERSION. A heading that is simply gone from current, with no content row
+    answering to its id or its name, must still leave the baseline — otherwise the keep would be
+    'never drop a heading' and the wholesale replacement would stop working."""
+    old = blob([], [step(0, "PREP", heading=True, id=2), step(1, "Beat the eggs.", id=3)])
+    current = [step(0, "Beat the eggs.", id=3)]
+    out = rows(sync_heading_layout(old, [], current), "steps")
+    assert [(r["id"], r["is_heading"]) for r in out] == [(3, 0)], out
+
+
+def test_a_step_heading_round_trip_returns_the_baseline_to_its_birth_bytes():
+    """heading -> step -> heading. The baseline must come back byte-identical, or the short-circuit
+    is lost for good on any recipe a cook converts and converts back."""
+    birth_steps = [step(0, "PREP", heading=True, id=2), step(1, "Beat the eggs.", id=3)]
+    birth = blob([], birth_steps)
+    as_step = [step(0, "PREP", id=2), step(1, "Beat the eggs.", id=3)]
+    once = sync_heading_layout(birth, [], as_step)
+    assert rows(once, "steps")[0]["is_heading"] == 1
+    back = sync_heading_layout(once, [], birth_steps)
+    assert back == birth, "the round trip did not return the baseline to its birth bytes"
+
+
+def test_the_keep_matches_by_name_when_the_baseline_row_has_no_id():
+    """24 baseline rows over 19 recipes carry no id. The name key is the only thing that can pair
+    them, exactly as it is for the skip."""
+    old = blob([], [step(0, "PREP", heading=True, id=None), step(1, "Beat the eggs.", id=3)])
+    current = [step(0, "PREP", id=None), step(1, "Beat the eggs.", id=3)]
+    out = rows(sync_heading_layout(old, [], current), "steps")
+    assert [(r["is_heading"], r["text"]) for r in out] == [(1, "PREP"), (0, "Beat the eggs.")], out

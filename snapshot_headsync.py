@@ -133,6 +133,36 @@ def _reinterleave(old_rows, current_rows, row_of, skip_converted=False):
                                or kind_change_name_key(h) in names)
         heads = [(o, h) for o, h in heads if not converted(h)]
 
+        # ⚠️ AND THE OTHER DIRECTION IS A KEPT ROW, NOT A SKIPPED ONE. Dropping every baseline
+        # heading is only lossless while CURRENT still holds an equivalent heading, because the
+        # re-interleave puts that one back. It is not lossless when current holds that very row as a
+        # CONTENT row, which is what converting a heading BACK to a step or a line does: the row
+        # leaves current's heading list, so nothing re-adds it, and the baseline comes out with no
+        # record of the row at all.
+        #
+        # Measured on a recipe born with the step heading "PREP": converting it to a step left the
+        # baseline holding two steps where the recipe has three, and the diff reported
+        # {kind: "step", type: "added", text: "PREP"} — a mark saying the cook wrote a step they did
+        # not write, on a conversion that is specified to leave no mark in either direction. The
+        # same applies to an ingredient heading converted back to a line.
+        #
+        # Keeping it AS A HEADING is what makes the existing machinery do the rest. The row WAS a
+        # heading at birth, so the baseline is still the birth state, P1 never sees it (it stays out
+        # of the content sequence on both sides), and snapshot_diff.suppress_kind_changes already
+        # pairs (old heading, new line) by the same two keys and emits nothing for the pair. The
+        # alternative, flipping it to a content row in the baseline, would have to weaken P1 — the
+        # one check standing between a bad transform and the birth state — to buy nothing.
+        cur_content = [r for r in current_rows if not _get(r, "is_heading")]
+        cur_ids = {kind_change_key(r) for r in cur_content} - {None}
+        cur_names = {kind_change_name_key(r) for r in cur_content}
+        kept = [(o, h) for o, h in _content_ordinal_of_headings(old_rows)
+                if kind_change_key(h) in cur_ids or kind_change_name_key(h) in cur_names]
+        # Stable sort, so a retained baseline heading and a current heading claiming the same content
+        # ordinal land in a fixed order (current's first) instead of a dict-order one. The ordinals
+        # are approximations either way — see _content_ordinal_of_headings — and the only consumer is
+        # which section a struck row names.
+        heads = sorted(heads + kept, key=lambda pair: pair[0])
+
     merged, ci = [], 0
     for ordinal, h in heads:
         stop = min(ordinal, len(content))              # clamp: current may name an ordinal past the

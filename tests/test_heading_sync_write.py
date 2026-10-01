@@ -242,3 +242,97 @@ def test_the_real_postcondition_is_wired_in_not_a_copy(kitchen):
     with app.orm_session() as s:
         assert app.sync_original_heading_layout(s, rid) is False      # already in sync -> no write
     assert app.snapshot_headsync is snapshot_headsync
+
+
+# ---- converting a heading BACK leaves no mark (review fix 1) --------------------------------------
+# The ruling is that a heading conversion never marks, in EITHER direction. The forward direction was
+# covered by suppress_kind_changes. The reverse was not, and the reason was upstream of the diff: the
+# sync dropped the baseline's heading row and nothing re-added it, so there was no row left for the
+# suppression to pair against. Measured before the fix, on this exact fixture: one
+# {kind: "step", type: "added", text: "PREP"} entry.
+
+def _rows(client, rid):
+    d = client.get(f"/api/recipes/{rid}").get_json()
+    return d["ingredients"], d["steps"], d["annotations"]
+
+
+def _ing_wire(r):
+    return ({"id": r["id"], "heading": r["raw_text"]} if r["is_heading"]
+            else {"id": r["id"], "quantity": r["quantity"] or "", "unit": r["unit"] or "",
+                  "text": r["label"] or r["raw_text"], "note": r["note"] or ""})
+
+
+def _step_wire(r):
+    return ({"id": r["id"], "heading": r["text"], "level": r["heading_level"]} if r["is_heading"]
+            else {"id": r["id"], "text": r["text"]})
+
+
+def _save(client, rid, ings, steps, name="Sync Dish"):
+    """PUT the rows back in the wire form the real client sends (save-payload.js), so a conversion
+    is expressed the way the step row menu expresses it and not as a hand-built payload."""
+    r = client.put(f"/api/recipes/{rid}", json={
+        "name": name, "ingredients": [_ing_wire(x) for x in ings],
+        "steps": [_step_wire(x) for x in steps]})
+    assert r.status_code == 200, r.get_json()
+    return r
+
+
+def _flip(row):
+    row = dict(row)
+    row["is_heading"] = 0 if row["is_heading"] else 1
+    if row["is_heading"] and not row.get("heading_level"):
+        row["heading_level"] = 1                      # toggleStepType: a new heading is a section
+    return row
+
+
+def test_converting_a_step_heading_to_a_step_leaves_no_mark(kitchen):
+    rid = _recipe(kitchen.client)
+    ings, steps, ann = _rows(kitchen.client, rid)
+    assert ann == [] and steps[0]["is_heading"] == 1
+
+    _save(kitchen.client, rid, ings, [_flip(steps[0])] + steps[1:])
+
+    _, after, ann = _rows(kitchen.client, rid)
+    assert [(s["is_heading"], s["text"]) for s in after] == \
+           [(0, "PREP"), (0, "Beat the eggs."), (0, "Fold in the flour.")]
+    assert ann == [], f"a heading conversion marked the page: {ann}"
+
+
+def test_converting_an_ingredient_heading_to_a_line_leaves_no_mark(kitchen):
+    rid = _recipe(kitchen.client)
+    ings, steps, _ = _rows(kitchen.client, rid)
+    assert ings[0]["is_heading"] == 1
+
+    _save(kitchen.client, rid, [_flip(ings[0])] + ings[1:], steps)
+
+    _, _, ann = _rows(kitchen.client, rid)
+    assert ann == [], f"an ingredient heading conversion marked the page: {ann}"
+
+
+def test_a_step_heading_round_trips_both_ways_with_no_mark(kitchen):
+    """heading -> step -> heading, and then step -> heading -> step on a row born as a step. Both
+    round trips must end with no annotations AND a baseline back at its birth bytes, or a cook who
+    tries the menu and changes their mind has lost the short-circuit for good."""
+    rid = _recipe(kitchen.client)
+    birth = _original(kitchen, rid)
+    ings, steps, _ = _rows(kitchen.client, rid)
+
+    _save(kitchen.client, rid, ings, [_flip(steps[0])] + steps[1:])      # heading -> step
+    ings, mid, ann = _rows(kitchen.client, rid)
+    assert ann == [], ann
+    _save(kitchen.client, rid, ings, [_flip(mid[0])] + mid[1:])          # step -> heading
+    _, back, ann = _rows(kitchen.client, rid)
+    assert [(s["is_heading"], s["text"]) for s in back] == \
+           [(1, "PREP"), (0, "Beat the eggs."), (0, "Fold in the flour.")]
+    assert ann == [], ann
+    assert _original(kitchen, rid) == birth, "the baseline did not return to its birth bytes"
+
+    _save(kitchen.client, rid, ings, back[:1] + [_flip(back[1])] + back[2:])   # step -> heading
+    ings, mid, ann = _rows(kitchen.client, rid)
+    assert ann == [], ann
+    _save(kitchen.client, rid, ings, mid[:1] + [_flip(mid[1])] + mid[2:])      # heading -> step
+    _, back, ann = _rows(kitchen.client, rid)
+    assert [(s["is_heading"], s["text"]) for s in back] == \
+           [(1, "PREP"), (0, "Beat the eggs."), (0, "Fold in the flour.")]
+    assert ann == [], ann
+    assert _original(kitchen, rid) == birth, "the baseline did not return to its birth bytes"
