@@ -9,12 +9,17 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))   # make harness importable
 
 import pytest
+import dbguard
 import netguard
 from harness import make_kitchen
 
 # Installed at IMPORT, not in a fixture, so the guard covers collection-time code too. See
 # tests/netguard.py for what it blocks, what it deliberately does not, and the defect that caused it.
 netguard.install()
+# ⚠️ AND THE SAME WALL IN FRONT OF THE LIVE DATABASE. The harness redirects app.DB / build_db.DB /
+# migrate.DB, and a test that names a path itself reaches straight past that redirect — one did. See
+# tests/dbguard.py. Installed at import for the same reason netguard is.
+dbguard.install(Path(__file__).resolve().parent.parent / "recipes.db")
 
 
 def pytest_configure(config):
@@ -23,6 +28,22 @@ def pytest_configure(config):
         "network: this test genuinely needs the open internet. Nothing in the suite uses it. "
         "Adding it is a visible, reviewable choice — see tests/netguard.py.",
     )
+    config.addinivalue_line(
+        "markers",
+        "live_catalog: this test reads the REAL library catalog in recipes.db, read-only, and skips "
+        "when there is none. A fixture database has the tables and no rows, so a check written only "
+        "against one is vacuous. Adding it is a visible, reviewable choice — see tests/dbguard.py.",
+    )
+
+
+@pytest.fixture(autouse=True)
+def _no_live_database(request):
+    """Every test runs with the live database shut off unless it asks for it by name, and then only
+    read-only. This is the wall behind make_kitchen's DB redirect."""
+    dbguard.set_read_only_allowed(
+        request.node.get_closest_marker("live_catalog") is not None)
+    yield
+    dbguard.set_read_only_allowed(False)
 
 
 @pytest.fixture(autouse=True)

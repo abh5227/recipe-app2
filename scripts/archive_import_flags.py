@@ -42,7 +42,7 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # for corpus_guard
-from corpus_guard import refuse_live                              # noqa: E402
+from corpus_guard import refuse_live, report_target               # noqa: E402
 CSV_OUT = REPO / "docs" / "data-repairs" / "import-flags-archived-2026-09-30.csv"
 COLS = ("id", "recipe_id", "position", "flag", "reason", "created_at")
 # ⚠️ THE ONE FLAG THAT IS LIVE. It carries no position, so it is outside the WHERE below anyway; it is
@@ -118,11 +118,19 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--db", default=str(REPO / "recipes.db"))
     ap.add_argument("--apply", action="store_true", help="write (default is a read-only rehearsal)")
-    ap.add_argument("--csv", default=str(CSV_OUT))
+    ap.add_argument("--csv", default=None,
+                    help="write the report here instead of the default location")
+    ap.add_argument("--record", action="store_true",
+                    help=f"write the report into docs/data-repairs as import-flags-archived-2026-09-30.csv, "
+                         "the committed record. Refused if that file already exists")
     ap.add_argument("--i-mean-live", action="store_true",
                     help="required to write the repo's own recipes.db")
     a = ap.parse_args()
     # ⚠️ THE SHARED GUARD. A live run is a sentence a person had to type. See
     #    scripts/corpus_guard.py — one definition, every script that can write.
     refuse_live(a.db, a.i_mean_live)
+    # ⚠️ THE REPORT LANDS IN gitignored reports/ UNLESS --record IS GIVEN, and --record will
+    #    not write over an existing record. See corpus_guard.report_target: three committed
+    #    records were truncated to their header lines by DRY RUNS before this rule existed.
+    a.csv = a.csv or report_target('import-flags-archived-2026-09-30.csv', a.record)
     run(a.db, apply=a.apply, csv_out=pathlib.Path(a.csv))

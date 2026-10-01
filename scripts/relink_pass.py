@@ -42,7 +42,7 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # for corpus_guard
-from corpus_guard import refuse_live                              # noqa: E402
+from corpus_guard import refuse_live, report_target               # noqa: E402
 sys.path.insert(0, str(REPO / "scripts"))
 
 import build_links                                      # noqa: E402
@@ -122,13 +122,21 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--db", required=True)
     ap.add_argument("--apply", action="store_true")
-    ap.add_argument("--csv", default=str(CSV_OUT))
+    ap.add_argument("--csv", default=None,
+                    help="write the report here instead of the default location")
+    ap.add_argument("--record", action="store_true",
+                    help=f"write the report into docs/data-repairs as relink-2026-09-25.csv, "
+                         "the committed record. Refused if that file already exists")
     ap.add_argument("--i-mean-live", action="store_true",
                     help="required to write the repo's own recipes.db")
     args = ap.parse_args()
     # ⚠️ THE SHARED GUARD. A live run is a sentence a person had to type. See
     #    scripts/corpus_guard.py — one definition, every script that can write.
     refuse_live(args.db, args.i_mean_live)
+    # ⚠️ THE REPORT LANDS IN gitignored reports/ UNLESS --record IS GIVEN, and --record will
+    #    not write over an existing record. See corpus_guard.report_target: three committed
+    #    records were truncated to their header lines by DRY RUNS before this rule existed.
+    args.csv = args.csv or report_target('relink-2026-09-25.csv', args.record)
 
     before_links, _ = link_state(args.db)
     conn = sqlite3.connect(args.db)

@@ -192,7 +192,10 @@ def test_a_corpus_pass_dry_runs_unless_it_is_told_to_apply():
         assert '"--apply"' in src, f"{script} has no --apply"
 
 
-# ---- every script that can write names its database and says live out loud (review fix 3) ---------
+# ---- the archive, and what still lives in scripts/ (review fix 3) --------------------------------
+# ⚠️ THE GUARD CHECKS THEMSELVES MOVED TO tests/test_live_guards.py, which states them over file
+# identity and over the whole folder including migrate.py (H1 and H3). What stays here is the
+# ARCHIVE: which scripts are spent, that they refuse to run, and that they still import.
 # ⚠️ STATED OVER THE FOLDER, NOT OVER A LIST OF FOUR. The guard test above pins the four Round A
 # passes by name. This one walks scripts/ and fails on the NEXT script that can write and has no
 # guard, which is the only version of this check that survives the next script being added.
@@ -219,47 +222,6 @@ READ_ONLY = {
 
 def _script_sources():
     return sorted(p for p in SCRIPTS.glob("*.py") if p.name != "__init__.py")
-
-
-def test_every_script_that_can_write_takes_the_shared_guard():
-    missing = []
-    for p in _script_sources():
-        if p.name in READ_ONLY:
-            continue
-        src = p.read_text()
-        if not _WRITES.search(src):
-            continue
-        if "refuse_live" not in src or "--i-mean-live" not in src:
-            missing.append(p.name)
-    assert missing == [], (
-        "these scripts can write and do not wire scripts/corpus_guard.py: " + ", ".join(missing))
-
-
-def test_every_script_that_can_write_can_be_pointed_at_a_copy():
-    """⚠️ THE OTHER HALF, AND THE ONE THAT WAS WORSE. A guard with no --db leaves 'rehearse on a copy'
-    impossible to follow: the only database the script can reach is the one it must not touch."""
-    missing = []
-    for p in _script_sources():
-        if p.name in READ_ONLY:
-            continue
-        src = p.read_text()
-        if not _WRITES.search(src):
-            continue
-        if not re.search(r'add_argument\(\s*"(?:--db|db)"', src):
-            missing.append(p.name)
-    assert missing == [], "these scripts can write and cannot be pointed at a copy: " + ", ".join(missing)
-
-
-def test_migrate_takes_a_db_and_refuses_live_without_the_sentence():
-    """migrate.py is step one of the chain docs/data-repairs/README.md says to rehearse on a copy."""
-    src = (SCRIPTS.parent / "migrate.py").read_text()
-    assert 'ap.add_argument("--db"' in src
-    assert "--i-mean-live" in src
-    assert "refuse_live(" in src
-    assert "from corpus_guard import refuse_live" in src, "a fifth copy of the guard, not the guard"
-    import migrate
-    assert "db" in inspect.signature(migrate.migrate).parameters, \
-        "migrate() must accept a path, or live_chain.sh has to rebind a module global to rehearse"
 
 
 def test_no_spent_backfill_is_left_runnable_in_scripts():
@@ -292,28 +254,3 @@ def test_running_an_archived_script_refuses_with_a_nonzero_exit():
     assert out.returncode == 2, out
     assert "spent one-time backfill" in out.stderr
     assert "nulled the two stored times" in out.stderr
-
-
-def test_a_dry_run_does_not_truncate_a_committed_record():
-    """⚠️ FOUND BY DOING IT. Five scripts write their report CSV into docs/data-repairs/, which holds
-    the record of what was done to the data, and they wrote it whether or not there was anything to
-    report. Their work is applied, so a re-run finds 0 rows — and three committed records were
-    truncated to their header lines at once, from DRY RUNS, during this review.
-
-    Stated over the source rather than by running them, because running them is what did the damage.
-    Each write site has to be reachable only when there is something to write."""
-    writers = {
-        "archive_import_flags.py": "rows",
-        "relink_pass.py": "rows",
-        "reparse_lines.py": "plan",
-        "restore_notes.py": "rows",
-        "restore_from_paprika.py": "rows",
-    }
-    for name, rowsvar in writers.items():
-        src = (SCRIPTS / name).read_text()
-        assert f"if not {rowsvar}:" in src, f"{name} writes its report with no emptiness check"
-        assert "is left exactly as it is" in src, f"{name} does not say it left the record alone"
-        # and the check comes BEFORE the open, not after it
-        guard = src.index(f"if not {rowsvar}:")
-        opened = src.index('"w", newline="", encoding="utf-8"')
-        assert guard < opened, f"{name} opens the file before deciding whether to write it"

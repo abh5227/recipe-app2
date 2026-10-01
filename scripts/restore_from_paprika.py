@@ -57,7 +57,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(Path(__file__).resolve().parent))            # for corpus_guard
-from corpus_guard import refuse_live                              # noqa: E402
+from corpus_guard import refuse_live, report_target               # noqa: E402
 
 import paprika_native_reader as pr                    # noqa: E402
 from snapshot_serialize import content_blob           # noqa: E402  THE snapshot format, single-sourced
@@ -328,7 +328,11 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--db", default=str(REPO / "recipes.db"))
     ap.add_argument("--apply", action="store_true", help="write (default is a dry run)")
-    ap.add_argument("--csv-dir", default=str(CSV_DIR))
+    ap.add_argument("--csv-dir", default=None,
+                    help="write both reports here instead of the default location")
+    ap.add_argument("--record", action="store_true",
+                    help="write both reports into docs/data-repairs as the committed records. "
+                         "Refused if either file already exists")
     ap.add_argument("--no-csv", action="store_true")
     ap.add_argument("--allow-any-counts", action="store_true",
                     help="write even if the plan no longer matches the reviewed counts")
@@ -338,6 +342,13 @@ def main():
     # ⚠️ THE SHARED GUARD. A live run is a sentence a person had to type. See
     #    scripts/corpus_guard.py — one definition, every script that can write.
     refuse_live(args.db, args.i_mean_live)
+    # ⚠️ BOTH REPORTS LAND IN gitignored reports/ UNLESS --record IS GIVEN, and --record will
+    #    not write over an existing record. See corpus_guard.report_target — these two files
+    #    were among the three truncated to their header lines by a DRY RUN.
+    if args.csv_dir is None:
+        args.csv_dir = report_target(LIVE_CSV, args.record).parent
+        if args.record:
+            report_target(SNAP_CSV, True)      # refuse on the second one too, before writing
 
     conn = sqlite3.connect(args.db if args.apply else f"file:{args.db}?mode=ro", uri=not args.apply)
     live_plan, live_tally = plan_live(conn)

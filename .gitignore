@@ -108,3 +108,7 @@ study/matcher/*.html
 # files record rounds already superseded rather than anything the tool reads.
 mockups/
 recipes-preview.db
+
+# Dry-run report CSVs written by the scripts under scripts/. The RECORD of a pass lives in
+# docs/data-repairs/ and is written only with --record; everything here is a re-runnable report.
+reports/

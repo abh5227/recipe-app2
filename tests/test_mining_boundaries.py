@@ -198,7 +198,12 @@ def has(conn, table):
 
 def live_db():
     """The real catalog, when there is one. A fixture DB has the tables and no rows, so a check
-    written only against it is vacuous and proves nothing about what got loaded."""
+    written only against it is vacuous and proves nothing about what got loaded.
+
+    ⚠️ EVERY CALLER CARRIES @pytest.mark.live_catalog, AND IT IS THE ONLY MARKER THAT OPENS LIVE.
+    tests/dbguard.py shuts the live database off for the whole suite; this marker re-opens it
+    READ-ONLY and for these tests alone. mode=ro in the URI below is not decoration — the guard
+    refuses a marked test that tries to open it any other way."""
     live = BASE / "recipes.db"
     if not live.exists():
         pytest.skip("no live catalog here")
@@ -224,6 +229,7 @@ def check_patterns(conn):
                 f"never the clause it read.")
 
 
+@pytest.mark.live_catalog
 def test_a_stored_pattern_is_a_rule_label_not_a_sentence(dbs):
     for conn in dbs.values():
         check_patterns(conn)
@@ -259,6 +265,7 @@ def test_the_confirmed_table_carries_no_note_column(dbs):
             assert "note" not in cols, f"{t} grew a note column. It belongs in the hand file."
 
 
+@pytest.mark.live_catalog
 def test_a_one_to_many_candidate_is_flagged_rather_than_left_null(dbs):
     """⚠️ A NULL to_id IS A RECORDED GAP, NOT A MISSING VALUE.
 
@@ -289,6 +296,7 @@ def test_the_free_text_exception_list_stays_short():
     assert ("mined_dish", "dish") in FREE_TEXT_EXCEPTIONS
 
 
+@pytest.mark.live_catalog
 def test_the_dish_exception_is_conditional_on_being_cleaned():
     """⚠️ THE GRANT IS NOT UNCONDITIONAL. mined_dish.dish may hold corpus words, and it may not
     hold a brand or a person's name. Measured before the facet was built: about 11,600 recipes
@@ -317,6 +325,7 @@ def test_the_dish_exception_is_conditional_on_being_cleaned():
         f"the creative title is expression and a real person's name is the worst of it.")
 
 
+@pytest.mark.live_catalog
 def test_every_facet_table_other_than_the_dish_holds_no_corpus_text():
     """⚠️ THE POINT OF THE SURROGATE ID. Seven facet tables reference a dish and none of them
     repeats its string. An earlier draft put `dish` on every table and the guard refused all
@@ -333,6 +342,7 @@ def test_every_facet_table_other_than_the_dish_holds_no_corpus_text():
     conn.close()
 
 
+@pytest.mark.live_catalog
 def test_the_catalog_keyed_facets_resolve_to_real_rows():
     """base and accompaniment hold library_ids. An orphan means the catalog moved under them."""
     conn = live_db()
@@ -409,6 +419,7 @@ _NOT_KEY = {"source_slug", "n", "n_recipes", "n_dish", "lift", "n_reverse", "one
             "mined_at"}
 
 
+@pytest.mark.live_catalog
 def test_every_aggregate_table_holds_its_declared_floor():
     """⚠️ A FACT SUPPORTED BY ONE RECIPE IS NOT AN AGGREGATE. Boundary (c), on what was loaded.
 
@@ -527,6 +538,7 @@ def test_every_sqlite_migration_has_an_alembic_revision():
         f"revision, so Postgres would not have them: {missing}")
 
 
+@pytest.mark.live_catalog
 def test_a_catalog_canonical_is_food_unless_its_exact_form_is_listed():
     """⚠️ THE LIBRARY DECIDES WHAT IS FOOD.
 
