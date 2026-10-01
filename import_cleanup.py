@@ -839,7 +839,15 @@ NOTE_KINDS = json.loads(
 
 # A leading label: a short phrase, then a colon or a period, then the note itself. The period form
 # is real and common ("Flour. This recipe works best with..." on brioche-bread).
-_NOTE_LEAD = re.compile(r"^\s*([A-Za-z][A-Za-z '\u2019/-]{0,28}?)\s*[:.]\s+(\S[\s\S]*)$")
+# ⚠️ THE SEPARATOR SET MATCHES _NOTE_STEP's, and it did not. _NOTE_STEP accepts a colon, a full
+#    stop, an en dash, an em dash or a hyphen, so a "Tip - ..." step moves into the notes with
+#    its dash intact and this pattern could not read the label back. Two real corpus paragraphs
+#    were affected: "Leftovers – Best to pan fry fresh" (Storage) and "VARIATION - For pita
+#    pockets" (Variations), both printing under Notes.
+#    Widening is safe because note_kind returns a kind only for a label IN the table, so a
+#    non-kind label still returns None and the paragraph stays whole.
+#    ⚠️ KEEP IN STEP WITH static/note-blocks.js LEAD. tests/js/note-kinds-sync.test.js pins it.
+_NOTE_LEAD = re.compile(r"^\s*([A-Za-z][A-Za-z '\u2019/-]{0,28}?)\s*[:.\u2013\u2014-]\s+(\S[\s\S]*)$")
 # A paragraph that is ONLY a label, with nothing under it.
 _NOTE_LABEL_ONLY = re.compile(r"^\s*([A-Za-z][A-Za-z '\u2019/-]{0,28}?)\s*[:.]?\s*$")
 
@@ -955,7 +963,6 @@ _NUMERIC_RANGE = re.compile(r"\d\s*[\u2013\u2014-]\s*\d")
 
 # An ingredient link as it is STORED in a step. A heading is escaped and never linkified
 # (app.js renderStepRow), so a label carrying one cannot be lifted without showing the markup.
-_STEP_LINK = re.compile(r"\[\[[^\]]+\]\]")
 
 
 def is_caps(text):
@@ -1239,9 +1246,16 @@ def plan_step_rows(directions, notes=""):
             continue
         # 3 — a note is not a step. Checked BEFORE the label rule, which would otherwise lift
         #     "Note" into a heading and leave the note's words as an instruction.
+        # ⚠️ THE LABEL STAYS ON THE PARAGRAPH, and it is the only thing that says which kind the
+        #    note is. This stripped it and kept m.group(1), so a "Tip:" step arrived in the notes as
+        #    bare prose, note_kind returned None, and the tip printed under the Notes header instead
+        #    of Tips. The corpus pass keeps the label and the two callers disagreed on exactly this
+        #    one character class. beans is the live case. The display layer strips the label for
+        #    presentation (note-blocks.classifyNote), so keeping it costs nothing a reader sees and
+        #    the kind stays recoverable.
         m = _NOTE_STEP.match(raw)
         if m:
-            body = " ".join(m.group(1).split())
+            body = " ".join(raw.split())
             note("step_note_moved", body)
             notes = body if not notes.strip() else f"{notes.rstrip()}{NOTE_SEPARATOR}{body}"
             continue

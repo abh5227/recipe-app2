@@ -1,0 +1,2350 @@
+{
+ "_why": "One table of cases, read by tests/test_import_cleanup.py and tests/js/note-kinds-sync.test.js, so import_cleanup.note_kind and static/note-blocks.js classifyNote cannot drift apart.",
+ "cases": [
+  {
+   "text": "note: body text here.",
+   "kind": "notes",
+   "why": "notes via ':'"
+  },
+  {
+   "text": "NOTE: body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "note. body text here.",
+   "kind": "notes",
+   "why": "notes via '.'"
+  },
+  {
+   "text": "NOTE. body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "note - body text here.",
+   "kind": "notes",
+   "why": "notes via '-'"
+  },
+  {
+   "text": "NOTE - body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "note – body text here.",
+   "kind": "notes",
+   "why": "notes via '–'"
+  },
+  {
+   "text": "NOTE – body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "note — body text here.",
+   "kind": "notes",
+   "why": "notes via '—'"
+  },
+  {
+   "text": "NOTE — body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "notes: body text here.",
+   "kind": "notes",
+   "why": "notes via ':'"
+  },
+  {
+   "text": "NOTES: body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "notes. body text here.",
+   "kind": "notes",
+   "why": "notes via '.'"
+  },
+  {
+   "text": "NOTES. body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "notes - body text here.",
+   "kind": "notes",
+   "why": "notes via '-'"
+  },
+  {
+   "text": "NOTES - body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "notes – body text here.",
+   "kind": "notes",
+   "why": "notes via '–'"
+  },
+  {
+   "text": "NOTES – body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "notes — body text here.",
+   "kind": "notes",
+   "why": "notes via '—'"
+  },
+  {
+   "text": "NOTES — body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "cook's note: body text here.",
+   "kind": "notes",
+   "why": "notes via ':'"
+  },
+  {
+   "text": "COOK'S NOTE: body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "cook's note. body text here.",
+   "kind": "notes",
+   "why": "notes via '.'"
+  },
+  {
+   "text": "COOK'S NOTE. body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "cook's note - body text here.",
+   "kind": "notes",
+   "why": "notes via '-'"
+  },
+  {
+   "text": "COOK'S NOTE - body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "cook's note – body text here.",
+   "kind": "notes",
+   "why": "notes via '–'"
+  },
+  {
+   "text": "COOK'S NOTE – body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "cook's note — body text here.",
+   "kind": "notes",
+   "why": "notes via '—'"
+  },
+  {
+   "text": "COOK'S NOTE — body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "cooks note: body text here.",
+   "kind": "notes",
+   "why": "notes via ':'"
+  },
+  {
+   "text": "COOKS NOTE: body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "cooks note. body text here.",
+   "kind": "notes",
+   "why": "notes via '.'"
+  },
+  {
+   "text": "COOKS NOTE. body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "cooks note - body text here.",
+   "kind": "notes",
+   "why": "notes via '-'"
+  },
+  {
+   "text": "COOKS NOTE - body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "cooks note – body text here.",
+   "kind": "notes",
+   "why": "notes via '–'"
+  },
+  {
+   "text": "COOKS NOTE – body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "cooks note — body text here.",
+   "kind": "notes",
+   "why": "notes via '—'"
+  },
+  {
+   "text": "COOKS NOTE — body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "note for next time: body text here.",
+   "kind": "notes",
+   "why": "notes via ':'"
+  },
+  {
+   "text": "NOTE FOR NEXT TIME: body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "note for next time. body text here.",
+   "kind": "notes",
+   "why": "notes via '.'"
+  },
+  {
+   "text": "NOTE FOR NEXT TIME. body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "note for next time - body text here.",
+   "kind": "notes",
+   "why": "notes via '-'"
+  },
+  {
+   "text": "NOTE FOR NEXT TIME - body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "note for next time – body text here.",
+   "kind": "notes",
+   "why": "notes via '–'"
+  },
+  {
+   "text": "NOTE FOR NEXT TIME – body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "note for next time — body text here.",
+   "kind": "notes",
+   "why": "notes via '—'"
+  },
+  {
+   "text": "NOTE FOR NEXT TIME — body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "reminder: body text here.",
+   "kind": "notes",
+   "why": "notes via ':'"
+  },
+  {
+   "text": "REMINDER: body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "reminder. body text here.",
+   "kind": "notes",
+   "why": "notes via '.'"
+  },
+  {
+   "text": "REMINDER. body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "reminder - body text here.",
+   "kind": "notes",
+   "why": "notes via '-'"
+  },
+  {
+   "text": "REMINDER - body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "reminder – body text here.",
+   "kind": "notes",
+   "why": "notes via '–'"
+  },
+  {
+   "text": "REMINDER – body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "reminder — body text here.",
+   "kind": "notes",
+   "why": "notes via '—'"
+  },
+  {
+   "text": "REMINDER — body text here.",
+   "kind": "notes",
+   "why": "notes upper"
+  },
+  {
+   "text": "tip: body text here.",
+   "kind": "tips",
+   "why": "tips via ':'"
+  },
+  {
+   "text": "TIP: body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "tip. body text here.",
+   "kind": "tips",
+   "why": "tips via '.'"
+  },
+  {
+   "text": "TIP. body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "tip - body text here.",
+   "kind": "tips",
+   "why": "tips via '-'"
+  },
+  {
+   "text": "TIP - body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "tip – body text here.",
+   "kind": "tips",
+   "why": "tips via '–'"
+  },
+  {
+   "text": "TIP – body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "tip — body text here.",
+   "kind": "tips",
+   "why": "tips via '—'"
+  },
+  {
+   "text": "TIP — body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "tips: body text here.",
+   "kind": "tips",
+   "why": "tips via ':'"
+  },
+  {
+   "text": "TIPS: body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "tips. body text here.",
+   "kind": "tips",
+   "why": "tips via '.'"
+  },
+  {
+   "text": "TIPS. body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "tips - body text here.",
+   "kind": "tips",
+   "why": "tips via '-'"
+  },
+  {
+   "text": "TIPS - body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "tips – body text here.",
+   "kind": "tips",
+   "why": "tips via '–'"
+  },
+  {
+   "text": "TIPS – body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "tips — body text here.",
+   "kind": "tips",
+   "why": "tips via '—'"
+  },
+  {
+   "text": "TIPS — body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "pro tip: body text here.",
+   "kind": "tips",
+   "why": "tips via ':'"
+  },
+  {
+   "text": "PRO TIP: body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "pro tip. body text here.",
+   "kind": "tips",
+   "why": "tips via '.'"
+  },
+  {
+   "text": "PRO TIP. body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "pro tip - body text here.",
+   "kind": "tips",
+   "why": "tips via '-'"
+  },
+  {
+   "text": "PRO TIP - body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "pro tip – body text here.",
+   "kind": "tips",
+   "why": "tips via '–'"
+  },
+  {
+   "text": "PRO TIP – body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "pro tip — body text here.",
+   "kind": "tips",
+   "why": "tips via '—'"
+  },
+  {
+   "text": "PRO TIP — body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "pro-tip: body text here.",
+   "kind": "tips",
+   "why": "tips via ':'"
+  },
+  {
+   "text": "PRO-TIP: body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "pro-tip. body text here.",
+   "kind": "tips",
+   "why": "tips via '.'"
+  },
+  {
+   "text": "PRO-TIP. body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "pro-tip - body text here.",
+   "kind": "tips",
+   "why": "tips via '-'"
+  },
+  {
+   "text": "PRO-TIP - body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "pro-tip – body text here.",
+   "kind": "tips",
+   "why": "tips via '–'"
+  },
+  {
+   "text": "PRO-TIP – body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "pro-tip — body text here.",
+   "kind": "tips",
+   "why": "tips via '—'"
+  },
+  {
+   "text": "PRO-TIP — body text here.",
+   "kind": "tips",
+   "why": "tips upper"
+  },
+  {
+   "text": "storage: body text here.",
+   "kind": "storage",
+   "why": "storage via ':'"
+  },
+  {
+   "text": "STORAGE: body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "storage. body text here.",
+   "kind": "storage",
+   "why": "storage via '.'"
+  },
+  {
+   "text": "STORAGE. body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "storage - body text here.",
+   "kind": "storage",
+   "why": "storage via '-'"
+  },
+  {
+   "text": "STORAGE - body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "storage – body text here.",
+   "kind": "storage",
+   "why": "storage via '–'"
+  },
+  {
+   "text": "STORAGE – body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "storage — body text here.",
+   "kind": "storage",
+   "why": "storage via '—'"
+  },
+  {
+   "text": "STORAGE — body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "storing: body text here.",
+   "kind": "storage",
+   "why": "storage via ':'"
+  },
+  {
+   "text": "STORING: body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "storing. body text here.",
+   "kind": "storage",
+   "why": "storage via '.'"
+  },
+  {
+   "text": "STORING. body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "storing - body text here.",
+   "kind": "storage",
+   "why": "storage via '-'"
+  },
+  {
+   "text": "STORING - body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "storing – body text here.",
+   "kind": "storage",
+   "why": "storage via '–'"
+  },
+  {
+   "text": "STORING – body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "storing — body text here.",
+   "kind": "storage",
+   "why": "storage via '—'"
+  },
+  {
+   "text": "STORING — body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "to store: body text here.",
+   "kind": "storage",
+   "why": "storage via ':'"
+  },
+  {
+   "text": "TO STORE: body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "to store. body text here.",
+   "kind": "storage",
+   "why": "storage via '.'"
+  },
+  {
+   "text": "TO STORE. body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "to store - body text here.",
+   "kind": "storage",
+   "why": "storage via '-'"
+  },
+  {
+   "text": "TO STORE - body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "to store – body text here.",
+   "kind": "storage",
+   "why": "storage via '–'"
+  },
+  {
+   "text": "TO STORE – body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "to store — body text here.",
+   "kind": "storage",
+   "why": "storage via '—'"
+  },
+  {
+   "text": "TO STORE — body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "freezer: body text here.",
+   "kind": "storage",
+   "why": "storage via ':'"
+  },
+  {
+   "text": "FREEZER: body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "freezer. body text here.",
+   "kind": "storage",
+   "why": "storage via '.'"
+  },
+  {
+   "text": "FREEZER. body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "freezer - body text here.",
+   "kind": "storage",
+   "why": "storage via '-'"
+  },
+  {
+   "text": "FREEZER - body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "freezer – body text here.",
+   "kind": "storage",
+   "why": "storage via '–'"
+  },
+  {
+   "text": "FREEZER – body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "freezer — body text here.",
+   "kind": "storage",
+   "why": "storage via '—'"
+  },
+  {
+   "text": "FREEZER — body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "to freeze: body text here.",
+   "kind": "storage",
+   "why": "storage via ':'"
+  },
+  {
+   "text": "TO FREEZE: body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "to freeze. body text here.",
+   "kind": "storage",
+   "why": "storage via '.'"
+  },
+  {
+   "text": "TO FREEZE. body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "to freeze - body text here.",
+   "kind": "storage",
+   "why": "storage via '-'"
+  },
+  {
+   "text": "TO FREEZE - body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "to freeze – body text here.",
+   "kind": "storage",
+   "why": "storage via '–'"
+  },
+  {
+   "text": "TO FREEZE – body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "to freeze — body text here.",
+   "kind": "storage",
+   "why": "storage via '—'"
+  },
+  {
+   "text": "TO FREEZE — body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "make ahead: body text here.",
+   "kind": "storage",
+   "why": "storage via ':'"
+  },
+  {
+   "text": "MAKE AHEAD: body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "make ahead. body text here.",
+   "kind": "storage",
+   "why": "storage via '.'"
+  },
+  {
+   "text": "MAKE AHEAD. body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "make ahead - body text here.",
+   "kind": "storage",
+   "why": "storage via '-'"
+  },
+  {
+   "text": "MAKE AHEAD - body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "make ahead – body text here.",
+   "kind": "storage",
+   "why": "storage via '–'"
+  },
+  {
+   "text": "MAKE AHEAD – body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "make ahead — body text here.",
+   "kind": "storage",
+   "why": "storage via '—'"
+  },
+  {
+   "text": "MAKE AHEAD — body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "make-ahead: body text here.",
+   "kind": "storage",
+   "why": "storage via ':'"
+  },
+  {
+   "text": "MAKE-AHEAD: body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "make-ahead. body text here.",
+   "kind": "storage",
+   "why": "storage via '.'"
+  },
+  {
+   "text": "MAKE-AHEAD. body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "make-ahead - body text here.",
+   "kind": "storage",
+   "why": "storage via '-'"
+  },
+  {
+   "text": "MAKE-AHEAD - body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "make-ahead – body text here.",
+   "kind": "storage",
+   "why": "storage via '–'"
+  },
+  {
+   "text": "MAKE-AHEAD – body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "make-ahead — body text here.",
+   "kind": "storage",
+   "why": "storage via '—'"
+  },
+  {
+   "text": "MAKE-AHEAD — body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "keeping: body text here.",
+   "kind": "storage",
+   "why": "storage via ':'"
+  },
+  {
+   "text": "KEEPING: body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "keeping. body text here.",
+   "kind": "storage",
+   "why": "storage via '.'"
+  },
+  {
+   "text": "KEEPING. body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "keeping - body text here.",
+   "kind": "storage",
+   "why": "storage via '-'"
+  },
+  {
+   "text": "KEEPING - body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "keeping – body text here.",
+   "kind": "storage",
+   "why": "storage via '–'"
+  },
+  {
+   "text": "KEEPING – body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "keeping — body text here.",
+   "kind": "storage",
+   "why": "storage via '—'"
+  },
+  {
+   "text": "KEEPING — body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "leftovers: body text here.",
+   "kind": "storage",
+   "why": "storage via ':'"
+  },
+  {
+   "text": "LEFTOVERS: body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "leftovers. body text here.",
+   "kind": "storage",
+   "why": "storage via '.'"
+  },
+  {
+   "text": "LEFTOVERS. body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "leftovers - body text here.",
+   "kind": "storage",
+   "why": "storage via '-'"
+  },
+  {
+   "text": "LEFTOVERS - body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "leftovers – body text here.",
+   "kind": "storage",
+   "why": "storage via '–'"
+  },
+  {
+   "text": "LEFTOVERS – body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "leftovers — body text here.",
+   "kind": "storage",
+   "why": "storage via '—'"
+  },
+  {
+   "text": "LEFTOVERS — body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "variation: body text here.",
+   "kind": "variations",
+   "why": "variations via ':'"
+  },
+  {
+   "text": "VARIATION: body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "variation. body text here.",
+   "kind": "variations",
+   "why": "variations via '.'"
+  },
+  {
+   "text": "VARIATION. body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "variation - body text here.",
+   "kind": "variations",
+   "why": "variations via '-'"
+  },
+  {
+   "text": "VARIATION - body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "variation – body text here.",
+   "kind": "variations",
+   "why": "variations via '–'"
+  },
+  {
+   "text": "VARIATION – body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "variation — body text here.",
+   "kind": "variations",
+   "why": "variations via '—'"
+  },
+  {
+   "text": "VARIATION — body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "variations: body text here.",
+   "kind": "variations",
+   "why": "variations via ':'"
+  },
+  {
+   "text": "VARIATIONS: body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "variations. body text here.",
+   "kind": "variations",
+   "why": "variations via '.'"
+  },
+  {
+   "text": "VARIATIONS. body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "variations - body text here.",
+   "kind": "variations",
+   "why": "variations via '-'"
+  },
+  {
+   "text": "VARIATIONS - body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "variations – body text here.",
+   "kind": "variations",
+   "why": "variations via '–'"
+  },
+  {
+   "text": "VARIATIONS – body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "variations — body text here.",
+   "kind": "variations",
+   "why": "variations via '—'"
+  },
+  {
+   "text": "VARIATIONS — body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "substitution: body text here.",
+   "kind": "variations",
+   "why": "variations via ':'"
+  },
+  {
+   "text": "SUBSTITUTION: body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "substitution. body text here.",
+   "kind": "variations",
+   "why": "variations via '.'"
+  },
+  {
+   "text": "SUBSTITUTION. body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "substitution - body text here.",
+   "kind": "variations",
+   "why": "variations via '-'"
+  },
+  {
+   "text": "SUBSTITUTION - body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "substitution – body text here.",
+   "kind": "variations",
+   "why": "variations via '–'"
+  },
+  {
+   "text": "SUBSTITUTION – body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "substitution — body text here.",
+   "kind": "variations",
+   "why": "variations via '—'"
+  },
+  {
+   "text": "SUBSTITUTION — body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "substitutions: body text here.",
+   "kind": "variations",
+   "why": "variations via ':'"
+  },
+  {
+   "text": "SUBSTITUTIONS: body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "substitutions. body text here.",
+   "kind": "variations",
+   "why": "variations via '.'"
+  },
+  {
+   "text": "SUBSTITUTIONS. body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "substitutions - body text here.",
+   "kind": "variations",
+   "why": "variations via '-'"
+  },
+  {
+   "text": "SUBSTITUTIONS - body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "substitutions – body text here.",
+   "kind": "variations",
+   "why": "variations via '–'"
+  },
+  {
+   "text": "SUBSTITUTIONS – body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "substitutions — body text here.",
+   "kind": "variations",
+   "why": "variations via '—'"
+  },
+  {
+   "text": "SUBSTITUTIONS — body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "swaps: body text here.",
+   "kind": "variations",
+   "why": "variations via ':'"
+  },
+  {
+   "text": "SWAPS: body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "swaps. body text here.",
+   "kind": "variations",
+   "why": "variations via '.'"
+  },
+  {
+   "text": "SWAPS. body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "swaps - body text here.",
+   "kind": "variations",
+   "why": "variations via '-'"
+  },
+  {
+   "text": "SWAPS - body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "swaps – body text here.",
+   "kind": "variations",
+   "why": "variations via '–'"
+  },
+  {
+   "text": "SWAPS – body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "swaps — body text here.",
+   "kind": "variations",
+   "why": "variations via '—'"
+  },
+  {
+   "text": "SWAPS — body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "same day version: body text here.",
+   "kind": "variations",
+   "why": "variations via ':'"
+  },
+  {
+   "text": "SAME DAY VERSION: body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "same day version. body text here.",
+   "kind": "variations",
+   "why": "variations via '.'"
+  },
+  {
+   "text": "SAME DAY VERSION. body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "same day version - body text here.",
+   "kind": "variations",
+   "why": "variations via '-'"
+  },
+  {
+   "text": "SAME DAY VERSION - body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "same day version – body text here.",
+   "kind": "variations",
+   "why": "variations via '–'"
+  },
+  {
+   "text": "SAME DAY VERSION – body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "same day version — body text here.",
+   "kind": "variations",
+   "why": "variations via '—'"
+  },
+  {
+   "text": "SAME DAY VERSION — body text here.",
+   "kind": "variations",
+   "why": "variations upper"
+  },
+  {
+   "text": "serving: body text here.",
+   "kind": "serving",
+   "why": "serving via ':'"
+  },
+  {
+   "text": "SERVING: body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "serving. body text here.",
+   "kind": "serving",
+   "why": "serving via '.'"
+  },
+  {
+   "text": "SERVING. body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "serving - body text here.",
+   "kind": "serving",
+   "why": "serving via '-'"
+  },
+  {
+   "text": "SERVING - body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "serving – body text here.",
+   "kind": "serving",
+   "why": "serving via '–'"
+  },
+  {
+   "text": "SERVING – body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "serving — body text here.",
+   "kind": "serving",
+   "why": "serving via '—'"
+  },
+  {
+   "text": "SERVING — body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "to serve: body text here.",
+   "kind": "serving",
+   "why": "serving via ':'"
+  },
+  {
+   "text": "TO SERVE: body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "to serve. body text here.",
+   "kind": "serving",
+   "why": "serving via '.'"
+  },
+  {
+   "text": "TO SERVE. body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "to serve - body text here.",
+   "kind": "serving",
+   "why": "serving via '-'"
+  },
+  {
+   "text": "TO SERVE - body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "to serve – body text here.",
+   "kind": "serving",
+   "why": "serving via '–'"
+  },
+  {
+   "text": "TO SERVE – body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "to serve — body text here.",
+   "kind": "serving",
+   "why": "serving via '—'"
+  },
+  {
+   "text": "TO SERVE — body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "serve with: body text here.",
+   "kind": "serving",
+   "why": "serving via ':'"
+  },
+  {
+   "text": "SERVE WITH: body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "serve with. body text here.",
+   "kind": "serving",
+   "why": "serving via '.'"
+  },
+  {
+   "text": "SERVE WITH. body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "serve with - body text here.",
+   "kind": "serving",
+   "why": "serving via '-'"
+  },
+  {
+   "text": "SERVE WITH - body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "serve with – body text here.",
+   "kind": "serving",
+   "why": "serving via '–'"
+  },
+  {
+   "text": "SERVE WITH – body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "serve with — body text here.",
+   "kind": "serving",
+   "why": "serving via '—'"
+  },
+  {
+   "text": "SERVE WITH — body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "serving suggestion: body text here.",
+   "kind": "serving",
+   "why": "serving via ':'"
+  },
+  {
+   "text": "SERVING SUGGESTION: body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "serving suggestion. body text here.",
+   "kind": "serving",
+   "why": "serving via '.'"
+  },
+  {
+   "text": "SERVING SUGGESTION. body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "serving suggestion - body text here.",
+   "kind": "serving",
+   "why": "serving via '-'"
+  },
+  {
+   "text": "SERVING SUGGESTION - body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "serving suggestion – body text here.",
+   "kind": "serving",
+   "why": "serving via '–'"
+  },
+  {
+   "text": "SERVING SUGGESTION – body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "serving suggestion — body text here.",
+   "kind": "serving",
+   "why": "serving via '—'"
+  },
+  {
+   "text": "SERVING SUGGESTION — body text here.",
+   "kind": "serving",
+   "why": "serving upper"
+  },
+  {
+   "text": "Serve with rice - or with bread.",
+   "kind": null,
+   "why": "must stay unclassified"
+  },
+  {
+   "text": "Storage:no space after the colon",
+   "kind": null,
+   "why": "must stay unclassified"
+  },
+  {
+   "text": "Just a sentence with no label at all.",
+   "kind": null,
+   "why": "must stay unclassified"
+  },
+  {
+   "text": "Flour - 500g of it.",
+   "kind": null,
+   "why": "must stay unclassified"
+  },
+  {
+   "text": "A really long label that runs well past the twenty-eight character limit: body.",
+   "kind": null,
+   "why": "must stay unclassified"
+  },
+  {
+   "text": "Use yeast labelled 'instant' or 'rapid rise'. If you only have active dry yeast, dissolve it in the water first (no need to foam), then add the flour and salt and proceed as written.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Mirin — substitute Chinese cooking wine or cooking sake plus ½ tsp brown sugar, or omit for no alcohol.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "**Chinese black vinegar**\nChinese black vinegar (zhènjiāng xiāngcù, 镇江香醋) is made from fermented black sticky rice or regular glutinous rice. It can also be made using rice in combination with sorghum and/or wheat.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Originating in the city of Zhenjiang in Jiangsu province, it is quite literally black in color and has a full bodied, malty, complex taste. It is mildly acidic, less so than a regular distilled white vinegar, with a faintly sweet flavor.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Chinese black vinegar is widely used in Chinese cooking for all types of cold appetizers, braised meats and fish, noodles and as a dipping condiment for dumplings.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "_Buying_\nLook for bottles with yellow labels marked Chinkiang Vinegar or Zhenjiang Vinegar at your local Chinese grocery store.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Any fairly firm white fish fillets that aren’t too thick will work just fine here. Here are some suggestions: \n- Snapper, tilapia, halibut, cod, bass",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Made for Marshall and Maeve for the first time : )",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "DASHI: Vegetarian Japanese stock is great to have on hand for enhancing many of the dishes in this book. It is a great swap in Asian food for classic vegetable stock for many reasons, but mostly because vegetable stock is based on a French mirepoix of ingredients, including quite distinctive flavours such as garlic and celery, which in some more subtle dishes - including miso soup - are too intrusive. There is also the advantage of not having added salt, which is in most instant vegetable stocks, so you can better control the seasoning of your dish.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "There are a few ways to make dashi, but the most common uses kombu, a Japanese kelp. You can buy packs of dried powdered kombudashi from Asian stores or online",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Tip: Add the ice water a few tablespoons at a time. Use just enough water for the dough to come together without being crumbly.",
+   "kind": "tips",
+   "why": "corpus"
+  },
+  {
+   "text": "To Store: Dough can be stored in the fridge for up to 2 days.",
+   "kind": "storage",
+   "why": "corpus"
+  },
+  {
+   "text": "To Freeze: Wrap the dough in a few layers of plastic wrap and then put the wrapped dough into a freezer bag for up to 3 months.",
+   "kind": "storage",
+   "why": "corpus"
+  },
+  {
+   "text": "Form a Pie Shell: To form the pie shell, take a disk from the refrigerator and let rest for 5 minutes at room temperature. Roll the dough out on a floured surface into a 14 inch round. Wrap the dough over the rolling pin, pick it up and carefully unroll it over a 9 inch pie plate. Gently fit the pie into the bottom and sides of the pie plate. Use a sharp knife or kitchen shears to trim a 1 inch overhang. Fold the edges under and press to seal.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "To Freeze the pie shell: Place the pie shell into the refrigerator to chill and set for 1 hour. Wrap tightly with a few layers of plastic wrap and place in freezer until ready to bake. Store in the freezer for up to 3 months.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Blind Bake: Place a piece of parchment paper or coffee filter into the center of the pie crust. Fill the center with pie weights or dry beans to keep the dough from puffing up while baking. Chill for 30 minutes. Bake the crust at 375 degrees for 20 minutes. Remove the pie from the oven and carefully lift out the paper and weights. Prick the bottom of the crust using a fork to prevent bubbles, return to the oven for an additional 15 to 20 minutes or until the crust is golden all over.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Variation: Add ¼ cup grated cheddar cheese to the potatoes in step 2.",
+   "kind": "variations",
+   "why": "corpus"
+  },
+  {
+   "text": "baking brought out a sweetness in the cauliflower which balanced nicely with the sharp feta; a lovely dish, packed with flavour. Diced red pepper also works well in this dish.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "I serve this baked cauliflower with cacik yoghurt dip with cucumbers and shepherd's salad with sumac onions. It can be served hot or at room temperature with a grilled main course and lemon wedges on the side.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Grape syrup is a condiment made from grapes cooked down into a thick syrup. It is common in Greece and other Mediterranean countries. Thick and sweet without added sugar, it's used on pancakes and bread, as well as in baking. It's often available in Italian or gourmet markets, or at online retailers; if you can't find it, substitute with 2 tablespoons brown sugar, maple syrup, or honey.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "**Note for next time: Oven couldn't hold the temperature, so turned out soggy!**",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "For added punch, toss in a minced garlic clove when the dal is done cooking, before you add the chhonk.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "This hummus will keep in the refrigerator for up to 3 days.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Note: Some legumes, like lentils and split peas, do not need to be soaked. Also, if you don't have time to soak, you can still cook your beans on the stovetop or using the other methods below. You will just need to cook your beans for longer, sometimes even for double the cooking time.",
+   "kind": "notes",
+   "why": "corpus"
+  },
+  {
+   "text": "Note: You can save your cooked bean liquid and use as a veggie stock.",
+   "kind": "notes",
+   "why": "corpus"
+  },
+  {
+   "text": "Tip: While cooking your beans, you can add herbs to add flavor and aid in digestion. These herbs include cumin, bay leaves, fennel, and fresh epazote (available in Latin markets).",
+   "kind": "tips",
+   "why": "corpus"
+  },
+  {
+   "text": "Leftovers – Best to pan fry fresh so they’re crispy. Excellent for prepare ahead – keep the beef (tossed in the sauce), red oil and Consommé separate, prep chopped coriander and onion. Then cook on demand! Keeps 4 days in the fridge, freezer 3 months.",
+   "kind": "storage",
+   "why": "corpus"
+  },
+  {
+   "text": "As an alternative to folding, you can cut and stack because you don't get bent edges (no fold there). Roll your dough out, cut it into quarters, stack them, and roll them flat again. You\ncan do this 2 or 3 times to build up a ton of layer.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Flour. This recipe works best with flour with around 11% protein. All-purpose flour protein levels can vary between brands, and the name of the flour itself can vary between countries. It’s best to check protein levels rather than just the name of the flour",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Kneading by hand. Brioche bread can be made without a stand mixer. It can be kneaded by hand, although it may take longer and require more effort. It’s a very sticky wet dough, so don’t be tempted to add more flour, or it will ruin the texture.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Storing. Brioche can be stored in an airtight container at room temperature for up to three days. Alternatively, it can be frozen for future use.",
+   "kind": "storage",
+   "why": "corpus"
+  },
+  {
+   "text": "Measurements - Both grams and US cup sizes are provided. Use the toggle on the recipe card to switch between the two.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "More information - See my brioche bread recipe post for more details on making brioche dough.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Yeast If you want to test the viability of your yeast before beginning, warm the milk (to around 95-104°F / 35-40°C) and mix in the yeast with one tablespoon of the sugar. Leave it to sit for 10 minutes first. If it becomes foamy, it's good to go.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Kneading by hand. Brioche dough can be made without a stand mixer. It can be kneaded by hand, although it may take longer and require more effort. It's a sticky wet dough, so don't be tempted to add more flour, or it will ruin the texture.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Storing. Brioche cinnamon rolls can be stored in an airtight container at room temperature for up to three days. Rewarm them gently in the microwave over the following days.",
+   "kind": "storage",
+   "why": "corpus"
+  },
+  {
+   "text": "The cookies will keep in an airtight container in a single layer for up to 1 week.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Feel free to use any whiskey in place of the bourbon; dark, spiced rum also works well and gives the dough a subtle cinnamon-y flavor.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "When these brownies come out of the oven, they'll be super gooey in the middle. Allow them to cool completely, about 2 hours, before you slice into them to give them a chance to set up. They'll continue to firm up the longer they're out of the oven. If you still prefer a firmer brownie, store them in the fridge.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "-White Lily or Martha White flour, which is made with soft wheat (mean-ing less gluten). If you can get your hands on either of these brands, use 3½ cups. Otherwise, you can mix cake flour with all-purpose, as l've done below.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "The yogurt or buttermilk can be substituted with 168g of regular milk (¾ cup minus ¾ Tbsp) plus 12g (¾ Tbsp) white vinegar or lemon juice. Mix these two ingredients together before beginning the recipe to let it sit and curdle for 5-10 minutes.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "freeze for up to 3 months. Let them cool completely, and place each muffin in a freezer-safe container or freezer bag",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Made with Mom and Dad in Boston",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Cooled broth can be refrigerated for up to 4 days or frozen for up to 1 month",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "**Enriched Chicken and Pork Broth**\nSubstitute 2 pounds pork necks for 2 pounds of chicken wings.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "By Chef Sandra Lewis, Life at the Table, Blue Zones Project Fort Worth, Texas",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Storage: Store leftovers covered in the refrigerator for up to 4 days.",
+   "kind": "storage",
+   "why": "corpus"
+  },
+  {
+   "text": "Freezer: The beans can be cooled and packed in freezer-safe containers, labeled, and frozen for up to 3 months. Thaw overnight in the refrigerator.",
+   "kind": "storage",
+   "why": "corpus"
+  },
+  {
+   "text": "Quick soak: If you forgot to soak your beans the night before, use this method to get a jump-start on cooking them.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Pick through and rinse 1 pound beans. To a large saucepan, add beans and enough liquid to cover them by 1 inch.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Bring beans to boil and cook for 2 minutes. Remove saucepan from heat, cover, and let beans sit for 1 hour. Drain and discard soaking liquid.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "The cookies, stored airtight at room temperature, will keep up to 5 days or can be frozen up to 1 month. The cookie dough can be portioned and refrigerated up to 2 days ahead or frozen up to 2 months. If freezing, allow the portioned dough to chill in the refrigerator for at least 2 hours before transferring the entire sheet to the freezer. Once the balls are frozen solid, pack the pieces into a resealable plastic freezer bag and, store. Bake the cookies directly from the freezer without thawing first, but keep in mind you may need to add a minute or two to the bake time.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "You can add only one variety of chocolate rather than the mix of milk and dark, just note that doing so will change the balance of sweetness (all dark chocolate making it less sweet, all milk chocolate making it more). Seek out chocolate disks or féves, like the ones by Guittard or Valrhona, since they melt into wonderful gooey puddles inside the cookies. If you can't find disks, opt for a block or bar of chocolate and coarsely chop all of it yourself. If possible, avoid chips, since they typically contain emulsifiers that prevent them from melting.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "You can also add 1 cup chopped toasted nuts (4.2 oz / 120g), such as walnuts, almonds, or pecans, to the batter along with the chocolate.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Sprinkle some flaky salt on top of the cookies prior to baking if you're a salty dessert person. Even though the dough contains a whopping 2 teaspoons of kosher salt, it's mainly there to bring out the flavors of the other ingredients; the baked cookies don't taste noticeably salty.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "If using raw, skin-on hazelnuts (instead of blanched), immediately transfer them to a clean dish towel after toasting and rub vigorously to remove their skins. It's okay if some skin is still attached.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "The shortbread will keep in an airtight container for up to 1 week.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "There are also many ways to customize it—add mint for fresher notes, or nuts for richness.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "To freeze them place the cooled scones in an airtight container or freezer bag. The scones will maintain the best quality for about 2 to 3 months. To defrost them, leave them in the bag or container and defrost at room temperature for 2-3 hours before serving.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "They can also be frozen unbaked. Freeze first on a baking sheet then move to freezer safe bag or container. They can be baked frozen (let them sit out while the oven is pre-heating). They will need a few more minutes of baking time.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "The cookie butter can be found next to the nut butters in well-stocked grocery stores, including Trader Joe's.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "*To improve digestibility and slightly speed cooking time, you can soak lentils by covering with cool water and soaking overnight or for 6-8 hours. Then rinse, drain, and proceed with recipe as instructed.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Note: Soaking lentils is optional but can improve digestibility and speed cook time.",
+   "kind": "notes",
+   "why": "corpus"
+  },
+  {
+   "text": "**Sui mi ya cai**",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Sui mi ya cai is a type of preserved vegetable from Sichuan Province. Made with mustard greens, it is dried, seasoned, and fermented, resulting in a salty, savory product. Suggest using it within a week or two of opening.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Made with Vedant and Sophia.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Variables\n1. Slightly increase the amount of chocolate\n2. Kept everything super cold for the icing like put metal bowls in the freezer… don’t know if it actually did something",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "CHICKPEA FLOUR - Also known as garbanzo bean flour or gram flour, chickpea flour is naturally gluten-free, made from ground chickpeas. It is available from Bob's Red Mill online and at health food stores.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "If using fresh Yeast: 8g",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Freezing – Freezes 100% perfectly! After Fry #1, fully cool the fries then freeze on a tray (you can stack them all on one tray). Once frozen, they can be tipped into a container or ziplock bag for freezing – just like store bought frozen fries! Cook from frozen for 4 1/2 minutes.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Re-use oil 3 to 4 times. Cool then store in jars. The oil shouldn’t need to be strained after cooking the fries.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Tandoori Masala Blend: 3 Tbsp cumin, 2 Tbsp garlic powder, 2 Tbsp paprika, 3 tsp ginger, 2 tsp coriander, 2 tsp cardamom.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Young Ginger vs Mature Ginger",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Mature ginger packs a more concentrated spicy ginger flavor than young ginger. Young ginger is vaguely pink in color, with slightly transparent skin. It has a more mildly spicy and almost floral flavor.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "The ginger you can get in most U.S. stores is mature ginger.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Young ginger is only available a couple months out of the year when it’s in season (mid-September to early November), if at all.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "I used almost ¼ cup whole milk and a little under 1 tablespoon of greek yogurt",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Good not great, missing some things, good rise, could use more butter - 11/4/24 AWH",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Light and dry, looking for denser - 11/4/24 MQD",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "To make ahead, (reduce the chicken stock to use only 2 cups) cool the soup and add it to a freezer ziplock bag or airtight container. Store in the freezer for up to 1 month. When ready to use, thaw out and reheat in a pot over medium heat on the stov",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "I recommend that you use uncooked, cleaned frozen shrimp. For this Shrimp Chow Mein recipe, I used uncooked shrimp, peeled off the shells, and left the tails on. The tails add nice flavor to the dish, but you can remove them if you prefer. I also like to butterfly the shrimp: use a sharp knife and carefully cut about two thirds of the way into the backs of each shrimp to do this.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Soak beans for 8 - 10 hours before cooking",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Cannellini – also known as White Italian Beans, white kidney beans.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Borlotti – also known as Cranberry bean, Roman bean",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "You can also used canned beans, just be sure to drain and rinse before using.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Any leftover soup should be stored in an airtight container and refrigerated. It will last up to 3-4 days in the fridge.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Freeze the completely cooled soup in a freezer safe container. It will keep for up to 6 months in the freezer",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Any leftover pie will keep, covered with plastic, for several days in the refrigerator (the crust will soften over time).",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "*Pie recipe for year 5 anniversary 3/14/25 : ) *",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Note: This recipe is for 4 servings, but only toss the chicken you'll eat now with the dressing so it won't become soggy. I will give the dressing ingredient amounts for 1 portion, and you can scale it up as needed. Each portion of fried chicken is about 120g.",
+   "kind": "notes",
+   "why": "corpus"
+  },
+  {
+   "text": "If wrapped tightly in plastic, the dough can be stored in the refrigerator for several days before baking. If too firm to scoop, let sit at room temperature for 15 minutes and try again.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "The cookies will keep in an airtight container for up to 1 week.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "To add ham next time",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "The biscotti will keep in an airtight container for up to 1 week.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "If wrapped tightly in plastic, the dough can be made several days in advance and stored in the fridge. When ready to bake, let the dough sit at room temperature for 15 minutes, press into the baking pan, and bake as instructed.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "The bars will keep in an airtight container in a single layer for up to 1 week.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "If wrapped tightly in plastic, both doughs can be stored in the refrigerator for several days before baking. When ready to bake, let sit at room temperature for about 30 minutes until you can easily form them into ropes and roll into balls.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "tip: As soon as you cube the paneer, put it in warm water until you are ready to cook it—this will make sure it doesn't dry out. Just be sure to drain it before adding it to the pan.",
+   "kind": "tips",
+   "why": "corpus"
+  },
+  {
+   "text": "Make sure to use almond flour, not almond meal. Almond flour has a finer texture and is made with blanched almonds, allowing the bright green color of the matcha to shine. If you can't find it, you can easily make your own by grinding blanched almonds in a food processor until they are the texture of fine sand. If there are any large pieces of almond still remaining, sift the flour through a fine-mesh sieve to remove them.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Different rices and brands require different ratios of rice to water. Whatever the water quantity is, reduce it by 1/4 cup.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Tomato Sauce: I used this because it’s fast and easy, but for a more authentic version, add 1-2 fresh tomatoes to a blender with the onion and garlic, and blend before adding to the rice.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Tomato Bouillon: granules or cubes, found in the Mexican aisle or online. This adds color and flavor to the rice. If you can’t find it, substitute chicken Bouillon.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Make up to 2 days in advance and store in the fridge.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "If you are unable to get active dry or instant yeast, you can use fresh yeast. The general rule of thumb is a ratio of 2.5:1, fresh to active dry. The amount of active dry yeast used in the recipe is only 6 grams, you would need about 15 grams of fresh yeast.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "When substituting fresh yeast, you may want to make a few adjustments to the method. Fresh yeast does not need to be proofed like active dry yeast. The water, sugar, and yeast step will be unnecessary in this case, so do keep that in mind. But, as some have told me, they’ve simply substituted fresh yeast for the active dry yeast and followed the steps as directed without any issues.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Osmanthus or guìhuā in Manadarin (桂花), is a sweet, fragrant flower native to East Asia. You may find it as a dried tea, in syrup for baking Chinese desserts, or as a flavoring in wine for braised meat dishes.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "The closest equivalent you might know of is elderflower. Both elderflower and osmanthus share the same lightly floral, yet not overpowering flavor.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "In this recipe, we’re using osmanthus syrup, which you can find jarred in Chinese grocery stores labelled 糖桂花",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Also known as tea olive in the Deep South",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "You can use Canned Chickpeas. If you use them you’ll want to cut the water in half.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Leftover dishes\nPenne alla vodka pizza",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "VARIATION - For pita pockets, use a rolling pin to roll each ball into a 6-inch circle. Place on a prepared baking sheet; you can probably fit three or four at once. Bake at 400°F until they puff up and are lightly browned, about 5 minutes. Let cool on the sheet.",
+   "kind": "variations",
+   "why": "corpus"
+  },
+  {
+   "text": "Chop the blanched scallions finely, or the cakes will break along scallion fault lines as they fry. And don't be shy with the heat; searing them quickly helps hold the loose batter together—-this will keep you from adding too many bread crumbs, which, after a certain point, you will regret.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "These sandwiches are best made by grilling the steak outside, but you can still make this recipe if you don't have an outdoor grill. Just cook the steak in a ripping-hot cast-iron pan. Look for Portuguese rolls at your local grocery store (they're usually near the kaiser rolls), and if you can't find them, a soft bread roll like a ciabatta roll or other flour-dusted roll will work well.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Store in an airtight container at room temperature for up to 3 days. Loaf and be frozen for up to 2 months and thawed in the fridge",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "If you notice that the top of the bread is getting too brown but the middle isn’t baked through yet, tent a piece of aluminum foil and place it over top of the loaf while it’s still baking.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "A medium-sized banana is about 4 ounces and measures between 7-8 inches.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "WOULDNT MAKE AGAIN",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Fresh pumpkin: Blot the pumpkin puree to remove moisture. Pumpkin puree has a lot of moisture, and excess moisture will lead to cakey cookies. Blotting the pumpkin with paper towels will remove as much moisture as possible, leading to a nice, chewy texture. Alternatively, you can press the pumpkin against the sides of a very fine mesh strainer.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Strain runny puree to remove excess liquid. Some varieties of pie pumpkins can have more moisture than others. If your puree is more watery than canned puree, you should strain it in a cheesecloth-lined mesh strainer for 15-30 minutes or until thickened before using the puree in your favorite pumpkin pie recipe. You can also spread it out on a baking sheet and bake it at 300°F, stirring frequently, until thickened. I’d recommend puree again to make sure it’s totally smooth.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "To prevent sticking: Flour the sharp knife or bench scraper to help keep the dough from sticking when cut.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "For a thinner glaze, add 1 or 2 teaspoons more milk and drizzle the glaze over the scones.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Made for Sophia and Vedant’s coffee party :)",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Pumpkin pie spice can be found in the spice section of most well-stocked grocery stores. If unavailable, you can make your own by combining 4 teaspoons ground cinnamon, 2 ½ teaspoons ground ginger, ½ teaspoon ground allspice, ½ teaspoon ground cloves, and ½ teaspoon ground nutmeg. This will give you just enough spice mixture to make this recipe.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "If you only want to use white meat for this dish, that's fine, but the chicken thighs are also going to be your main source of chicken fat trimmings that you need for the rice. So you need to make sure that whatever chicken you use, you are able to trim enough chicken fat off of it. Or, if you’re making your own chicken stock, choose bones with fatty bits attached (back bones are good for this) and you can skim the fat off the stock when it’s done. You can also trim fat and skin off of chicken thighs that you can save for another dish!",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "You can use store bought stock for a super quick/easy version, but for the most authentic flavour I highly recommend using Asian-style homemade stock for this one.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "It’s traditional to serve a bowl of chicken broth on the side since the dish itself isn’t very saucy. The broth can be simply seasoned with salt and pepper, but you’ll sometimes see people putting a few pieces of winter melon in it.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Freeze-dried raspberries can be found in the dried fruit and nuts section of most well-stocked grocery stores, such as Whole Foods and Trader Joe's. If unavailable, any freeze-dried berry, such as strawberries or blueberries, can work as a substitute",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "If the edges brown too fast, cover them with strips of aluminum foil about halfway through baking.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "NOTE FOR NEXT TIME: Add more cinnamon!!",
+   "kind": "notes",
+   "why": "corpus"
+  },
+  {
+   "text": "Try to pick rhubarb stalks that are very firm and stiff (not flabby), dark red, and blemish-free.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Err on the side of baking the loaf more rather than less. It's an extremely moist cake, and underbaking it even slightly could cause it to fall a bit as it cools (though it will still taste great).",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Made for Vedant and Sophia with ribs and mashed potatoes.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Safety note \nDo not immediately open the grinder lid after you stop the blade. Give the chili dust time to settle down before opening, 15-20 seconds at least, otherwise you will inhale chili dust and that is NOT FUN. Also when you deem it safe to open the lid, do not put your face directly on top of it; and make sure there isn't a fan or anything blowing nearby. This all seems obvious until you forget about it, folks.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "How to Store Chili Flakes\nStore in an airtight container in the fridge or freezer, because chilies do get moldy overtime. I usually only make one small jar at a time and keep it in the fridge, but if you have more than you can use within 6 months, keep a small amount in the fridge and the extra in the freezer.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Baked pumpkin and pumpkin purée will keep covered in the refrigerator up to 1 week, or in the freezer for 1 month (or longer).",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Reminder. High heat doesn’t mean high heat, way too long or way too high of temp.",
+   "kind": "notes",
+   "why": "corpus"
+  },
+  {
+   "text": "The pastry dough can be made several days in advance, formed into a disc, then wrapped in plastic and stored in the fridge. When ready to bake, let the dough sit out at room temperature for 30 minutes to soften lightly",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Made for Maeve, Molly, Krista, Mathew and Patrick LBI - August 2024",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "**After 3/3 version**\nAH - Go light on the salt, maybe even a little less than what this has.\nAH - Make sure to use the long ones or cut the big ones into smaller pieces",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Unbaked, cut-out shortbread cookies can be stored in the freezer for several months. To freeze them, place the cut-out cookies on a baking sheet, freeze uncovered for 30 minutes, then transfer to a zip-top bag",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Replace the first three sweetly fragranced spices with a more earthy mix of cumin, paprika, and turmeric.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Use sulfurous spices, such as mustard, curry leaves, and asafetida, to emphasize the meatiness of the dish.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Alter the citrus-sour profile by replacing the vinegar with tamarind water and adding lemongrass to the paste mix.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "The cake keeps well in an airtight container for a couple of days.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "You'll need an 8 ½ × 4 ½ in./22 × 11 cm loaf pan.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Make a more earthy, South Indian-style spice seasoning by replacing the fennel and ginger with curry leaves and mustard and cumin seeds.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Use a Mediterranean spice palette and pair fennel seeds with cumin and hot paprika—smoked if you prefer-instead of ginger.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "For stronger pepper notes, lightly crack the whole peppercorns, to release more flavor oils, before adding to the beurre blanc.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "These parcels make perfect picnic food and keep well in an airtight container for 2-3 days.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Note: For a simpler version of this dish, steam purple, white, or orange sweet potatoes until soft. Toss with 1 tablespoon of vegetable oil, chopped scallions, and a dash of salt.",
+   "kind": "notes",
+   "why": "corpus"
+  },
+  {
+   "text": "COOK'S NOTE: Grape or pomegranate molasses is used in place of vinegar to bring bright acidity and tartness to this meze. Both molasses are made from sour fruit juice that is reduced with a little bit of salt to form a concentrated syrup that looks similar to aged balsamic vinegar. Combined with a little lemon juice and olive oil, it makes a delicious dressing.",
+   "kind": "notes",
+   "why": "corpus"
+  },
+  {
+   "text": "The dough will keep in the freezer for up to 5 days.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Good consistency but need a new mix.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "SAME DAY VERSION: increase water to ~354 grams/1.5 cups and increase instant yeast to 1 tablespoon. After shaping, rise at room temp for about 20 minutes (warmer kitchen) or 30 minutes (cooler kitchen) and then proceed with step 9.",
+   "kind": "variations",
+   "why": "corpus"
+  },
+  {
+   "text": "Consider using vital wheat gluten, which is widely available in supermarkets. Vital wheat gluten will increase the protein content of the flour and give you such a beautiful crisp and chew.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "When you get to the boiling stage, make sure your kettle/water bath is deep enough for the bagels to float in and replenish the water if it boils off too much for second batch (assuming you are boiling 3 or 4 at a time).",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Make sure the kettle water reaches a rolling boil, otherwise, the bagels will not puff up a lot during this stage.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "If the water isn’t deep enough in the boiling pan, the bagels can stick to the bottom of the pan.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "You can boil the bagels for 30 to 45 seconds (up to 2 minutes) on each side; taking care to flip them over gently. If the bagels deflate in the water, they proofed too long (risen too much) or were boiled for too long.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "The longer boiling time will give you a thicker crust and shorter times result in thinner crust. To begin, use the shorter boiling times listed.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Egg wash is NOT needed; the kettle bath gives these bagels a nice shiny finish (using convection setting will blow bagels dry and decrease shine).",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "I sometimes use parchment or silicone baking sheets to prevent over browning on the bottom of bagels.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Note: Please see directions on your brand of yeast. If it requires activation by adding water and/or sugar, use some from the amounts stated in the recipe. RedStar/SAF (instant or active yeast) does NOT require activation but Fleishman's active dry yeast does.",
+   "kind": "notes",
+   "why": "corpus"
+  },
+  {
+   "text": "tip: One whole endive will have more than enough leaves; radicchio also works.",
+   "kind": "tips",
+   "why": "corpus"
+  },
+  {
+   "text": "Used salmon as a substitute because it's oily and fat similar to that of a mackerel.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Pekmez - Available at Middle Eastern stores, pekmez is grape molasses. Brush it on with a very light touch-\"just kiss the dough,\" as our good friend in Istanbul suggests. For an authentic simit with a light caramel and crunchy crust, there is no substitute for pekmez. It's found in Turkish homes and used the way we use granulated sugar. It is common for moms to give their kids a spoonful of pekmez each morning; it helps in blood circulation and rejuvenation.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Chicken – I cut most into 4, some into 3. You want them quite large so they don’t dry out during the required simmer time.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Use room temperature eggs if possible. This is not a make-or-break situation! If you are making this waffle recipe first thing in the morning and need to use eggs straight out of the refrigerator, your waffles will still turn out delicious! But if you have the time, set the eggs out 30 minutes to 1 hour before you start the waffles.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Don’t over-mix the batter. Once the wet and dry ingredients are just incorporated, the batter is ready. It might be a little lumpy, and that’s okay! Those lumps will actually help with the fluffy texture.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "For waffles that stay crisp: Place the cooked waffles on a wire rack when they’re ready. If you pile them up on a platter, they release steam and soften up. You can also warm the oven to 200°F and place the wire rack in the oven to keep the waffles warm.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Between waffles, let the waffle iron heat up again. A warm waffle maker will not give you crisp waffles: You need it screaming hot, so give it at least 30 seconds between each waffle to heat back up.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "To make smooth, creamy hummus, add a pinch of baking soda to the water while you are cooking the chickpeas. This will help soften their skins quickly. Puree the chickpeas first with garlic and salt in a food processor, for about 3 minutes. When the chickpeas are finely ground and almost resemble cookie dough (it starts to form a ball in the food processor), add the lemon, tahini, and olive oil slowly with the motor running, seasoning everything with cumin and salt. Continue to blend for 5 to 8 minutes longer, until it's as smooth as possible.",
+   "kind": null,
+   "why": "corpus"
+  },
+  {
+   "text": "Maybe you want the grip of sweet raw red onion to shake up your mouth. Maybe you don't. If you'd prefer to tone it down, just soak the onion bits in cold water for 15 minutes or so after chopping, then drain well.",
+   "kind": null,
+   "why": "corpus"
+  }
+ ]
+}

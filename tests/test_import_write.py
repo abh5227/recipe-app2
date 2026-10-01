@@ -406,7 +406,9 @@ def test_an_imported_note_step_moves_into_the_notes(kitchen):
     c = _cleaned(name="Noted Dish", ingredient_lines=["1 egg"],
                  directions=["Mix it.", "Note: Check your brand of yeast."], notes="Keeps 3 days.")
     plan = _plan(c)
-    assert plan["recipe"]["notes"] == "Keeps 3 days.\n\nCheck your brand of yeast."
+    # ⚠️ THE LABEL COMES WITH IT. It is what the kind headers group on, and stripping it meant a
+    #    "Tip:" step imported as bare prose and printed under Notes with no way back.
+    assert plan["recipe"]["notes"] == "Keeps 3 days.\n\nNote: Check your brand of yeast."
     assert [r["text"] for r in plan["steps"]] == ["Mix it."]
     moved = [f for f in plan["review_flags"] if f["flag"] == "step_note_moved"]
     assert len(moved) == 1 and "Check your brand of yeast" in moved[0]["reason"]

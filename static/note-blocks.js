@@ -7,16 +7,15 @@
 // This decides what the page SHOWS, and nothing here is ever written back.
 //
 // ⚠️ THE KIND TABLE IS A SHARED FIXTURE, not a literal in this file. import_cleanup reads the same
-// tests/fixtures/note-kinds.json for the data rule, so the two cannot disagree about what "Storing."
+// static/note-kinds.json for the data rule, so the two cannot disagree about what "Storing."
 // means. The table is injected rather than imported because this module must stay dependency-free
 // for the zero-dep JS suite; app.js passes the baked copy and the test passes the fixture.
 
 // A leading label: a short capitalized-ish phrase, then a colon or a period, then the note itself.
 // The period form is real and common ("Flour. This recipe works best with..." on brioche-bread).
-const LEAD = /^\s*([A-Za-z][A-Za-z '’/-]{0,28}?)\s*[:.]\s+(\S[\s\S]*)$/;
+const LEAD = /^\s*([A-Za-z][A-Za-z '’/-]{0,28}?)\s*[:.–—-]\s+(\S[\s\S]*)$/;
 
 // A paragraph that is ONLY a label, with nothing under it.
-const LABEL_ONLY = /^\s*([A-Za-z][A-Za-z '’/-]{0,28}?)\s*[:.]?\s*$/;
 
 function normLabel(s) {
   return String(s || "").replace(/’/g, "'").trim().replace(/\s+/g, " ").toLowerCase();
@@ -61,4 +60,4 @@ export function noteBlocks(text, table) {
   return order.map((k) => byKind.get(k)).filter((b) => b.paras.length);
 }
 
-export { noteParagraphs, classifyNote, normLabel, LEAD, LABEL_ONLY };
+export { noteParagraphs, classifyNote, normLabel, LEAD };

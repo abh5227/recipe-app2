@@ -1185,7 +1185,7 @@ def test_beans_shape_an_all_caps_section_a_label_and_a_note():
         (2, "Rinse"), (0, "Tip the beans into a colander and rinse well."),
         (0, "Soak the beans overnight in plenty of cold water."),
     ]
-    assert notes == "Pick over the beans for stones first."
+    assert notes == "Note: Pick over the beans for stones first."
     assert flags == {"step_label_lifted", "step_note_moved", "step_heading_recased"}
 
 
@@ -1199,9 +1199,13 @@ def test_bagel_shape_an_italic_heading_and_two_notes_joined_to_existing_notes():
         "Tip - a wetter dough gives a chewier crumb.",
     ], notes="Keeps 3 days in a paper bag.")
     assert shape == [(1, "Cold Proof"), (0, "Shape them into rounds.")]
+    # ⚠️ EACH KEEPS ITS OWN LABEL, which is what the kind headers group on: the Note goes under
+    #    Notes and the Tip under Tips. Stripping them made both read as Notes.
     assert notes == ("Keeps 3 days in a paper bag.\n\n"
-                     "Please see directions on your brand of yeast.\n\n"
-                     "a wetter dough gives a chewier crumb.")
+                     "Note: Please see directions on your brand of yeast.\n\n"
+                     "Tip - a wetter dough gives a chewier crumb.")
+    assert ic.note_kind("Note: Please see directions on your brand of yeast.") == "notes"
+    assert ic.note_kind("Tip - a wetter dough gives a chewier crumb.") == "tips"
     assert flags == {"step_heading_unwrapped", "step_note_moved"}
 
 
@@ -1211,7 +1215,7 @@ def test_a_note_is_checked_before_the_label_rule():
     instruction — the opposite of what it is."""
     shape, notes, _ = _plan(["Note: Check your yeast."])
     assert shape == []
-    assert notes == "Check your yeast."
+    assert notes == "Note: Check your yeast."
 
 
 def test_a_short_title_like_step_is_left_alone():
@@ -1417,9 +1421,16 @@ def test_nothing_removed_means_nothing_written():
 
 
 def test_a_moved_note_starts_its_own_paragraph():
-    """Rule 3's third part, through the path that actually moves one."""
+    """Rule 3's third part, through the path that actually moves one.
+
+    ⚠️ THE LABEL COMES WITH IT, and that is what the kind headers read. This asserted the stripped
+    form while scripts/convert_step_headings.py kept the label, so the importer and the corpus pass
+    classified the same paragraph under two different headers. A "Tip:" step imported tomorrow landed
+    under Notes, and the label it needed to say otherwise had been deleted.
+    """
     rows, notes, conv = ic.plan_step_rows(["Mix it.", "Note: Check the yeast."], "Keeps 3 days.")
-    assert notes == "Keeps 3 days.\n\nCheck the yeast."
+    assert notes == "Keeps 3 days.\n\nNote: Check the yeast."
+    assert ic.note_kind("Note: Check the yeast.") == "notes"
     assert [r["text"] for r in rows] == ["Mix it."]
 
 
@@ -1427,5 +1438,45 @@ def test_a_note_moved_onto_a_bare_label_cleans_up_after_itself():
     """⚠️ THE ORDER IS LOAD-BEARING. Moving a Note step is what can CREATE the shape clean_notes
     removes, so the notes rule runs after the moves rather than before them."""
     rows, notes, conv = ic.plan_step_rows(["Mix it.", "Note: Check the yeast."], "Note.")
-    assert notes == "Check the yeast."
+    assert notes == "Note: Check the yeast."
     assert {c["flag"] for c in conv} == {"step_note_moved", "note_fragment_removed"}
+
+
+def test_note_kind_agrees_with_the_client_on_every_case_in_the_shared_fixture():
+    """The Python half of tests/js/note-kinds-sync.test.js.
+
+    ⚠️ THE KIND TABLE WAS SHARED AND THE REGEX THAT READS THE LABEL WAS NOT. Six other
+    cross-language mirrors in this project each have a sync test (factor-sync, fraction-sync,
+    timefmt-sync, unit-abbrev-sync, step-ping-sync, save-payload-sync). This pair had none, and the
+    two had already drifted from `_NOTE_STEP` on the separator set, so a "Tip - ..." step moved into
+    the notes with its dash and neither side could read the label back.
+
+    The fixture carries every label in the table in five separator forms and two casings, the shapes
+    that must NOT classify, and every real notes paragraph in the corpus.
+    """
+    import json
+    import pathlib
+
+    cases = json.loads((pathlib.Path(__file__).resolve().parent / "fixtures"
+                        / "note-kind-cases.json").read_text())["cases"]
+    assert len(cases) > 400, f"only {len(cases)} cases"
+    labels = {l for k in ic.NOTE_KINDS for l in k["labels"]}
+    covered = {c["text"].split(":")[0].split(".")[0].strip().lower() for c in cases}
+    missing = [l for l in labels
+               if not any(c["text"].lower().startswith(l.lower()) for c in cases)]
+    assert missing == [], f"the fixture is stale, it does not cover {missing}"
+    wrong = [(c["text"][:60], c["kind"], ic.note_kind(c["text"]))
+             for c in cases if ic.note_kind(c["text"]) != c["kind"]]
+    assert wrong == [], f"{len(wrong)} of {len(cases)} disagree with the recorded kind"
+
+
+def test_a_dash_joined_kind_label_classifies_like_a_colon_joined_one():
+    """⚠️ _NOTE_STEP ACCEPTS FIVE SEPARATORS AND _NOTE_LEAD ACCEPTED TWO, so a note moved out of the
+    method kept a separator the classifier could not read. Two real corpus paragraphs were printing
+    under the wrong header because of it."""
+    assert ic.note_kind("Leftovers – Best to pan fry fresh so they are crispy.") == "storage"
+    assert ic.note_kind("VARIATION - For pita pockets, use a rolling pin.") == "variations"
+    assert ic.note_kind("Tip - a wetter dough gives a chewier crumb.") == "tips"
+    # and widening the separator must not start classifying ordinary prose
+    assert ic.note_kind("Serve with rice - or with bread.") is None
+    assert ic.note_kind("Flour - 500g of it.") is None
