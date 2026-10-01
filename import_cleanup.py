@@ -817,6 +817,9 @@ STEP_STRUCTURE_REASONS = {
     "step_label_declined":
         "a lead-in label was found and NOT lifted, because a rule read it as a clause rather than "
         "a title; the step was left whole for a person to decide",
+    "step_label_unjudged":
+        "a lead-in label was found and NOT lifted, because nothing after it starts a new sentence, "
+        "so no rule can tell a title from the first half of one; a person decides",
 }
 
 # ⚠️ position MEANS A DIFFERENT THING ON A STEP FLAG THAN ON A LINE FLAG, which is why this set
@@ -993,6 +996,33 @@ _LABEL_CONNECTIVE = re.compile(
 #    these reasons mean "something label-shaped was here and a rule declined it", which is the only
 #    kind worth putting in front of a person.
 LABEL_DECLINED = "a rule refused the label: "
+# The second kind of no, and it means something different to a reviewer. LABEL_DECLINED says "this is
+# not a title". This one says "this might be a title and nothing here can tell".
+LABEL_UNJUDGED = "no rule can judge the label: "
+
+
+def _starts_a_sentence(rest):
+    """Does what follows the label begin a new sentence? A capital letter says yes.
+
+    ⚠️ MEASURED, NOT REASONED, OVER EVERY REVIEWED ROW. Of the 104 lead-in labels a person approved,
+    99 are followed by a capital. All three of the rows a person declined as instructions or as a
+    sentence are followed by a lowercase word or by a digit:
+
+        "Salt lightly"              -> "this is mainly to draw excess liquid out..."
+        "Do a window pane test"     -> "take a small walnut sized piece of dough..."
+        "Set up three mixing bowls" -> "1) one with the remaining 1 cup flour, 2) one with..."
+
+    A lowercase continuation means the author wrote ONE sentence with a colon in the middle, not a
+    title over a sentence. That is the difference, and it is the only one the corpus shows: by every
+    other measure "Salt lightly" is "Keep warm" and "Set up three mixing bowls" is "Make the toasted
+    rice powder".
+
+    ⚠️ IT IS A FLAG, NOT A REFUSAL, AND THE DIFFERENCE IS THE WHOLE RULING. 5 of the 104 approved
+    labels are also followed by a lowercase word (bulgogi-bowls' three, "Optional blitz", "Flip"), so
+    this cannot decide. It can only say that nothing here decides, which is what the review queue is
+    for."""
+    m = re.search(r"[A-Za-z0-9]", rest or "")
+    return bool(m) and rest[m.start()].isupper()
 
 
 def label_refusal(label):
@@ -1095,6 +1125,7 @@ def split_lead_label(text, label=None):
     lifting would change what the recipe SAYS rather than how it is laid out.
     """
     flat = " ".join((text or "").split())
+    reviewed = label            # captured before the branch below rebinds `label` to a raw slice
     if label is not None:
         label = " ".join(label.split())
         if not label:
@@ -1146,6 +1177,12 @@ def split_lead_label(text, label=None):
     why = label_refusal(label)
     if why:
         return LABEL_DECLINED + why
+    # ⚠️ THE POSITIVE GATE RUNS ONLY WHERE NOBODY HAS JUDGED, which is the auto-detect path. A
+    #    reviewed label arrives with a person's decision attached and keeps it: the corpus pass still
+    #    lifts all 104, so the corpus result does not move. The importer serves other people's
+    #    recipes, where there is no reviewer, and declining to guess is what it is for.
+    if reviewed is None and not _starts_a_sentence(rest):
+        return LABEL_UNJUDGED + "nothing after it starts a new sentence"
     return label, rest
 
 
@@ -1352,6 +1389,8 @@ def plan_step_rows(directions, notes=""):
         #    meanwhile. See label_refusal and LABEL_DECLINED.
         if isinstance(parts, str) and parts.startswith(LABEL_DECLINED):
             note("step_label_declined", f"{raw[:60]} -- {parts[len(LABEL_DECLINED):]}")
+        elif isinstance(parts, str) and parts.startswith(LABEL_UNJUDGED):
+            note("step_label_unjudged", f"{raw[:60]} -- {parts[len(LABEL_UNJUDGED):]}")
         if not isinstance(parts, str):
             label, rest = parts
             # 5 — a link inside the label moves into the step, because a heading cannot render one.

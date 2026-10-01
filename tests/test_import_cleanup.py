@@ -1160,7 +1160,10 @@ def test_birria_shape_an_emphasized_title_and_two_dash_labels():
 def test_butter_chicken_shape_a_colon_label_and_a_dash_label_are_the_same_thing():
     shape, _, flags = _plan([
         "Marinade: Mix the chicken with the yogurt and spices.",
-        "Optional blitz – blend the sauce until smooth.",
+        # ⚠️ "Blend", capitalized, so this test is about the colon and the dash and not about the
+        #    sentence gate. A lowercase continuation is now flagged rather than lifted (see
+        #    _starts_a_sentence), which is a different question and has its own tests.
+        "Optional blitz – Blend the sauce until smooth.",
         "Cook the chicken for 20 minutes.",
     ])
     assert shape == [
@@ -1240,21 +1243,36 @@ def test_a_label_carrying_a_link_lifts_and_the_link_moves_into_the_step():
     """⚠️ A HEADING IS ESCAPED AND NEVER LINKIFIED (app.js renderStepRow), so a lifted label holding
     [[spinach]] would print the brackets. It used to be refused for that reason. The heading now
     takes the plain words and the link moves to the next mention of the same word in the step,
-    which is where a reader would reach for it anyway. bulgogi-bowls is the corpus case."""
-    shape, _, flags = _plan(
-        ["Wilt the [[spinach]]: heat 2 tsp oil in a pan. Add half the spinach, toss with tongs."])
-    assert shape == [
-        (2, "Wilt the spinach"),
-        (0, "Heat 2 tsp oil in a pan. Add half the [[spinach|spinach]], toss with tongs."),
-    ]
-    assert flags == {"step_label_lifted"}
+    which is where a reader would reach for it anyway. bulgogi-bowls is the corpus case.
+
+    ⚠️ THROUGH THE REVIEWED PATH, WHICH IS HOW THE CORPUS REACHES IT. bulgogi-bowls' real text runs
+    on in lowercase ("...spinach]]: heat 2 tsp oil..."), so the importer's sentence gate now declines
+    to judge it and flags it instead (test below). A person judged it, and a reviewed label keeps its
+    decision, so the lift and the link move still happen exactly as they did."""
+    text = "Wilt the [[spinach]]: heat 2 tsp oil in a pan. Add half the spinach, toss with tongs."
+    label, rest = ic.split_lead_label(text, label="Wilt the spinach")
+    label, rest, moved = ic.move_link_out_of_label(label, rest)
+    assert moved is True
+    assert label == "Wilt the spinach"
+    assert ic.capitalize_first_visible(rest) == \
+        "Heat 2 tsp oil in a pan. Add half the [[spinach|spinach]], toss with tongs."
+
+
+def test_the_importer_flags_that_same_bulgogi_step_rather_than_guessing():
+    """The other side of the same row. With no decision in hand, nothing after the label starts a
+    new sentence, so the importer leaves the step whole and says so."""
+    text = "Wilt the [[spinach]]: heat 2 tsp oil in a pan. Add half the spinach, toss with tongs."
+    shape, _, flags = _plan([text])
+    assert shape == [(0, text)]
+    assert flags == {"step_label_unjudged"}
 
 
 def test_a_link_with_no_later_mention_lifts_anyway_and_is_flagged():
     """⚠️ A HEADING ANDY HAS DECIDED ON IS NOT BLOCKED BY A LINK, which is his ruling. The link
     cannot be carried anywhere, so the lift happens and the loss is surfaced for re-linking rather
-    than the heading being refused."""
-    shape, _, flags = _plan(["Wilt the [[spinach]]: heat the oil and cook briefly."])
+    than the heading being refused. Capitalized after the label, so this is about the link and not
+    about the sentence gate."""
+    shape, _, flags = _plan(["Wilt the [[spinach]]: Heat the oil and cook briefly."])
     assert shape == [(2, "Wilt the spinach"), (0, "Heat the oil and cook briefly.")]
     assert "step_label_link_lost" in flags
 
@@ -1587,3 +1605,82 @@ def test_the_declined_flag_is_a_step_structure_flag():
     mark an unrelated row."""
     assert "step_label_declined" in ic.STEP_STRUCTURE_FLAGS
     assert "step_label_declined" in ic.STEP_STRUCTURE_REASONS
+
+
+# ---- a label no rule can judge is flagged, not lifted (Andy's decision 4) -------------------------
+# ⚠️ THE ONE SIGNAL THE CORPUS ACTUALLY SHOWS. Of the 104 lead-in labels a person approved, 99 are
+# followed by a capital letter. All three of the rows a person declined as instructions or as a
+# sentence are followed by a lowercase word or a digit, which is how a reader can tell the author
+# wrote ONE sentence with a colon in the middle. By every other measure "Salt lightly" is "Keep warm"
+# and "Set up three mixing bowls" is "Make the toasted rice powder".
+#
+# It is a FLAG and not a refusal, because 5 of the 104 are ALSO followed by a lowercase word. It can
+# only say that nothing here decides. And it runs ONLY where nobody has judged: a reviewed label
+# keeps its decision, so the corpus pass still lifts all 104 and the corpus result does not move.
+
+@pytest.mark.parametrize("text, label", [
+    # the three Andy named, in their real wording
+    ("Salt lightly - this is mainly to draw excess liquid out. We don't squeeze every drop.",
+     "Salt lightly"),
+    ("Do a window pane test: take a small walnut sized piece of dough and stretch it thinly.",
+     "Do a window pane test"),
+    ("Set up three mixing bowls: 1) one with the remaining 1 cup flour, 2) one with the panko.",
+     "Set up three mixing bowls"),
+    # and their kind
+    ("Rest the dough: it will relax while the oven heats.", "Rest the dough"),
+    ("Toast the nuts - they burn fast, so watch them.", "Toast the nuts"),
+])
+def test_a_label_nothing_can_judge_is_flagged_and_the_step_stays_whole(text, label):
+    got = ic.split_lead_label(text)
+    assert isinstance(got, str), f"{label!r} was lifted"
+    assert got.startswith(ic.LABEL_UNJUDGED), got
+    rows, _notes, conv = ic.plan_step_rows([text])
+    assert [(r["is_heading"], r["text"]) for r in rows] == [(0, text)], "the step was split"
+    assert [c["flag"] for c in conv] == ["step_label_unjudged"], conv
+
+
+@pytest.mark.parametrize("text", [
+    "Deseed: Trim the stems and shake out the seeds.",
+    "Keep warm: Put it in a low oven until the rest is ready.",
+    "Make the flour dredge: Whisk the flour and the spices together.",
+    "To make the chocolate icing: Melt the chocolate over a bain-marie.",
+    "Rest 10 minutes: Let it sit before slicing.",
+])
+def test_a_label_followed_by_a_new_sentence_still_lifts(text):
+    got = ic.split_lead_label(text)
+    assert not isinstance(got, str), got
+
+
+def test_a_reviewed_label_keeps_its_decision_and_the_gate_does_not_run():
+    """⚠️ THE HALF THAT KEEPS THE CORPUS WHERE IT IS. 5 of the 104 approved labels are followed by a
+    lowercase word — bulgogi-bowls' three, butter-chicken's "Optional blitz" and jamaican-jerk-fish's
+    "Flip". A person judged each of them. The gate runs only on the auto-detect path, so the corpus
+    pass lifts all 104 exactly as before, and only the importer declines to guess."""
+    text = ("Wilt the spinach: heat 2 tsp oil in a large non-stick pan over high heat. "
+            "Add half the spinach.")
+    assert isinstance(ic.split_lead_label(text), str), "auto-detect should decline this one"
+    got = ic.split_lead_label(text, label="Wilt the spinach")
+    assert not isinstance(got, str), got
+    assert got[0] == "Wilt the spinach"
+
+
+def test_the_hard_refusal_still_wins_over_the_gate():
+    """A reviewed label that trips a RULE is still refused — the gate is the weaker of the two and
+    does not reorder them."""
+    text = "Remove from heat and let it rest for 10 minutes - during this time liquid absorbs."
+    got = ic.split_lead_label(text, label="Remove from heat and let it rest for 10 minutes")
+    assert isinstance(got, str) and got.startswith(ic.LABEL_DECLINED), got
+
+
+def test_the_unjudged_flag_is_a_step_structure_flag():
+    assert "step_label_unjudged" in ic.STEP_STRUCTURE_FLAGS
+    assert "step_label_unjudged" in ic.STEP_STRUCTURE_REASONS
+
+
+def test_the_two_kinds_of_no_are_different_flags():
+    """They mean different things to a reviewer: one says this is not a title, the other says this
+    might be and nothing here can tell. The action differs, so the flag does."""
+    declined = ic.plan_step_rows(["Then velvet the beef: in a bowl, mix the beef with water."])[2]
+    unjudged = ic.plan_step_rows(["Salt lightly - this draws the liquid out."])[2]
+    assert [c["flag"] for c in declined] == ["step_label_declined"]
+    assert [c["flag"] for c in unjudged] == ["step_label_unjudged"]
