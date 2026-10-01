@@ -312,8 +312,13 @@ How this project is run:
     recipes existed on one machine and in no commit.
   - **A review artifact** is the output of a one-time survey that nothing opens. It may stay
     untracked.
-  The test is mechanical: if any committed `.py` or `.md` names the file, it is a decision and it is
-  committed. `docs/data-repairs/README.md` keeps the index and says which each one is.
+  The test is mechanical: **if a committed `.py` OPENS the file, it is a decision and it is
+  committed.** `docs/data-repairs/README.md` keeps the index and says, per file, what reads it and
+  whether it is committed. ⚠️ **The test used to say "any committed .py or .md NAMES the file", and
+  the index is a committed .md that names every one of them**, so the rule declared its own survey
+  output to be recorded decisions. Opening the file is the thing that matters, because that is what a
+  fresh clone has to be able to do. Measured today: 4 of the 20 files are untracked, no `.py` opens
+  any of them, and the index already lists all four as read by nothing.
 - **RUN THE WHOLE CHAIN FROM A CLEAN CHECKOUT BEFORE RUNNING IT FOR REAL.** A pass applied on its own
   to a corpus already part way through agrees with the chain by luck. The passes are ordered and each
   reads what the one before it left (`docs/data-repairs/README.md`). Every defect in this round's
