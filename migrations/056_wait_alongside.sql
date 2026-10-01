@@ -40,6 +40,27 @@
 --    'always' when there is no usable target, and planahead.counts treats an alongside wait whose step
 --    is gone as an ordinary wait that DOES reach the total, since it no longer overlaps anything.
 
+-- ⚠️ THIS FILE IS A TABLE REBUILD AND IT HAS TO BE ONE TRANSACTION. SQLite cannot ADD a column with
+-- a REFERENCES clause, so the only way to give recipe_waits its alongside pointer is create, copy,
+-- DROP, RENAME. migrate.py runs each file through sqlite3's executescript, which opens no
+-- transaction, so without the BEGIN below every statement here auto-commits on its own.
+--
+-- Measured, by replaying this file truncated one statement after the DROP and closing the
+-- connection, which is what a Ctrl-C, a laptop sleep or a crash does:
+--
+--   no transaction : recipe_waits is GONE and recipe_waits_new is left behind. Every recipe page
+--                    500s on "no such table: recipe_waits". The filename was never written to
+--                    schema_migrations, so migrate.py retries, and the retry dies forever on
+--                    "table recipe_waits_new already exists". Recovery is hand SQL.
+--   this BEGIN     : the whole thing rolls back, recipe_waits is untouched, pages serve, and
+--                    re-running migrate.py applies it cleanly.
+--
+-- SQLite DDL is transactional, which is what makes the one-word fix work. ⚠️ Do NOT lift this into
+-- migrate.py as a blanket wrap without reading 045, which sets PRAGMA foreign_keys=off and back on.
+-- A PRAGMA foreign_keys is a NO-OP inside a transaction, so wrapping every file would silently
+-- disarm 045 on a fresh build.
+BEGIN;
+
 CREATE TABLE recipe_waits_new (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,
     recipe_id         TEXT    NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
@@ -79,3 +100,5 @@ ALTER TABLE recipe_waits_new RENAME TO recipe_waits;
 CREATE INDEX idx_recipe_waits_recipe ON recipe_waits(recipe_id);
 CREATE INDEX idx_recipe_waits_min    ON recipe_waits(min_minutes);
 CREATE INDEX idx_recipe_waits_when   ON recipe_waits(when_kind);
+
+COMMIT;

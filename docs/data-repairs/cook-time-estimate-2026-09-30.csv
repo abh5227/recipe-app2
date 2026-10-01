@@ -1,0 +1,198 @@
+recipe_id,estimate,durations_found,verdict,risk,breakdown,DECISION
+adventist-gumbo,16 min – 18 min,4,estimate,,step 1: 3 to 4 minutes; step 1: 3 to 4 minutes; step 5: 5 minutes; step 6: 5 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+agedashi-tofu,6 min – 8 min,2,estimate,,step 8: 3–4 minutes; step 9: 3–4 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+all-butter-pie-crust,,,no stated time in any step,,,no estimate (no stated times)
+almost-za-atar,,,no stated time in any step,,,no estimate (no stated times)
+aloo-potato-parathas,26 min,5,estimate,PARALLEL STEPS: 1,step 0: 20 minutes; step 6: 2 minutes; step 6: 2 minutes; step 6: 1 minute; step 6: 1 minute,no estimate (overlapping steps)
+arabic-flatbreads-khubz,10 min – 15 min,2,estimate,"PARALLEL STEPS: 5,7",step 1: 7-10 minutes; step 6: 3-5 minutes,no estimate (overlapping steps)
+arkansas-style-cheese-dip,33 min,7,estimate,PARALLEL STEPS: 5,step 2: 5 minutes; step 3: 10 minutes; step 7: 1 minute; step 8: 1 minute; step 10: 2 minutes; step 11: 4 minutes; step 12: 10 minutes,no estimate (overlapping steps)
+asparagus-with-eggs-and-za-atar-halayone-w-bayd,15 min,2,estimate,,step 0: 10 minutes; step 1: 5 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+avocado-corn-and-tomato-kachumber,,,no stated time in any step,,,no estimate (no stated times)
+baked-cauliflower-with-red-onions-feta-and-dill-firinda-karnabahar-mucveri,30 min – 35 min,1,estimate,,step 5: 30-35 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+baked-rosemary-chickpeas,50 min,2,estimate,,step 1: 20 minutes; step 8: 30 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+banana-bread,,,no stated time in any step,,,no estimate (no stated times)
+bananas-foster-chocolate-chunk-cookies,53 min – 59 min,5,estimate,PARALLEL STEPS: 12,step 0: 8 to 10 minutes; step 1: 30 minutes; step 3: 1 to 2 minutes; step 4: 2 to 3 minutes; step 12: 12 to 14 minutes,no estimate (overlapping steps)
+basic-dal,20 min – 22 min,3,estimate,,step 1: 5 to 7 minutes; step 1: 5 minutes; step 1: 10 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+basic-hummus,28 min – 48 min,3,estimate,,step 1: 3 minutes; step 2: 20 to 40 minutes; step 6: 5 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+bbq-gulf-snapper,7 min – 9 min,2,estimate,PARALLEL STEPS: 7,step 3: 3 to 5 minutes; step 4: 4 minutes,no estimate (overlapping steps)
+beans,3 hr 32 min – 5 hr 48 min,3,estimate,,step 3: 90 minutes; step 9: 2 to 18 minutes; step 10: 2 to 4 hours,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+beef-bulgogi,,,no stated time in any step,,,no estimate (no stated times)
+biscuits,45 min – 50 min,2,estimate,,step 0: 30 minutes; step 9: 15-20 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+blueberry-muffin-sugar-cookies,47 min – 51 min,3,estimate,PARALLEL STEPS: 10,step 0: 3 to 4 minutes; step 0: 30 minutes; step 10: 14 to 17 minutes,no estimate (overlapping steps)
+blueberry-muffins,,,no stated time in any step,,,no estimate (no stated times)
+braised-swiss-chard,12 min – 15 min,4,estimate,,step 1: 2 to 3 minutes; step 2: 3 minutes; step 2: 2 to 3 minutes; step 4: 5 to 6 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+breakfast-burrito,,,no stated time in any step,,,no estimate (no stated times)
+breakfast-potatoes,,,no stated time in any step,,,no estimate (no stated times)
+brown-butter-bourbon-snickerdoodles,34 min – 39 min,5,estimate,PARALLEL STEPS: 8,step 0: 3 to 4 minutes; step 0: 20 minutes; step 3: 1 minute; step 4: 2 to 3 minutes; step 8: 8 to 11 minutes,no estimate (overlapping steps)
+brown-butter-brownie-cookies,19 min – 22 min,4,estimate,PARALLEL STEPS: 8,step 2: 3 to 4 minutes; step 4: 6 minutes; step 6: 1 minute; step 8: 9 to 11 minutes,no estimate (overlapping steps)
+brown-rice-and-lentil-pilaf-with-crispy-fried-onions-mujaddara,15 min,1,estimate,"PARALLEL STEPS: 0,3",step 2: 15 minutes,no estimate (overlapping steps)
+brussel-sprouts,25 min,2,estimate,,step 2: 10 minutes; step 7: 15 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+burgers,,,no stated time in any step,,,no estimate (no stated times)
+buttermilk-biscuits,45 min – 47 min,3,estimate,,step 1: 15 minutes; step 16: 15 minutes; step 16: 15 to 17 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+cacio-e-pepe,,,no stated time in any step,,,no estimate (no stated times)
+caprese-salad,,,no stated time in any step,,,no estimate (no stated times)
+caramelized-ginger-mushrooms,15 min – 20 min,4,estimate,,step 0: 1 minute; step 0: 5 to 7 minutes; step 1: 2 minutes; step 1: 7 to 10 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+caramelized-onion-dal,47 min – 53 min,5,estimate,PARALLEL STEPS: 3,step 0: 20 minutes; step 0: 3 to 7 minutes; step 0: 10 minutes; step 1: 6 minutes; step 4: 8 to 10 minutes,no estimate (overlapping steps)
+cauliflower-cheese-steaks,31 min,4,estimate,PARALLEL STEPS: 5,step 3: 15 minutes; step 3: 10 minutes; step 4: 5 minutes; step 5: 1 minute,no estimate (overlapping steps)
+cauliflower-soup,55 min,3,estimate,,step 0: 15 minutes; step 3: 20 minutes; step 4: 20 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+chicago-style-italian-beef-pot-roast-sandwich,32 min – 33 min,2,estimate,,step 0: 2-3 minutes; step 6: 1/2 hours,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+chicken,,,no stated time in any step,,,no estimate (no stated times)
+chicken-broth,5 hr 5 min,3,estimate,,step 1: 3 hours; step 2: 2 hours; step 4: 5 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+chicken-chow-fun,3 min – 4 min,2,estimate,,step 10: 1 minute; step 13: 2 to 3 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+chicken-marsala,,,no stated time in any step,,,no estimate (no stated times)
+chicken-pepperoni,1 hr,1,estimate,,step 3: 1 hour,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+chicken-shawarma-with-garlic-sauce-and-greens,1 hr 33 min – 1 hr 38 min,4,estimate,PARALLEL STEPS: 5,step 4: 40 to 45 minutes; step 4: 10 minutes; step 5: 40 minutes; step 8: 3 minutes,no estimate (overlapping steps)
+chickpea-falafel-patties,,,no stated time in any step,,,no estimate (no stated times)
+chickpea-hash,,,no stated time in any step,,,no estimate (no stated times)
+chips-and-salsa,,,no stated time in any step,,,no estimate (no stated times)
+chocolate-chip-cookies,45 min – 51 min,5,estimate,,step 3: 5 to 7 minutes; step 12: 5 minutes; step 21: 18 to 22 minutes; step 21: 12 minutes; step 22: 5 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+chocolate-chunk-oatmeal-cookie-bars,1 hr 38 min – 1 hr 44 min,4,estimate,,step 1: 2 to 3 minutes; step 2: 1 minute; step 6: 35 to 40 minutes; step 7: 1 hour,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+chocolate-hazelnut-wedges,2 hr 19 min – 2 hr 22 min,2,estimate,,step 7: 19 to 22 minutes; step 9: 2 hours,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+chocolate-peanut-butter-banana-smoothie,,,no stated time in any step,,,no estimate (no stated times)
+cilantro-chutney,,,no stated time in any step,,,no estimate (no stated times)
+cinnamon-sugar-speculoos-squares,2 hr 50 min – 2 hr 55 min,3,estimate,,step 7: 30 to 35 minutes; step 8: 2 hours; step 13: 20 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+comforting-spinach-and-chickpeas-sabanekh-bil-hummus,10 min,1,estimate,,step 0: 10 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+country-ham-croquettes-with-parsley-salad,6 min – 7 min,3,estimate,PARALLEL STEPS: 14,step 2: 2 minutes; step 7: 3 minutes; step 16: 1 to 2 minutes,no estimate (overlapping steps)
+crick-cracks,8 min – 10 min,1,estimate,,step 14: 8 to 10 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+dashi-broth,25 min – 30 min,2,estimate,,step 6: 10 minutes; step 12: 15-20 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+dubu-jorim-braised-tofu,6 min – 8 min,2,estimate,,step 2: 3 - 4 minutes; step 4: 3 - 4 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+dukkah-spice-mix,,,no stated time in any step,,,no estimate (no stated times)
+earl-grey-tea-cake,52 min – 56 min,4,estimate,,step 9: 3 minutes; step 14: 32 to 35 minutes; step 15: 15 minutes; step 21: 2 to 3 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+earthquake-cookies,20 min – 22 min,3,estimate,,step 1: 5 minutes; step 1: 1 minute; step 6: 14 to 16 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+egg-fried-rice,,,no stated time in any step,,,no estimate (no stated times)
+egg-paratha-wrap,,,no stated time in any step,,,no estimate (no stated times)
+egg-sammies,,,no stated time in any step,,,no estimate (no stated times)
+eleni-s-sourdough-bread,1 hr 20 min,4,estimate,,step 3: 20 minutes; step 6: 20 minutes; step 6: 20 minutes; step 6: 20 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+elenis-sourdough-bread-starter,1 day,1,estimate,,step 4: 24 hours,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+everyday-palestinian-salad,,,no stated time in any step,,,no estimate (no stated times)
+falafel,,,no stated time in any step,,,no estimate (no stated times)
+falafel-crackers,12 min – 13 min,2,estimate,PARALLEL STEPS: 10,step 10: 6 minutes; step 10: 6 to 7 minutes,no estimate (overlapping steps)
+flatbreads-with-za-atar-mana-eesh,24 hr 33 min,5,estimate,"PARALLEL STEPS: 6,8",step 2: 5 minutes; step 2: 10 minutes; step 5: 15 minutes; step 8: 3 minutes; step 8: 24 hours,no estimate (overlapping steps)
+french-baguette,2 hr 21 min – 2 hr 25 min,5,estimate,PARALLEL STEPS: 7,step 2: 45 minutes; step 3: 45 minutes; step 6: 15 minutes; step 6: 20 minutes; step 9: 16 to 20 minutes,no estimate (overlapping steps)
+french-toast,,,no stated time in any step,,,no estimate (no stated times)
+garlic-ginger-chicken-with-cilantro-and-mint,12 min – 14 min,3,estimate,,step 3: 1 to 2 minutes; step 3: 1 to 2 minutes; step 4: 10 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+gazan-lentils-with-swiss-chard-and-tahini,20 min – 25 min,3,estimate,PARALLEL STEPS: 1,step 1: 10-15 minutes; step 2: 5 minutes; step 3: 5 minutes,no estimate (overlapping steps)
+gazan-salad,,,no stated time in any step,,,no estimate (no stated times)
+ginger-spritz,,,no stated time in any step,,,no estimate (no stated times)
+gochujang-glazed-salmon,,,no stated time in any step,,,no estimate (no stated times)
+green-beans-with-olive-oil-fasolia-bi-zait,25 min,2,estimate,PARALLEL STEPS: 2,step 0: 15 minutes; step 1: 10 minutes,no estimate (overlapping steps)
+herbed-focaccia,45 min – 50 min,4,estimate,,step 0: 5 minutes; step 0: 10 minutes; step 3: 10 minutes; step 4: 20-25 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+homemade-pasta-dough,13 min – 14 min,2,estimate,,step 4: 10 minutes; step 8: 3-4 mins,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+homemade-pizzas,,,no stated time in any step,,,no estimate (no stated times)
+honey-cookies-finikia,,,no stated time in any step,,,no estimate (no stated times)
+hummus,35 min – 45 min,2,estimate,,step 2: 5 minutes; step 2: 30-40 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+hummus-with-lemon-and-green-chili-chickpeas-hummus-musabaha,,,no stated time in any step,,,no estimate (no stated times)
+indian-ribollita,24 min – 28 min,4,estimate,,step 0: 1 minute; step 0: 5 to 7 minutes; step 0: 8 to 10 minutes; step 1: 10 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+italian-turkey-fried-meatballs,10 min – 12 min,2,estimate,,step 6: 5 to 6 minutes; step 7: 5 to 6 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+kachumber-tilapia,6 min – 8 min,2,estimate,PARALLEL STEPS: 1,step 2: 3 to 5 minutes; step 2: 3 minutes,no estimate (overlapping steps)
+kale-fennel-and-noodle-soup-rishta,56 min,7,estimate,PARALLEL STEPS: 1,step 0: 5 minutes; step 0: 10 minutes; step 1: 1 minute; step 2: 10 minutes; step 2: 15 minutes; step 3: 10 minutes; step 3: 5 minutes,no estimate (overlapping steps)
+karak-chai,7 min – 8 min,2,estimate,,step 4: 5 minutes; step 6: 2-3 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+key-lime-pie,38 min – 47 min,3,estimate,PARALLEL STEPS: 10,step 9: 8 to 12 minutes; step 16: 15 to 20 minutes; step 23: 15 minutes,no estimate (overlapping steps)
+khaliat-nahal-honeycomb-bread,1 hr 10 min – 1 hr 19 min,6,estimate,,step 1: 10 minutes; step 3: 5 minutes; step 4: 10–12 minutes; step 4: 15–17 minutes; step 10: 20–25 minutes; step 12: 10 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+khichdi,47 min – 52 min,3,estimate,"PARALLEL STEPS: 1,2",step 1: 20 to 25 minutes; step 1: 15 minutes; step 2: 12 minutes,no estimate (overlapping steps)
+korean-cucumber-salad,,,no stated time in any step,,,no estimate (no stated times)
+korean-scallion-pancake,9 min – 11 min,3,estimate,,step 6: 4 to 5 minutes; step 9: 3 to 4 minutes; step 10: 2 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+lavender-chocolate-chunk-cookies,46 min – 50 min,4,estimate,PARALLEL STEPS: 8,step 0: 2 to 3 minutes; step 1: 30 minutes; step 5: 1 minute; step 8: 13 to 16 minutes,no estimate (overlapping steps)
+lemon-and-chili-roast-potatoes-batata-harra,5 min,1,estimate,,step 1: 5 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+lemon-cumin-and-green-chili-sea-bass,12 min – 14 min,1,estimate,,step 2: 12-14 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+lentil-salad-with-garlic-and-herbs,10 min,1,estimate,,step 2: 10 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+lentil-soup-with-walnut-and-cilantro-smash-shorbat-adas,20 min,3,estimate,,step 0: 5 minutes; step 0: 5 minutes; step 1: 10 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+lima-bean-and-basil-dip,,,no stated time in any step,,,no estimate (no stated times)
+lime-chile-and-garlic-dressing,,,no stated time in any step,,,no estimate (no stated times)
+lotus-root-and-jammy-tomatoes,51 min – 1 hr,5,estimate,,step 0: 1 minute; step 0: 6 to 8 minutes; step 1: 4 to 6 minutes; step 1: 30 to 35 minutes; step 1: 10 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+malted-brownie-biscotti,1 hr 6 min – 1 hr 12 min,6,estimate,,step 1: 2 to 3 minutes; step 2: 2 to 3 minutes; step 3: 1 minute; step 11: 28 to 30 minutes; step 12: 10 minutes; step 13: 23 to 25 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+malted-chocolate-chip-cookie-bars,1 hr 43 min – 1 hr 50 min,4,estimate,,step 3: 2 to 3 minutes; step 4: 1 to 2 minutes; step 8: 40 to 45 minutes; step 9: 1 hour,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+marble-bundt-cake,40 min – 50 min,1,estimate,,step 7: 40 to 50 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+marbled-chocolate-sugar-cookies,27 min – 32 min,5,estimate,PARALLEL STEPS: 9,step 2: 2 to 3 minutes; step 3: 2 to 3 minutes; step 5: 1 to 2 minutes; step 6: 10 minutes; step 9: 12 to 14 minutes,no estimate (overlapping steps)
+masa-cakes-with-mushroom-corn-and-cucumber-salad,19 min – 24 min,6,estimate,"PARALLEL STEPS: 11,16",step 10: 4 to 6 minutes; step 14: 1 minute; step 15: 3 to 5 minutes; step 19: 5 minutes; step 20: 1 to 2 minutes; step 21: 5 minutes,no estimate (overlapping steps)
+matar-paneer,12 min – 14 min,4,estimate,,step 0: 1 minute; step 0: 5 to 6 minutes; step 0: 5 to 6 minutes; step 2: 1 minute,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+matcha-amaretti-cookies,26 min – 31 min,3,estimate,PARALLEL STEPS: 6,step 2: 2 to 3 minutes; step 2: 1 to 2 minutes; step 6: 23 to 26 minutes,no estimate (overlapping steps)
+meatball-hoagies,,,no stated time in any step,,,no estimate (no stated times)
+milky-tea-tres-leches,45 min – 52 min,4,estimate,,step 0: 2–3 minutes; step 4: 3–4 minutes; step 6: 30–35 minutes; step 7: 10 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+minestrone-soup,40 min,1,estimate,,step 4: 40 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+mocha-chocolate-chunk-cookies,2 hr 11 min – 2 hr 16 min,6,estimate,PARALLEL STEPS: 10,step 0: 4 to 6 minutes; step 0: 30 minutes; step 8: 10 minutes; step 10: 12 to 15 minutes; step 10: 15 minutes; step 10: 1 hour,no estimate (overlapping steps)
+morning-buns-with-orange-blossom-glaze,57 min – 58 min,3,estimate,,step 2: 2 to 3 minutes; step 7: 20 minutes; step 25: 35 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+oat-bars,40 min – 55 min,4,estimate,,step 6: 15 to 20 minutes; step 8: 5 minutes; step 9: 5 to 10 minutes; step 13: 15 to 20 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+oatmeal-sesame-cookies,20 min – 21 min,2,estimate,,step 1: 5 minutes; step 7: 15 to 16 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+okinawan-glazed-greens,1 min – 2 min,1,estimate,,step 0: 1 to 2 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+orange-peel-fish,11 min – 15 min,2,estimate,,step 4: 10 to 14 minutes; step 4: 1 minute,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+pan-fried-cabbage-with-bacon-and-green-onions,20 min – 22 min,4,estimate,,step 2: 10 minutes; step 6: 3 to 4 minutes; step 7: 2 minutes; step 7: 5 to 6 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+pancakes,,,no stated time in any step,,,no estimate (no stated times)
+pao-de-queijo-brazilian-cheese-bread,15 min,1,estimate,,step 4: 15 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+pasta-alla-norcina,8 min – 9 min,1,estimate,,step 4: 8-9 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+pasta-alla-zozzona,15 min – 16 min,3,estimate,PARALLEL STEPS: 8,step 4: 2 minutes; step 9: 10 minutes; step 9: 3-4 minutes,no estimate (overlapping steps)
+pasta-bolognese,1 hr 20 min – 4 hr 50 min,3,estimate,,step 2: 20 minutes; step 7: 1/2 - 4 hours; step 9: 30 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+pasta-e-ceci,1 hr 5 min – 1 hr 7 min,3,estimate,,step 2: 3-5 minutes; step 3: 2 minutes; step 7: 1 hour,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+pasta-with-lentils,1 hr 10 min – 1 hr 15 min,3,estimate,,step 11: 30 minutes; step 12: 30 minutes; step 13: 10-15 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+pasta-with-parsnips-and-bacon,37 min – 38 min,4,estimate,,step 0: 25 minutes; step 1: 5 minutes; step 2: 5 minutes; step 2: 2 to 3 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+pastina,32 min – 34 min,5,estimate,,step 2: 6-7 minutes; step 7: 3-4 minutes; step 8: 5 minutes; step 9: 9 minutes; step 9: 9 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+peanut-chutney,,,no stated time in any step,,,no estimate (no stated times)
+penne-alla-vodka,,,no stated time in any step,,,no estimate (no stated times)
+pepperoni-rolls,40 min – 45 min,4,estimate,PARALLEL STEPS: 19,step 1: 5 minutes; step 5: 5 minutes; step 18: 10 minutes; step 21: 20 to 25 minutes,no estimate (overlapping steps)
+pita-bread,10 min,2,estimate,,step 1: 5 minutes; step 2: 5 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+pizza-bagels,,,no stated time in any step,,,no estimate (no stated times)
+pork-chops,,,no stated time in any step,,,no estimate (no stated times)
+potato-scallion-cakes-fritterra,7 min – 8 min,2,estimate,,step 0: 5 minutes; step 2: 2 or 3 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+potato-wedges,,,no stated time in any step,,,no estimate (no stated times)
+prego-rolls-steak-and-piri-piri-sandwiches,14 min,3,estimate,PARALLEL STEPS: 2,step 1: 3 minutes; step 1: 10 minutes; step 2: 1 minute,no estimate (overlapping steps)
+priya-s-dal,55 min – 1 hr 5 min,3,estimate,,step 2: 20 to 30 minutes; step 2: 15 minutes; step 3: 20 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+pumpkin-spice-sandwich-cookies-with-brown-butter-cream-cheese-frosting,39 min – 43 min,5,estimate,PARALLEL STEPS: 8,step 2: 3 to 4 minutes; step 3: 10 minutes; step 8: 13 to 15 minutes; step 10: 3 to 4 minutes; step 10: 10 minutes,no estimate (overlapping steps)
+quick-pasta,,,no stated time in any step,,,no estimate (no stated times)
+rao-s-meatballs,11 min – 13 min,3,estimate,,step 1: 1 to 2 minutes; step 2: 5 to 6 minutes; step 2: 5 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+raspberry-chocolate-chunk-cookies,13 min – 17 min,3,estimate,PARALLEL STEPS: 7,step 2: 2 to 3 minutes; step 3: 2 to 3 minutes; step 7: 9 to 11 minutes,no estimate (overlapping steps)
+red-lentil-and-squash-soup-with-za-atar-croutons,50 min – 1 hr,4,estimate,PARALLEL STEPS: 3,step 1: 20-30 minutes; step 2: 10 minutes; step 4: 10 minutes; step 5: 10 minutes,no estimate (overlapping steps)
+red-pepper-potato-and-peanut-sabzi,17 min – 24 min,4,estimate,,step 0: 1 minute; step 0: 4 to 6 minutes; step 1: 7 to 10 minutes; step 1: 5 to 7 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+red-wine-braised-short-ribs,1 hr 5 min – 1 hr 20 min,3,estimate,,step 2: 15-20 minutes; step 12: 1/2 hours; step 12: 20-30 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+rhubarb-cake,2 hr 46 min – 2 hr 58 min,5,estimate,,step 11: 5 to 7 minutes; step 17: 1 minute; step 24: 60 minutes; step 24: 80 to 90 minutes; step 27: 20 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+rigatoni-amatriciana,,,no stated time in any step,,,no estimate (no stated times)
+risotto-with-sausage-and-tomatoes,34 min – 38 min,3,estimate,PARALLEL STEPS: 2,step 1: 12 minutes; step 2: 8 minutes; step 6: 14–18 minutes,no estimate (overlapping steps)
+roasted-carrot-avocado-salad-with-crunchy-seeds,30 min,2,estimate,,step 3: 10 minutes; step 8: 20 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+roasted-cauliflower,35 min – 1 hr,2,estimate,,step 3: 10-15 minutes; step 7: 25-45 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+roasted-chili-flakes,,,no stated time in any step,,,no estimate (no stated times)
+salmon,,,no stated time in any step,,,no estimate (no stated times)
+salt-crusted-potatoes-with-cilantro-mojo,,,no stated time in any step,,,no estimate (no stated times)
+salted-brown-butter-pecan-tassies,1 hr 13 min – 1 hr 20 min,6,estimate,,step 2: 1 to 2 minutes; step 3: 1 to 2 minutes; step 6: 3 to 4 minutes; step 7: 20 minutes; step 16: 18 to 22 minutes; step 17: 30 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+sausage-kale-and-crouton-saute,3 min – 4 min,1,estimate,,step 1: 3 to 4 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+sausage-sandwich,,,no stated time in any step,,,no estimate (no stated times)
+savory-rice-porridge,,,no stated time in any step,,,no estimate (no stated times)
+seared-green-beans-with-country-ham-peppers-and-benne-seeds,6 min – 9 min,3,estimate,,step 0: 1 minute; step 1: 2 to 4 minutes; step 5: 3 to 4 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+sesame-crusted-tofu,4 min – 5 min,1,estimate,,step 3: 4 to 5 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+shawarma-spice,,,no stated time in any step,,,no estimate (no stated times)
+shepherds-pie,30 min,1,estimate,PARALLEL STEPS: 2,step 14: 30 minutes,no estimate (overlapping steps)
+shikanji-indian-gatorade,,,no stated time in any step,,,no estimate (no stated times)
+shishito-peppers,,,no stated time in any step,,,no estimate (no stated times)
+shrimp-scampi,39 min – 40 min,7,estimate,,step 7: 5 minutes; step 8: 12 minutes; step 8: 6 minutes; step 8: 6 minutes; step 9: 5 minutes; step 10: 2-3 minutes; step 11: 3 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+smashed-cucumber-salad,20 min,1,estimate,,step 6: 20 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+snickerdoodle-shortbread,28 min – 33 min,5,estimate,PARALLEL STEPS: 11,step 2: 2 to 3 minutes; step 3: 1 to 2 minutes; step 4: 1 minute; step 11: 19 to 22 minutes; step 12: 5 minutes,no estimate (overlapping steps)
+spiced-fish-pilaf-with-caramelized-onions-sayadieh,55 min – 56 min,6,estimate,"PARALLEL STEPS: 1,3",step 2: 20 minutes; step 4: 1 minute; step 5: 2 minutes; step 5: 15 minutes; step 5: 10 minutes; step 7: 7-8 minutes,no estimate (overlapping steps)
+spiced-pumpkin-olive-oil-and-orange-cake,10 min,1,estimate,,step 1: 10 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+spicy-chickpea-dip,,,no stated time in any step,,,no estimate (no stated times)
+spicy-edamame,1 min,1,estimate,,step 0: 1 minute,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+spinach-and-feta-parcels-fatayer-sabanekh,36 min – 45 min,4,estimate,,step 1: 6-8 minutes; step 1: 10-15 minutes; step 5: 15 minutes; step 6: 5-7 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+sunday-sauce,9 hr – 11 hr,3,estimate,"PARALLEL STEPS: 3,5",step 4: 4-5 hours; step 7: 4-5 hours; step 8: 1 hour,no estimate (overlapping steps)
+sweet-potato-and-onion-hash,12 min – 13 min,2,estimate,,step 0: 2-3 minutes; step 1: 10 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+sweet-pumpkin-fritters,,,no stated time in any step,,,no estimate (no stated times)
+syrian-style-lentils-with-chard,38 min,4,estimate,PARALLEL STEPS: 3,step 0: 20 minutes; step 1: 5 minutes; step 3: 10 minutes; step 4: 3 minutes,no estimate (overlapping steps)
+tahini-brioche-loaves-and-dinner-rolls,1 hr 6 min – 1 hr 21 min,4,estimate,,step 8: 10 to 15 minutes; step 9: 1 minute; step 20: 40 to 45 minutes; step 31: 15 to 20 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+tahini-shortbread-cookies,16 min – 20 min,2,estimate,,step 1: 4 to 5 minutes; step 6: 12 to 15 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+three-cup-chicken,15 min – 19 min,3,estimate,,step 2: 1 minute; step 4: 10 minutes; step 5: 4 to 8 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+tilapia,,,no stated time in any step,,,no estimate (no stated times)
+tofu-basil-endive-leaves,25 min – 29 min,4,estimate,,step 0: 5 to 7 minutes; step 1: 5 to 7 minutes; step 2: 5 minutes; step 2: 10 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+tofu-burger,,,no stated time in any step,,,no estimate (no stated times)
+tofu-green-bean-breakfast-scramble,9 min – 12 min,3,estimate,,step 0: 1 minute; step 0: 5 to 7 minutes; step 1: 3 to 4 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+tomato-brown-butter,20 min,1,estimate,,step 0: 20 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+toum,25 min,1,estimate,,step 0: 25 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+triple-spice-sugar-cookies,12 min – 14 min,1,estimate,PARALLEL STEPS: 7,step 7: 12 to 14 minutes,no estimate (overlapping steps)
+tseke-com-peix-frito-local-spinach-with-curry-sauce-and-crispy-fried-fish,23 min,3,estimate,PARALLEL STEPS: 2,step 3: 8 minutes; step 4: 5 minutes; step 4: 10 minutes,no estimate (overlapping steps)
+turkish-simit,1 hr 33 min – 1 hr 40 min,4,estimate,,step 0: 5 minutes; step 1: 8 to 10 minutes; step 2: 1 hour; step 11: 20 to 25 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+vietnamese-coffee-bundt-cake,1 hr 9 min – 1 hr 22 min,4,estimate,,step 4: 1 to 2 minutes; step 7: 3 to 5 minutes; step 10: 55 to 60 minutes; step 11: 10 to 15 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+warm-buttered-hummus,1 hr 7 min,6,estimate,"PARALLEL STEPS: 3,7,9",step 0: 45 minutes; step 1: 5 minutes; step 7: 6 minutes; step 7: 4 minutes; step 8: 3 minutes; step 9: 4 minutes,no estimate (overlapping steps)
+warm-squash-chickpea-salad-with-tahini,,,no stated time in any step,,,no estimate (no stated times)
+watermelon-juice-with-lime-ginger-and-mint,,,no stated time in any step,,,no estimate (no stated times)
+wedding-soup,,,no stated time in any step,,,no estimate (no stated times)
+weekday-meat-sauce,,,no stated time in any step,,,no estimate (no stated times)
+white-bean-stuffed-poblanos,6 min – 8 min,2,estimate,PARALLEL STEPS: 2,step 1: 1 minute; step 1: 5 to 7 minutes,no estimate (overlapping steps)
+yellow-split-peas-with-za-atar-spiced-almonds,45 min – 50 min,2,estimate,,step 0: 5 minutes; step 1: 40 to 45 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+za-atar-bread,20 min – 22 min,3,estimate,,step 0: 5 minutes; step 1: 5 minutes; step 9: 10 to 12 minutes,"show ""Cook about X (from the steps)"" - Round B, recheck after mixed-number parser fix"
+za-atar-roast-salmon-with-garlicky-bean-mash,,,no stated time in any step,,,no estimate (no stated times)
+zanzibar-pilau-rice-pilaf,31 min,4,estimate,PARALLEL STEPS: 1,step 1: 5 minutes; step 2: 1 minute; step 2: 15 minutes; step 3: 10 minutes,no estimate (overlapping steps)

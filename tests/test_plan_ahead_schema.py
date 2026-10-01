@@ -779,3 +779,85 @@ def test_the_alternatives_link_is_not_in_the_snapshot():
     assert "ext_step_id" not in SNAPSHOT_WAIT_FIELDS
     assert "step_id" not in SNAPSHOT_WAIT_FIELDS
     assert "alongside_step_id" not in SNAPSHOT_WAIT_FIELDS
+
+
+# ---------------------------------------------------------------------------------------------
+# Migration 056 is a TABLE REBUILD, and a rebuild that is not one transaction is a wedged database.
+# ---------------------------------------------------------------------------------------------
+
+def _waits_fixture(tmp_path):
+    """The pre-056 recipe_waits with one row in it, which is all the migration needs to touch."""
+    db = tmp_path / "pre056.db"
+    c = sqlite3.connect(db)
+    c.executescript(
+        "CREATE TABLE recipes (id TEXT PRIMARY KEY);"
+        "CREATE TABLE recipe_steps (id INTEGER PRIMARY KEY);"
+        "CREATE TABLE recipe_waits ("
+        " id INTEGER PRIMARY KEY, recipe_id TEXT NOT NULL, position INTEGER NOT NULL,"
+        " kind TEXT NOT NULL, label TEXT NOT NULL, min_minutes INTEGER, max_minutes INTEGER,"
+        " when_kind TEXT NOT NULL DEFAULT 'always', when_label TEXT, applies_to TEXT,"
+        " ext_label TEXT, ext_min_minutes INTEGER, ext_max_minutes INTEGER, step_id INTEGER,"
+        " UNIQUE (recipe_id, position));")
+    c.execute("INSERT INTO recipes VALUES ('beans')")
+    c.execute("INSERT INTO recipe_waits (recipe_id, position, kind, label) "
+              "VALUES ('beans', 0, 'soaking', '8 hr')")
+    c.commit()
+    c.close()
+    return db
+
+
+def test_migration_056_rolls_back_whole_when_it_is_interrupted(tmp_path):
+    """⚠️ THE ONE THING A TABLE REBUILD MUST DO, AND THE ONLY REASON 056 CARRIES A BEGIN.
+
+    migrate.py applies each file through sqlite3's executescript, which opens no transaction, so
+    every statement in a migration auto-commits on its own. 056 is CREATE, INSERT, DROP, RENAME.
+    Interrupted between the DROP and the RENAME, the unwrapped version commits the drop: recipe_waits
+    is gone, every recipe page 500s, the filename was never recorded, and migrate.py's retry dies
+    forever on "table recipe_waits_new already exists". Recovery is hand SQL.
+
+    This replays the real file truncated one statement after the DROP and closes the connection,
+    which is what a Ctrl-C, a laptop sleep or a crash does.
+    """
+    import pathlib
+
+    src = (pathlib.Path(__file__).resolve().parent.parent
+           / "migrations" / "056_wait_alongside.sql").read_text()
+    cut = src.index("ALTER TABLE recipe_waits_new RENAME TO recipe_waits;")
+
+    db = _waits_fixture(tmp_path)
+    c = sqlite3.connect(db)
+    c.execute("PRAGMA foreign_keys = ON")
+    c.executescript(src[:cut])
+    c.close()                                    # the crash: no COMMIT was ever reached
+
+    c = sqlite3.connect(db)
+    tables = {r[0] for r in c.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'recipe_waits%'")}
+    assert tables == {"recipe_waits"}, f"the rebuild left {tables} behind"
+    assert c.execute("SELECT count(*) FROM recipe_waits").fetchone()[0] == 1, "the row survived"
+
+    c.executescript(src)                         # and migrate.py's next run recovers
+    c.commit()
+    cols = {r[1] for r in c.execute("PRAGMA table_info(recipe_waits)")}
+    assert "alongside_step_id" in cols
+    assert c.execute("SELECT count(*) FROM recipe_waits").fetchone()[0] == 1
+    c.close()
+
+
+def test_migration_056_is_idempotent_if_its_filename_was_never_recorded(tmp_path):
+    """The same window, one statement later: applied but unrecorded, so migrate.py runs it again."""
+    import pathlib
+
+    src = (pathlib.Path(__file__).resolve().parent.parent
+           / "migrations" / "056_wait_alongside.sql").read_text()
+    db = _waits_fixture(tmp_path)
+    c = sqlite3.connect(db)
+    c.execute("PRAGMA foreign_keys = ON")
+    c.executescript(src)
+    c.executescript(src)                         # the re-run, with no schema_migrations row to stop it
+    c.commit()
+    assert c.execute("SELECT count(*) FROM recipe_waits").fetchone()[0] == 1
+    assert {r[0] for r in c.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'recipe_waits%'")} \
+        == {"recipe_waits"}
+    c.close()
