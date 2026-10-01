@@ -64,7 +64,6 @@ SNAPSHOT_STEP_FIELDS = ("id", "position", "is_heading", "text")   # `id` — see
 # short-circuit for all of them at once — the exact cost the row-id key had to pay with a backfill
 # (see the note above SNAPSHOT_ING_FIELDS). Level 1 is the default and "no key" means the same
 # thing, so the trick the waits and storage keys use is available here, and it is used.
-SNAPSHOT_STEP_LEVEL_DEFAULT = 1
 
 
 def kind_change_key(row):

@@ -135,21 +135,53 @@ def test_a_heading_whose_link_has_no_later_mention_is_flagged_and_still_cleaned(
 
 @pytest.mark.parametrize("script", ["add_missed_waits", "apply_label_rules",
                                     "apply_plan_ahead_proposals", "convert_step_headings"])
-def test_a_corpus_pass_refuses_live_without_being_told(script, tmp_path, monkeypatch):
+def test_every_corpus_pass_wires_the_one_shared_live_guard(script):
     """All four name their database, and none of them takes live as a typo.
 
-    ⚠️ Three of these had no guard at all. apply_plan_ahead_proposals has carried one since round 3
-    and the other three would have written to live recipes.db from a mistyped path with --apply and
-    no further word. A live run is now a sentence a person had to type.
+    ⚠️ THIS TEST USED TO AIM PYTEST AT THE LIVE DATABASE. It set sys.argv to the repo's own
+    recipes.db and called main(), so the guard was the only thing between an ordinary
+    `python3.13 -m pytest` run and a real migration of the 300-recipe live database. For
+    apply_plan_ahead_proposals, which wrote by default, there was not even an --apply to withhold.
+    Reproduced by a reviewer: with the guard's path comparison broken, which is what a regression
+    looks like, main() wrote and committed.
+
+    So this asserts the WIRING, and the guard itself is asserted below as the pure function it is.
+    Nothing here calls main() and nothing here names a path a write could reach.
     """
     import importlib
 
+    import corpus_guard
+
     mod = importlib.import_module(script)
-    live = str(BASE / "recipes.db")
+    assert mod.refuse_live is corpus_guard.refuse_live, \
+        f"{script} has its own copy of the guard instead of the shared one"
+    src = (BASE / "scripts" / f"{script}.py").read_text()
+    assert '--i-mean-live' in src, f"{script} offers no way to say it means live"
+    assert "refuse_live(" in src.split("def main(")[-1], f"{script}'s main() never calls the guard"
+
+
+def test_the_live_guard_refuses_live_and_passes_everything_else(tmp_path):
+    """The guard itself, called directly. A pure function, so this can name live safely."""
+    import corpus_guard
+
+    live = BASE / "recipes.db"
     with pytest.raises(SystemExit) as e:
-        if script == "apply_plan_ahead_proposals":
-            monkeypatch.setattr("sys.argv", [script, live])
-        else:
-            monkeypatch.setattr("sys.argv", [script, live, "--apply"])
-        mod.main()
+        corpus_guard.refuse_live(live, False)
     assert "--i-mean-live" in str(e.value)
+
+    # said out loud, it passes
+    corpus_guard.refuse_live(live, True)
+    # and a copy under any other name or in any other directory is not live
+    corpus_guard.refuse_live(tmp_path / "recipes.db", False)
+    corpus_guard.refuse_live(BASE / "rehearsal.db", False)
+
+
+def test_a_corpus_pass_dry_runs_unless_it_is_told_to_apply():
+    """⚠️ ALL FOUR AGREE ON THIS NOW. apply_plan_ahead_proposals took --dry and WROTE by default
+    while the other three took --apply and dry-ran by default, so the same command shape had
+    opposite effects depending on which one you typed, and the one that wrote was the first in the
+    chain and the widest at 90 recipes."""
+    for script in ("add_missed_waits", "apply_label_rules",
+                   "apply_plan_ahead_proposals", "convert_step_headings"):
+        src = (BASE / "scripts" / f"{script}.py").read_text()
+        assert '"--apply"' in src, f"{script} has no --apply"
