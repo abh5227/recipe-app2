@@ -454,6 +454,14 @@ def resolve_recipe_payload(s, payload, standing_step_links=frozenset()):
     steps = payload.get("steps")
     if not isinstance(ingredients, list) or not isinstance(steps, list):
         return None, "ingredients and steps must be lists"
+    # ⚠️ CHECKED HERE, BEFORE ANYTHING IS WRITTEN, because write_plan_ahead deletes before it
+    #    inserts and `or []` read a null, a string and a dict all as "delete them all". These two
+    #    keys are OPTIONAL in a way ingredients and steps are not: absent means the save has no
+    #    opinion and the stored rows stand (see write_plan_ahead). Present and the wrong type is a
+    #    client bug, so it is refused rather than guessed at.
+    for key in ("waits", "storage"):
+        if key in payload and not isinstance(payload[key], list):
+            return None, f"{key} must be a list"
 
     known = set(s.scalars(select(Ingredient.id)))
 
@@ -652,10 +660,23 @@ def write_plan_ahead(s, rid, payload):
 
     Delete-and-reinsert, like the ingredient rows: these are short ordered lists a person edits by
     hand, and there is no identity to carry across a save.
-    """
+
+    ⚠️ AN ABSENT KEY IS NOT AN EMPTY LIST, AND READING IT AS ONE DELETED EVERY WAIT ON THE RECIPE.
+    This read `payload.get("waits") or []` and deleted first, so a PUT that simply did not mention
+    waits removed all of them and answered 200. The browser always sends both keys, so nothing in the
+    app reached it; the import review posts plain text, a script posts what it has, and a browser
+    holding an older bundle posts the keys that bundle knew about. The step link is the part with
+    nowhere else to live, since step_id exists only on the wait row.
+
+    So the two lists are handled independently, and each one only when the payload names it. An
+    explicit [] still deletes, which is how the editor clears the panel. The TYPE is checked in
+    resolve_recipe_payload, before anything is written, for the same reason the ingredient and step
+    lists are checked there: a wrong type must cost nothing."""
     rw, rs = RecipeWait.__table__, RecipeStorage.__table__
-    s.execute(delete(rw).where(rw.c.recipe_id == rid))
-    s.execute(delete(rs).where(rs.c.recipe_id == rid))
+    if "waits" in payload:
+        s.execute(delete(rw).where(rw.c.recipe_id == rid))
+    if "storage" in payload:
+        s.execute(delete(rs).where(rs.c.recipe_id == rid))
     # ⚠️ THE STEP IDS THIS RECIPE ACTUALLY HAS, read AFTER write_recipe_rows so they are the rows this
     #    save just wrote. A payload arrives with the ids the editor was holding, and a step deleted in
     #    this same save is still named by any wait that pointed at it.
@@ -674,7 +695,7 @@ def write_plan_ahead(s, rid, payload):
     step_ids = {m["id"] for m in s.execute(
         select(RecipeStep.__table__.c.id)
         .where(RecipeStep.__table__.c.recipe_id == rid)).mappings()}
-    for pos, w in enumerate(payload.get("waits") or []):
+    for pos, w in enumerate(payload.get("waits") or ()):          # absent -> nothing to insert
         label = (w.get("label") or "").strip()
         if not label:
             continue
@@ -729,7 +750,7 @@ def write_plan_ahead(s, rid, payload):
             min_minutes=lo, max_minutes=hi, step_id=sid, alongside_step_id=aside,
             ext_label=ext, ext_min_minutes=elo, ext_max_minutes=ehi, ext_step_id=esid,
             when_kind=when_kind, when_label=when_label))
-    for pos, x in enumerate(payload.get("storage") or []):
+    for pos, x in enumerate(payload.get("storage") or ()):        # absent -> nothing to insert
         label = (x.get("label") or "").strip()
         if not label:
             continue
@@ -1536,9 +1557,15 @@ def update_recipe(rid):
         clean, err = resolve_recipe_payload(s, payload, standing)
         if err:
             return jsonify({"error": err}), 400
+        # ⚠️ ONLY THE FIELDS THE PAYLOAD ACTUALLY NAMES. This wrote all ten unconditionally, so an
+        #    absent key reached _kept as None, compared "" against the stored value, found them
+        #    different and wrote NULL over it. A PUT that did not mention `notes` erased the
+        #    headnote, which is the longest prose this database holds and has no second copy. Same
+        #    class as the waits key in write_plan_ahead: absent is not empty. An explicit "" still
+        #    clears the field, which is how the editor empties one.
         s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rid).values(
             name=clean["name"],
-            **{f: _kept(payload.get(f), row[f]) for f in EDITABLE_HEADER_FIELDS},
+            **{f: _kept(payload[f], row[f]) for f in EDITABLE_HEADER_FIELDS if f in payload},
         ))
         # The rows as they stand. write_recipe_rows matches each incoming line to one of them by id
         # and updates it in place, falls back to the two-tier _Carry for a line that arrives without
