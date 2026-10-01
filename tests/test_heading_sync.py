@@ -553,3 +553,40 @@ def test_the_keep_matches_by_name_when_the_baseline_row_has_no_id():
     current = [step(0, "PREP", id=None), step(1, "Beat the eggs.", id=3)]
     out = rows(sync_heading_layout(old, [], current), "steps")
     assert [(r["is_heading"], r["text"]) for r in out] == [(1, "PREP"), (0, "Beat the eggs.")], out
+
+
+def test_the_kept_heading_does_not_shift_every_later_heading_by_one():
+    """⚠️ THE DEFECT THE FIRST VERSION OF THE KEEP INTRODUCED, caught on a real recipe and not by any
+    of the tests above. A kept heading's content ordinal is counted in the BASELINE, where that row is
+    a heading. Current holds the same row as a CONTENT row, so every heading after it in current
+    counts one more content row than the baseline does, and merging the two lists as they stood put
+    every later heading one row too late.
+
+    Measured on french-fries, 9 step headings: converting the first one to a step moved all eight
+    others down one slot, so "Rinse" came to sit after the step it titles. The content rows were
+    untouched and P1 was satisfied, which is why only a real recipe with several headings showed it."""
+    old = blob([], [step(0, "Cut", heading=True, id=1), step(1, "Cut the potatoes.", id=2),
+                    step(2, "Rinse", heading=True, id=3), step(3, "Rinse them.", id=4),
+                    step(4, "Simmer", heading=True, id=5), step(5, "Simmer them.", id=6)])
+    # "Cut" converted to a step; everything else untouched
+    current = [step(0, "Cut", id=1), step(1, "Cut the potatoes.", id=2),
+               step(2, "Rinse", heading=True, id=3), step(3, "Rinse them.", id=4),
+               step(4, "Simmer", heading=True, id=5), step(5, "Simmer them.", id=6)]
+    out = rows(sync_heading_layout(old, [], current), "steps")
+    assert [(r["id"], r["is_heading"]) for r in out] == \
+           [(1, 1), (2, 0), (3, 1), (4, 0), (5, 1), (6, 0)], \
+           "a heading moved off the step it titles"
+    assert [r["position"] for r in out] == [0, 1, 2, 3, 4, 5]
+
+
+def test_a_kept_heading_and_a_real_new_heading_in_one_save():
+    """The two sources of heading rows in the same result: one kept from the baseline because current
+    reverted it, one interleaved from current because it is genuinely new."""
+    old = blob([], [step(0, "Cut", heading=True, id=1), step(1, "Cut them.", id=2),
+                    step(2, "Fry them.", id=3)])
+    current = [step(0, "Cut", id=1), step(1, "Cut them.", id=2),
+               step(2, "To finish", heading=True, id=99), step(3, "Fry them.", id=3)]
+    out = rows(sync_heading_layout(old, [], current), "steps")
+    assert [(r["id"], r["is_heading"], r["text"]) for r in out] == \
+           [(1, 1, "Cut"), (2, 0, "Cut them."), (99, 1, "To finish"), (3, 0, "Fry them.")]
+    assert [r["position"] for r in out] == [0, 1, 2, 3]

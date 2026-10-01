@@ -157,10 +157,38 @@ def _reinterleave(old_rows, current_rows, row_of, skip_converted=False):
         cur_names = {kind_change_name_key(r) for r in cur_content}
         kept = [(o, h) for o, h in _content_ordinal_of_headings(old_rows)
                 if kind_change_key(h) in cur_ids or kind_change_name_key(h) in cur_names]
+
+        # ⚠️ AND THE ORDINALS HAVE TO BE IN ONE COORDINATE SYSTEM, WHICH IS THE WHOLE DIFFICULTY.
+        # A kept heading's ordinal is counted in the BASELINE, where that row is a heading. Current
+        # holds the same row as a CONTENT row, so every heading after it in current counts one more
+        # content row than the baseline does, and merging the two lists as they stand put every
+        # later heading one row too late.
+        #
+        # Measured on french-fries, 9 step headings: converting the first one to a step moved all
+        # eight others down one slot, so "Rinse" came to sit after the step it titles. The content
+        # rows were untouched and P1 was satisfied, which is exactly why this needed a real recipe
+        # to catch. On brioche-bread the same shift pushed "Shaping options" past "Option 1:" and
+        # broke the subheading group.
+        #
+        # The fix is to count current's ordinals the way the BASELINE counts: a current content row
+        # that the baseline holds as a heading is not a content row in the baseline's world, so it
+        # does not advance the counter. Both lists then speak the baseline's coordinates and the
+        # merge is exact rather than approximate for this case.
+        kept_ids = {kind_change_key(h) for _o, h in kept} - {None}
+        kept_names = {kind_change_name_key(h) for _o, h in kept}
+        reverted = lambda r: (kind_change_key(r) in kept_ids
+                              or kind_change_name_key(r) in kept_names)
+        rebased, seen = [], 0
+        for r in current_rows:
+            if _get(r, "is_heading"):
+                rebased.append((seen, r))
+            elif not reverted(r):
+                seen += 1
+        keep_heads = {id(h) for _o, h in heads}          # the skip above already dropped the rest
+        heads = [(o, h) for o, h in rebased if id(h) in keep_heads]
+
         # Stable sort, so a retained baseline heading and a current heading claiming the same content
-        # ordinal land in a fixed order (current's first) instead of a dict-order one. The ordinals
-        # are approximations either way — see _content_ordinal_of_headings — and the only consumer is
-        # which section a struck row names.
+        # ordinal land in a fixed order (current's first) instead of a dict-order one.
         heads = sorted(heads + kept, key=lambda pair: pair[0])
 
     merged, ci = [], 0
