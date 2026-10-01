@@ -814,6 +814,9 @@ STEP_STRUCTURE_REASONS = {
         "a lifted label held an ingredient link with no later mention to move it to",
     "step_alternatives":
         "sibling alternatives were found; check where the shared steps begin",
+    "step_label_declined":
+        "a lead-in label was found and NOT lifted, because a rule read it as a clause rather than "
+        "a title; the step was left whole for a person to decide",
 }
 
 # ⚠️ position MEANS A DIFFERENT THING ON A STEP FLAG THAN ON A LINE FLAG, which is why this set
@@ -961,6 +964,77 @@ _ALTERNATIVE = re.compile(
 #    were these, and without this guard all 8 would have become headings reading "Bake for 30".
 _NUMERIC_RANGE = re.compile(r"\d\s*[\u2013\u2014-]\s*\d")
 
+# ---- the label refusals (review fix 4) ----------------------------------------------------------
+# ⚠️ MEASURED AGAINST BOTH SETS, NOT REASONED. The reviewer approved 104 lead-in labels over the 300
+#    recipes and declined 12. Run over the same corpus with no decisions in hand, split_lead_label
+#    lifted 122, so 18 of its lifts were rows a person had already said no to (7 of them Note and Tip
+#    steps, which rule 3 of plan_step_rows takes first and never reaches the label rule).
+#
+#    Every rule below was checked in both directions: it refuses 0 of the 104 a person approved, and
+#    between them they refuse 9 of the 12 declined. The three left over are stated at the bottom.
+#
+# A LABEL IS AT MOST SIX WORDS, which is the longest a person approved ("Fry the chicken (the first
+# time)"). The declined set runs to 7, 10 and 11 words. The ceiling is the corpus maximum rather than
+# a round number, and exceeding it FLAGS the candidate rather than discarding it.
+MAX_LABEL_WORDS = 6
+
+# A COMMA JOINS TWO CLAUSES, and a title has one. None of the 104 carries a comma. Two of the
+# declined do ("While this cool, pre-heat your oven as hot as it goes", "Taste, and adjust as
+# necessary").
+# A CONNECTIVE CONTINUES THE PREVIOUS STEP rather than opening a part of the recipe. "Then velvet the
+# beef" is step 4 of pepper-steak reading on from step 3. "If" and "To" are deliberately NOT here:
+# both open a real section and _SECTION_LABEL above promotes them.
+_LABEL_CONNECTIVE = re.compile(
+    r"^(?:then|next|now|meanwhile|while|after|afterwards?|once|when|finally|lastly|also|"
+    r"first|second|third|before)\b", re.IGNORECASE)
+
+# ⚠️ THE PREFIX IS HOW A CALLER TELLS A REFUSED LABEL FROM NO LABEL AT ALL. split_lead_label returns
+#    a reason string for both, and "no lead-in label" is true of most steps in every recipe. Only
+#    these reasons mean "something label-shaped was here and a rule declined it", which is the only
+#    kind worth putting in front of a person.
+LABEL_DECLINED = "a rule refused the label: "
+
+
+def label_refusal(label):
+    """A reason string when `label` is not a title, else None. ONE function for both callers.
+
+    ⚠️ IT RUNS FOR THE REVIEWED LABEL TOO, and that is deliberate. The corpus pass passes the label a
+    person approved and the importer reads one off the line, but "is this a title or a clause" is the
+    same question either way. A decision CSV that has gone stale against a rule should lose to the
+    rule, not override it. Verified: none of the 104 approved labels trips any of these.
+
+    ⚠️ THREE DECLINED ROWS ARE NOT HERE AND CANNOT BE. "Salt lightly" (smashed-cucumber-salad),
+    "Set up three mixing bowls" (country-ham-croquettes) and "Do a window pane test" (bagel) are
+    shape-identical to labels a person approved: "Keep warm" is also two words of verb plus
+    modifier, and "Make the toasted rice powder" is also five words of imperative plus object. The
+    bagel and croquettes rows were declined as instructions and the cucumber row because the heading
+    "would sit over 7 unrelated steps", which is a fact about the steps BELOW it, not about its
+    words. No rule over the label can see any of that, so all three still lift and still carry
+    step_label_lifted into the review queue, which is where a person reads them.
+
+    ⚠️ AND A RULE THAT WOULD HAVE CAUGHT TWO MORE IS DELIBERATELY ABSENT. french-fries' "50 sec fry"
+    and "30 min cool" are lifted by the duration alternative of _LEAD_LABEL, and neither is in the
+    reviewed set, because the candidate list that was reviewed predates that alternative. Refusing a
+    label that leads with a figure would catch both and trips none of the 104 — and it would also
+    reverse the decision that ADDED the alternative on the stated ground that "30 min cool: is a
+    stage like any other". Reversing that is a judgement about french-fries, not a defect, so it is
+    a question for a person rather than a rule added here."""
+    l = " ".join((label or "").split())
+    if not l:
+        return None                                   # the caller's own emptiness checks own this
+    for opener, closer in (("(", ")"), ("[", "]")):
+        if l.count(opener) != l.count(closer):
+            # brownies: "Pour the batter into the prepared pan (it'll be thick" + "that's ok) and..."
+            return f"a {opener}{closer} bracket is left open, so the label is half a sentence"
+    if "," in l:
+        return "a comma joins two clauses, and a title has one"
+    if _LABEL_CONNECTIVE.match(l):
+        return f"it opens with {l.split()[0]!r}, which continues the step before it"
+    if len(l.split()) > MAX_LABEL_WORDS:
+        return (f"{len(l.split())} words is a clause, not a title "
+                f"(the longest label a person approved is {MAX_LABEL_WORDS})")
+    return None
+
 # An ingredient link as it is STORED in a step. A heading is escaped and never linkified
 # (app.js renderStepRow), so a label carrying one cannot be lifted without showing the markup.
 
@@ -1066,6 +1140,12 @@ def split_lead_label(text, label=None):
     #    can be put back by hand.
     if _NUMERIC_RANGE.search(f"{label[-1:]}{sep}{rest[:1]}"):
         return "a numeric range, not a label"
+    # ⚠️ LAST, AND FOR BOTH CALLERS. See label_refusal: the reviewed label and the detected one get
+    #    the same question. The prefix is what lets plan_step_rows tell this from "no lead-in label"
+    #    and put the candidate in front of a person instead of dropping it silently.
+    why = label_refusal(label)
+    if why:
+        return LABEL_DECLINED + why
     return label, rest
 
 
@@ -1266,6 +1346,12 @@ def plan_step_rows(directions, notes=""):
             continue
         # 4 — a lead-in label becomes a heading above the step it names.
         parts = split_lead_label(raw)
+        # ⚠️ A REFUSED LABEL IS REPORTED, NOT JUST SKIPPED. Most steps return "no lead-in label" and
+        #    saying so 2,000 times is noise. A label a RULE declined is the opposite: something
+        #    label-shaped was there, a person may disagree with the rule, and the step is left whole
+        #    meanwhile. See label_refusal and LABEL_DECLINED.
+        if isinstance(parts, str) and parts.startswith(LABEL_DECLINED):
+            note("step_label_declined", f"{raw[:60]} -- {parts[len(LABEL_DECLINED):]}")
         if not isinstance(parts, str):
             label, rest = parts
             # 5 — a link inside the label moves into the step, because a heading cannot render one.

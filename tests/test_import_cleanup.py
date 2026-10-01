@@ -1480,3 +1480,110 @@ def test_a_dash_joined_kind_label_classifies_like_a_colon_joined_one():
     # and widening the separator must not start classifying ordinary prose
     assert ic.note_kind("Serve with rice - or with bread.") is None
     assert ic.note_kind("Flour - 500g of it.") is None
+
+
+# ---- the label refusals (review fix 4) -----------------------------------------------------------
+# ⚠️ MEASURED AGAINST THE REVIEWED CORPUS IN BOTH DIRECTIONS. A person approved 104 lead-in labels
+# over the 300 recipes and declined 12. With no decisions in hand the importer lifted 122 of them, so
+# 18 of its lifts were rows a person had already said no to. The rules below refuse 0 of the 104 and
+# 6 of the 12. The rows they cannot reach are named in label_refusal's docstring and still lift with
+# a step_label_lifted flag, which is the review queue.
+
+@pytest.mark.parametrize("label, fragment", [
+    # brownies, the sentence split that started this: the step is "Pour the batter into the prepared
+    # pan (it'll be thick - that's ok) and use a spatula to smooth the top."
+    ("Pour the batter into the prepared pan (it'll be thick", "bracket is left open"),
+    ("Warm milk up in a saucepan (optional", "bracket is left open"),           # meat-lasagna
+    ("Take the dough [the cold half", "bracket is left open"),
+    # roasted-cauliflower, and hummus-2's dash row, which a person declined as "a sentence, not a label"
+    ("While this cool, pre-heat your oven as hot as it goes", "comma joins two clauses"),
+    ("Taste, and adjust as necessary", "comma joins two clauses"),
+    ("Then velvet the beef", "continues the step before it"),                   # pepper-steak
+    ("Meanwhile make the sauce", "continues the step before it"),
+    ("Line a large bowl with paper towels", "is a clause"),                     # french-fries, 7 words
+    ("Remove from heat and let it rest for 10 minutes", "is a clause"),         # mejadra, 10 words
+])
+def test_a_label_a_rule_can_read_as_a_clause_is_refused(label, fragment):
+    why = ic.label_refusal(label)
+    assert why is not None, f"{label!r} was accepted as a title"
+    assert fragment in why, why
+
+
+@pytest.mark.parametrize("label", [
+    "Fry the chicken (the first time)",   # 6 words, the longest a person approved, and balanced
+    "Birria Adobo (paste)",
+    "To make the chocolate icing",
+    "If using dried chickpeas",
+    "Slow cook 2 1/2 hours",
+    "Finish with COLD butter",
+    "Keep warm", "Deseed", "To serve", "Wilt the spinach", "Fry #2",
+    "Rest 10 minutes", "Simmer 30 min", "OVERNIGHT SOAK", "On the stovetop",
+])
+def test_a_label_a_person_approved_is_not_refused(label):
+    assert ic.label_refusal(label) is None
+
+
+def test_no_approved_corpus_label_is_refused():
+    """⚠️ THE WHOLE REVIEWED SET, NOT A SAMPLE. These rules run for the corpus pass too (the reviewed
+    label goes through the same function), so a rule that refused even one of them would silently
+    drop a heading a person had already approved and the gate would move."""
+    import csv
+    approved = []
+    repairs = pathlib.Path(ic.__file__).resolve().parent / "docs" / "data-repairs"
+    for name in ("step-leadin-labels-2026-09-30.csv", "step-dash-labels-2026-09-30.csv"):
+        path = repairs / name
+        with path.open(newline="", encoding="utf-8") as f:
+            approved += [r["label"] for r in csv.DictReader(f)
+                         if r["DECISION_make_heading_yes_no"] == "yes"]
+    assert len(approved) == 104, f"the reviewed set changed size: {len(approved)}"
+    refused = [(l, ic.label_refusal(l)) for l in approved if ic.label_refusal(l)]
+    assert refused == [], refused
+
+
+def test_the_longest_approved_label_sets_the_ceiling():
+    """The ceiling is the corpus maximum rather than a round number, so it is stated as one."""
+    assert ic.MAX_LABEL_WORDS == 6
+
+
+# ---- the refusal reaches BOTH callers ------------------------------------------------------------
+
+def test_split_lead_label_refuses_a_detected_clause_with_a_readable_reason():
+    got = ic.split_lead_label("Then velvet the beef: in a medium bowl, mix the beef with water.")
+    assert isinstance(got, str)
+    assert got.startswith(ic.LABEL_DECLINED), got
+    assert "Then" in got
+
+
+def test_split_lead_label_refuses_an_APPROVED_label_that_trips_a_rule():
+    """⚠️ A STALE DECISION LOSES TO THE RULE. The corpus pass passes the label a person approved, and
+    'is this a title or a clause' is the same question either way. A CSV row that has gone stale must
+    not override the rule, or the two callers are back to deciding separately."""
+    text = "Remove from heat and let it rest for 10 minutes - during this time liquid absorbs."
+    got = ic.split_lead_label(text, label="Remove from heat and let it rest for 10 minutes")
+    assert isinstance(got, str) and got.startswith(ic.LABEL_DECLINED), got
+
+
+def test_a_refused_label_leaves_the_step_whole_and_flags_it():
+    """FLAG, DON'T LIFT. The step keeps its words and the candidate reaches the review queue, so a
+    person can disagree with the rule."""
+    rows, _, conv = ic.plan_step_rows(
+        ["Then velvet the beef: in a medium bowl, mix the beef with water and cornstarch."])
+    assert [(r["is_heading"], r["text"]) for r in rows] == \
+           [(0, "Then velvet the beef: in a medium bowl, mix the beef with water and cornstarch.")]
+    flags = [c["flag"] for c in conv]
+    assert flags == ["step_label_declined"], conv
+    assert "continues the step before it" in conv[0]["detail"]
+
+
+def test_an_ordinary_step_with_no_label_is_not_flagged():
+    """The flag would be noise on every step in every recipe if it fired for 'no lead-in label'."""
+    _rows, _notes, conv = ic.plan_step_rows(["Heat the oil in a large pan over medium heat."])
+    assert conv == []
+
+
+def test_the_declined_flag_is_a_step_structure_flag():
+    """⚠️ import_flags HAS ONE position COLUMN and it means a different thing on a step flag. A new
+    step flag missing from this set would have its STEP index read as an INGREDIENT line index and
+    mark an unrelated row."""
+    assert "step_label_declined" in ic.STEP_STRUCTURE_FLAGS
+    assert "step_label_declined" in ic.STEP_STRUCTURE_REASONS
