@@ -682,6 +682,22 @@ Builds on Phases 8–9.
 - **10b — Filters.** Cuisine/region, tags, dietary, equipment, difficulty, time, favorites.
 - **10c — In-season recipe filter.** Recipes whose linked ingredients are in season now
   (global or local season — see 10g; linked lines only).
+- **AI-assisted import review.** When someone imports a recipe, suggest the structure a plain rule
+  cannot decide and let the person approve it: which lines are section headings, which pairs are
+  alternatives and where their shared steps resume, and what kind each note is. The rules in
+  `import_cleanup.plan_step_rows` take the cases that are decidable by shape, and this is the
+  scalable answer for the rest.
+  *What the corpus already shows is left over:* a short title-like step ("Prepare the pan") is not
+  auto-converted because no length or verb rule separated those from real instructions, 21 of them
+  were converted from a reviewed list by hand. Alternatives that are not directly under a section
+  are flagged rather than demoted, because where their shared steps resume is a judgement about the
+  recipe. 17 note labels are one-off topics that no kind list will ever hold.
+  *The shape:* the review queue already exists and already shows every conversion the importer made,
+  so this adds suggestions to a screen a person is reading anyway rather than a new one. Each
+  suggestion is accepted or rejected, and a rejection is as useful as an acceptance because it is
+  the training signal the plain rules cannot produce.
+  *Why it is not a rule:* every one of these needs the recipe read as prose, which is the one thing
+  a regex cannot do and the one thing a model is good at.
 - **Notes as their own rows, with an optional step link.** The round after plan-ahead reaches live.
   Today a note is one text blob on the recipe, so a note that belongs to one step has nowhere to
   say so. 7 Note and Tip steps were just moved out of the method into that blob, which put them
