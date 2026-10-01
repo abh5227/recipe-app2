@@ -84,6 +84,15 @@
   --fs-amount:   15px;     /* mono, tabular — nudged with the body so ledger figures keep proportion */
   --fs-label:    12px;     /* mono, uppercase, tracked */
 
+  /* ⚠️ 13px AND 12px ARE ANDY'S PICKS, MADE IN THE BROWSER against 11 / 12 / 13 / 14 for the section
+     and 14 / 15 / 16 / 17 for the subheading, on the real corpus at 1400 and 390. Two rules came out
+     of it. A SECTION LABEL IS ONE VALUE FOR BOTH COLUMNS, so --fs-section-label is read by
+     .ingredient-list li.group and .steps li.group and the two cannot drift apart. And A SUBHEADING IS
+     NEVER LARGER THAN ITS SECTION, which is why the subheading is the smaller number even though it
+     sits in sentence case and the section's caps make 13px read bigger than it measures. */
+  --fs-section-label: 13px;   /* the uppercase section label, ingredient column and method column */
+  --fs-step-sub:      12px;   /* a label lifted off one step, bold and normal case */
+
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:72px;
 
   --page-measure: 760px;   /* recipe content column */
@@ -1134,7 +1143,7 @@ a:hover { color: var(--berry-lift); }
 /* section headers within the list (crust / filling / Habanero Syrup) — green labels */
 .ingredient-list li.group {
   display: block; border-bottom: 1.5px solid var(--border-defined); padding: 14px 0 5px;
-  font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+  font-family: var(--font-mono); font-size: var(--fs-section-label); font-weight: 600;
   letter-spacing: 0.1em; text-transform: uppercase; color: var(--green);   /* "more defined" (B): defined underline */
 }
 .ingredient-list li.group:first-child { padding-top: 0; }
@@ -1267,10 +1276,11 @@ a:hover { color: var(--berry-lift); }
    section titles it had been right for. The levels are what make both true at once: a SECTION is a
    short label naming a part of the recipe ("The prep", "How to cook"), so it takes the same
    treatment the ingredient column's sections already take and the two columns finally match. A
-   SUBHEADING is a sentence lifted off one step, so it takes the step's own size in bold. Keep these
-   two in step with .ingredient-list li.group — they are now one decision, not two. */
+   SUBHEADING is a sentence lifted off one step, so it is bold and normal case and smaller than both.
+   The two columns are one decision and not two by construction now, not by care: both read
+   --fs-section-label, so there is no second number to keep in step. */
 .steps li.group {
-  font-family: var(--font-mono); font-size: var(--fs-step-section, 12px); font-weight: 600;
+  font-family: var(--font-mono); font-size: var(--fs-section-label); font-weight: 600;
   letter-spacing: 0.1em; text-transform: uppercase; color: var(--green);
   margin: 22px 0 10px; padding: 0 0 5px; border-bottom: 1.5px solid var(--border-defined);   /* "more defined" (B): defined underline */
 }
@@ -1284,9 +1294,13 @@ a:hover { color: var(--berry-lift); }
    section's weight a recipe like birria-tacos with twelve of them read as twelve sections.
    NO RULE, deliberately: the rule is the section boundary, and drawing one under a label that owns
    the single step below it draws the boundary in the wrong place. Smaller and bold is enough to
-   separate it from the step, because the step is neither. */
+   separate it from the step, because the step is neither.
+   ⚠️ "SMALLER" IS LITERAL NOW AND WAS NOT BEFORE. This rule read 15px for a while, which is the step's
+   own size, so the only thing separating a subheading from the step under it was the weight. 12px
+   against the step's 15px and the section's 13px puts it below both, which is the order Andy asked
+   for: a subheading is never larger than the section it sits under. */
 .steps li.group.h2 {
-  font-family: var(--font-serif); font-size: var(--fs-step-sub, 15px); font-weight: 700;
+  font-family: var(--font-serif); font-size: var(--fs-step-sub); font-weight: 700;
   letter-spacing: normal; text-transform: none;
   margin: 16px 0 4px; padding: 0; border-bottom: none;
 }
