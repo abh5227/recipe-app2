@@ -810,6 +810,10 @@ STEP_STRUCTURE_REASONS = {
         "a heading stored in capitals was rewritten in sentence case",
     "note_fragment_removed":
         "a notes paragraph that was only a label, naming nothing, was removed",
+    "step_label_link_lost":
+        "a lifted label held an ingredient link with no later mention to move it to",
+    "step_alternatives":
+        "sibling alternatives were found; check where the shared steps begin",
 }
 
 # ⚠️ position MEANS A DIFFERENT THING ON A STEP FLAG THAN ON A LINE FLAG, which is why this set
@@ -914,7 +918,35 @@ _NOTE_STEP = re.compile(r"^(?:note|tip)s?\s*[:.\u2013\u2014-]\s*(\S.*)$", re.IGN
 # A lead-in label: a capitalized phrase, then a colon OR a spaced dash, then the step's own words.
 # The colon needs no following space (KFC stores "Double fry:(Only double fry what you eat now)").
 # The dash DOES, so a hyphenated word ("Slow-cook the beef") is not a label.
-_LEAD_LABEL = re.compile(r"^([A-Z][^:.!?\n]{0,60}?)(?::\s*|\s[\u2013\u2014-]\s)(\S.*)$", re.DOTALL)
+#
+# ⚠️ A LABEL MAY START WITH A NUMBER WHEN THE NUMBER IS A DURATION. french-fries writes "30 min
+#    cool:" and "50 sec fry:", which are labels exactly like "Deseed -" and were missed only because
+#    the pattern demanded a capital letter. The number must be followed by a TIME unit, which is what
+#    keeps an ingredient amount out: "1 cup:" and "2 tbsp -" name a quantity, not a stage.
+_TIME_UNIT = (r"(?:min|mins|minute|minutes|hr|hrs|hour|hours|sec|secs|second|seconds"
+              r"|day|days|week|weeks|night|overnight)")
+_LEAD_LABEL = re.compile(
+    r"^(?:([A-Z][^:.!?\n]{0,60}?)|(\d[\d\s./\u2013\u2014-]*\s*" + _TIME_UNIT +
+    r"\b[^:.!?\n]{0,40}?))(?::\s*|\s[\u2013\u2014-]\s)(\S.*)$",
+    re.DOTALL | re.IGNORECASE)
+# The measure words that make a leading number an AMOUNT rather than a duration. Checked before the
+# label pattern, so "1 cup: ..." is never lifted.
+_LEAD_AMOUNT = re.compile(
+    r"^\s*\d[\d\s./\u2013\u2014-]*\s*"
+    r"(?:cup|cups|tbsp|tbsps|tablespoon|tablespoons|tsp|tsps|teaspoon|teaspoons|g|gram|grams"
+    r"|kg|oz|ounce|ounces|lb|lbs|pound|pounds|ml|l|litre|litres|liter|liters|clove|cloves"
+    r"|can|cans|slice|slices|piece|pieces|pinch|pinches|stick|sticks)\b", re.IGNORECASE)
+
+# ⚠️ A LIFTED LABEL THAT NAMES A SECTION IS A SECTION. "To make the chocolate icing" and "If using
+#    dried chickpeas" open a part of the recipe rather than captioning one step, and the words they
+#    start with are what says so. Measured on the corpus: exactly 2 lifted labels match, and they are
+#    the two Andy picked out of the level-1 candidates list by hand.
+_SECTION_LABEL = re.compile(r"^\s*(?:to\s+make\b|for\s+the\b|for\b|if\b)", re.IGNORECASE)
+
+# Sibling headings that are ALTERNATIVES rather than consecutive stages.
+_ALTERNATIVE = re.compile(
+    r"^\s*(?:option|method|version|variation|way)\s*(?:[0-9]+|[a-z]\b)"
+    r"|^\s*for\s+(?:same[-\s]day|next[-\s]day)", re.IGNORECASE)
 
 # ⚠️ A DIGIT ON BOTH SIDES OF THE DASH IS A RANGE, NOT A LABEL. "Bake for 30 - 35 minutes" and
 #    "Simmer for 3 - 4 hours" are durations. Measured on the corpus review: 8 of 62 dash candidates
@@ -949,6 +981,29 @@ def sentence_case(text):
     return lowered
 
 
+def _raw_cut_for_rendered_label(flat, label):
+    """Where `label` ends in the RAW text, when the label was read from the rendered form.
+
+    Walks the raw string and the rendered string together, so a [[key|shown]] run consumes its
+    display words. Returns the raw index just past the label, or None when the rendered text does
+    not start with it."""
+    raw_i = rendered = 0
+    want = label
+    while raw_i < len(flat) and rendered < len(want):
+        m = _LINK_PARTS.match(flat, raw_i)
+        if m:
+            shown = (m.group(2) or m.group(1))
+            if not want[rendered:].startswith(shown):
+                return None
+            raw_i, rendered = m.end(), rendered + len(shown)
+            continue
+        if flat[raw_i] != want[rendered]:
+            return None
+        raw_i += 1
+        rendered += 1
+    return raw_i if rendered == len(want) else None
+
+
 def split_lead_label(text, label=None):
     """A step line -> (label, rest) when a lead-in label can be lifted, else a REASON STRING.
 
@@ -964,31 +1019,183 @@ def split_lead_label(text, label=None):
         if not label:
             return "the decision names no label"
         if not flat.startswith(label):
-            # ⚠️ A REVIEWED LABEL COMES FROM THE RENDERED TEXT AND THE ROW HOLDS THE STORED TEXT.
-            #    They differ wherever the label contains an ingredient link: bulgogi-bowls is stored
-            #    as "Wilt the [[spinach]]: heat 2 tsp oil..." and was reviewed as "Wilt the spinach".
-            if _STEP_LINK.search(flat[:len(label) + 12]):
-                return "the label contains an ingredient link, which a heading cannot render"
-            return "the live text does not start with the approved label"
-        rest = flat[len(label):]
+            # ⚠️ A REVIEWED LABEL COMES FROM THE RENDERED TEXT AND THE ROW HOLDS THE STORED TEXT,
+            #    and they differ wherever the label contains an ingredient link: bulgogi-bowls is
+            #    stored as "Wilt the [[spinach]]: heat 2 tsp oil..." and was reviewed as "Wilt the
+            #    spinach". Matching against the RENDERED form is what lets a reviewed decision reach
+            #    a label with a link in it; move_link_out_of_label then carries the link into the
+            #    step, so the heading never has to render markup.
+            cut = _raw_cut_for_rendered_label(flat, label)
+            if cut is None:
+                return "the live text does not start with the approved label"
+            # ⚠️ THE RAW SLICE, NOT THE REVIEWED STRING. The reviewed label has already had its
+            #    markup rendered away, and returning it would DROP the link instead of moving it.
+            #    move_link_out_of_label needs the "[[spinach]]" to carry into the step.
+            label, rest = flat[:cut], flat[cut:]
+        else:
+            rest = flat[len(label):]
         m = re.match(r"^(?::\s*|\s*[\u2013\u2014-]\s*)", rest)
         if not m:
             return "no label separator after the approved label"
         rest = rest[m.end():].strip()
         sep = m.group(0)
     else:
+        if _LEAD_AMOUNT.match(flat):
+            return "an ingredient amount, not a label"       # "1 cup:" names a quantity
         m = _LEAD_LABEL.match(flat)
         if not m:
             return "no lead-in label"
-        label, rest = m.group(1).strip(), m.group(2).strip()
+        # Two label alternatives: a capitalized phrase, or a duration ("30 min cool").
+        label = (m.group(1) or m.group(2)).strip()
+        rest = m.group(3).strip()
         sep = flat[len(label):len(flat) - len(rest)]
     if not rest:
         return "nothing left under the label"                  # the whole line IS the label
-    if _STEP_LINK.search(label):
-        return "the label contains an ingredient link, which a heading cannot render"
+    # ⚠️ A LABEL CARRYING A LINK IS NO LONGER REFUSED. It was, because a heading is escaped and never
+    #    linkified so the markup would print. move_link_out_of_label is the answer instead: the
+    #    heading takes the plain words and the link moves to the next mention of the same word in
+    #    the step. Where there is no later mention the caller lifts anyway and flags the lost link,
+    #    which is Andy's ruling — a heading he has decided on should not be blocked by a link that
+    #    can be put back by hand.
     if _NUMERIC_RANGE.search(f"{label[-1:]}{sep}{rest[:1]}"):
         return "a numeric range, not a label"
     return label, rest
+
+
+def label_level(label):
+    """A lifted label -> SECTION or SUBHEADING. A label that names a part of the recipe opens a
+    group; one that captions a single step sits tight to it. See _SECTION_LABEL."""
+    return SECTION if _SECTION_LABEL.match(label or "") else SUBHEADING
+
+
+# ⚠️ LINKS RESOLVE BY THE ID INSIDE [[...]], NOT BY THE WORDS. app.js openPanel fetches
+#    /api/ingredients/<key> with the key exactly as stored, so changing a letter inside the markup
+#    breaks the link silently. Everything below that rewrites step text works around the markup.
+_LINK_PARTS = re.compile(r"\[\[([^\]|]+)(?:\|([^\]]+))?\]\]")
+
+
+def move_link_out_of_label(label, rest):
+    """A label carrying link markup -> (plain label, rest with the link moved into it).
+
+    ⚠️ A HEADING IS ESCAPED AND NEVER LINKIFIED (app.js renderStepRow), so a lifted label holding
+    "[[spinach]]" would print the brackets. The heading takes the plain words and the link moves to
+    the NEXT mention of the same word in the step, which is where a reader would reach for it
+    anyway. bulgogi-bowls is the corpus case: "Wilt the [[spinach]]: heat 2 tsp oil... Add half the
+    spinach, toss with tongs..." — the link lands on "spinach" in the step.
+
+    Returns (plain_label, new_rest, moved) where `moved` is False when no later mention exists. The
+    caller lifts anyway and flags the lost link for re-linking rather than refusing a heading Andy
+    has already decided on.
+    """
+    links = list(_LINK_PARTS.finditer(label or ""))
+    if not links:
+        return label, rest, True
+    plain = _LINK_PARTS.sub(lambda m: (m.group(2) or m.group(1)), label).strip()
+    plain = " ".join(plain.split())
+    moved_any = False
+    out = rest
+    for m in links:
+        key, shown = m.group(1), (m.group(2) or m.group(1))
+        word = shown.strip()
+        if not word:
+            continue
+        # the first LATER mention of the same word, outside any existing markup
+        spans = [(x.start(), x.end()) for x in _LINK_PARTS.finditer(out)]
+        for hit in re.finditer(rf"\b{re.escape(word)}\b", out, re.IGNORECASE):
+            if any(a <= hit.start() < b for a, b in spans):
+                continue
+            out = out[:hit.start()] + f"[[{key}|{hit.group(0)}]]" + out[hit.end():]
+            moved_any = True
+            break
+    return plain, out, moved_any
+
+
+def capitalize_first_visible(text):
+    """Capitalize the first letter a READER sees, leaving link ids alone.
+
+    ⚠️ IT NEVER TOUCHES A LETTER INSIDE [[...]] WITHOUT GIVING THE LINK A LABEL. The id is what
+    resolves the link, so upper-casing it would break it. A link with a label gets the label
+    capitalized; one without gains a label that is the capitalized form of its key, which renders
+    the same and keeps the id byte-identical.
+    """
+    t = text or ""
+    m = _LINK_PARTS.match(t.lstrip())
+    if m and m.start() == 0 and t.lstrip() == t:
+        key, shown = m.group(1), m.group(2)
+        word = shown if shown is not None else key
+        if not word or not word[0].isalpha() or word[0].isupper():
+            return t
+        return f"[[{key}|{word[0].upper() + word[1:]}]]" + t[m.end():]
+    for i, ch in enumerate(t):
+        if ch.isalpha():
+            return t if ch.isupper() else t[:i] + ch.upper() + t[i + 1:]
+        if not ch.isspace() and ch not in "([\u201c\"'":
+            return t                                        # starts with a digit or a symbol
+    return t
+
+
+def group_alternatives(rows):
+    """Sibling alternative headings directly under a section become SUBHEADINGS of it.
+
+    ⚠️ "DIRECTLY UNDER" IS THE WHOLE CONDITION, and it is what tells the two corpus cases apart.
+    brioche-bread writes "Shaping options" and then "Option 1:" and "Option 2:" with no step in
+    between, so the two options are ways of doing the one thing the section names and belong under
+    it. the-best-new-york-style-bagel writes "For Same Day Baking" and "For Next Day Baking" SEVEN
+    steps after the heading above them: they are their own phases, not two ways of mixing the dough,
+    and demoting them would say the opposite. That case is flagged instead.
+
+    ⚠️ WHERE THE SHARED STEPS RESUME IS NOT DECIDABLE HERE, which is why nothing after the last
+    alternative is touched. A heading for them is a judgement about the recipe, and the one place to
+    get it right is the author's own source text.
+
+    Returns (rows, conversions).
+    """
+    out = [dict(r) for r in rows]
+    notes_out = []
+    i = 0
+    while i < len(out):
+        r = out[i]
+        if not (r["is_heading"] and r["heading_level"] == SECTION):
+            i += 1
+            continue
+        # ⚠️ "DIRECTLY UNDER" MEANS THE FIRST ALTERNATIVE, NOT ALL OF THEM. Each alternative owns
+        #    its own steps, so they are siblings WITHIN the section rather than a consecutive run of
+        #    headings: brioche reads section, Option 1, a step, Option 2, a step. The condition is
+        #    that the section is immediately followed by an alternative, which is what separates
+        #    brioche from bagel, where seven steps sit between the heading and the alternatives.
+        if not (i + 1 < len(out) and out[i + 1]["is_heading"]
+                and _ALTERNATIVE.match(out[i + 1]["text"] or "")):
+            i += 1
+            continue
+        # every heading from here to the next SECTION belongs to this section
+        j, alts = i + 1, []
+        while j < len(out):
+            if out[j]["is_heading"]:
+                if out[j]["heading_level"] == SECTION and not _ALTERNATIVE.match(out[j]["text"] or ""):
+                    break
+                alts.append(j)
+            j += 1
+        hits = [k for k in alts if _ALTERNATIVE.match(out[k]["text"] or "")]
+        if len(hits) >= 2:
+            for k in hits:
+                out[k]["heading_level"] = SUBHEADING
+            notes_out.append({"position": i, "flag": "step_alternatives",
+                              "reason": STEP_STRUCTURE_REASONS["step_alternatives"],
+                              "detail": f"{out[i]['text']}: "
+                                        + ", ".join(out[k]["text"] for k in hits)})
+        i += 1
+    # alternatives that are NOT directly under a section still get flagged, because a person has to
+    # decide where their shared steps begin.
+    seen = {k for k in range(len(out)) if out[k]["is_heading"] and out[k]["heading_level"] == SUBHEADING
+            and _ALTERNATIVE.match(out[k]["text"] or "")}
+    loose = [k for k, r in enumerate(out)
+             if r["is_heading"] and _ALTERNATIVE.match(r["text"] or "") and k not in seen]
+    if len(loose) >= 2:
+        notes_out.append({"position": loose[0], "flag": "step_alternatives",
+                          "reason": STEP_STRUCTURE_REASONS["step_alternatives"],
+                          "detail": "not under a section: "
+                                    + ", ".join(out[k]["text"] for k in loose)})
+    return out, notes_out
 
 
 def plan_step_rows(directions, notes=""):
@@ -1043,15 +1250,27 @@ def plan_step_rows(directions, notes=""):
         if is_h:
             rows.append({"is_heading": 1, "heading_level": SECTION, "text": clean})
             continue
-        # 4 — a lead-in label becomes a subheading above the step it names.
+        # 4 — a lead-in label becomes a heading above the step it names.
         parts = split_lead_label(raw)
         if not isinstance(parts, str):
             label, rest = parts
-            note("step_label_lifted", label)
-            rows.append({"is_heading": 1, "heading_level": SUBHEADING, "text": label})
+            # 5 — a link inside the label moves into the step, because a heading cannot render one.
+            label, rest, moved = move_link_out_of_label(label, rest)
+            if not moved and _LINK_PARTS.search(raw):
+                note("step_label_link_lost", label)
+            # 6 — the step now starts mid-sentence, so its first visible letter is capitalized.
+            rest = capitalize_first_visible(rest)
+            # 7 — a label that names a part of the recipe is a section, not a caption.
+            level = label_level(label)
+            note("step_label_lifted", f"{label} (level {level})")
+            rows.append({"is_heading": 1, "heading_level": level, "text": label})
             rows.append({"is_heading": 0, "heading_level": SECTION, "text": rest})
             continue
         rows.append({"is_heading": 0, "heading_level": SECTION, "text": raw})
+
+    # 8 — sibling ALTERNATIVES directly under a section become subheadings of it.
+    rows, alt_notes = group_alternatives(rows)
+    conversions.extend(alt_notes)
 
     # 5 — capitals become sentence case, over every heading including the ones just made.
     for i, row in enumerate(rows):

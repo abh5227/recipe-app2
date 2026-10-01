@@ -1165,7 +1165,9 @@ def test_butter_chicken_shape_a_colon_label_and_a_dash_label_are_the_same_thing(
     ])
     assert shape == [
         (2, "Marinade"), (0, "Mix the chicken with the yogurt and spices."),
-        (2, "Optional blitz"), (0, "blend the sauce until smooth."),
+        # ⚠️ "Blend", NOT "blend". Lifting a label leaves the step starting mid-sentence, so its
+        #    first visible letter is capitalized (rule 6).
+        (2, "Optional blitz"), (0, "Blend the sauce until smooth."),
         (0, "Cook the chicken for 20 minutes."),
     ]
     assert flags == {"step_label_lifted"}
@@ -1230,13 +1232,109 @@ def test_a_hyphenated_word_is_not_a_label():
     assert shape == [(0, "Slow-cook the beef until it shreds.")]
 
 
-def test_a_label_carrying_an_ingredient_link_is_refused():
-    """⚠️ A HEADING IS ESCAPED AND NEVER LINKIFIED (app.js renderStepRow), so lifting a label that
-    contains [[spinach]] puts raw markup on the page. bulgogi-bowls is stored exactly this way, and
-    an earlier run of the repair pass shipped a heading reading "Wilt the [[spinach]]"."""
-    shape, _, flags = _plan(["Wilt the [[spinach]]: heat 2 tsp oil in a large pan."])
-    assert shape == [(0, "Wilt the [[spinach]]: heat 2 tsp oil in a large pan.")]
-    assert flags == set()
+def test_a_label_carrying_a_link_lifts_and_the_link_moves_into_the_step():
+    """⚠️ A HEADING IS ESCAPED AND NEVER LINKIFIED (app.js renderStepRow), so a lifted label holding
+    [[spinach]] would print the brackets. It used to be refused for that reason. The heading now
+    takes the plain words and the link moves to the next mention of the same word in the step,
+    which is where a reader would reach for it anyway. bulgogi-bowls is the corpus case."""
+    shape, _, flags = _plan(
+        ["Wilt the [[spinach]]: heat 2 tsp oil in a pan. Add half the spinach, toss with tongs."])
+    assert shape == [
+        (2, "Wilt the spinach"),
+        (0, "Heat 2 tsp oil in a pan. Add half the [[spinach|spinach]], toss with tongs."),
+    ]
+    assert flags == {"step_label_lifted"}
+
+
+def test_a_link_with_no_later_mention_lifts_anyway_and_is_flagged():
+    """⚠️ A HEADING ANDY HAS DECIDED ON IS NOT BLOCKED BY A LINK, which is his ruling. The link
+    cannot be carried anywhere, so the lift happens and the loss is surfaced for re-linking rather
+    than the heading being refused."""
+    shape, _, flags = _plan(["Wilt the [[spinach]]: heat the oil and cook briefly."])
+    assert shape == [(2, "Wilt the spinach"), (0, "Heat the oil and cook briefly.")]
+    assert "step_label_link_lost" in flags
+
+
+def test_the_link_id_is_never_touched_when_a_step_is_capitalized():
+    """⚠️ LINKS RESOLVE BY THE ID INSIDE [[...]], not by the words — app.js openPanel fetches
+    /api/ingredients/<key> with the key exactly as stored. Capitalizing a letter inside the markup
+    would break the link silently, so a link with no label GAINS one instead."""
+    assert ic.capitalize_first_visible("[[spinach]] wilts fast") == "[[spinach|Spinach]] wilts fast"
+    assert ic.capitalize_first_visible("[[spinach|spinach]] wilts") == "[[spinach|Spinach]] wilts"
+    assert ic.capitalize_first_visible("[[spinach|Spinach]] wilts") == "[[spinach|Spinach]] wilts"
+
+
+@pytest.mark.parametrize("text, label", [
+    ("30 min cool: Leave the fries to cool.", "30 min cool"),
+    ("50 sec fry: Fry for 50 seconds.", "50 sec fry"),
+    ("2 hr rest - Rest the dough.", "2 hr rest"),
+])
+def test_a_number_led_label_is_a_label_when_the_number_is_a_duration(text, label):
+    """french-fries writes "30 min cool:", a stage like any other, missed only because the pattern
+    demanded a capital letter."""
+    got = ic.split_lead_label(text)
+    assert not isinstance(got, str), got
+    assert got[0] == label
+
+
+@pytest.mark.parametrize("text", [
+    "1 cup: of flour goes in next",
+    "2 tbsp - olive oil",
+    "250 g: plain flour",
+])
+def test_an_ingredient_amount_is_not_a_label(text):
+    """⚠️ THE GUARD THAT MAKES RULE 4 SAFE. A leading number is a label only when a TIME unit
+    follows it. An amount names a quantity, and lifting one would make a heading out of "1 cup"."""
+    assert ic.split_lead_label(text) == "an ingredient amount, not a label"
+
+
+@pytest.mark.parametrize("label, level", [
+    ("To make the chocolate icing", 1),
+    ("If using dried chickpeas", 1),
+    ("For the dough", 1),
+    ("For same day baking", 1),
+    ("Deseed", 2),
+    ("Simmer", 2),
+    ("30 min cool", 2),
+])
+def test_a_label_that_names_a_section_becomes_one(label, level):
+    assert ic.label_level(label) == level
+
+
+def test_sibling_alternatives_directly_under_a_section_become_subheadings():
+    """brioche-bread: "Shaping options" then "Option 1:" and "Option 2:", each with its own step.
+    They are two ways of doing the one thing the section names."""
+    shape, _, flags = _plan([
+        "Shaping options:", "Option 1:", "Divide into 8 pieces.",
+        "Option 2:", "Divide into 3 pieces.", "Let the dough rise.", "Baking:", "Preheat the oven."])
+    assert shape == [
+        (1, "Shaping options:"),
+        (2, "Option 1:"), (0, "Divide into 8 pieces."),
+        (2, "Option 2:"), (0, "Divide into 3 pieces."),
+        (0, "Let the dough rise."),
+        (1, "Baking:"), (0, "Preheat the oven."),
+    ]
+    assert "step_alternatives" in flags
+
+
+def test_alternatives_that_are_not_directly_under_a_section_are_only_flagged():
+    """⚠️ "DIRECTLY UNDER" IS THE WHOLE CONDITION. the-best-new-york-style-bagel puts "For Same Day
+    Baking" seven steps below the heading above it: those are phases of the recipe, not two ways of
+    mixing the dough, and demoting them would say the opposite. Where the shared steps resume is a
+    judgement about the recipe, so it is flagged for a person."""
+    rows = [
+        {"is_heading": 1, "heading_level": 1, "text": "To mix the dough:"},
+        {"is_heading": 0, "heading_level": 1, "text": "Add dry ingredients."},
+        {"is_heading": 0, "heading_level": 1, "text": "Knead it."},
+        {"is_heading": 1, "heading_level": 1, "text": "For same day baking"},
+        {"is_heading": 0, "heading_level": 1, "text": "Cover with wrap."},
+        {"is_heading": 1, "heading_level": 1, "text": "For next day baking"},
+        {"is_heading": 0, "heading_level": 1, "text": "Into the fridge."},
+    ]
+    out, notes = ic.group_alternatives(rows)
+    assert [r["heading_level"] for r in out if r["is_heading"]] == [1, 1, 1], "nothing demoted"
+    assert [n["flag"] for n in notes] == ["step_alternatives"]
+    assert "not under a section" in notes[0]["detail"]
 
 
 def test_positions_are_the_index_in_the_heading_inclusive_list():
