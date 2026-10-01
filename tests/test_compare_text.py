@@ -66,3 +66,31 @@ def test_the_loosening_is_idempotent():
     for s in ["Mix well.", "1.5 cups", "350°F", "a, b; c", "1,000 g", "2-3 min"]:
         once = units.compare_text(s)
         assert units.compare_text(once) == once, s
+
+
+@pytest.mark.parametrize("dash", ["-", "‐", "‑", "‒", "–", "—",
+                                  "―", "−", "－"])
+def test_every_dash_a_paste_produces_keeps_a_range_apart_from_two_loose_numbers(dash):
+    """⚠️ THE EXCEPTION IS ONLY WORTH ANYTHING IF IT COVERS THE CHARACTER THAT ARRIVES.
+
+    Three dashes were listed and six were not. With any of the six, "simmer for 4-6 minutes" compared
+    equal to "simmer for 4 6 minutes", which is the exact spiced-scallops correction the number
+    exception exists to save, undone by one character nobody can see. A PDF, a Word document and
+    several web pages emit these. 0 of the 13,708 text values in the corpus carry one today, so this
+    is the importer's path rather than the corpus's.
+    """
+    assert units.compare_text(f"simmer for 4{dash}6 minutes") != units.compare_text("simmer for 4 6 minutes")
+    # and the same dash BETWEEN WORDS still folds, because there it does separate them
+    assert units.compare_text(f"skin{dash}on") == units.compare_text("skin on")
+
+
+def test_a_decimal_point_counts_even_with_no_digit_in_front_of_it():
+    """⚠️ A TENFOLD QUANTITY CHANGE WAS GOING UNMARKED. The test needed a digit on BOTH sides, so at
+    index 0 `prev` was the empty string and ".5 cup" compared equal to "5 cup". The same held after
+    any non-digit, so "add .5 tsp" equalled "add 5 tsp"."""
+    assert units.compare_text(".5 cup") != units.compare_text("5 cup")
+    assert units.compare_text("add .5 tsp of salt") != units.compare_text("add 5 tsp of salt")
+    assert units.compare_text(".5") != units.compare_text("5")
+    # a full stop that ENDS a sentence is never followed by a digit with no space, so it still folds
+    assert units.compare_text("Serve now. 5 minutes later") == units.compare_text("Serve now 5 minutes later")
+    assert units.compare_text("Mix it.") == units.compare_text("mix it")

@@ -65,7 +65,14 @@ def compare_key(s):
 # The punctuation that is PART OF A NUMBER when it sits between two digits: a decimal point, a
 # fraction slash, and the three range dashes. "1.5" is not "15", "1/2" is not "12", "2-3" is not
 # "23". A degree sign counts too, directly after a digit: "350°F" is not "350F".
-_NUMBER_PUNCT = ".–—-/"
+# ⚠️ EVERY DASH A KEYBOARD OR A PASTE ACTUALLY PRODUCES, not just the three that were listed.
+# This held the hyphen, the en dash and the em dash, and missed U+2010 HYPHEN, U+2011
+# NON-BREAKING HYPHEN, U+2012 FIGURE DASH, U+2015 HORIZONTAL BAR, U+2212 MINUS SIGN and U+FF0D
+# FULLWIDTH HYPHEN-MINUS. A PDF, a Word document and several web pages emit those, and with any
+# them "4‑6 minutes" compared equal to "4 6 minutes", which is exactly the spiced-scallops
+# correction the exception exists to save, undone by one character. 0 of the 13,708 text values
+# in the corpus carry one today, so this is the importer's path rather than the corpus's.
+_NUMBER_PUNCT = ".‐‑‒–—―−－-/"
 # A thousands comma is NOT in that set, and it is dropped rather than spaced, so "1,000" and "1000"
 # compare equal. They are the same quantity, which is the question this function asks.
 _THOUSANDS = ","
@@ -106,6 +113,12 @@ def compare_text(s):
         nxt = s[i + 1] if i + 1 < len(s) else ""
         if ch == "\u00b0" and prev.isdigit():
             out.append(ch)                                  # 350°F is not 350F
+        elif ch == "." and nxt.isdigit():
+            # ⚠️ A DECIMAL POINT IS PART OF THE NUMBER EVEN WITH NOTHING IN FRONT OF IT. The test used
+            #    to need a digit on BOTH sides, so ".5 cup" compared equal to "5 cup" and "add .5 tsp"
+            #    to "add 5 tsp" — a tenfold quantity change going unmarked. A full stop that ENDS a
+            #    sentence is never followed by a digit without a space, so this cannot swallow one.
+            out.append(ch)
         elif ch in _NUMBER_PUNCT and prev.isdigit() and nxt.isdigit():
             out.append(ch)                                  # 1.5 / 1/2 / 2-3
         elif ch in _THOUSANDS and prev.isdigit() and nxt.isdigit():
