@@ -323,7 +323,7 @@ How this project is run:
   names a path itself reaches straight past that redirect — one did, and `refuse_live` was the only
   thing between an ordinary `pytest` run and a real migration of 300 recipes. A redirect protects the
   door it is nailed to. ⚠️ **The ONE exception is `@pytest.mark.live_catalog`, and only for a
-  `mode=ro` URI**, because the 7 catalog tests check the real 10,500-entry library and a fixture
+  `mode=ro` URI**, because the 7 catalog tests check the real 10,020-entry library and a fixture
   database has the tables with no rows. A marked test that opens live for WRITING is refused like any
   other.
 - **A SCRIPT THAT CAN OPEN A DATABASE WIRES THE SHARED GUARD, AND THE SUITE CHECKS IT.**

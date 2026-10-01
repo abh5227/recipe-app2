@@ -901,6 +901,52 @@ going live, which is where they belonged: they are about the database surviving 
   `tests/test_migration_atomicity.py` if the rule is widened.
 
 
+### Open decision for Andy — an off-Mac copy of the backups AND the photos
+
+⚠️ **Right now, one disk failure loses everything that cannot be regenerated.** `recipes.db` holds
+the 300 recipes, 137 cook-log entries, the ratings and the 49 annotation baselines, and
+`backups/` holds its history. **`static/images` exists only on this Mac and is in no backup at all**,
+so the cook photos are the part with no second copy anywhere. The code is safe on GitHub. The data
+and the photos are not.
+
+**This needs a decision rather than a default**, because each option trades privacy against
+convenience differently.
+
+- **A cloud-synced folder**, with `backup.py` copying each new timestamped backup there. ⚠️ **It must
+  copy the BACKUP and never the live `recipes.db` itself.** A sync client watching a live SQLite file
+  will copy it mid-write and store a torn database, and the first sign of that is a backup that will
+  not open. Photos would sync as an ordinary folder. Cheap, automatic, off-site, and it puts the
+  recipes and the photos on someone else's disk.
+- **An external drive, or Time Machine.** Stays in the house, needs plugging in, and covers the whole
+  folder including `static/images` with no code change. It is not off-site, so a fire or a theft takes
+  both copies.
+- **Both**, which is the usual answer: Time Machine for the whole machine, plus a synced copy of
+  `backups/` and `static/images` for the off-site half.
+
+*Needs:* Andy's call on which, and on whether recipe photos may sit in a cloud account.
+*Touches:* `backup.py` gains a second destination, and the README's Backups section.
+*Size:* small for the cloud option. Today that is **42 MB of photos** across 121 recipes, which is
+nothing, and **13 GB of backups**, which is not. The backups compress poorly, being near-identical
+330 MB SQLite files, so syncing only the newest few is worth considering. The photos are the part
+with no second copy, and they are also the cheap part.
+
+### Where the archive folder is
+
+Development leftovers that are worth keeping but do not belong in the repo live in
+**`../recipe-app-archive/`**, a sibling of the project folder and outside git:
+
+```text
+recipe-app-archive/
+  screenshots/2026-09-28/   2 files     the login hero and album captures
+  screenshots/2026-09-30/   18 files    the plan-ahead and step-heading rounds
+  screenshots/2026-10-01/   7 files     the go-live render checks at 1400 and 390
+  previews-2026-10.zip      336 MB      the whole previews/ folder, 550 files, verified
+                                        file-by-file against the original before it was removed
+```
+
+The screenshots are the visual record of the browser checks, kept deliberately. The zip replaced a
+1.1 GB `previews/` folder in the repo.
+
 ## Tier 2 — Near-term core experience
 
 ### Cooking Mode (P2)

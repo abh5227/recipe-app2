@@ -9,7 +9,7 @@ tour and history see [CODE_WALKTHROUGH.md](CODE_WALKTHROUGH.md); for the plan se
 A **personal recipe web app** — Flask + SQLAlchemy, SQLite locally and Postgres in production, with a
 Vite-built vanilla-JS frontend. It began single-user and no-auth; it now has **accounts and per-recipe
 ownership** (default-deny: only the owner may write), though it is still a small private app rather than
-a public service. Recipes link to a shared **ingredient library** of 10,013 entries built from
+a public service. Recipes link to a shared **ingredient library** of 10,020 entries built from
 public food vocabularies (the 36-row "field guide" that preceded it was a demo, deleted in
 migration 046),
 with live **quantity scaling**, **metric/imperial + volume→weight** conversion, **star ratings**,
@@ -61,19 +61,20 @@ paprika_native_reader.py ──► import_cleanup.py ──► import_write.py  
 ## Current state
 
 - **Done:** the test suite (P0); the whole quantity & units system (P1: scaler, metric/imperial,
-  volume→weight, step-text scaling); the **Paprika import** (P15) — **298 recipes imported**, the
+  volume→weight, step-text scaling); the **Paprika import** (P15) — **300 recipes imported**, the
   full corpus, each with a stable `uid`; the **SQLite→Postgres migration** (Alembic owns the PG
   schema; CI tests both dialects); **accounts + per-recipe ownership**; and **photo upload** (a hero
   Polaroid + a per-cook album).
 - **In progress:** the **annotation layer + inline editor** (O-c) — a recipe page shows what you
   changed against its birth baseline, in a handwritten layer, and the recipe is editable in place.
   Snapshots are the stored truth (`recipe_snapshots`); the changes are **derived** by diffing them,
-  never stored as edits. **298 recipes each carry a `reason='original'` baseline**; 298 are still
-  byte-equal to it. Also in progress: the "used cookbook" design pass.
-- **Not yet:** library linkage is barely started (**50 of 3,332 ingredient lines** carry an
-  `ingredient_id`); full image storage (`image` is primary-only — 120 of 298 recipes have one);
+  never stored as edits. **300 recipes each carry a `reason='original'` baseline**, and 274 are still
+  byte-equal to it. ⚠️ That second number is not a property of the corpus. It drops by one for
+  every recipe ever saved, so a gate compares the SET against the before-state of the same run. Also in progress: the "used cookbook" design pass.
+- **Not yet:** library linkage is not wired to the catalog yet (**0 of 3,349 ingredient lines** carry an
+  `ingredient_id`, since the 36 hand-authored rows they pointed at were deleted in migration 046); full image storage (`image` is primary-only — 121 of 300 recipes have one);
   *using* the harvested gram in display; and importer hardening.
-- **Tests:** **520 pytest + 88 JS**, CI green on every push (pytest w/ coverage on SQLite **and**
+- **Tests:** **2,337 pytest + 255 JS**, CI green on every push (pytest w/ coverage on SQLite **and**
   Postgres, the JS suite, and a SonarQube scan).
 
 For what happens next and in what order, see ROADMAP.md → *Recipe annotations + editor parity

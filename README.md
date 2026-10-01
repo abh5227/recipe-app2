@@ -30,6 +30,19 @@ python3.13 app.py                               # serves on http://localhost:800
 `npm run build` is **required**, not optional. Flask serves `dist/index.html` at `/`, so skipping
 it gives you a 500 on the front page. Rerun it after editing anything in `static/`.
 
+### Then make yourself an account
+
+⚠️ **You cannot sign up through the app on a fresh install.** `/api/signup` always requires an invite
+code, and on a new database there is nobody to issue one, so the page loads and nothing lets you in.
+The first account is made from the command line:
+
+```bash
+python3.13 scripts/create_admin.py            # prompts for an email and a password
+```
+
+The password is read with `getpass`, so it never lands in your shell history or the process list.
+After that, log in at the page and invite anyone else from inside the app.
+
 **If a fresh install fails partway through migrating, delete the new `recipes.db` and run it
 again. A fresh install has no data to lose.**
 
@@ -250,11 +263,22 @@ one. The JS suite runs on the source with no `node_modules`.
 fixtures to Postgres and breaks them, so the two are different steps:
 
 ```bash
-docker run -d --name pgci -p 55432:5432 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16
+# start the container, or reuse it if you already made one
+docker start pgci 2>/dev/null || \
+  docker run -d --name pgci -p 55432:5432 -e POSTGRES_HOST_AUTH_METHOD=trust postgres:16
+
+# the DATABASE must exist before alembic can put a schema in it. Once per container.
+docker exec pgci createdb -U postgres recipe_test
+
 DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:55432/recipe_test \
   SECRET_KEY=ci-only-not-a-real-secret \
   sh -c 'alembic upgrade head && python3.13 -m pytest tests/test_pg_integration.py tests/test_schema_parity.py'
 ```
+
+`createdb` is a separate step on purpose. `alembic upgrade head` creates the schema INSIDE a
+database and cannot create the database itself, so skipping it fails with
+`database "recipe_test" does not exist`. A `SECRET_KEY` is required rather than optional: a Postgres
+`DATABASE_URL` makes the app fail closed without one. See `docs/SECURITY.md`.
 
 `tests/test_schema_parity.py` runs **only** here, because comparing the two schemas needs both of
 them present. In the SQLite run its Postgres tests skip.
@@ -282,9 +306,18 @@ the redirected module global is the fix, and this is the standing guard.
 unless its exact form is listed as an exception. Under the CI condition there is no catalog to read,
 so it skips.
 
-A local run of the full suite therefore reads **1 failed**, and that one is expected. Seven tests
-carry `@pytest.mark.live_catalog` for the same reason: a fixture database has the catalog tables with
-no rows, so a check written only against one proves nothing.
+So the expected result depends on which machine you are on:
+
+| where | result |
+|---|---|
+| a fresh clone | **0 failed.** The catalog is empty, so every test that needs it skips |
+| CI, with no `recipes.db` | **0 failed**, same reason |
+| this machine, with the real data | **1 failed**, the Miracle Whip case, and that is expected |
+
+Seven tests carry `@pytest.mark.live_catalog` for the same reason: a fixture database has the
+catalog tables with no rows, so a check written only against one proves nothing. ⚠️ **"No catalog"
+has to mean no ROWS, not no file.** Eight tests once went red on a fresh clone because they skipped
+only when `recipes.db` was absent, and a clone has the file with none of the rows in it.
 
 ## The importer, in brief
 
