@@ -80,10 +80,24 @@ def synth(tmp_path):
 
 
 def live():
-    """The real mined rows, when this machine has them. Absent in CI, which is correct."""
+    """The real mined rows, when this machine has them. Absent in CI, which is correct.
+
+    ⚠️ IT SKIPS THE GUARDED LIVE DATABASE RATHER THAN BEING REFUSED BY IT. These tests are not
+    marked, so tests/dbguard.py refuses them the live file, and a refusal is an exception rather
+    than a skip. On THIS machine that never showed, because recipes-preview.db sits in the repo root
+    carrying the same 446,801 mined pairings and is matched first. In a FRESH CLONE that file does
+    not exist, the loop fell through to recipes.db, and six tests in this file failed with
+    LiveDatabaseOpened instead of skipping. "I may not read live" and "there is no mined corpus
+    here" are the same situation for this helper, so it asks the guard instead of finding out the
+    hard way."""
+    import sys as _sys
+    _sys.path.insert(0, str(BASE / "scripts"))
+    import corpus_guard
     for name in ("recipes-preview.db", "recipes.db"):
         p = BASE / name
         if not p.exists():
+            continue
+        if corpus_guard.is_live(p):
             continue
         c = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
         has = c.execute("SELECT COUNT(*) FROM sqlite_master WHERE type='table' "

@@ -210,7 +210,12 @@ def test_every_registered_worktree_of_this_repo_resolves_to_one_main_tree():
                              capture_output=True, text=True, check=True).stdout
     trees = [pathlib.Path(l.split(" ", 1)[1]) for l in listing.splitlines()
              if l.startswith("worktree ")]
-    assert len(trees) >= 2, f"expected the main tree and at least one worktree, got {trees}"
+    # ⚠️ A FRESH CLONE HAS NO LINKED WORKTREE, AND THAT IS NOT A FAILURE. This asserted there was
+    #    one and went red on a clone, found by following README.md literally in a temp folder. The
+    #    throwaway-repo tests above are what prove the worktree case on any machine. This one only
+    #    adds the real checkouts when they happen to be there.
+    if len(trees) < 2:
+        pytest.skip("no linked worktree here, which is the normal state for a clone")
     answers = {}
     for t in trees:
         if not t.exists():
