@@ -2439,12 +2439,23 @@ a.meta-step:focus-visible { color: var(--berry); outline: 1px dotted currentColo
 .meta-keeps { display: block; }
 /* The step the reader was sent to, marked just long enough to find it. Fades rather than blinks,
    because the page has already scrolled and the eye only needs to be told where it landed. */
+/* ⚠️ IT HOLDS BEFORE IT FADES, AND THE HOLD IS THE POINT. The highlight started fading the instant
+   it appeared, so by the time the smooth scroll had finished carrying the step into view the amber
+   was most of the way gone and you had to find the step yourself. 2 seconds of steady colour, then
+   the same 1.6 second fade it always had. The hold is a flat segment, so `ease-out` only shapes the
+   fade. STEP_PING_MS in app.js is the same figure and the two have to move together. */
 @keyframes step-ping {
-  from { background: color-mix(in srgb, var(--amber) 22%, transparent); }
-  to   { background: transparent; }
+  0%, 55% { background: color-mix(in srgb, var(--amber) 22%, transparent); }
+  100%    { background: transparent; }
 }
-.steps li.step.step-ping { animation: step-ping 1.6s ease-out; border-radius: 4px; }
-@media (prefers-reduced-motion: reduce) { .steps li.step.step-ping { animation-duration: 1ms; } }
+.steps li.step.step-ping { animation: step-ping 3.6s ease-out; border-radius: 4px; }
+/* ⚠️ REDUCED MOTION KEEPS THE HIGHLIGHT AND DROPS THE FADE, where this used to set a 1ms duration
+   and so removed the affordance altogether. Someone who asks for less motion still has to be able
+   to find the step they just tapped. steps(1, end) holds the colour and then cuts, which is a state
+   change rather than an animation, and it ends at the same moment the fade would have started. */
+@media (prefers-reduced-motion: reduce) {
+  .steps li.step.step-ping { animation: step-ping 2s steps(1, end); }
+}
 .meta-break-row { display: block; font-size: 0.86em; color: var(--ink-soft); }
 /* An extension is an INVITATION, not part of the range, so it reads quieter than the note that
    qualifies the figure and it always takes its own line. */

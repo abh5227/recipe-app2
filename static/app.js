@@ -1043,6 +1043,12 @@ function renderStepRow(row, ann) {
 // li.step-removed rows are both unnumbered and both correctly skipped by this selector.
 // ⚠️ NO-OP IF THE STEP IS NOT THERE. The server already refuses to send a number whose check
 //    failed, and this is the second guard for a repaint that has not landed yet.
+// ⚠️ THE SAME FIGURE AS THE CSS ANIMATION, AND THEY HAVE TO MOVE TOGETHER. Removing the class
+// before the animation ends cuts the highlight off mid-fade; leaving it on past the end means a
+// second tap on the same step cannot restart it (the class is already there and the reflow trick
+// below is what covers that). 2s of hold plus a 1.6s fade. See @keyframes step-ping in styles.css.
+const STEP_PING_MS = 3600;
+
 function jumpToStep(n) {
   const li = document.querySelectorAll("#steps-list li.step")[n - 1];
   if (!li) return;
@@ -1050,7 +1056,7 @@ function jumpToStep(n) {
   li.classList.remove("step-ping");
   void li.offsetWidth;                 // restart the animation if the same step is tapped twice
   li.classList.add("step-ping");
-  setTimeout(() => li.classList.remove("step-ping"), 1600);
+  setTimeout(() => li.classList.remove("step-ping"), STEP_PING_MS);
 }
 
 function renderStepsList(steps) {
