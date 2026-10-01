@@ -62,7 +62,7 @@ import snapshot_serialize                                        # noqa: E402
 #    next recipe someone imports. Two copies would mean a corpus repaired to one shape and an
 #    importer producing another, with nothing to say so.
 from import_cleanup import (NOTE_SEPARATOR, SECTION, SUBHEADING,  # noqa: E402
-                            is_caps, sentence_case, split_lead_label, strip_emphasis)
+                            clean_notes, is_caps, sentence_case, split_lead_label, strip_emphasis)
 
 REPAIRS = pathlib.Path(__file__).resolve().parent.parent / "docs" / "data-repairs"
 HEADINGS_CSV = REPAIRS / "step-headings-candidates-2026-09-30.csv"
@@ -159,7 +159,7 @@ def run(db, apply_it):
     c = sqlite3.connect(db)
     c.row_factory = sqlite3.Row
     c.execute("PRAGMA foreign_keys=ON")
-    log = {"convert": [], "label": [], "note": [], "caps": [], "skipped": []}
+    log = {"convert": [], "label": [], "note": [], "notes": [], "caps": [], "skipped": []}
 
     # ---- pass 1: a step becomes a heading in place ----------------------------------------------
     for r in _decisions(HEADINGS_CSV, "DECISION_convert_yes_no", {"yes"}):
@@ -232,7 +232,26 @@ def run(db, apply_it):
     # ---- pass 4: a DASH lead-in label is lifted the same way -------------------------------------
     _lift(c, log, DASH_CSV, "dash")
 
-    # ---- pass 5: ALL CAPS heading text becomes sentence case -------------------------------------
+    # ---- pass 5: the notes data rule ------------------------------------------------------------
+    # ⚠️ LOCKSTEP LIKE EVERY OTHER PASS, and notes IS in SNAPSHOT_RECIPE_FIELDS, so the baseline's
+    #    recipe.notes moves with the live row or the cook is told they rewrote a note they never
+    #    touched. Same function the importer runs, so a recipe imported tomorrow is cleaned the way
+    #    these 300 were.
+    for row in [dict(x) for x in c.execute(
+            "SELECT id, notes FROM recipes WHERE notes IS NOT NULL AND trim(notes)<>'' ORDER BY id")]:
+        cleaned, removed = clean_notes(row["notes"])
+        if cleaned == row["notes"]:
+            continue
+        body = _baseline(c, row["id"])
+        if body is None:
+            log["skipped"].append((row["id"], None, "notes: no baseline"))
+            continue
+        c.execute("UPDATE recipes SET notes=? WHERE id=?", (cleaned, row["id"]))
+        body["recipe"]["notes"] = cleaned
+        _write_baseline(c, row["id"], body)
+        log["notes"].append((row["id"], removed or [("whitespace", "paragraph gaps normalized")]))
+
+    # ---- pass 6: ALL CAPS heading text becomes sentence case -------------------------------------
     # Runs last so it catches the headings passes 1 and 2 just made.
     for row in [dict(x) for x in c.execute(
             "SELECT id, recipe_id, text FROM recipe_steps WHERE is_heading=1 ORDER BY recipe_id, position")]:
@@ -269,7 +288,11 @@ def main():
     print(f"  1   steps converted to headings in place : {len(log['convert'])}")
     print(f"  2+4 lead-in labels lifted into headings  : {len(log['label'])}")
     print(f"  3   Note/Tip steps moved to Notes        : {len(log['note'])}")
-    print(f"  5   headings recased or unwrapped        : {len(log['caps'])}")
+    print(f"  5   recipes whose notes were cleaned      : {len(log['notes'])}")
+    for rid, removed in log["notes"]:
+        for what, text in removed:
+            print(f"        {rid}: {what} {text!r}")
+    print(f"  6   headings recased or unwrapped        : {len(log['caps'])}")
     if log["skipped"]:
         print(f"  SKIPPED: {len(log['skipped'])}")
         for x in log["skipped"]:

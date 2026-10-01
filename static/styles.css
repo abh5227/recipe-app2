@@ -1386,9 +1386,21 @@ a:hover { color: var(--berry-lift); }
   margin-top: 26px; padding: 16px 18px;
   background: var(--card); border: 1px solid var(--line);
   border-radius: 10px; font-size: 15px; color: var(--ink-soft);
-  white-space: pre-wrap;   /* as .dek: 43 of 108 notes carry breaks the page was collapsing */
 }
 .notes strong { color: var(--ink); }
+/* ⚠️ white-space: pre-wrap MOVED OFF .notes AND ONTO THE PARAGRAPH. It was on the block so a stored
+   line break inside a note survived (43 of 108 notes carry one). The block now holds real elements,
+   and leaving pre-wrap there would render the newlines BETWEEN a heading and a paragraph as blank
+   space on top of the margins. On .notes-para it still does the only job it ever had. */
+.notes-para { margin: 0 0 10px; white-space: pre-wrap; }
+.notes-para:last-child { margin-bottom: 0; }
+/* The kind header takes the ingredient column's section treatment, which is what a short label
+   naming a part of the page looks like everywhere else in the app (see .steps li.group). */
+.notes-kind {
+  margin: 16px 0 7px; font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+  letter-spacing: 0.1em; text-transform: uppercase; color: var(--green);
+}
+.notes-kind:first-child { margin-top: 0; }
 .hint {
   margin-top: 20px; font-size: 14px; color: var(--ink-soft);
   font-style: italic; font-family: var(--display);

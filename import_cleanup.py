@@ -20,6 +20,8 @@ at the bottom — with its `import paprika_native_reader`, `import zipfile` and 
 ARCHIVE — is now import_cleanup_preview.py, which imports THIS module rather than the reverse.
 A new source belongs in its own reader + preview, never here.
 """
+import json
+import pathlib
 import re
 
 # Reuse the EXISTING amount/fraction parser — do not write a third copy. These are
@@ -806,6 +808,8 @@ STEP_STRUCTURE_REASONS = {
         "a Note or Tip step was moved into the recipe's notes",
     "step_heading_recased":
         "a heading stored in capitals was rewritten in sentence case",
+    "note_fragment_removed":
+        "a notes paragraph that was only a label, naming nothing, was removed",
 }
 
 # ⚠️ position MEANS A DIFFERENT THING ON A STEP FLAG THAN ON A LINE FLAG, which is why this set
@@ -819,6 +823,90 @@ STEP_STRUCTURE_FLAGS = frozenset(STEP_STRUCTURE_REASONS)
 #    that have notes, 78 are a single blank line and one is a four-newline gap on one recipe. A moved
 #    note joins the convention the corpus already keeps.
 NOTE_SEPARATOR = "\n\n"
+
+# ---- note kinds and the notes data rule ---------------------------------------------------------
+# ⚠️ ONE TABLE, READ FROM static/note-kinds.json, WHICH THE CLIENT IMPORTS TOO. Vite inlines the same
+#    file into the bundle for static/note-blocks.js, so the display grouping and this rule cannot
+#    disagree about what "Storing." means. A second copy here is exactly the drift the corpus repair
+#    and the importer were just joined to avoid.
+NOTE_KINDS = json.loads(
+    (pathlib.Path(__file__).resolve().parent / "static" / "note-kinds.json").read_text()
+)["kinds"]
+
+# A leading label: a short phrase, then a colon or a period, then the note itself. The period form
+# is real and common ("Flour. This recipe works best with..." on brioche-bread).
+_NOTE_LEAD = re.compile(r"^\s*([A-Za-z][A-Za-z '\u2019/-]{0,28}?)\s*[:.]\s+(\S[\s\S]*)$")
+# A paragraph that is ONLY a label, with nothing under it.
+_NOTE_LABEL_ONLY = re.compile(r"^\s*([A-Za-z][A-Za-z '\u2019/-]{0,28}?)\s*[:.]?\s*$")
+
+
+def _norm_label(s):
+    return " ".join(str(s or "").replace("\u2019", "'").split()).lower()
+
+
+def note_kind(para):
+    """A notes paragraph -> the kind its leading label names, or None when it has no listed label.
+
+    Mirrors static/note-blocks.js classifyNote. An UNLISTED label returns None, which is what keeps
+    "Blind Bake:" and "Tomato Bouillon:" whole: the display leaves such a paragraph under Notes with
+    its text untouched, and this rule leaves it alone too."""
+    m = _NOTE_LEAD.match(para or "")
+    if not m:
+        return None
+    want = _norm_label(m.group(1))
+    for k in NOTE_KINDS:
+        if any(_norm_label(l) == want for l in k["labels"]):
+            return k["kind"]
+    return None
+
+
+def clean_notes(text):
+    """The notes DATA rule -> (cleaned text, [what was removed]).
+
+    Three things, all of them structural rather than editorial. The words of a real note are never
+    rewritten.
+
+      1  A paragraph that is ONLY a label with nothing under it goes. "Note." on its own says
+         nothing and renders as a heading over the next person's paragraph.
+      2  A label-only FRAGMENT glued to the front of the next note goes with it. "Note. Note: Some
+         legumes..." is one paragraph carrying two labels, and the first names nothing.
+      3  Paragraphs are rejoined with exactly one blank line, so a moved or imported note always
+         starts its own paragraph and a stray multi-newline gap closes up.
+
+    ⚠️ ONLY A LABEL THE TABLE KNOWS IS TREATED AS ONE. "Made with Vedant and Sophia." is a whole
+    sentence that happens to be short, and reading it as a label would delete the note."""
+    removed = []
+    out = []
+    for para in re.split(r"\n\s*\n", text or ""):
+        p = para.strip()
+        if not p:
+            continue
+        m = _NOTE_LABEL_ONLY.match(p)
+        if m and note_kind(f"{m.group(1)}: x") is not None:
+            removed.append(("label-only paragraph", p))     # rule 1
+            continue
+        while True:                                         # rule 2, repeatedly
+            m = _NOTE_LEAD.match(p)
+            if not m:
+                break
+            rest = m.group(2).strip()
+            if note_kind(p) is None or _NOTE_LEAD.match(rest) is None:
+                break
+            if note_kind(rest) is None:
+                break
+            removed.append(("label-only fragment", p[:len(p) - len(rest)].strip()))
+            p = rest
+        out.append(p)
+    # ⚠️ NOTHING REMOVED MEANS NOTHING WRITTEN, AND THAT IS DELIBERATE. Rejoining unconditionally
+    #    also trims trailing whitespace, which changed 18 of the corpus's 95 noted recipes and
+    #    changed nothing a reader would see: the client already trims for display (proseText), and
+    #    this project decided once before not to write cosmetic whitespace back (see the .dek note
+    #    in styles.css, where 6 descr and 12 notes values carry it and are left alone). A rule that
+    #    rewrites 18 rows to no visible effect is a rule that has to be re-justified every time
+    #    someone reads the diff.
+    if not removed:
+        return text, []
+    return NOTE_SEPARATOR.join(out), removed                # rule 3
 
 # A step that is nothing but a note. "Note:", "Tip -", "Notes:" all count.
 _NOTE_STEP = re.compile(r"^(?:note|tip)s?\s*[:.\u2013\u2014-]\s*(\S.*)$", re.IGNORECASE | re.DOTALL)
@@ -973,6 +1061,15 @@ def plan_step_rows(directions, notes=""):
             conversions.append({"position": i, "flag": "step_heading_recased",
                                 "reason": STEP_STRUCTURE_REASONS["step_heading_recased"],
                                 "detail": f"{was} -> {row['text']}"})
+    # 6 — the notes DATA rule, over whatever the publisher wrote plus whatever moved here.
+    # ⚠️ IT RUNS LAST, AFTER THE MOVES, because rule 3 above is what can create the shape rule 2 of
+    #    clean_notes removes: a note appended to a blob that already ended in a bare label.
+    notes, note_removed = clean_notes(notes)
+    for what, text in note_removed:
+        conversions.append({"position": None, "flag": "note_fragment_removed",
+                            "reason": STEP_STRUCTURE_REASONS["note_fragment_removed"],
+                            "detail": f"{what}: {text}"})
+
     for i, row in enumerate(rows):
         row["position"] = i
     return rows, notes, conversions

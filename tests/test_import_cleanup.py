@@ -1254,3 +1254,80 @@ def test_every_conversion_says_which_row_and_what_it_did():
         assert c["position"] is not None and c["reason"] and c["detail"]
     assert {c["flag"] for c in conv} == {"step_heading_unwrapped", "step_label_lifted",
                                          "step_heading_recased"}
+
+
+# ================================================================================================ #
+# NOTE KINDS and the notes data rule. The kind table is static/note-kinds.json, the SAME file
+# static/note-blocks.js imports, so a label means one thing in the display and in the importer.
+# ================================================================================================ #
+
+def test_the_kind_table_is_the_file_the_client_reads():
+    import json, pathlib
+    on_disk = json.loads((pathlib.Path(__file__).resolve().parent.parent
+                          / "static" / "note-kinds.json").read_text())["kinds"]
+    assert ic.NOTE_KINDS == on_disk
+    assert on_disk[0]["kind"] == "notes", "the first kind is the fallback"
+
+
+@pytest.mark.parametrize("para, kind", [
+    ("Note: some text", "notes"),
+    ("Notes: some text", "notes"),
+    ("Cook's note: some text", "notes"),
+    ("Cook’s note: some text", "notes"),          # a curly apostrophe
+    ("Tip: some text", "tips"),
+    ("Pro tip: some text", "tips"),
+    ("Storing. some text", "storage"),                  # the period form, brioche-bread's shape
+    ("To freeze: some text", "storage"),
+    ("Variation: some text", "variations"),
+    ("SAME DAY VERSION: some text", "variations"),      # bagel, shouted
+    ("Blind Bake: some text", None),                    # a one-off topic label stays unlisted
+    ("Tomato Bouillon: granules or cubes", None),
+    ("Made with Vedant and Sophia.", None),             # a sentence, not a label
+    ("Consider using vital wheat gluten.", None),
+])
+def test_note_kind(para, kind):
+    assert ic.note_kind(para) == kind
+
+
+def test_a_label_only_paragraph_is_removed():
+    """"Note." on its own names nothing and renders as a heading over the next person's paragraph."""
+    out, removed = ic.clean_notes("Note.\n\nNote: Some legumes need no soak.")
+    assert out == "Note: Some legumes need no soak."
+    assert removed == [("label-only paragraph", "Note.")]
+
+
+def test_a_label_only_fragment_glued_to_the_next_note_is_dropped():
+    out, removed = ic.clean_notes("Note. Note: Some legumes need no soak.")
+    assert out == "Note: Some legumes need no soak."
+    assert removed == [("label-only fragment", "Note.")]
+
+
+def test_an_unlisted_label_is_never_treated_as_a_fragment():
+    """⚠️ THE GUARD THAT STOPS THIS DELETING A NOTE. "Made with Vedant and Sophia." is a whole
+    sentence that happens to be short, and a rule that read any short phrase as a label would take
+    the note with it."""
+    for keep in ("Made with Vedant and Sophia.", "Blind Bake: Place a coffee filter in the shell."):
+        assert ic.clean_notes(keep) == (keep, [])
+
+
+def test_nothing_removed_means_nothing_written():
+    """⚠️ COSMETIC WHITESPACE IS LEFT ALONE, and that is a decision this project already made once.
+    Rejoining unconditionally also trims trailing whitespace, which changed 18 of the corpus's 95
+    noted recipes and changed nothing a reader would see — the client trims for display."""
+    for untouched in ("Keeps 3 days.\n", "a\n\n\n\nb", "  padded  ", ""):
+        assert ic.clean_notes(untouched) == (untouched, [])
+
+
+def test_a_moved_note_starts_its_own_paragraph():
+    """Rule 3's third part, through the path that actually moves one."""
+    rows, notes, conv = ic.plan_step_rows(["Mix it.", "Note: Check the yeast."], "Keeps 3 days.")
+    assert notes == "Keeps 3 days.\n\nCheck the yeast."
+    assert [r["text"] for r in rows] == ["Mix it."]
+
+
+def test_a_note_moved_onto_a_bare_label_cleans_up_after_itself():
+    """⚠️ THE ORDER IS LOAD-BEARING. Moving a Note step is what can CREATE the shape clean_notes
+    removes, so the notes rule runs after the moves rather than before them."""
+    rows, notes, conv = ic.plan_step_rows(["Mix it.", "Note: Check the yeast."], "Note.")
+    assert notes == "Check the yeast."
+    assert {c["flag"] for c in conv} == {"step_note_moved", "note_fragment_removed"}

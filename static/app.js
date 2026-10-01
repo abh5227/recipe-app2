@@ -17,6 +17,11 @@ import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
 import { browseList, cardTags, monthYear } from "./browse.js";
 import { panelBlocks } from "./panel-blocks.js";
+import { noteBlocks } from "./note-blocks.js";
+// ⚠️ THE KIND TABLE IS ONE FILE, IMPORTED, NOT A COPY KEPT IN STEP BY A TEST. Vite inlines
+// the JSON at build time and import_cleanup reads the SAME path for the data rule, so the
+// display and the importer cannot disagree about what "Storing." means.
+import NOTE_KINDS from "./note-kinds.json";
 import { uploadErrorHTML } from "./upload-status.js";
 import { makeBackdateSubmit, isStageableImage } from "./backdate-submit.js";
 import { RATING_MAX, ratingPct, ratingText, nextRating } from "./star-fill.js";
@@ -1057,6 +1062,24 @@ function jumpToStep(n) {
   void li.offsetWidth;                 // restart the animation if the same step is tapped twice
   li.classList.add("step-ping");
   setTimeout(() => li.classList.remove("step-ping"), STEP_PING_MS);
+}
+
+// ⚠️ THE HARDCODED "Note." IS GONE, AND IT IS WHAT ANDY SAW ON beans. This read
+//    `<strong>Note.</strong> ${esc(note)}`, a label the renderer put in front of the WHOLE blob, so
+//    a recipe whose author had already written "Note:" showed "Note. Note: Some legumes...". The
+//    label was never in the data, which is why no amount of looking at the stored text found it.
+//
+//    Paragraphs now group under a header named for the kind their own label gives, and that label
+//    comes off the shown text. A paragraph with no label, or one the table does not list, stays
+//    under Notes with its text untouched — 17 of the corpus's labelled paragraphs are in that shape
+//    ("Blind Bake:", "Tomato Bouillon:") and stripping a label nobody has approved would delete the
+//    only thing naming what the note is about.
+function notesSectionHTML(note) {
+  const blocks = note ? noteBlocks(note, NOTE_KINDS.kinds) : [];
+  if (!blocks.length) return "";
+  return `<div class="notes">${blocks.map((b) => `
+    <h3 class="notes-kind">${esc(b.header)}</h3>
+    ${b.paras.map((t) => `<p class="notes-para">${esc(t)}</p>`).join("")}`).join("")}</div>`;
 }
 
 function renderStepsList(steps) {
@@ -2102,7 +2125,7 @@ function paintRecipe() {
             <h2 class="col-title">Method</h2>
             <ol class="steps" id="steps-list">${steps}</ol>
             ${editing ? stepAddersHTML() : ""}
-            ${editing ? ieNoteHTML(r) : (note ? `<div class="notes"><strong>Note.</strong> ${esc(note)}</div>` : "")}
+            ${editing ? ieNoteHTML(r) : notesSectionHTML(note)}
           </section>
         </div>
         ${editing ? "" : albumSectionHTML(data)}

@@ -1,0 +1,74 @@
+{
+ "note": "The note kinds a Notes paragraph's leading label maps to. Read by BOTH static/note-blocks.js (display grouping) and import_cleanup (the data rule), so the two cannot disagree about what a label means. corpus_* are measured on the 300 recipes; a kind with 0 is carried for imports, not for this corpus.",
+ "kinds": [
+  {
+   "kind": "notes",
+   "header": "Notes",
+   "labels": [
+    "note",
+    "notes",
+    "cook's note",
+    "cooks note",
+    "note for next time",
+    "reminder"
+   ],
+   "corpus_paragraphs": 9,
+   "corpus_recipes": 8
+  },
+  {
+   "kind": "tips",
+   "header": "Tips",
+   "labels": [
+    "tip",
+    "tips",
+    "pro tip",
+    "pro-tip"
+   ],
+   "corpus_paragraphs": 4,
+   "corpus_recipes": 4
+  },
+  {
+   "kind": "storage",
+   "header": "Storage",
+   "labels": [
+    "storage",
+    "storing",
+    "to store",
+    "freezer",
+    "to freeze",
+    "make ahead",
+    "make-ahead",
+    "keeping",
+    "leftovers"
+   ],
+   "corpus_paragraphs": 6,
+   "corpus_recipes": 4
+  },
+  {
+   "kind": "variations",
+   "header": "Variations",
+   "labels": [
+    "variation",
+    "variations",
+    "substitution",
+    "substitutions",
+    "swaps",
+    "same day version"
+   ],
+   "corpus_paragraphs": 2,
+   "corpus_recipes": 2
+  },
+  {
+   "kind": "serving",
+   "header": "Serving",
+   "labels": [
+    "serving",
+    "to serve",
+    "serve with",
+    "serving suggestion"
+   ],
+   "corpus_paragraphs": 0,
+   "corpus_recipes": 0
+  }
+ ]
+}
