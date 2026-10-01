@@ -56,15 +56,17 @@ import sqlite3
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-BASE = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # for corpus_guard
+from corpus_guard import BASE, refuse_live                        # noqa: E402
 import snapshot_serialize                                        # noqa: E402
 # ⚠️ THE RULES COME FROM THE IMPORTER, NOT FROM A SECOND COPY HERE. This pass repairs 300 recipes
 #    that were already imported, and import_cleanup.plan_step_rows applies the same rules to the
 #    next recipe someone imports. Two copies would mean a corpus repaired to one shape and an
 #    importer producing another, with nothing to say so.
 from import_cleanup import (NOTE_SEPARATOR, SECTION, SUBHEADING,  # noqa: E402
-                            clean_notes, is_caps, move_link_out_of_label, sentence_case,
-                            split_lead_label, strip_emphasis)
+                            capitalize_first_visible, clean_notes, is_caps, label_level,
+                            move_link_out_of_label, sentence_case, split_lead_label,
+                            strip_emphasis)
 
 REPAIRS = pathlib.Path(__file__).resolve().parent.parent / "docs" / "data-repairs"
 HEADINGS_CSV = REPAIRS / "step-headings-candidates-2026-09-30.csv"
@@ -105,6 +107,28 @@ def _live_steps(c, rid):
         "ORDER BY position, id", (rid,))]
 
 
+DRIFTED = "the cook has edited this row since the review; a person decides, not this script"
+
+
+def _drifted(live_text, baseline_text):
+    """True when the cook has edited this row since the decision CSV was reviewed.
+
+    ⚠️ A PASS THAT COPIES A LIVE VALUE INTO THE BASELINE ERASES THE EDIT IT COPIED. The baseline is
+    what "your changes" is diffed against, so writing live's text into it declares that the recipe
+    was always in its edited state. There is no second copy and `snapshot_original` never
+    re-captures, so the cook's words are gone from the only place that said they were theirs.
+
+    Measured on a copy: a sentence appended to acqua-pazza step 4072 (a reviewed `yes` row) showed
+    as 1 `step modified` annotation. After the pass ran, the recipe read 0 annotations and the
+    sentence sat in the baseline as though the author had written it.
+
+    The comparison folds the same way the diff does, so a repair this script itself made on an
+    earlier run does not read as a cook's edit.
+    """
+    from units import compare_text
+    return compare_text(live_text or "") != compare_text(baseline_text or "")
+
+
 def _lift(c, log, csv_path, tag):
     """Lift an approved lead-in label out of its step and into a SUBHEADING above it.
 
@@ -141,26 +165,49 @@ def _lift(c, log, csv_path, tag):
         label, rest, moved = move_link_out_of_label(label, rest)
         if not moved and "[[" in (live["text"] or ""):
             log["skipped"].append((rid, sid, f"{tag}: link lost from label {label!r}, needs re-linking"))
+        # ⚠️ THE SAME THREE CALLS THE IMPORTER MAKES, IN THE SAME ORDER, AT THE SAME MOMENT. This made
+        #    only the first of them, so running this script ALONE left 5 steps starting lowercase and
+        #    2 headings at the wrong level, and the corpus came out right only because a THIRD script
+        #    re-read the CSVs afterwards and fixed them. That is "agrees by luck" inside the pair of
+        #    scripts whose whole claim is that one rule must not have two copies. See
+        #    import_cleanup.plan_step_rows rules 5, 6 and 7.
+        rest = capitalize_first_visible(rest)
+        level = label_level(label)
         body = _baseline(c, rid)
         steps = (body or {}).get("steps") or []
         bi = next((i for i, s in enumerate(steps) if s.get("id") == sid), None)
         if bi is None:
             log["skipped"].append((rid, sid, f"{tag}: not in the baseline"))
             continue
+        # ⚠️ THE BASELINE GETS THE SAME CUT APPLIED TO ITS OWN WORDS, never a copy of live's.
+        #    Where the cook has not touched the row the two are the same string and this is a no-op.
+        #    Where they have, lifting the label off each side keeps the edit visible AS an edit
+        #    instead of absorbing it. Where the baseline does not carry the label at all, there is
+        #    nothing to cut and a person decides.
+        base_parts = split_lead_label(steps[bi].get("text") or "", r.get("label") or "")
+        if isinstance(base_parts, str):
+            log["skipped"].append((rid, sid, f"{tag}: the baseline does not carry the label ({base_parts})"))
+            continue
+        base_label, base_rest = base_parts
+        base_label, base_rest, _ = move_link_out_of_label(base_label, base_rest)
+        base_rest = capitalize_first_visible(base_rest)
         rows = _live_steps(c, rid)
         at = next(i for i, s in enumerate(rows) if s["id"] == sid)
         cur = c.execute("INSERT INTO recipe_steps (recipe_id, position, is_heading, heading_level, "
-                        "text) VALUES (?,?,1,?,?)", (rid, -1, SUBHEADING, label))
+                        "text) VALUES (?,?,1,?,?)", (rid, -1, level, label))
         new_id = cur.lastrowid
-        rows.insert(at, {"id": new_id, "position": -1, "is_heading": 1, "text": label})
+        rows.insert(at, {"id": new_id, "position": -1, "is_heading": 1,
+                         "heading_level": level, "text": label})
         rows[at + 1]["text"] = rest
         for s in _renumber(rows):
             c.execute("UPDATE recipe_steps SET position=?, text=? WHERE id=?",
                       (s["position"], s["text"], s["id"]))
         blank = {k: None for k in snapshot_serialize.SNAPSHOT_STEP_FIELDS}
-        blank.update({"id": new_id, "is_heading": 1, "text": label, "heading_level": SUBHEADING})
+        blank.update({"id": new_id, "is_heading": 1, "text": base_label})
+        if level == SUBHEADING:
+            blank["heading_level"] = SUBHEADING      # level 1 carries no key (see 059)
         steps.insert(bi, blank)
-        steps[bi + 1]["text"] = rest
+        steps[bi + 1]["text"] = base_rest
         body["steps"] = _renumber(steps)
         _write_baseline(c, rid, body)
         log["label"].append((rid, sid, new_id, label, rest[:60]))
@@ -188,6 +235,9 @@ def run(db, apply_it):
         target = next((s for s in body.get("steps") or [] if s.get("id") == sid), None)
         if target is None:
             log["skipped"].append((rid, sid, "not in the baseline"))
+            continue
+        if _drifted(live["text"], target.get("text")):
+            log["skipped"].append((rid, sid, f"convert: {DRIFTED}"))
             continue
         # ⚠️ LEVEL 1, STATED RATHER THAN LEFT TO THE COLUMN DEFAULT. These 21 are whole steps that
         #    were already section titles ("_Cold Proof_", "**For Same Day Baking**"), so a section is
@@ -224,8 +274,14 @@ def run(db, apply_it):
         if bi is None:
             log["skipped"].append((rid, sid, "not in the baseline"))
             continue
+        if _drifted(live["text"], steps[bi].get("text")):
+            log["skipped"].append((rid, sid, f"note: {DRIFTED}"))
+            continue
         text = " ".join((live["text"] or "").split())
         old_notes = c.execute("SELECT notes FROM recipes WHERE id=?", (rid,)).fetchone()["notes"]
+        if _drifted(old_notes, ((body.get("recipe") or {}).get("notes"))):
+            log["skipped"].append((rid, sid, f"note: the recipe's notes have drifted. {DRIFTED}"))
+            continue
         new_notes = text if not (old_notes or "").strip() \
             else f"{old_notes.rstrip()}{NOTE_SEPARATOR}{text}"
         c.execute("UPDATE recipes SET notes=? WHERE id=?", (new_notes, rid))
@@ -288,15 +344,6 @@ def run(db, apply_it):
         c.rollback()
     return log
 
-
-def refuse_live(db, i_mean_live):
-    """⚠️ A CORPUS PASS NAMES ITS DATABASE AND THE LIVE ONE IS NOT A DEFAULT. Three of these four
-    scripts would write to live recipes.db from a mistyped path, with --apply and no further word.
-    The fourth (apply_plan_ahead_proposals) has carried this guard since round 3; this is the same
-    one, so all four refuse the same way and a live run is a sentence a person had to type."""
-    p = pathlib.Path(db).resolve()
-    if p.name == "recipes.db" and p.parent == BASE and not i_mean_live:
-        sys.exit("refusing to write live recipes.db without --i-mean-live")
 
 
 def main():

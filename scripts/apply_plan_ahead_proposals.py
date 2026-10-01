@@ -26,6 +26,8 @@ import sys
 
 BASE = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
+sys.path.insert(0, str(BASE / "scripts"))   # for corpus_guard
+from corpus_guard import refuse_live        # noqa: E402
 import planahead                                                      # noqa: E402
 import snapshot_serialize                                             # noqa: E402
 
@@ -173,6 +175,7 @@ def apply(db, plan, dry=False):
     off_map = sorted({r for r, _ in ALONGSIDE} - set(plan))
     if off_map:
         raise SystemExit(f"ABORT: ALONGSIDE names {off_map}, which the plan does not cover.")
+    already = []
     for rid in sorted(plan):
         if not c.execute("SELECT 1 FROM recipes WHERE id=?", (rid,)).fetchone():
             missing.append(rid)
@@ -183,6 +186,20 @@ def apply(db, plan, dry=False):
         waits = sorted(plan[rid]["waits"],
                        key=lambda w: (w.get("step_position") is None, w.get("step_position") or 0))
         storage = plan[rid]["storage"]
+        # ⚠️ THIS PASS APPLIES ONCE PER DATABASE AND REFUSES THE SECOND TIME, because the CSV names a
+        #    step POSITION and positions move. convert_step_headings inserts heading rows and
+        #    renumbers, so on a second run the same position resolves to a DIFFERENT step. Measured by
+        #    running the whole chain twice on one copy: 5 of 107 waits changed which step they point
+        #    at, two of them to NULL, including butter-chicken's marinade, which moved off "Combine the
+        #    Marinade ingredients with the chicken" onto the step above it.
+        #    The DELETE below is the other half: it removes every wait of the recipe, including the 13
+        #    that add_missed_waits wrote afterwards, which this pass never put there.
+        #    A refusal is the honest answer. Re-running is not a repair, it is a rewire.
+        existing = c.execute("SELECT count(*) FROM recipe_waits WHERE recipe_id=?", (rid,)).fetchone()[0] \
+            + c.execute("SELECT count(*) FROM recipe_storage WHERE recipe_id=?", (rid,)).fetchone()[0]
+        if existing:
+            already.append(rid)
+            continue
         c.execute("DELETE FROM recipe_waits WHERE recipe_id=?", (rid,))
         c.execute("DELETE FROM recipe_storage WHERE recipe_id=?", (rid,))
         # ⚠️ THE HEADER CORRECTION GOES IN THE SAME TRANSACTION AS ITS BASELINE PATCH BELOW, which is
@@ -248,25 +265,31 @@ def apply(db, plan, dry=False):
     else:
         c.commit()
     c.close()
+    if already:
+        wrote["REFUSED (already has waits or storage; re-running would rewire the links)"] = \
+            (len(already), already[:8])
     return wrote, missing
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("db")
-    ap.add_argument("--dry", action="store_true")
+    # ⚠️ --apply, NOT --dry. This script wrote by DEFAULT while the other three dry-ran by default,
+    #    so the same command shape had opposite effects depending on which one you typed, and the
+    #    one that wrote was the first in the chain and the widest (90 recipes).
+    ap.add_argument("--apply", action="store_true")
+    ap.add_argument("--dry", action="store_true", help="accepted and ignored; a dry run is the default")
     ap.add_argument("--i-mean-live", action="store_true")
     a = ap.parse_args()
     db = pathlib.Path(a.db).resolve()
-    if db.name == "recipes.db" and db.parent == BASE and not a.i_mean_live:
-        sys.exit("refusing to write live recipes.db without --i-mean-live")
+    refuse_live(db, a.i_mean_live)
     plan, skipped = load()
     print(f"plan: {len(plan)} recipes, "
           f"{sum(len(v['waits']) for v in plan.values())} waits, "
           f"{sum(len(v['storage']) for v in plan.values())} storage")
     print(f"  not written: {skipped}")
-    wrote, missing = apply(db, plan, dry=a.dry)
-    print(f"{'DRY RUN' if a.dry else 'WROTE'} -> {db}")
+    wrote, missing = apply(db, plan, dry=not a.apply)
+    print(f"{'WROTE' if a.apply else 'DRY RUN'} -> {db}")
     for k, v in wrote.items():
         print(f"  {k}: {v if not isinstance(v, list) else (len(v), v[:6])}")
     if missing:

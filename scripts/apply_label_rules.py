@@ -36,8 +36,10 @@ import sqlite3
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-BASE = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # for corpus_guard
+from corpus_guard import BASE, refuse_live                        # noqa: E402
 import snapshot_serialize                                        # noqa: E402
+from units import compare_text                                     # noqa: E402
 from import_cleanup import (SECTION, SUBHEADING, _ALTERNATIVE,   # noqa: E402
                             capitalize_first_visible, label_level,
                             move_link_out_of_label, split_lead_label)
@@ -87,14 +89,36 @@ def _lift_targets():
     return ids
 
 
+DRIFTED = "the cook has edited this row since the review; a person decides, not this script"
+
+
+def _drifted(live_text, baseline_text):
+    """True when the cook has edited this row since the decision CSV was reviewed.
+
+    ⚠️ COPYING A LIVE VALUE INTO THE BASELINE ERASES THE EDIT IT COPIED. The baseline is what
+    "your changes" is diffed against, so writing live's text into it declares the recipe was always
+    in its edited state, and there is no second copy to restore from. Folded the same way the diff
+    folds, so a repair this pass made on an earlier run does not read as a cook's edit.
+    """
+    return compare_text(live_text or "") != compare_text(baseline_text or "")
+
+
 def _set_text(c, body, sid, text):
-    """Write one step's text to the live row and the baseline row together."""
+    """Write one step's text to the live row and the baseline row together.
+
+    Refuses when the two have drifted apart, because the pass has no way to tell a cook's words
+    from its own and overwriting the baseline would throw the cook's away. Returns False, which
+    every caller already treats as "did not write".
+    """
+    row = c.execute("SELECT text FROM recipe_steps WHERE id=?", (sid,)).fetchone()
+    target = next((s for s in body.get("steps") or [] if s.get("id") == sid), None)
+    if row is None or target is None:
+        return False
+    if _drifted(row["text"], target.get("text")):
+        return False
     c.execute("UPDATE recipe_steps SET text=? WHERE id=?", (text, sid))
-    for s in body.get("steps") or []:
-        if s.get("id") == sid:
-            s["text"] = text
-            return True
-    return False
+    target["text"] = text
+    return True
 
 
 def _set_level(c, body, sid, level):
@@ -147,7 +171,13 @@ def run(db, apply_it):
                 log["skipped"].append((rid, sid, f"rule 5: {parts}"))
             continue
         label, rest = parts
-        if not d and not any(ch.isdigit() for ch in label.split()[0] if label.split()):
+        # ⚠️ A GENEXP EVALUATES ITS OUTERMOST ITERABLE EAGERLY, so `label.split()[0]` ran before
+        #    the `if label.split()` filter was ever consulted. The filter was dead and an empty
+        #    label raised IndexError instead of falling through. Unreachable today only because
+        #    split_lead_label refuses an empty label, which is one refactor from a crash in the
+        #    middle of a corpus pass, with --apply.
+        words = label.split()
+        if not d and not (words and any(ch.isdigit() for ch in words[0])):
             continue                                   # rule 4 is the NUMBER-led case only
         label, rest, moved = move_link_out_of_label(label, rest)
         if not moved and "[[" in (row["text"] or ""):
@@ -334,15 +364,6 @@ def run(db, apply_it):
         c.rollback()
     return log
 
-
-def refuse_live(db, i_mean_live):
-    """⚠️ A CORPUS PASS NAMES ITS DATABASE AND THE LIVE ONE IS NOT A DEFAULT. Three of these four
-    scripts would write to live recipes.db from a mistyped path, with --apply and no further word.
-    The fourth (apply_plan_ahead_proposals) has carried this guard since round 3; this is the same
-    one, so all four refuse the same way and a live run is a sentence a person had to type."""
-    p = pathlib.Path(db).resolve()
-    if p.name == "recipes.db" and p.parent == BASE and not i_mean_live:
-        sys.exit("refusing to write live recipes.db without --i-mean-live")
 
 
 def main():

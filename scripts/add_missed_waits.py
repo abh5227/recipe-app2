@@ -26,7 +26,8 @@ import sqlite3
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
-BASE = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # for corpus_guard
+from corpus_guard import BASE, refuse_live                        # noqa: E402
 import planahead                                                 # noqa: E402
 import snapshot_serialize                                        # noqa: E402
 
@@ -129,10 +130,18 @@ def run(db, apply_it):
                          (sid, rid)).fetchone()
         if step is None:
             skipped.append((rid, sid, "ext link: no such ordinary step")); continue
-        n = c.execute("UPDATE recipe_waits SET ext_step_id=? WHERE recipe_id=? AND ext_label IS NOT NULL "
-                      "AND step_id <> ?", (sid, rid, sid)).rowcount
-        if n != 1:
-            skipped.append((rid, sid, f"ext link: matched {n} waits, expected 1"))
+        # ⚠️ COUNT FIRST, THEN WRITE ONE ROW BY ID. This read UPDATE-then-check, so an unexpected
+        #    match count was REPORTED as skipped and WRITTEN anyway: a recipe with two waits that each
+        #    state an alternative got the pointer on both, and the printout said nothing was done.
+        #    `step_id IS NULL OR step_id <> ?` because NULL <> 1779 is NULL, not true, so a wait with
+        #    no step of its own was silently never eligible.
+        hits = [r["id"] for r in c.execute(
+            "SELECT id FROM recipe_waits WHERE recipe_id=? AND ext_label IS NOT NULL "
+            "AND (step_id IS NULL OR step_id <> ?)", (rid, sid))]
+        if len(hits) != 1:
+            skipped.append((rid, sid, f"ext link: matched {len(hits)} waits, expected 1. Nothing written"))
+            continue
+        c.execute("UPDATE recipe_waits SET ext_step_id=? WHERE id=?", (sid, hits[0]))
 
     for rid, ruling in sorted(TOTAL_RULINGS.items()):
         if c.execute("SELECT 1 FROM recipes WHERE id=?", (rid,)).fetchone() is None:
@@ -145,15 +154,6 @@ def run(db, apply_it):
         c.rollback()
     return added, skipped
 
-
-def refuse_live(db, i_mean_live):
-    """⚠️ A CORPUS PASS NAMES ITS DATABASE AND THE LIVE ONE IS NOT A DEFAULT. Three of these four
-    scripts would write to live recipes.db from a mistyped path, with --apply and no further word.
-    The fourth (apply_plan_ahead_proposals) has carried this guard since round 3; this is the same
-    one, so all four refuse the same way and a live run is a sentence a person had to type."""
-    p = pathlib.Path(db).resolve()
-    if p.name == "recipes.db" and p.parent == BASE and not i_mean_live:
-        sys.exit("refusing to write live recipes.db without --i-mean-live")
 
 
 def main():
