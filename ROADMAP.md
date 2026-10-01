@@ -795,47 +795,111 @@ measured on the 300-recipe corpus as it stands after Round A.
   *Depends on:* the backup-amount work above, since splitting a row and finding its backup read the
   same parenthetical and should not parse it twice.
 
-### Round A+ — the two schema hazards, first after going live · NEXT
+### Round A+ — the two schema hazards · ✅ SHIPPED 2026-10-01 (held, not yet pushed)
 
-Both came out of the pre-push review and neither is user-facing. They are here rather than in Round B
-because they are about the database surviving a deploy, and the right time to do them is immediately
-after this one lands.
+Both came out of the pre-push review and neither is user-facing. They were done immediately after
+going live, which is where they belonged: they are about the database surviving a deploy.
 
-- **Nothing keeps the SQLite schema and the Postgres schema agreeing.** `migrations/*.sql` is the
-  SQLite history and `alembic/` owns the Postgres schema, and the two are written by hand from the
-  same intention with nothing comparing them. The dual-dialect suite runs the APP against both, so it
-  catches a column that is missing outright and nothing else.
-  ⚠️ **Measured during the review: five constraints were deleted from the Postgres side one at a time
-  and the suite stayed green all five times** — an index, a CHECK, and a column default among them.
-  A missing CHECK on Postgres means the production database accepts a row SQLite refuses, and the
-  first sign of it is bad data rather than an error.
-  **The fix is a comparison, not more care.** Reflect both schemas and diff them: table by table,
-  column name, type affinity, nullability, default, plus the index and constraint names. Anything that
-  legitimately differs between the dialects goes in a named allow-list with the reason, so the diff is
-  empty by default and a new divergence has to be written down to pass.
-  *Depends on:* nothing. *Touches:* a new test beside `tests/test_pg_integration.py`.
-  *Why not sooner:* it needs the two schemas to be in step first, which they are today (verified while
-  writing this).
+- **Nothing kept the SQLite schema and the Postgres schema agreeing.** ✅ **`tests/test_schema_parity.py`
+  is the comparison.** It reflects both and diffs tables, columns, type affinity, nullability,
+  defaults, primary keys, indexes, unique constraints, CHECKs and foreign keys **with their
+  ON DELETE**, over the 54 shared tables. Everything that legitimately differs between the dialects
+  is normalized by a named rule carrying its reason, so the diff is empty by default.
+  **It is self-proving:** six drifts are reintroduced on purpose (a dropped index, a dropped unique
+  constraint, a dropped CHECK, a dropped column default, a dropped ON DELETE CASCADE and a loosened
+  NOT NULL), each is asserted to be caught, and each is restored in a `finally` that verifies the
+  restore. The review that prompted this deleted five constraints one at a time and the suite stayed
+  green all five times, so a parity test nobody has broken on purpose proves nothing.
+  ⚠️ **IT FOUND A REAL DIVERGENCE ON ITS FIRST RUN, AND IT IS FIXED.**
+  `import_flags_archive.archived_at` is TEXT NOT NULL with a server default, and the two sides
+  disagreed about what that default produces: SQLite `datetime('now')` gives
+  `2026-10-01 18:05:12`, while the Postgres mirror used `CURRENT_TIMESTAMP`, which in a text column
+  gives `2026-10-01 18:05:12.123456+00`. The baseline revision states the convention in its own
+  docstring and every other text timestamp follows it, so the mirror was simply written wrong.
+  **Nothing supplies `archived_at` explicitly**, so the default is the only thing that fills it and
+  every archived row would have carried the wrong shape. Alembic revision `d7a1c3e95b20` brings
+  Postgres to the convention. SQLite was correct and is unchanged.
+  ⚠️ **TWO REFLECTION GAPS HAD TO BE WORKED AROUND, AND BOTH MATTER.** SQLAlchemy's SQLite
+  inspector returns `options: {}` for a foreign key whose DDL says `ON DELETE CASCADE`, and reports
+  "Skipped unsupported reflection" for an expression index. Against 32 real CASCADEs in the SQLite
+  schema that first gap produced **21 false positives**, which is how a parity test gets weakened
+  until it checks nothing. Both are read from `PRAGMA foreign_key_list` and `sqlite_master` instead.
+  ⚠️ **AND THE COMPARISON IS BY MEANING, NOT BY SQL TEXT.** Postgres renders `IN (a,b)` as
+  `= ANY (ARRAY[a,b])`, `BETWEEN a AND b` as two comparisons, appends `::text` to literals, spells
+  integers in a numeric array as `1::numeric`, and reports a UNIQUE constraint twice (as a
+  constraint and as its backing index). A type is compared by affinity, and the only type pairs that
+  differ at all are `REAL` against `DOUBLE PRECISION` (4 columns) and `NUMERIC(n,m)` (3 columns).
+  *Runs:* in the CI Postgres step only, since the comparison needs both schemas present.
+  **Also built:** a fresh SQLite build from `migrations/` is compared against **live's own schema**,
+  read-only through a `mode=ro` URI under a new `live_schema` marker. They match on all 114 schema
+  objects. `ratings` differs in WHITESPACE ONLY, because live's copy was rebuilt by
+  `scripts/backfill_rescoping.py` from a single-line CREATE rather than by migration 019's formatted
+  one, which is why that comparison is structural too.
 
-- **Five more migrations rebuild a table the way 056 did.** Migration 056 was wrapped in
-  `BEGIN;`/`COMMIT;` after the review found that `migrate.py` uses `conn.executescript`, which opens
-  no transaction, so every statement auto-commits. A create-copy-**drop**-rename interrupted between
-  the drop and the rename loses the table, and `migrate.py` can never recover because its retry dies
-  on "table already exists". Replayed against the real file truncated after the DROP: unwrapped leaves
-  `recipe_waits` gone, wrapped rolls back whole.
-  **045, 048, 051, 053 and 054 have the same shape and are unwrapped.** They are applied on live, so
-  the hazard is not to this database: it is to **a fresh clone**, where `build_db.py` runs the whole
-  history, and to anyone else who ever sets this up.
-  ⚠️ **045 CANNOT SIMPLY BE WRAPPED.** It sets `PRAGMA foreign_keys=off` and back on, and a
-  `PRAGMA foreign_keys` inside a transaction is a silent no-op, so a blanket wrap would disarm the
-  very thing that makes its rebuild safe. Each one needs reading before it is touched, which is why
-  this is an item rather than a one-line change. **Do not lift the wrap into `migrate.py` as a blanket
-  rule** for the same reason.
-  *Depends on:* nothing. *Touches:* `migrations/045`, `048`, `051`, `053`, `054`, and a replay test
-  per file like the two 056 already has in `tests/test_plan_ahead_schema.py`.
+- **The older table-rebuild migrations.** ✅ **ALL FIVE WRAPPED**, each with its own `BEGIN;`/`COMMIT;`
+  and a replay test.
+  ⚠️ **THIS ENTRY NAMED THE WRONG FIVE, AND THAT IS WORTH RECORDING.** It said 045, 048, 051, 053
+  and 054. Measured: **048, 051, 053 and 054 are not table rebuilds at all.** 048 is three
+  `ADD COLUMN`s plus an index plus a plain `CREATE TABLE`, 051 and 053 are a single `ADD COLUMN`
+  each, and 054 is two `DROP COLUMN`s. None of them does create-copy-drop-rename, so the hazard this
+  entry described could not apply to them. **The five with that shape are 005, 019, 026, 041 and
+  045**, and those are the ones now wrapped, alongside 056 which already was.
+  **The measurement behind the fix**, by replaying each file truncated and killing the process with
+  `os._exit`, which is what a Ctrl-C, a laptop sleep or a power cut does: truncated after the DROP,
+  the real table is GONE and the scratch table is left behind holding the rows, and the retry dies
+  forever on "table already exists". Truncated before the `CREATE INDEX`, **the rebuild looks
+  finished and the indexes are simply missing**, with the filename recorded as applied, so nothing
+  ever re-applies it. The second shape is the dangerous one: nothing errors and nothing reports.
+  ⚠️ **045 KEEPS ITS PRAGMAS OUTSIDE ITS TRANSACTION.** A `PRAGMA foreign_keys` is a silent no-op
+  inside a transaction, measured, so the order is pragma off, `BEGIN`, rebuild, `COMMIT`, pragma on.
+  A test asserts no migration sets that pragma inside its transaction, and the wrap is deliberately
+  **not** lifted into `migrate.py` as a blanket rule for the same reason.
+  ⚠️ **045 ALSO HAD THE WORST RETRY OF THE FIVE**, because it says `CREATE TABLE IF NOT EXISTS`. Its
+  retry did not fail on the leftover scratch table the way 041 and 056 do. It silently REUSED it. A
+  failure that errors is recoverable, and that one was not announced at all.
+  **A fresh build's final schema is unchanged by the edits**, proved byte for byte: built once from
+  the five at their old content and once from the new, both schemas hash to
+  `1ea076c1a5068659c524316e7dd2d0426ceabfd25ed393608fdbecdd5bf1f8ba` over 548 schema objects.
+  **Nothing re-runs on live:** `migrate.py` selects pending work by FILENAME only
+  (`schema_migrations` is `filename TEXT PRIMARY KEY`, no checksum), all 59 names are recorded on
+  live, and the pending list against live is empty. That same property is what made editing applied
+  files safe here, and it is also why a real correction has to go in a LATER migration.
+  **The standing rule is stated over the folder**, so the next rebuild written is covered before
+  anyone remembers it.
 
+- **Still open: a saved recipe leaves the byte-equal short-circuit for good.** ⚠️ **Observed on LIVE
+  2026-10-01, harmless, and worth knowing before the number is quoted again.** `write_plan_ahead`
+  deletes every wait of a recipe and re-inserts it, so the rows come back with new AUTOINCREMENT
+  ids, and `serialize_recipe_content` puts the wait id in the snapshot. A save that changes nothing
+  therefore changes the snapshot BYTES.
+  **Measured on brioche-bread after a spot-check save:** the entire difference between its baseline
+  and its current content is `"id": 12` becoming `"id": 108` and `"id": 13` becoming `"id": 109`.
+  `diff_snapshots` compares by meaning and returns **0 entries**, so the cook sees nothing and the
+  49-over-20 annotation figure did not move. The only consequence is that the recipe drops out of
+  the byte-equal short-circuit permanently: **275 of 300 became 274 of 300.**
+  So the short-circuit count is not a fixed property of the corpus. It decays by one for every
+  recipe ever saved, and quoting 275 as a gate figure will start failing for a reason that is not a
+  defect. The data, the waits, their minutes and the marks are all unaffected.
+  *Options:* leave the id out of the snapshot (changes every stored baseline, so it wants the
+  lockstep treatment), or update waits in place by id instead of delete-and-re-insert (narrower, and
+  it also stops the id sequence climbing on every save). *Depends on:* Andy choosing.
+  *Touches:* `app.py::write_plan_ahead` or `serialize_recipe_content`, and the gate figure in this file.
 
----
+- **Still open: 25 migrations cannot be retried after a partial run.** ⚠️ **Found while measuring the
+  five, not yet fixed, and it needs Andy's call on scope.** The transaction question is wider than
+  table rebuilds. A migration with two or more non-idempotent statements and no `BEGIN` leaves a
+  partial schema with the filename unrecorded, and the retry dies on "duplicate column name",
+  "no such column" or "table already exists". Measured over all 59 files: **25 are in that state**,
+  including `001` (12 statements), `032` (18), `048`, `049`, `050`, `054` and `055`.
+  **The blast radius is a fresh clone, not this database.** Live is past all 59, and on a fresh clone
+  recovery is `rm recipes.db && python3.13 build_db.py` with no data to lose. That is why this is an
+  item and not an emergency. The real protection already landed: the folder-level test means a NEW
+  migration of the rebuild shape cannot ship unwrapped.
+  *Options:* wrap all 25 (mechanical, 25 files touched, no schema change), wrap only the ones a
+  future live database could still run, or leave them and rely on the fresh-clone recovery.
+  *Depends on:* Andy choosing. *Touches:* `migrations/`, and one more assertion in
+  `tests/test_migration_atomicity.py` if the rule is widened.
+
 
 ## Tier 2 — Near-term core experience
 

@@ -301,6 +301,22 @@ How this project is run:
   HARD LINK are all one answer. A path string says nothing about which file it opens, and a string
   comparison let three of those four through. The resolved-path half stays for the fresh-clone case,
   where live does not exist yet and there is no inode to compare.
+- **AND IT KNOWS WHICH FILE NO MATTER WHICH CHECKOUT ASKS.** `corpus_guard.live_db()` is the one
+  absolute answer: `$RECIPE_APP_LIVE_DB`, else `~/.config/chefs-choice/live-db`, else the MAIN
+  working tree found through `git rev-parse --git-common-dir`, whose parent is that tree from any
+  linked worktree. A location it cannot determine **FAILS CLOSED**: every path is treated as live, so
+  the write needs the sentence typed out.
+  ⚠️ **IT USED TO ASK ITS OWN CHECKOUT, AND THAT UNDID THE WHOLE GUARD FROM A WORKTREE.** `is_live`
+  compared against `BASE / "recipes.db"`, where BASE is the repo root of the file it was imported
+  from. From the main tree it answered correctly. **From a detached worktree it answered False for
+  the real database and `refuse_live` refused nothing** — measured 2026-10-01 from two worktrees,
+  with the real 328MB file sitting where it always was. `migrate.py` made it worse by passing
+  `base=BASE_DIR` explicitly. Three checkouts had three different ideas of what live meant, and
+  `../recipe-app-serve` is a worktree whose whole job is to run against live. `tests/conftest.py`
+  had the same bug from the other side: it installed the suite's guard on
+  `parent.parent / "recipes.db"`, so a suite run from a worktree guarded an absent file and left the
+  real one open. Both now ask `live_db()`. See `tests/test_live_location.py`, which proves it from a
+  throwaway repo's linked worktree rather than from this one's `.git`.
 - **THE TEST SUITE CANNOT OPEN THE LIVE DATABASE.** `tests/dbguard.py` patches `sqlite3.connect` at
   conftest import, so raw connections, SQLAlchemy and `app.orm_session()` are all covered by one
   patch. *Why:* `make_kitchen` redirects `app.DB` / `build_db.DB` / `migrate.DB`, and a test that
@@ -399,6 +415,42 @@ How this project is run:
   repo. **After any push you want live to run, rebuild the pinned worktree at the new SHA; do not
   point :8000 at the working tree "just this once."**
 
+- **A TABLE REBUILD IS ONE TRANSACTION, AND THE WRAP IS PER FILE.** `migrate.py` applies each
+  migration with `conn.executescript`, which opens NO transaction, so every statement auto-commits
+  on its own. A create-copy-**drop**-rename interrupted in the middle is committed half done.
+  Measured by replaying each file truncated and killing the process with `os._exit`: truncated after
+  the DROP the table is GONE and the scratch table is left behind, and the retry dies forever on
+  "table already exists". Truncated before the `CREATE INDEX`, the rebuild **looks finished and the
+  indexes are simply missing**, with the filename recorded, so the drift is permanent and silent.
+  The second shape is the dangerous one. `005`, `019`, `026`, `041`, `045` and `056` all carry their
+  own `BEGIN;`/`COMMIT;` now, and `tests/test_migration_atomicity.py` states the rule over the
+  FOLDER so the next rebuild written is covered before anyone remembers it.
+  ⚠️ **DO NOT LIFT THE WRAP INTO `migrate.py` AS A BLANKET RULE.** A `PRAGMA foreign_keys` is a
+  silent NO-OP inside a transaction, measured, and `045` sets it off for its rebuild and back on
+  after. A central wrap would disarm exactly the thing that makes that file safe. `045` keeps its
+  pragmas OUTSIDE its `BEGIN`, in that order, and a test asserts no migration sets that pragma
+  inside a transaction.
+  ⚠️ **`migrate.py` TRACKS BY FILENAME ONLY**, not by checksum (`schema_migrations` is
+  `filename TEXT PRIMARY KEY`). Editing an applied migration therefore neither re-runs it nor is
+  rejected, which is what made wrapping these five safe on a database already past them. It also
+  means nothing detects an edit that diverges from what was actually run, so a correction goes in a
+  LATER migration and an edit is only for something that cannot change the result, such as adding a
+  transaction around statements that already ran as a unit.
+- **NOTHING KEEPS THE TWO SCHEMAS AGREEING EXCEPT A COMPARISON.** `migrations/*.sql` is the SQLite
+  history and `alembic/` owns Postgres, written by hand from the same intention.
+  `tests/test_schema_parity.py` reflects both and diffs tables, columns, type affinity, nullability,
+  defaults, primary keys, indexes, unique constraints, CHECKs and foreign keys WITH their ON DELETE,
+  and it reintroduces six drifts on purpose to prove the comparison catches each one.
+  ⚠️ **SQLITE'S `ON DELETE` AND ITS EXPRESSION INDEXES DO NOT COME FROM SQLALCHEMY REFLECTION.**
+  `Inspector.get_foreign_keys` returns `options: {}` for SQLite even where the DDL says
+  `ON DELETE CASCADE`, and expression indexes come back as "Skipped unsupported reflection". Against
+  32 real CASCADEs that gap produced 21 false positives, and a false positive in a parity test gets
+  silenced rather than fixed. Both are read from `PRAGMA foreign_key_list` and `sqlite_master`.
+  ⚠️ **AND IT IS COMPARED BY MEANING, NOT BY SQL TEXT.** Postgres renders `IN (a,b)` as
+  `= ANY (ARRAY[a,b])`, `BETWEEN` as two comparisons, appends `::text` to literals, and reports a
+  UNIQUE constraint twice (as a constraint and as its backing index). Each is normalized by a named
+  rule with its reason. A type is compared by AFFINITY and an unknown type name is compared
+  literally, so introducing one has to be deliberate.
 - **A MIGRATION'S ORDER AGAINST THE DEPLOY FOLLOWS ITS DIRECTION. Additive goes BEFORE the deploy,
   destructive goes AFTER.** The question is which of the two versions names something the other side
   does not have. Migration 053 ADDED `recipe_waits.step_id` and the new code selects it, so deploying
