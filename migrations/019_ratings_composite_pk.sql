@@ -12,6 +12,26 @@
 -- the same rebuild), which stamps THIS migration as applied there so build_db doesn't rebuild twice.
 -- The Alembic revision mirrors this for Postgres (an in-place DROP/SET NOT NULL/ADD PRIMARY KEY).
 
+-- ⚠️ THIS FILE IS A TABLE REBUILD AND IT HAS TO BE ONE TRANSACTION. migrate.py runs each file
+-- through sqlite3's executescript, which opens no transaction, so without the BEGIN below every
+-- statement here auto-commits on its own and a run interrupted part way leaves the schema half
+-- rebuilt. SQLite DDL is transactional, which is what makes the one-word fix work. The same
+-- reasoning, and the measurement behind it, is written out at length in 056_wait_alongside.sql.
+--
+-- Measured by replaying this file truncated one statement after the DROP and closing the connection, which is what a
+-- Ctrl-C, a laptop sleep or a crash does:
+--
+--   no transaction : ratings is GONE and ratings_new is left behind. Every rating read and the
+--                    cook-gated star control 500s, the filename was never recorded, and the retry
+--                    dies forever on "table ratings_new already exists".
+--   this BEGIN     : the rebuild rolls back whole, ratings keeps its rows and its original
+--                    rated_on timestamps, and re-running migrate.py applies it cleanly.
+--
+-- ⚠️ Do NOT lift this into migrate.py as a blanket wrap. A PRAGMA foreign_keys is a NO-OP inside a
+-- transaction, and 045 sets it off and back on, so wrapping every file centrally would silently
+-- disarm that one. Each rebuild carries its own BEGIN, and 045 keeps its pragmas OUTSIDE it.
+BEGIN;
+
 CREATE TABLE ratings_new (
     recipe_id TEXT    NOT NULL REFERENCES recipes(id) ON DELETE CASCADE,
     user_id   INTEGER NOT NULL REFERENCES users(id),
@@ -23,3 +43,5 @@ INSERT INTO ratings_new (recipe_id, user_id, rating, rated_on)
     SELECT recipe_id, user_id, rating, rated_on FROM ratings;
 DROP TABLE ratings;
 ALTER TABLE ratings_new RENAME TO ratings;
+
+COMMIT;

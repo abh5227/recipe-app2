@@ -35,6 +35,27 @@
 --    row can fail it. A count assertion runs in the dry-run rather than here, because a
 --    migration that raises leaves a half-built schema.
 
+-- ⚠️ THIS FILE IS A TABLE REBUILD AND IT HAS TO BE ONE TRANSACTION. migrate.py runs each file
+-- through sqlite3's executescript, which opens no transaction, so without the BEGIN below every
+-- statement here auto-commits on its own and a run interrupted part way leaves the schema half
+-- rebuilt. SQLite DDL is transactional, which is what makes the one-word fix work. The same
+-- reasoning, and the measurement behind it, is written out at length in 056_wait_alongside.sql.
+--
+-- Measured by replaying this file truncated one statement after the DROP and closing the connection, which is what a
+-- Ctrl-C, a laptop sleep or a crash does:
+--
+--   no transaction : library_relations is GONE and relations_rebuild_041 is left behind holding
+--                    every row. The catalog's parent and child reads 500s, the filename was never
+--                    recorded, and the retry dies on "table relations_rebuild_041 already exists".
+--                    Truncated before the CREATE INDEXes instead, idx_lr_parent and idx_lr_child
+--                    are silently gone with the file recorded as applied.
+--   this BEGIN     : the rebuild, the rename and both indexes land together or not at all.
+--
+-- ⚠️ Do NOT lift this into migrate.py as a blanket wrap. A PRAGMA foreign_keys is a NO-OP inside a
+-- transaction, and 045 sets it off and back on, so wrapping every file centrally would silently
+-- disarm that one. Each rebuild carries its own BEGIN, and 045 keeps its pragmas OUTSIDE it.
+BEGIN;
+
 CREATE TABLE relations_rebuild_041 (
   child_id          TEXT NOT NULL,        -- library_names.library_id. NOT an FK, per 030.
   parent_id         TEXT NOT NULL,        -- a library_id, or a library_categories.category_id
@@ -59,3 +80,5 @@ ALTER TABLE relations_rebuild_041 RENAME TO library_relations;
 
 CREATE INDEX idx_lr_parent ON library_relations(parent_id, kind);
 CREATE INDEX idx_lr_child  ON library_relations(child_id);
+
+COMMIT;

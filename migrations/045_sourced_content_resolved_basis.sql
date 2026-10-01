@@ -16,7 +16,29 @@
 --
 -- SQLite cannot alter a CHECK, so the table is rebuilt. Every column and every row is carried
 -- across unchanged, and the index is recreated.
+-- ⚠️ THIS FILE IS A TABLE REBUILD AND IT HAS TO BE ONE TRANSACTION, AND ITS PRAGMAS HAVE TO STAY
+-- OUTSIDE THAT TRANSACTION. migrate.py runs each file through sqlite3's executescript, which opens
+-- no transaction, so without the BEGIN below every statement auto-commits on its own. A PRAGMA
+-- foreign_keys is a NO-OP inside a transaction, measured, so moving the pragma in would silently
+-- run this rebuild with foreign keys ON and change what the file does. Hence the order: pragma off,
+-- BEGIN, rebuild, COMMIT, pragma on. 056_wait_alongside.sql writes out the reasoning at length.
+--
+-- Measured by replaying this file truncated one statement after the DROP and closing the
+-- connection, which is what a Ctrl-C, a laptop sleep or a crash does:
+--
+--   no transaction : library_sourced_content is GONE and lsc_rebuild_045 is left behind holding
+--                    every row. ⚠️ AND THE RETRY IS WORSE HERE THAN ANYWHERE ELSE, because this
+--                    file says CREATE TABLE IF NOT EXISTS. The retry does not fail on the leftover
+--                    scratch table the way 041 and 056 do. It silently REUSES it, copies from a
+--                    library_sourced_content that no longer exists or has been rebuilt, and lands a
+--                    schema that looks right. A failure that errors is recoverable. This one is not
+--                    announced at all.
+--   this BEGIN     : the rebuild, the rename and the index land together or not at all, the
+--                    scratch table never outlives the statement that made it, and re-running
+--                    migrate.py applies the file cleanly.
 PRAGMA foreign_keys=off;
+
+BEGIN;
 
 CREATE TABLE IF NOT EXISTS lsc_rebuild_045 (
     library_id          TEXT PRIMARY KEY,   -- library_names.library_id. NOT an FK, per 030.
@@ -46,5 +68,7 @@ INSERT INTO lsc_rebuild_045
 DROP TABLE library_sourced_content;
 ALTER TABLE lsc_rebuild_045 RENAME TO library_sourced_content;
 CREATE INDEX IF NOT EXISTS idx_lsc_basis ON library_sourced_content(match_basis);
+
+COMMIT;
 
 PRAGMA foreign_keys=on;
