@@ -744,6 +744,22 @@ measured on the 300-recipe corpus as it stands after Round A.
   before the estimate, because an estimate off an unreadable time is an estimate of nothing. The
   survey of which recipes need an estimate at all is
   `docs/data-repairs/cook-time-estimate-2026-09-30.csv`, 197 rows.
+
+  ⚠️ **AND IT IS LIVE AFTER ALL, ON ONE ROW, FOUND BY SAVING A REAL RECIPE.** The sentence above says
+  this is latent because no corpus time is a mixed number. The mixed number is not the only thing
+  `read_duration` gets wrong. brioche-bread's extension reads *"or an hour of fridge rest if you skip
+  the overnight proof"*, whose duration is **one hour**, and `read_duration` returns **480 minutes**
+  because the word *overnight* is in the sentence. The reviewed value stored on the row is 60.
+  **Measured over all 107 stored waits: 0 labels and exactly 1 extension re-read differently from
+  what is stored.** The consequence is in the save path, which re-derives the minutes from the label
+  on every save: saving brioche-bread rewrites that extension from one hour to eight.
+  It also produces a **second, separate defect worth its own line**: the diff then reports
+  `{kind: "wait", type: "modified"}` whose `from` and `to` are the SAME words, because the printed
+  label does not include the minutes. A mark that says nothing changed is worse than no mark.
+  Both are reachable only by saving that recipe, and live has 0 waits until the Round A chain runs.
+  *Add to this item:* the one shared number reader has to read "an hour" out of that sentence and
+  decline rather than reach for a word elsewhere in it, and the diff needs a guard that drops a
+  `modified` entry whose rendered text is unchanged.
   *Depends on:* nothing. *Touches:* `planahead.py`, and `static/scaler.js` only if the client ever
   reads a time (it does not today).
 
