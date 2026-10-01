@@ -528,7 +528,14 @@ kinds** so edit mode is consistent by construction:
   wires the Polaroid "+ add a photo" to a real upload). A raw `images/slug.jpg` field is the exact
   form-y stopgap we're eliminating; the existing image **round-trips untouched** from the draft on
   save, so nothing is lost.
-- **Note** renders at the **bottom** (after the steps), matching the reading "Note. …" block.
+- **Note** renders at the **bottom** (after the steps).
+  ⚠️ **UPDATED 2026-10-01. The "Note. …" block is gone and it was a renderer artifact, not data.**
+  The reading view hardcoded `<strong>Note.</strong>` in front of the whole notes blob, so a recipe
+  whose author had written "Note:" rendered "Note. Note: ...". Searching the stored text for a stray
+  label found nothing, which is why it survived. Notes now group under the kind their own label names
+  (Notes, Tips, Storage, Variations, Serving) with the label stripped from the paragraph, and a label
+  no kind list holds keeps its text whole under Notes. The kind table is `static/note-kinds.json`,
+  read by the client through Vite and by `import_cleanup` at import, so there is one list and not two.
 - **Ingredient notes vs. the recipe note.** The recipe-level **note** (headnote) is this Stage-1
   `.ie-prose` field at the bottom. A **per-ingredient note** is separate: in edit mode it's the
   collapsed sticky-note icon / below-row field; in **reading** mode notes now render as a **distinct

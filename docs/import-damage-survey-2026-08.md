@@ -245,7 +245,7 @@ silent                    earl-grey-tea-cake#1    '1 cup/240 milliliters (120mL,
 **That 79% is an INGREDIENT figure. Steps are 100% unflagged by construction:** `_line_flag_rows` is
 only ever called from `_ingredient_rows`
 ([import_write.py:146-148](../import_write.py#L146-L148)), so `import_flags.position` indexes
-ingredient positions only — **no step-level flag mechanism exists.** All 75 numbered-prefix steps
+ingredient positions only. ~~**No step-level flag mechanism exists.**~~ **⚠️ UPDATED 2026-10-01: it exists now.** `import_flags.position` carries a line index for an ingredient-line flag and a step index for a step-structure flag, and `STEP_STRUCTURE_FLAGS` is what tells the two apart. Both reporters filter on it, which is the fix: before that they each read "position is not None" as "an ingredient line", so a step flag marked an unrelated ingredient. At the time of this survey, all 75 numbered-prefix steps
 and all 5 underscore-wrapped steps were unflaggable, not merely unflagged.
 
 ## 4. What a cleanup edit actually costs

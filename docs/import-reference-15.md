@@ -8,6 +8,15 @@ these proportions to spot anything that behaves differently than it did on the 1
 This is documentation, not recipe data — `recipes.db` is git-ignored; this file just records the
 verified state so it can be diffed against later.
 
+⚠️ **It records what the IMPORTER PRODUCED, and the corpus has moved since. Read it as dated.**
+Round A restructured the step rows of all 300 recipes after import. Steps went from 2,367 to 2,466,
+headings from 240 to 243 and now split into 137 sections and 106 subheadings, and 7 `Note:` and
+`Tip:` steps moved into the recipes' notes. Diffing today's rows against the figures below would read those repairs as
+a change in the importer, which they are not. **What the importer does today is also different, and
+deliberately so**: `import_cleanup.plan_step_rows` applies the same rules on the way in, so a recipe
+imported now arrives in the shape the 300 were repaired to. To compare like with like, run the
+seed-527700 dry run and read its plan rather than reading the database.
+
 ## Reproduce the selection
 
 ```

@@ -308,6 +308,12 @@ Nothing is ever dropped. Lines the core couldn't confidently structure are still
 (`multiplier`, `each_multi`, `ambiguous_section`, `grams_declined`) carry the line's `position`;
 recipe-level incompletes (`no_ingredients`, `no_directions`, `photo_only`) use a NULL position.
 It's kept out of the rendering tables, so one `SELECT` is the whole queue.
+⚠️ **`position` NOW MEANS TWO THINGS ON ONE COLUMN, and `STEP_STRUCTURE_FLAGS` is what tells them
+apart.** A step-structure flag (added 2026-10-01: alternatives that could not be demoted, a label
+whose link could not move, a heading a rule declined) carries a **step** index where an
+ingredient-line flag carries a **line** index. Every reader must filter on the flag name, not on
+"position is not None". Both reporters read it that way at first, so a step flag marked an
+unrelated ingredient and the Postgres suite passed straight through it.
 
 **Validated by a dry-run** (`python3 import_write.py [--seed N]`) on a random 15 recipes with
 distinct authors: it prints the full plan for each — field values, minted slug, dedup decision,
@@ -370,6 +376,35 @@ extracted to a pure module — the `ingredient-row.js` / `step-row.js` / `scaler
 Consequence worth stating plainly: **the index-rebinding behaviour has NO automated coverage.** It is
 verified by manual click-through — delete a middle step, type into several survivors, save, reopen,
 and confirm each edit landed on the step you typed into.
+
+### Added 2026-10-01: three more contracts, each learned the same way
+
+**STEP TEXT IS COMPARED THROUGH `units.compare_text`, WHICH FOLDS CASE AND PUNCTUATION, EXCEPT
+INSIDE A NUMBER.** A corpus repair that only recases a word, or that turns a straight quote into a
+curly one, must not mint a mark, so the comparison lowercases and drops punctuation that separates
+words. ⚠️ **Punctuation BETWEEN TWO DIGITS is kept**: a decimal point, a fraction slash, a range dash
+and a degree sign all survive, so `350°F` is not `350F`, `1.5` is not `15`, and `simmer for 4 6
+minutes` is not `simmer for 4-6 minutes`. A comma between digits is dropped, so `1,000` is `1000`.
+An apostrophe is deleted rather than spaced, because it never separates words (`don't` is `dont`).
+A hyphen is spaced, because it does (`skin-on` is `skin on`, a real corpus pair).
+**This is the TEXT path only.** Ingredient amounts keep strict comparison through `compare_key`
+(`canon_unit_str(normalize_fractions(s))`) and must not be moved onto `compare_text`. That is the
+"widening the compared field set" failure in reverse, and it would make a real amount edit vanish.
+Measured before it shipped: 0 of the 49 real annotation entries disappear under the folding.
+
+**`heading_level` IS EMITTED INTO THE SNAPSHOT ONLY WHEN IT IS 2.** Level 1 and "no key" are the same
+bytes on purpose (`snapshot_serialize.snapshot_step_row`). That is what let migration 059 add the
+column to all 300 recipes without a single baseline changing, and it is why changing a heading from a
+section to a subheading and back leaves no trace. **Do not "tidy" this into always emitting the key**:
+every one of the 300 baselines would change in the same commit, and the byte-equal short-circuit in
+`_recipe_annotations` (275 of 300 today) would end for all of them at once.
+
+**A CORPUS PASS WRITES THE LIVE ROW AND THE BASELINE IN ONE TRANSACTION (lockstep).** "Your changes"
+is `diff(reason='original', current)`, so a pass that rewrites a row without rewriting the baseline is
+indistinguishable from the cook having hand-edited it. The four passes in `scripts/` all do this, and
+the baseline is **patched surgically, never rebuilt**. 16 of 300 have drifted on purpose and a
+rebuild would declare each recipe born in its edited state. `docs/data-repairs/README.md` has the
+order the passes run in and why they are not independent.
 
 ---
 

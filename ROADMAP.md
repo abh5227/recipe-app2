@@ -268,6 +268,10 @@ writes a scraped average into `recipes.rating` has misread this note.
   entries (e.g. a photo-journal salmon folder with no text). Incompletes — no-directions
   (26 found), no-ingredients (3), or photo-only — are FLAGGED for review, never dropped:
   "empty" can be intentional and the parser can't tell intentional from junk.
+  ✅ **CLOSED 2026-10-01, and the parser was right not to guess.** Andy's ruling: those recipes were
+  never filled in in Paprika either, so there is nothing to recover and nothing to do. The counts
+  still stand in live (26 recipes with no steps, 3 with no ingredients) and they are correct, not
+  damage. **This is not a backlog item.**
 - **Data tiering.** Imported RECIPES → app-tier (mine, live in the DB, not rebuilt). Imported
   INGREDIENTS → seed-tier SHARED library (ships to others), so the field guide grows into a
   built-in knowledge base others benefit from on import.
@@ -418,8 +422,11 @@ writes a scraped average into `recipes.rating` has misread this note.
     `'З.'` doesn't match `^\d+\.`, so a naive strip leaves the row with a bogus number. Also the one
     class the scripted survey missed outright: it checked for mojibake and entities, not for characters
     that render correctly as the wrong codepoint.
-  - **a step-level flag mechanism — none exists.** `_line_flag_rows` is only called from
-    `_ingredient_rows`, so `import_flags.position` indexes ingredients only.
+  - ~~**a step-level flag mechanism, none exists.**~~ ✅ **BUILT.** `import_flags.position` now
+    carries two meanings on one nullable column: a line index for an ingredient-line flag and a step
+    index for a step-structure flag. `STEP_STRUCTURE_FLAGS` names the second kind and **both**
+    reporters filter on it, which is the whole of the fix: before that, both read "position is not
+    None" as "an ingredient line", so a step flag marked an unrelated ingredient.
   - **surfacing the queue at all.** 593 flags across 209 recipes (69.7%) are written at import and read
     by nothing but a one-off backfill script — no route, no page (`import_flags` appears in `app.py`
     only inside a comment). Ties into the review-UI idea already recorded under Known limitations.
@@ -451,12 +458,20 @@ half of the fix lands silently, which is the desired outcome.
 
 - **E — door only (safe, unblocked).** Apply every detector to *future* imports. Changes no existing
   row, so it generates no annotations and needs no ruling.
-- **E′ — backfill the 25 (needs a decision).** Correcting existing recipes requires **re-baselining**:
-  rewriting `reason='original'` in the same transaction, which declares *"the corrected structure is
-  what this recipe always was."* Defensible for import artifacts the cook never typed — but it discards
-  any genuine divergence it overwrites. **6 recipes are ALREADY divergent from their baseline and must
-  be inspected individually first**, since a blanket rewrite would silently swallow real edits.
-  **Status: UNDECIDED — pending a ruling. Not a plan.**
+- **E′ — backfill existing recipes.** ✅ **RULED AND DONE, and the worry in the paragraph below is
+  what the answer was built around.** Correcting existing recipes requires rewriting `reason='original'`
+  in the same transaction, which declares *"the corrected structure is what this recipe always was."*
+  The objection was that a blanket rewrite discards genuine divergence.
+  **The answer is that the baseline is patched SURGICALLY and never rebuilt.** The stored blob is
+  parsed, the specific rows the pass touched are changed, and it is re-dumped with the same JSON
+  options. Everything else stays byte-identical, so a recipe that has drifted on purpose keeps its
+  drift. Rebuilding from current content would have declared every recipe born in its edited state
+  and erased exactly the annotations the layer exists to show.
+  **Measured over the whole corpus:** 300 recipes restructured, **2,367 steps to 2,466**, 240 to 243
+  headings, 0 to 107 waits, and the **49 real annotation entries over 20 recipes did not move**. 275
+  of 300 recipes stayed byte-equal to their baseline, with the set identical before and after. 16
+  recipes have drifted on purpose and all 16 kept their drift.
+  The mechanism is called **lockstep** and it is now a standing rule in CLAUDE.md.
 
 ### Recipe annotations + editor parity (O-c) · IN PROGRESS
 
@@ -530,7 +545,7 @@ same rows, or the same CSS, twice.
 | **B** | per-row insert (add above/below) | Rides inside A's menu; no new seams |
 | **C** | drag-reorder (both lists) | Unblocked by D; geometry already settled by A |
 | **E** | importer hardening — **door only** | Orthogonal to A–C; safe because it only changes *future* imports |
-| **E′** | the 25-recipe backfill | Needs a ruling on re-baselining (see P15) — **not** a plan yet |
+| **E′** | the corpus backfill | ✅ **DONE.** Lockstep: the live row and the baseline are patched in one transaction, so a machine repair makes no mark (see P15) |
 
 **Hard dependencies** (cannot be reordered):
 
@@ -647,6 +662,123 @@ direction — palette, type, the R1/R2 boundary, the punch-list — in
 - **App rename pending:** "Seasonal Kitchen" → **"Chef's Choice"** across UI + docs (decided; not
   yet applied — see design-decisions.md).
 
+### Round A — the method column, plan-ahead and the diff rules · ✅ SHIPPED (held, not yet pushed)
+
+Six things landed together because they share the same rows. All of it is built, tested and applied
+to a copy of the 300-recipe corpus. The numbers below are measured, not estimated.
+
+- **Plan ahead — itemized waits and storage.** ✅ `recipe_waits` holds **107** rows over 90 recipes
+  (rising 26, chilling 26, marinating 22, soaking 15, resting 14, freezing 2, brining 2) and
+  `recipe_storage` holds **30**. A wait points at the step that describes it by **row id**, not by
+  position, so a save that rewrites a step in place keeps the pointer. Migrations 053 to 057 carry
+  the columns, including a wait that happens **alongside** another one and an alternative that points
+  at **its own step**. This is the itemized half of **9b**, built from the recipes' own sentences
+  rather than from new fields a person has to fill in.
+- **Totals.** ✅ A computed total that is a range or open-ended shows the **shortest time and a plus**
+  (butter chicken `3 hr 35 min+`, miso tofu `40 min+`, brioche `10 hr 30 min+`). The Plan ahead line
+  keeps full ranges, and a publisher's stated total is never rewritten. Migration 058 adds
+  `recipes.total_includes_waits`, three states on one nullable column, for the recipe whose stated
+  total already covers its waiting. A shared fixture (`tests/fixtures/total-cases.json`) keeps the
+  client and the server reading the same cases.
+- **Step headings are a section or a subheading.** ✅ Migration 059 adds `heading_level`. A **section**
+  takes the ingredient column's label treatment and the two columns read one size token. A
+  **subheading** is a label lifted off one step, bold and smaller. 243 headings today, **137 sections
+  and 106 subheadings**. The level is emitted into the snapshot only when it is 2, so "level 1" and
+  "no key" are the same bytes and **all 300 baselines stayed byte-identical the day it shipped**.
+- **The step row menu converts a step to a heading and back.** ✅ The row keeps its id, so a wait
+  link, an annotation anchor and a margin mark all survive the round trip. A wait link on a converted
+  step stays **stored** and is never **rendered** pointing at a heading. Proven end to end through the
+  real UI against a copy: a save produced **0 new marks** and the row kept its id.
+- **Notes group under the kind their own label names.** ✅ Notes, Tips, Storage, Variations, Serving,
+  with the label stripped from the paragraph. A label no kind list holds keeps its text whole under
+  Notes, which is 17 of them. One table (`static/note-kinds.json`) is read by the client through Vite
+  and by the importer in Python. The hardcoded `<strong>Note.</strong>` the renderer printed in front
+  of every note is gone, which is what made a recipe whose author wrote "Note:" read "Note. Note:".
+- **"Your changes" ignores capitalization and punctuation.** ✅ `units.compare_text` folds case and
+  punctuation so a repair that only recases a word mints no mark. ⚠️ **Punctuation INSIDE a number
+  always counts**: decimal points, fraction slashes, range dashes and degree signs, so `350°F` is not
+  `350F` and `4 6 minutes` is not `4-6 minutes`. Ingredient **amounts** keep strict comparison through
+  `compare_key` and are untouched. Measured before it shipped: **0 of the 49 real annotation entries
+  disappear** under the new rule.
+- **The importer applies the same rules.** ✅ `import_cleanup.plan_step_rows` is the rule set and the
+  two corpus passes import it. Eight rules: emphasis-wrapped steps become headings, lead-in labels
+  (colon and dash) are lifted, number-led labels like `30 min cool:` are labels while amounts like
+  `1 cup:` are not, a link inside a lifted label moves into the step, the step after a lift starts
+  with a capital, `To make` / `For the` / `For ` / `If ` name a section, sibling alternatives under a
+  section become subheadings, and `Note:` / `Tip:` steps move to the recipe's notes.
+
+### Round B — the ingredient line and the clock · NEXT
+
+Three items, all about numbers the import left in a shape the app cannot read. Every figure below is
+measured on the 300-recipe corpus as it stands after Round A.
+
+- **Estimated cook times, and the parser fix they need first.** The two time readers disagree on a
+  mixed number and one of them is wrong rather than undecided.
+
+  | input | `clock_minutes` (prep and cook columns) | `read_duration` (wait boxes) | correct |
+  |---|---|---|---|
+  | `1.5 hours` | 90 | 90 | 90 |
+  | `1 1/2 hours` | **none** | **120** | 90 |
+  | `2 1/4 hours` | **none** | **240** | 135 |
+  | `1½ hours` | **none** | **none** | 90 |
+
+  ⚠️ **`read_duration` READS THE DENOMINATOR AS THE WHOLE NUMBER.** `_TIME_SEG_RE` is
+  `(?P<lo>\d+(?:\.\d+)?)...(?P<unit>[A-Za-z]+)` and `.search` takes the LAST number before the unit
+  word, so `1 1/2 hours` matches `lo='2'` and reads two hours, and `2 1/4 hours` reads four. It is not
+  a near miss and it is not a decline. A wait of four hours where the recipe said two and a quarter is
+  the kind of error a reader plans a day around.
+  **Declining is the pipeline's own principle and `read_duration` is breaking it**, so the fix is one
+  shared number reader that both call, handling a decimal, an ASCII mixed number and a unicode
+  fraction, and declining on anything else.
+  ⚠️ **THAT READER ALREADY EXISTS THREE TIMES AND THE TIME PATHS CALL NONE OF THEM.**
+  `weights.py::_to_number` and `stepscale.py::_to_value` are **the same nine lines under two names**,
+  verified line for line and agreeing on every input tried, including which exception they raise. They
+  agree by copy-paste, not by construction, and no test holds them together. `static/scaler.js` has a
+  third in JavaScript. `units.normalize_fractions`
+  turns `1½` into `1 1/2` and stops there. **Collapse the two Python copies into `units` and have both
+  time readers call it**, which is the same "one rule, every caller" move the heading rules needed and
+  the same class of defect that put `Wilt the [[spinach]]` on a heading. The JS copy stays a
+  deliberate mirror, so it needs a sync test the way `tests/js/factor-sync.test.js` covers the
+  conversion factors but not this. ⚠️ **It is latent, not live: 0 recipes in the corpus carry
+  a mixed-number time today**, so this bites the next import rather than the 300. Build the parser
+  before the estimate, because an estimate off an unreadable time is an estimate of nothing. The
+  survey of which recipes need an estimate at all is
+  `docs/data-repairs/cook-time-estimate-2026-09-30.csv`, 197 rows.
+  *Depends on:* nothing. *Touches:* `planahead.py`, and `static/scaler.js` only if the client ever
+  reads a time (it does not today).
+
+- **Backup amounts, stacked under the primary.** A publisher often gives the same amount twice, once
+  in the unit they wrote in and once in the one the reader has. Today the second one sits inside the
+  name as a parenthetical and the ledger has nowhere to put it.
+  **Measured: 311 parentheticals hold one number and unit, and 38 hold TWO OR MORE.** The shape Andy
+  named, `8 ounces (about 1½ cups/227 grams)` on chocolate-chunk-oatmeal-cookie-bars, is one of the
+  38. Also in that set: `1 cup (6 ounces/170 grams)`, `1 stick (8 tablespoons/113 grams)`,
+  `4 x 150g / 5oz`. 299 of 3,572 rows already carry a harvested `grams` value, which is the one
+  backup the importer takes today.
+  **The display is the hard half and it is why this is its own item.** The amount column is 7rem and a
+  row with two backups has three figures to show. The sub-line under the amount already exists for the
+  gram estimate, so the shape is a stack rather than a new column, and a line with two backups stacks
+  two. *Schema:* backups belong in their own rows or a small table, not in a second string column,
+  because "two backups" is a list.
+  *Depends on:* nothing. *Feeds:* 1c (weights), and the scaler, which must scale every figure or none.
+
+- **The merged and split ingredient row sweep.** One logical ingredient arriving as the wrong number
+  of rows, in both directions. Four shapes, each small and each needing its own rule:
+  - **17 rows name two amounts of one thing**, like `3 ¼ cups plus 1 tablespoon` and
+    `½ cup plus 2 tablespoons`. The scaler scales the first and leaves the second, so a doubled recipe
+    reads wrong.
+  - **7 rows use a pack count**, `2 x 14 oz./400g cans of chickpeas`. The quantity is 2, the unit is a
+    can, and the can is 14 ounces, which is three facts in one string.
+  - **4 rows repeat a word immediately**: `toasted toasted sesame oil`, `sliced sliced 1cm thick`.
+  - **1 row duplicates a measure inside one parenthetical**: earl-grey-tea-cake's `(120mL, 120mL)`.
+
+  **Fix by rule, so each shape gets a rule in `import_cleanup` and a corpus pass that shares it**, and
+  anything a rule cannot split is flagged rather than guessed. A wrongly split row is worse than an
+  unsplit one, because it invents an ingredient. The survey is
+  `docs/data-repairs/ingredient-parentheticals-2026-09-30.csv`, 332 rows.
+  *Depends on:* the backup-amount work above, since splitting a row and finding its backup read the
+  same parenthetical and should not parse it twice.
+
 ---
 
 ## Tier 2 — Near-term core experience
@@ -702,6 +834,11 @@ Builds on Phases 8–9.
   Today a note is one text blob on the recipe, so a note that belongs to one step has nowhere to
   say so. 7 Note and Tip steps were just moved out of the method into that blob, which put them
   where a reader looks for them and lost which step each one was about.
+  ⚠️ **Round A shipped the DISPLAY half and not the schema half, and the difference is the point.**
+  Notes now group under the kind their own label names (Notes, Tips, Storage, Variations, Serving)
+  with the label stripped, read off `static/note-kinds.json` by the client and by the importer. That
+  is one blob parsed at render time. It gives a reader the grouping without giving a note anywhere to
+  record **which step it is about**, which is the whole of this item and needs the table.
   Three parts, each small on its own: a **note marker on the step** (hover on desktop, tap on
   phone), a **"(step N)" link in Notes** pointing back, and rows to hang both on.
   *Start with the three the corpus already names:* the bagel's yeast note belongs to the yeast

@@ -47,3 +47,46 @@ did before.
 
 **Run the whole chain against a copy and diff the result before running it against live.** A pass
 applied on its own, to a corpus already part way through, agrees with the chain by luck.
+
+# The index: what each file is, and whether it is committed
+
+Two kinds of file live here and the difference is whether code opens it.
+
+**A recorded decision is an input to a pass, and it is committed.** A pass that cannot be re-run
+from a fresh clone is a hand edit with more steps. Five of these were untracked until 2026-10-01 and
+one sat in gitignored `previews/`, so the 94 waits and 30 storage rows written over 90 recipes
+existed on one machine and in no commit.
+
+**A review artifact is the output of a one-time survey that nothing opens, and it may stay
+untracked.** It is the evidence behind a decision rather than the decision.
+
+The test is mechanical. **If code opens the file, it is a decision and it is committed.** A doc that
+merely CITES a survey as the evidence behind a roadmap item is not code opening it, but a citation a
+clone cannot follow is a dangling reference, so a cited survey is committed too. Four of the six
+surveys below are cited nowhere and stay untracked, which is what the category is for.
+
+| file | rows | what it is | read by | committed |
+|---|---|---|---|---|
+| `plan-ahead-proposals-v3-2026-09-27.csv` | 138 | every wait and storage row the v3 pass writes | `apply_plan_ahead_proposals.py` | yes |
+| `step-headings-candidates-2026-09-30.csv` | 37 | steps Andy approved for conversion to a heading in place | `convert_step_headings.py` | yes |
+| `step-leadin-labels-2026-09-30.csv` | 56 | colon lead-in labels approved for lifting | `convert_step_headings.py`, `apply_label_rules.py` | yes |
+| `step-dash-labels-2026-09-30.csv` | 60 | dash lead-in labels approved for lifting | both, same code path | yes |
+| `round-a-fix-decisions-2026-10-01.csv` | 4 | the cases a rule could not decide, one row each | `apply_label_rules.py` | yes |
+| `waits-missed-multi-duration-2026-09-30.csv` | 265 | the survey the missed-waits table was read off | named in `add_missed_waits.py`, whose table is written out in the file | yes |
+| `baseline-row-ids-2026-09-29.csv` | 178 | the baselines that gained step row ids | `backfill_baseline_row_ids.py` | yes |
+| `import-flags-archived-2026-09-30.csv` | 562 | the import review queue as archived | `archive_import_flags.py` | yes |
+| `note-separators-2026-09-27.csv` | 16 | how each recipe's notes were joined | `restore_notes.py` | yes |
+| `paprika-restore-live-rows.csv` | 300 | the Paprika restore, live rows | `restore_from_paprika.py` | yes |
+| `paprika-restore-snapshot-rows.csv` | 261 | the Paprika restore, baseline rows | `restore_from_paprika.py` | yes |
+| `relink-2026-09-25.csv` | 182 | the ingredient relink pass | `relink_pass.py` | yes |
+| `reparse-2026-09-25.csv` | 325 | the line reparse survey | nothing now | yes, historical |
+| `brioche-null-header-2026-09-29.csv` | 3 | the one null header case | nothing | yes, historical |
+| `cook-time-estimate-2026-09-30.csv` | 197 | survey: recipes whose cook time is an estimate | nothing; cited by ROADMAP Round B | yes |
+| `ingredient-parentheticals-2026-09-30.csv` | 332 | survey: parentheticals in ingredient names | nothing; cited by ROADMAP Round B | yes |
+| `overnight-waits-2026-09-30.csv` | 25 | survey: waits that run overnight | nothing | no |
+| `total-time-unclear-2026-09-30.csv` | 10 | survey: recipes whose total does not add up | nothing | no |
+| `extension-step-links-2026-09-30.csv` | 7 | survey: waits whose alternative points at another step | nothing | no |
+| `step-heading-level-1-candidates-2026-09-30.csv` | 15 | survey: lifted labels with 2+ steps and no section above | nothing | no |
+
+⚠️ **A survey becomes a decision the moment a pass reads it.** Commit it in the same change that
+makes the pass read it, or the next clone cannot run the pass.

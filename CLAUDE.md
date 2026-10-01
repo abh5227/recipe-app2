@@ -266,6 +266,43 @@ How this project is run:
   repair and the importer that now shares its rules
   (`import_cleanup.plan_step_rows`, imported by `scripts/convert_step_headings.py`) are the shape
   this takes: one rule set, two callers, one review CSV per decision a rule could not make.
+  ⚠️ **ONE RULE SET MEANS ONE FUNCTION, AND A COMMENT SAYING SO IS NOT THE SAME THING.** Both files
+  said they shared the rules. They had drifted: the importer called `move_link_out_of_label` when it
+  lifted a lead-in label and `convert_step_headings._lift` did not, so the corpus pass wrote a
+  heading reading `Wilt the [[spinach]]`, which the renderer escapes and never linkifies, so the
+  brackets would have printed. **Apply a rule where the row is MADE, in every caller, and give the
+  corpus pass an invariant sweep as well** ("no heading carries link markup" reads the headings, not
+  a list of rows). **A repair keyed on a step row id cannot see a label an earlier pass already
+  lifted**, so a repair that assumes the defect is still in place is only correct by accident of
+  order. The test that catches this class has to RUN the scripts, which nothing did until
+  `tests/test_corpus_passes.py`.
+- **A CORPUS PASS NAMES ITS DATABASE, AND LIVE IS NOT A DEFAULT.** Every script that can write takes
+  the path as an argument and exits on live `recipes.db` without `--i-mean-live`. Three of the four
+  Round A passes had no guard at all and would have written to live from a mistyped path with
+  `--apply` and no further word. A live run is a sentence a person had to type.
+- **LOCKSTEP: A MACHINE REPAIR MAKES NO MARK.** The page's "your changes" is
+  `diff(reason='original' snapshot, current rows)`, so a pass that rewrites a row without rewriting
+  that baseline is indistinguishable from the cook having hand-edited it. Every corpus pass patches
+  the live row and the baseline **in one transaction**, which is what let 300 recipes be restructured
+  while the 49 real annotation entries stayed at 49.
+  ⚠️ **The baseline is patched SURGICALLY, never rebuilt.** 16 of the 300 have drifted on purpose and
+  rebuilding from current content would declare each recipe born in its edited state, erasing exactly
+  the annotations the layer exists to show.
+- **A DECISION A PASS READS IS COMMITTED. A REVIEW LIST IS NOT.** Two kinds of file live in
+  `docs/data-repairs/`, and the difference is whether code opens it.
+  - **A recorded decision** is an input to a pass. It **must be committed**, because a pass that
+    cannot be re-run from a fresh clone is a hand edit with more steps. Five of them were untracked
+    and one sat in gitignored `previews/`, so the 94 waits and 30 storage rows written over 90
+    recipes existed on one machine and in no commit.
+  - **A review artifact** is the output of a one-time survey that nothing opens. It may stay
+    untracked.
+  The test is mechanical: if any committed `.py` or `.md` names the file, it is a decision and it is
+  committed. `docs/data-repairs/README.md` keeps the index and says which each one is.
+- **RUN THE WHOLE CHAIN FROM A CLEAN CHECKOUT BEFORE RUNNING IT FOR REAL.** A pass applied on its own
+  to a corpus already part way through agrees with the chain by luck. The passes are ordered and each
+  reads what the one before it left (`docs/data-repairs/README.md`). Every defect in this round's
+  review was found by the first end-to-end run from a fresh copy of live, and none of them by the
+  piecewise runs that preceded it.
 - **Read-only inspection first.** Inspect and report before changing anything; see the real
   data before acting.
 - **Preview-first for visual/UX work.** Before building any visual or UI change for real, build a
