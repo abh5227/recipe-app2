@@ -62,7 +62,8 @@ import snapshot_serialize                                        # noqa: E402
 #    next recipe someone imports. Two copies would mean a corpus repaired to one shape and an
 #    importer producing another, with nothing to say so.
 from import_cleanup import (NOTE_SEPARATOR, SECTION, SUBHEADING,  # noqa: E402
-                            clean_notes, is_caps, sentence_case, split_lead_label, strip_emphasis)
+                            clean_notes, is_caps, move_link_out_of_label, sentence_case,
+                            split_lead_label, strip_emphasis)
 
 REPAIRS = pathlib.Path(__file__).resolve().parent.parent / "docs" / "data-repairs"
 HEADINGS_CSV = REPAIRS / "step-headings-candidates-2026-09-30.csv"
@@ -130,6 +131,15 @@ def _lift(c, log, csv_path, tag):
             log["skipped"].append((rid, sid, f"{tag}: {parts}"))
             continue
         label, rest = parts
+        # ⚠️ A HEADING IS ESCAPED AND NEVER LINKIFIED, so a label carrying "[[spinach]]" would print
+        #    the brackets. THE SAME CALL THE IMPORTER MAKES AT THE SAME MOMENT
+        #    (import_cleanup.plan_step_rows): the heading takes the plain words and the link moves to
+        #    the next mention inside the step. This was missing here while the importer had it, and
+        #    a clean run of the chain over the corpus put "Wilt the [[spinach]]" on bulgogi-bowls.
+        #    One rule, two callers, applied where the heading is made rather than repaired after.
+        label, rest, moved = move_link_out_of_label(label, rest)
+        if not moved and "[[" in (live["text"] or ""):
+            log["skipped"].append((rid, sid, f"{tag}: link lost from label {label!r}, needs re-linking"))
         body = _baseline(c, rid)
         steps = (body or {}).get("steps") or []
         bi = next((i for i, s in enumerate(steps) if s.get("id") == sid), None)

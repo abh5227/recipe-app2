@@ -9,8 +9,10 @@ the handful a rule cannot choose are read from a decisions CSV a person filled i
   7  A LIFTED LABEL THAT NAMES A SECTION BECOMES ONE.  "To make the chocolate icing", "If using
      dried chickpeas". import_cleanup.label_level is the rule.
   4  A NUMBER-LED LABEL IS A LABEL.  "30 min cool:" is a stage; "1 cup:" is an amount and is left.
-  5  A LINK INSIDE A LIFTED LABEL MOVES INTO THE STEP.  A heading is escaped and never linkified, so
-     the heading takes the plain words and the link lands on the next mention of the same word.
+  5  NO HEADING CARRIES LINK MARKUP.  A heading is escaped and never linkified, so the heading takes
+     the plain words and the link lands on the next mention of the same word in the step below. The
+     lift itself applies this (convert_step_headings._lift, import_cleanup.plan_step_rows); the
+     sweep here reads every heading in the corpus, so it catches one neither of them made.
   6  THE STEP AFTER A LIFT STARTS WITH A CAPITAL.  Only a step a label was lifted OFF, which is why
      this reads the decision CSVs rather than every step under a heading: karak-chai's "a. Bring the
      pot to a boil" is an author's list marker under an author's heading and must not be touched.
@@ -288,6 +290,38 @@ def run(db, apply_it):
             body["steps"] = _renumber(steps)
             _write_baseline(c, rid, body)
         log["removed"].append((rid, sid, row["text"]))
+
+    # ---- rule 5, corpus-wide: NO HEADING CARRIES LINK MARKUP -----------------------------------
+    # ⚠️ THE INVARIANT, NOT A LIST OF ROWS. app.js renderStepRow escapes a heading and never
+    #    linkifies it, so "[[spinach]]" in a heading prints the brackets. That is true of every
+    #    heading in the corpus however it got there, so this reads the headings rather than a
+    #    decision CSV: convert_step_headings._lift and import_cleanup.plan_step_rows both apply
+    #    move_link_out_of_label when they make a heading, and this is what catches one they did
+    #    not make. It found bulgogi-bowls' "Wilt the [[spinach]]" on the first clean run of the
+    #    whole chain, which is the run that matters, since a repair keyed on a step row id cannot
+    #    see a label that an earlier pass has already lifted.
+    #    The link goes to the step BELOW, which is the step the label was lifted off.
+    for row in [dict(x) for x in c.execute(
+            "SELECT id, recipe_id, position, text FROM recipe_steps "
+            "WHERE is_heading=1 AND text LIKE '%[[%' ORDER BY recipe_id, position")]:
+        rid, hid = row["recipe_id"], row["id"]
+        below = c.execute("SELECT id, text FROM recipe_steps WHERE recipe_id=? AND position=? "
+                          "AND is_heading=0", (rid, row["position"] + 1)).fetchone()
+        if below is None:
+            log["flagged"].append((rid, hid, f"heading {row['text']!r} carries a link and has no "
+                                             "step under it to move it to"))
+            continue
+        plain, rest, moved = move_link_out_of_label(row["text"], below["text"])
+        if not moved:
+            log["flagged"].append((rid, hid, f"link lost from heading {plain!r}, needs re-linking"))
+        body = _baseline(c, rid)
+        if body is None:
+            log["skipped"].append((rid, hid, "heading link: no baseline"))
+            continue
+        _set_text(c, body, hid, plain)
+        _set_text(c, body, below["id"], rest)
+        _write_baseline(c, rid, body)
+        log["link"].append((rid, below["id"], hid, plain, rest[:52]))
 
     for d in decisions:
         if d["action"] == "flag_only":

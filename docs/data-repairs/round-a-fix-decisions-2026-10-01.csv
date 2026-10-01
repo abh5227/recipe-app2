@@ -3,4 +3,3 @@ rule,recipe_id,step_row_id,action,value,source_of_decision,NOTES
 4,fish-with-white-wine-sauce,,keep_duplicate,,andy,"keep both ""Cook fish"": a section and a per-step caption"
 8,brioche-bread,1882,insert_section_before,Baking,"source: bakingwithbutter.com ld+json HowToSection","the author's third section, lost at import. its first step is Preheat the oven (id 1882), not Bake (1883)"
 8,the-best-new-york-style-bagel,,flag_only,,rule,"alternatives sit 7 steps below the heading above them, so they are phases not options"
-5,bulgogi-bowls,5765,lift_with_link_moved,Wilt the spinach,andy,"andy's decision: it is a heading. the link moves to the later mention in the step"
