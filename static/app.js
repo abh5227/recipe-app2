@@ -1324,10 +1324,14 @@ function scaleMetaBlock(r) {
     const tot = view.waitTotal || {};
     // One wait prints its own words, so "overnight" survives. Several print the summed figure and
     // each wait gets its own smaller line beneath, which is what keeps the row readable on a phone.
-    // ⚠️ ONLY AN UNCONDITIONAL WAIT REACHES THE FIGURE, matching planahead.counts on the server.
-    //    A conditional one still reads in the breakdown, carrying the qualifier that says why it is
+    // ⚠️ THE SERVER SAYS WHICH WAITS ARE IN THE FIGURE, AND THIS USED TO DECIDE FOR ITSELF. It read
+    //    `(w.when_kind || "always") === "always"`, which is planahead.counts written out a second
+    //    time, and the two had drifted: the server also counted an 'alongside' wait whose pointer
+    //    had gone null, so on a one-wait recipe it put that wait in the head figure while this left
+    //    `counted` empty and printed a bullet repeating the same line. in_total is the one answer.
+    //    A conditional wait still reads in the breakdown, carrying the qualifier that says why it is
     //    not in the total.
-    const counted = waits.filter((w) => (w.when_kind || "always") === "always");
+    const counted = waits.filter((w) => w.in_total);
     const qual = (w) => {
       const k = w.when_kind || "always";
       if (k === "optional") return `<span class="meta-when">(optional)</span>`;

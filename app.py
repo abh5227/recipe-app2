@@ -1399,8 +1399,13 @@ def get_recipe(rid):
         #    they could plan around. display_label turns the 14 rows whose floor IS the word into
         #    "8 hr+ (overnight)" and leaves the 11 where it is a ceiling or an invitation untouched.
         #    Server-side for the reason planahead's header gives: one implementation, no mirror.
+        # ⚠️ AND WHETHER IT REACHES THE FIGURE IS DECIDED HERE TOO, for the same reason. The client
+        #    had its own `waits.filter(w => w.when_kind === "always")`, which is planahead.counts
+        #    spelled a second time, and the two had drifted on the alongside row. in_total is the
+        #    server's answer and the client filters on it, so there is one rule and one reader of it.
         for w in waits:
             w["label_text"] = planahead.display_label(w)
+            w["in_total"] = planahead.counts(w)
         wait_min, wait_max = planahead.total(waits)
         # is_queued (stage 3a): MY want-to-make state — per-user EXISTS against recipe_queue, scoped to
         # current_user.id like stats above. Any recipe is queueable, so this is independent of ownership.

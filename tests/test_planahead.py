@@ -162,6 +162,33 @@ def test_counts(when, want):
     assert pa.counts({"when_kind": when}) is want
 
 
+# ---- the SHARED case table (review fix 5) -------------------------------------------------------
+# tests/fixtures/wait-count-cases.json is read by this file and by tests/js/wait-count-sync.test.js.
+# The rule has one implementation (planahead.counts) and the client is handed its answer as
+# `in_total`, so what the JS side pins is the ABSENCE of a second implementation. The table is what
+# makes "they agree" checkable rather than asserted.
+_COUNT_CASES = json.loads(
+    (pathlib.Path(__file__).parent / "fixtures" / "wait-count-cases.json").read_text())
+
+
+@pytest.mark.parametrize("case", _COUNT_CASES, ids=[c["why"][:48] for c in _COUNT_CASES])
+def test_the_shared_wait_count_table(case):
+    assert pa.counts(case["wait"]) is case["in_total"], case["why"]
+
+
+def test_the_count_reads_when_kind_and_nothing_else():
+    """⚠️ THE RULE IS A FUNCTION OF ONE KEY. Stated as a property rather than as more rows: every
+    other key on a wait is varied against a fixed when_kind and the answer must not move. This is
+    what stops the alongside_step_id arm, or a step_ok arm, growing back."""
+    noise = [{}, {"step_id": 5}, {"step_id": None}, {"step_ok": False}, {"step_no": None},
+             {"alongside_step_id": 7}, {"alongside_step_id": None}, {"alongside_no": None},
+             {"min_minutes": None}, {"max_minutes": 0}, {"ext_step_id": 3}, {"label": ""}]
+    for when, want in (("always", True), ("optional", False), ("only_if", False),
+                       ("alongside", False)):
+        for extra in noise:
+            assert pa.counts({"when_kind": when, **extra}) is want, (when, extra)
+
+
 def test_a_conditional_wait_is_left_out_of_the_total():
     assert pa.total([_w(60, 60), _w(480, 480, "optional")]) == (60, 60)
     assert pa.total([_w(60, 60), _w(45, 60, "only_if")]) == (60, 60)

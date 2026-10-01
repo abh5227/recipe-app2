@@ -1,0 +1,72 @@
+[
+  {
+    "why": "an unconditional wait is time the cook has to set aside",
+    "wait": {"when_kind": "always", "min_minutes": 60, "max_minutes": 60},
+    "in_total": true
+  },
+  {
+    "why": "every row written before migration 050 carries no when_kind, and all of them are unconditional",
+    "wait": {"min_minutes": 60, "max_minutes": 60},
+    "in_total": true
+  },
+  {
+    "why": "an explicit null when_kind reads as always, the same as the key being absent",
+    "wait": {"when_kind": null, "min_minutes": 60, "max_minutes": 60},
+    "in_total": true
+  },
+  {
+    "why": "coconut-curried-golden-lentils soaks the lentils if there is time, so the hours are not blocked out",
+    "wait": {"when_kind": "optional", "min_minutes": 480, "max_minutes": 480},
+    "in_total": false
+  },
+  {
+    "why": "no-knead-bread rests the dough 45 to 60 minutes only when it went to the refrigerator",
+    "wait": {"when_kind": "only_if", "when_label": "it was refrigerated", "min_minutes": 45, "max_minutes": 60},
+    "in_total": false
+  },
+  {
+    "why": "two overnights on the same night are one night of waiting, so the second is not added",
+    "wait": {"when_kind": "alongside", "alongside_step_id": 7, "min_minutes": 480, "max_minutes": 480},
+    "in_total": false
+  },
+  {
+    "why": "an alongside wait is decided by its when_kind, so a null pointer does not put it back in the figure (the next save normalizes the row to always)",
+    "wait": {"when_kind": "alongside", "alongside_step_id": null, "min_minutes": 480, "max_minutes": 480},
+    "in_total": false
+  },
+  {
+    "why": "a wait whose step became a heading KEEPS counting: the step's kind says nothing about how long the cook waits",
+    "wait": {"when_kind": "always", "step_id": 9001, "step_no": null, "step_ok": false, "min_minutes": 90, "max_minutes": 90},
+    "in_total": true
+  },
+  {
+    "why": "and the same wait after the step is deleted outright, pointer nulled by ON DELETE SET NULL",
+    "wait": {"when_kind": "always", "step_id": null, "step_no": null, "step_ok": true, "min_minutes": 90, "max_minutes": 90},
+    "in_total": true
+  },
+  {
+    "why": "an alongside wait whose overlapped step became a heading: alongside_no is null so the page prints no qualifier, and it is still out of the figure",
+    "wait": {"when_kind": "alongside", "alongside_step_id": 9002, "alongside_no": null, "min_minutes": 480, "max_minutes": 480},
+    "in_total": false
+  },
+  {
+    "why": "an optional wait whose step became a heading is still optional",
+    "wait": {"when_kind": "optional", "step_id": 9001, "step_no": null, "step_ok": false, "min_minutes": 480, "max_minutes": 480},
+    "in_total": false
+  },
+  {
+    "why": "a when_kind no picker can produce is not 'always', so it is left out rather than guessed in",
+    "wait": {"when_kind": "sometimes", "min_minutes": 60, "max_minutes": 60},
+    "in_total": false
+  },
+  {
+    "why": "an extension never enters the figure, and it does not change whether the wait itself does",
+    "wait": {"when_kind": "always", "min_minutes": 10, "max_minutes": 60, "ext_label": "or overnight if time allows", "ext_min_minutes": 480},
+    "in_total": true
+  },
+  {
+    "why": "a wait with no readable minutes still counts as a wait; planahead.total is what skips a null",
+    "wait": {"when_kind": "always", "label": "until it looks right", "min_minutes": null, "max_minutes": null},
+    "in_total": true
+  }
+]

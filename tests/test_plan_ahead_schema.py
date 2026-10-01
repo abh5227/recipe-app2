@@ -626,13 +626,21 @@ def test_there_is_no_check_forcing_an_alongside_wait_to_name_a_step(kitchen):
     assert "alongside_step_id IS NOT NULL" not in sql
 
 
-def test_an_alongside_wait_that_overlaps_nothing_reaches_the_total():
-    """The other half of removing that CHECK. Between the step being deleted and the next save, the
-    row says 'alongside' and points at nothing, and it is no longer overlapping anything, so it is
-    ordinary waiting time and the total must say so."""
+def test_an_alongside_wait_that_overlaps_nothing_is_still_decided_by_its_when_kind():
+    """⚠️ THIS TEST USED TO ASSERT THE OPPOSITE, AND THE RULING CHANGED IT. It pinned "between the
+    step being deleted and the next save the row overlaps nothing, so it is ordinary waiting time
+    and the total must say so" — planahead.counts returning True for an alongside wait with a null
+    pointer. The client's own filter never had that arm, so the server put that row in the figure
+    while the client left it out, and a one-wait recipe printed the head figure plus a bullet
+    repeating it.
+
+    The rule is now a function of when_kind and nothing else, which is what lets the client be
+    HANDED the answer (`in_total`) instead of deriving it. The cost is the transient window this
+    test used to describe: write_plan_ahead normalizes an alongside row with no pointer back to
+    'always' on the next save, so the undercount lasts until then. See planahead.counts."""
     import planahead
     assert planahead.counts({"when_kind": "alongside", "alongside_step_id": 7}) is False
-    assert planahead.counts({"when_kind": "alongside", "alongside_step_id": None}) is True
+    assert planahead.counts({"when_kind": "alongside", "alongside_step_id": None}) is False
     assert planahead.counts({"when_kind": "always"}) is True
     assert planahead.counts({"when_kind": "optional"}) is False
 

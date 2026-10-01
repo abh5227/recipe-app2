@@ -62,14 +62,25 @@ def counts(w):
     went to the refrigerator. Summing either would tell a cook to block out hours for something the
     recipe already said they could skip. Both still show in the breakdown with their qualifier,
     because a wait a cook MIGHT take is worth reading before starting.
+
+    ⚠️ when_kind ALONE DECIDES, AND IT USED TO READ alongside_step_id TOO. The alongside arm returned
+    True when the pointer was null, on the ground that a wait overlapping nothing is ordinary waiting
+    time. The client's own filter never had that arm, so the two readers of one rule disagreed on
+    exactly that row: the server put it in the figure and the client left it out of `counted`, which
+    on a one-wait recipe printed the head figure AND a bullet repeating it.
+
+    The ruling is that this is a function of when_kind and of nothing else. A count that depends on
+    whether a pointer still resolves is a count that changes when a step is deleted or converted to a
+    heading, and neither of those is a statement about how long the cook has to wait. It also makes
+    the rule small enough that the client does not need a copy: the answer rides on each wait as
+    `in_total` (app.py's get_recipe) and the client filters on that.
+
+    The cost is named rather than hidden: between a step being deleted and the next save, a wait that
+    says 'alongside' and points at nothing is left out of the figure. write_plan_ahead normalizes that
+    row back to 'always' on the next save, so the window is one page view wide, and the alternative is
+    two implementations that cannot be held together by anything but attention.
     """
-    when = w.get("when_kind") or "always"
-    if when == "alongside":
-        # ⚠️ AN ALONGSIDE WAIT WHOSE STEP IS GONE OVERLAPS NOTHING, so it is an ordinary wait again and
-        # DOES reach the total. The pointer is nulled by ON DELETE SET NULL, and the next save
-        # normalizes when_kind back to 'always'. Between those two moments this is what is true.
-        return w.get("alongside_step_id") is None
-    return when == "always"
+    return (w.get("when_kind") or "always") == "always"
 
 
 # ⚠️ AN OVERNIGHT THAT IS THE FLOOR READS AS A FIGURE. "Plan ahead overnight" tells a cook nothing
