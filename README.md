@@ -82,7 +82,8 @@ also not in git. If you do not have those, you do not need this file.
 ```
 seed.py        YOUR CONTENT — recipes, ingredient library, people. Edit this.
 migrations/    database structure: numbered .sql files applied in order.
-migrate.py     applies any not-yet-applied migrations (never deletes data).
+migrate.py     applies any not-yet-applied migrations (never deletes data). Takes --db to point
+               at a copy; writing the repo's own recipes.db needs --i-mean-live.
 build_db.py    migrates, then loads seed.py into the content tables.
 king-arthur-staples-v2.csv   ingredient weight chart; build_db loads it into ingredient_weights.
 backup.py      makes a timestamped copy of recipes.db into backups/.
@@ -90,6 +91,10 @@ app.py         the backend: serves the page and runs the SQL queries.
 models.py      the SQLAlchemy models the whole serve path queries through.
 auth.py        login / signup / invite endpoints (the app is login-gated).
 alembic/       the Postgres half of the schema. migrations/ stays the SQLite half.
+scripts/       maintenance and repair passes. Each one takes its database as an argument,
+               dry-runs by default, and refuses the repo's recipes.db without --i-mean-live.
+scripts/applied/   the one-time backfills whose work is done. Kept for the record of what was
+               done to the data, and they refuse to run.
 build_library.py           builds the ~10,500-entry ingredient library from join.db + sources.db, and writes library_names.csv.
 library_names.csv          the library's id→name lookup. SERVER-SIDE, git-ignored, optional. See above.
 weights.py     volume→weight matcher + King Arthur density lookup (Phase 1c).

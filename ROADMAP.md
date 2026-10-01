@@ -779,6 +779,46 @@ measured on the 300-recipe corpus as it stands after Round A.
   *Depends on:* the backup-amount work above, since splitting a row and finding its backup read the
   same parenthetical and should not parse it twice.
 
+### Round A+ — the two schema hazards, first after going live · NEXT
+
+Both came out of the pre-push review and neither is user-facing. They are here rather than in Round B
+because they are about the database surviving a deploy, and the right time to do them is immediately
+after this one lands.
+
+- **Nothing keeps the SQLite schema and the Postgres schema agreeing.** `migrations/*.sql` is the
+  SQLite history and `alembic/` owns the Postgres schema, and the two are written by hand from the
+  same intention with nothing comparing them. The dual-dialect suite runs the APP against both, so it
+  catches a column that is missing outright and nothing else.
+  ⚠️ **Measured during the review: five constraints were deleted from the Postgres side one at a time
+  and the suite stayed green all five times** — an index, a CHECK, and a column default among them.
+  A missing CHECK on Postgres means the production database accepts a row SQLite refuses, and the
+  first sign of it is bad data rather than an error.
+  **The fix is a comparison, not more care.** Reflect both schemas and diff them: table by table,
+  column name, type affinity, nullability, default, plus the index and constraint names. Anything that
+  legitimately differs between the dialects goes in a named allow-list with the reason, so the diff is
+  empty by default and a new divergence has to be written down to pass.
+  *Depends on:* nothing. *Touches:* a new test beside `tests/test_pg_integration.py`.
+  *Why not sooner:* it needs the two schemas to be in step first, which they are today (verified while
+  writing this).
+
+- **Five more migrations rebuild a table the way 056 did.** Migration 056 was wrapped in
+  `BEGIN;`/`COMMIT;` after the review found that `migrate.py` uses `conn.executescript`, which opens
+  no transaction, so every statement auto-commits. A create-copy-**drop**-rename interrupted between
+  the drop and the rename loses the table, and `migrate.py` can never recover because its retry dies
+  on "table already exists". Replayed against the real file truncated after the DROP: unwrapped leaves
+  `recipe_waits` gone, wrapped rolls back whole.
+  **045, 048, 051, 053 and 054 have the same shape and are unwrapped.** They are applied on live, so
+  the hazard is not to this database: it is to **a fresh clone**, where `build_db.py` runs the whole
+  history, and to anyone else who ever sets this up.
+  ⚠️ **045 CANNOT SIMPLY BE WRAPPED.** It sets `PRAGMA foreign_keys=off` and back on, and a
+  `PRAGMA foreign_keys` inside a transaction is a silent no-op, so a blanket wrap would disarm the
+  very thing that makes its rebuild safe. Each one needs reading before it is touched, which is why
+  this is an item rather than a one-line change. **Do not lift the wrap into `migrate.py` as a blanket
+  rule** for the same reason.
+  *Depends on:* nothing. *Touches:* `migrations/045`, `048`, `051`, `053`, `054`, and a replay test
+  per file like the two 056 already has in `tests/test_plan_ahead_schema.py`.
+
+
 ---
 
 ## Tier 2 — Near-term core experience

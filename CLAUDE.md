@@ -276,10 +276,26 @@ How this project is run:
   lifted**, so a repair that assumes the defect is still in place is only correct by accident of
   order. The test that catches this class has to RUN the scripts, which nothing did until
   `tests/test_corpus_passes.py`.
-- **A CORPUS PASS NAMES ITS DATABASE, AND LIVE IS NOT A DEFAULT.** Every script that can write takes
-  the path as an argument and exits on live `recipes.db` without `--i-mean-live`. Three of the four
-  Round A passes had no guard at all and would have written to live from a mistyped path with
-  `--apply` and no further word. A live run is a sentence a person had to type.
+- **EVERY SCRIPT THAT CAN WRITE NAMES ITS DATABASE, AND LIVE IS NOT A DEFAULT.** It takes the path as
+  an argument, defaults to a dry run, and exits on live `recipes.db` without `--i-mean-live`. The one
+  guard is `scripts/corpus_guard.py::refuse_live` and every caller imports it. A live run is a
+  sentence a person had to type.
+  ⚠️ **THE RULE USED TO SAY "A CORPUS PASS", AND THE GAP WAS EVERYTHING ELSE.** Measured in the
+  pre-push review: 20 of 24 scripts could write, **13 of them hardcoded live `recipes.db` with no way
+  to point them anywhere**, and `archive_import_flags.py` took a `--db` whose DEFAULT was live, so
+  `--apply` from a shell with no path argument wrote straight to the real database. `migrate.py` was
+  among the 13, which made the repo's own instruction impossible to follow: `docs/data-repairs/README.md`
+  says to rehearse the whole chain on a copy, and `migrate.py` is step one of that chain. It takes
+  `--db` now. `tests/test_corpus_passes.py` walks the folder rather than naming four scripts, so the
+  check holds for the next one written.
+- **A SPENT ONE-TIME BACKFILL IS ARCHIVED, NOT LEFT RUNNABLE.** `scripts/applied/` holds the 16 whose
+  work is done, each refusing to run with a line saying what it did and how it was verified spent.
+  They keep their docstrings and their tests, because what they are still good for is the record of
+  what was done to the data. ⚠️ **The refusal is at RUN time, not import time**: eight carry a test
+  that imports the module to pin the transform it applied, and an exit on import would delete that
+  record as surely as deleting the file. A spent backfill is the most dangerous file in the repo — it
+  names live with no `--db`, it writes on a flag somebody could type from memory, and its upside is
+  zero because the work is already done. Three are irreversible on SQLite.
 - **LOCKSTEP: A MACHINE REPAIR MAKES NO MARK.** The page's "your changes" is
   `diff(reason='original' snapshot, current rows)`, so a pass that rewrites a row without rewriting
   that baseline is indistinguishable from the cook having hand-edited it. Every corpus pass patches

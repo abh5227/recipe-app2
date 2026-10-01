@@ -10,7 +10,7 @@ live row, so a repair creates no "your changes" mark.
 
 ## The order
 
-    migrate.py                                  056 to 059, additive, before anything reads them
+    migrate.py --db <path>                      056 to 059, additive, before anything reads them
     scripts/apply_plan_ahead_proposals.py       the v3 waits and storage rows
     scripts/add_missed_waits.py                 the waits a step stated and the import missed,
                                                 the ext and alongside step links, and the one
@@ -20,8 +20,21 @@ live row, so a repair creates no "your changes" mark.
     scripts/apply_label_rules.py                the rules Andy's click-through produced, over the
                                                 headings the pass above created
 
-`apply_plan_ahead_proposals` applies by default and takes `--dry`. The other three dry-run by
-default and take `--apply`.
+`apply_plan_ahead_proposals` takes `--apply` like the other three. (`--dry` is still accepted and
+ignored, because it was the flag during the round and a stale command line should not become a write.)
+All four dry-run by default.
+
+⚠️ **`migrate.py` TAKES `--db` NOW, WHICH IS WHAT MAKES THE SENTENCE ABOVE TRUE.** It hardcoded live
+`recipes.db`, so step one of the chain could not be pointed at a copy and the rehearsal instruction
+below could not be followed as written. The rehearsals were done by rebinding `migrate.DB` from a
+throwaway Python snippet, which works and is not something a person should have to invent. The whole
+chain against one database is now five ordinary command lines:
+
+    python3.13 migrate.py --db "$DB"
+    python3.13 scripts/apply_plan_ahead_proposals.py "$DB" --apply
+    python3.13 scripts/add_missed_waits.py "$DB" --apply
+    python3.13 scripts/convert_step_headings.py "$DB" --apply
+    python3.13 scripts/apply_label_rules.py "$DB" --apply
 
 ## Why the order is what it is
 
