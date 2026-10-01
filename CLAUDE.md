@@ -296,6 +296,37 @@ How this project is run:
   record as surely as deleting the file. A spent backfill is the most dangerous file in the repo — it
   names live with no `--db`, it writes on a flag somebody could type from memory, and its upside is
   zero because the work is already done. Three are irreversible on SQLite.
+- **THE GUARD KNOWS THE FILE, NOT THE NAME OF IT.** `scripts/corpus_guard.py::is_live` compares the
+  resolved path AND the device/inode, so `./recipes.db`, `scripts/../recipes.db`, a symlink and a
+  HARD LINK are all one answer. A path string says nothing about which file it opens, and a string
+  comparison let three of those four through. The resolved-path half stays for the fresh-clone case,
+  where live does not exist yet and there is no inode to compare.
+- **THE TEST SUITE CANNOT OPEN THE LIVE DATABASE.** `tests/dbguard.py` patches `sqlite3.connect` at
+  conftest import, so raw connections, SQLAlchemy and `app.orm_session()` are all covered by one
+  patch. *Why:* `make_kitchen` redirects `app.DB` / `build_db.DB` / `migrate.DB`, and a test that
+  names a path itself reaches straight past that redirect — one did, and `refuse_live` was the only
+  thing between an ordinary `pytest` run and a real migration of 300 recipes. A redirect protects the
+  door it is nailed to. ⚠️ **The ONE exception is `@pytest.mark.live_catalog`, and only for a
+  `mode=ro` URI**, because the 7 catalog tests check the real 10,500-entry library and a fixture
+  database has the tables with no rows. A marked test that opens live for WRITING is refused like any
+  other.
+- **A SCRIPT THAT CAN OPEN A DATABASE WIRES THE SHARED GUARD, AND THE SUITE CHECKS IT.**
+  `tests/test_live_guards.py` walks `scripts/` plus `migrate.py` and fails on anything that can reach
+  a database without `--i-mean-live` and `--db`. Stated over the folder, so the NEXT script written is
+  covered before anyone remembers it. A read-only exemption is a named entry with a reason, and the
+  same test asserts nothing on that list can write.
+- **A DRY RUN NEVER WRITES INTO `docs/data-repairs/`.** A report goes to gitignored `reports/`;
+  `--record` is what puts one in the committed folder, and it **refuses to overwrite a non-empty
+  file**. *Why:* five scripts wrote their report on every run, their work is applied so a re-run finds
+  0 rows, and **three committed records were truncated to their header lines at once, from DRY RUNS**.
+  Restoring them from git was the only reason nothing was lost. A record is replaced by deleting it on
+  purpose, which is a thing a person does and a script does not. Decision files a pass READS are
+  inputs: they stay committed and nothing writes to them.
+- **DURING A REHEARSAL, NEVER TYPE THE LIVE PATH. USE THE COPY'S PATH.** The guard is the backstop,
+  not the plan. `--db recipes.db` to "test the guard" is how live gets opened: it was done during this
+  round, on a script that did not yet have one, and only the fact that the pass had nothing to do kept
+  it harmless. Point every command at the copy, and read live's sha256 and counts at the start of a
+  session, at the end, and immediately before the first live write.
 - **LOCKSTEP: A MACHINE REPAIR MAKES NO MARK.** The page's "your changes" is
   `diff(reason='original' snapshot, current rows)`, so a pass that rewrites a row without rewriting
   that baseline is indistinguishable from the cook having hand-edited it. Every corpus pass patches

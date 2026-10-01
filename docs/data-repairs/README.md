@@ -36,6 +36,20 @@ chain against one database is now five ordinary command lines:
     python3.13 scripts/convert_step_headings.py "$DB" --apply
     python3.13 scripts/apply_label_rules.py "$DB" --apply
 
+## What may be written here, and by what
+
+⚠️ **A DRY RUN NEVER WRITES INTO THIS FOLDER.** Five scripts used to write their report CSV here on
+every run, dry or not. Their work is applied, so a re-run finds 0 rows — and three of the records in
+this folder were truncated to their header lines at once, from dry runs, during the pre-push review.
+Restoring them from git was the only reason nothing was lost.
+
+    (default)     reports/<name>.csv          gitignored scratch, overwritten freely
+    --record      docs/data-repairs/<name>.csv  and REFUSED if that file is already non-empty
+
+A record is replaced by deleting it on purpose, which is a thing a person does and a script does not.
+The decision files the passes READ are inputs: they stay committed and nothing writes to them. See
+`scripts/corpus_guard.py::report_target` and `tests/test_live_guards.py`.
+
 ## Why the order is what it is
 
 The waits come first because `convert_step_headings` renumbers step positions, and a wait points at
