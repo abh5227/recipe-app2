@@ -42,6 +42,13 @@ def pytest_configure(config):
         "when there is none. A fixture database has the tables and no rows, so a check written only "
         "against one is vacuous. Adding it is a visible, reviewable choice — see tests/dbguard.py.",
     )
+    config.addinivalue_line(
+        "markers",
+        "live_schema: this test reads the live database's SCHEMA, read-only, and skips when there "
+        "is none. Separate from live_catalog on purpose: that marker is about the catalog's ROWS, "
+        "this one is about whether live's schema still matches what migrations build. Same single "
+        "allowance, a mode=ro URI and nothing else — see tests/dbguard.py.",
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -49,7 +56,8 @@ def _no_live_database(request):
     """Every test runs with the live database shut off unless it asks for it by name, and then only
     read-only. This is the wall behind make_kitchen's DB redirect."""
     dbguard.set_read_only_allowed(
-        request.node.get_closest_marker("live_catalog") is not None)
+        request.node.get_closest_marker("live_catalog") is not None
+        or request.node.get_closest_marker("live_schema") is not None)
     yield
     dbguard.set_read_only_allowed(False)
 

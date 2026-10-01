@@ -44,7 +44,12 @@ jobs:
           SECRET_KEY: ci-only-not-a-real-secret
         run: |
           alembic upgrade head                  # create the schema on the CI Postgres service
-          pytest tests/test_pg_integration.py --junitxml=/tmp/pg-results.xml
+          # ⚠️ test_schema_parity.py RUNS HERE AND NOWHERE ELSE, because comparing the two schemas
+          # needs both of them. In the SQLite run above its Postgres tests skip, so this step is the
+          # only place a SQLite/Postgres divergence can be caught. It is in the same pytest
+          # invocation as the integration suite so the ran-nothing guard below covers it too.
+          pytest tests/test_pg_integration.py tests/test_schema_parity.py \
+                 --junitxml=/tmp/pg-results.xml
           # SELF-PROVING GUARD. The whole module skips on ONE module-level pytestmark (DATABASE_URL not
           # postgresql), so it is 20-or-0 and never partial — and an all-skipped run EXITS 0, making a
           # silent skip indistinguishable from a pass in the step's green check. This asserts that at
