@@ -24,7 +24,7 @@ from pathlib import Path
 
 from sqlalchemy import create_engine, event, text
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parent.parent.parent   # scripts/applied/ -> scripts/ -> the repo root
 
 # The dual-source migration this script's rebuild corresponds to (option a): after the script rebuilds
 # the EXISTING SQLite DB, it marks 019 applied in schema_migrations so build_db/migrate won't rebuild
@@ -138,4 +138,9 @@ def main():
 
 
 if __name__ == "__main__":
+    # ⚠️ SPENT. See scripts/applied/_spent.py — this refuses rather than running.
+    import sys as _sys, pathlib as _pathlib
+    _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+    from _spent import refuse_spent
+    refuse_spent(__file__, 'the Rescoping R2+R3 backfill and the ratings composite-PK rebuild. IRREVERSIBLE on SQLite')
     main()

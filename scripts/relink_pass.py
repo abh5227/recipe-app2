@@ -41,6 +41,8 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # for corpus_guard
+from corpus_guard import refuse_live                              # noqa: E402
 sys.path.insert(0, str(REPO / "scripts"))
 
 import build_links                                      # noqa: E402
@@ -121,7 +123,12 @@ def main():
     ap.add_argument("--db", required=True)
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--csv", default=str(CSV_OUT))
+    ap.add_argument("--i-mean-live", action="store_true",
+                    help="required to write the repo's own recipes.db")
     args = ap.parse_args()
+    # ⚠️ THE SHARED GUARD. A live run is a sentence a person had to type. See
+    #    scripts/corpus_guard.py — one definition, every script that can write.
+    refuse_live(args.db, args.i_mean_live)
 
     before_links, _ = link_state(args.db)
     conn = sqlite3.connect(args.db)
@@ -184,17 +191,25 @@ def main():
                      "reading": ""})
     cols_out = ["recipe_id", "position", "change", "line", "detail", "reading"]
     pathlib.Path(args.csv).parent.mkdir(parents=True, exist_ok=True)
-    with open(args.csv, "w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=cols_out, lineterminator="\n")   # ⚠️ csv defaults to CRLF
-        w.writeheader()
-        for r in sorted(rows, key=lambda x: (x["change"], x["recipe_id"], int(x["position"]))):
-            w.writerow(r)
-    print(f"\n{len(rows)} rows -> {args.csv}")
-    print("  " + str(dict(collections.Counter(r["change"] for r in rows))))
-    print(f"  {total} links, annotations {before_anns} -> {after_anns}")
-    if not args.apply:
-        print("\nDRY RUN. Every phase was applied to THIS DATABASE, because each one has to see "
-              "what the last one wrote. Use a throwaway copy.")
+    # ⚠️ AN EMPTY REPORT DOES NOT OVERWRITE A COMMITTED ONE. These CSVs live in
+    #    docs/data-repairs/, which holds the record of what was done to the data. The pass has
+    #    already run, so a re-run finds nothing, and writing anyway truncated the record to its
+    #    header line. Measured during the review: three committed files at once, from DRY RUNS.
+    #    A dry run that destroys a record is not a dry run.
+    if not rows:
+        print(f"nothing to report, so {args.csv} is left exactly as it is")
+    else:
+        with open(args.csv, "w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=cols_out, lineterminator="\n")   # ⚠️ csv defaults to CRLF
+            w.writeheader()
+            for r in sorted(rows, key=lambda x: (x["change"], x["recipe_id"], int(x["position"]))):
+                w.writerow(r)
+        print(f"\n{len(rows)} rows -> {args.csv}")
+        print("  " + str(dict(collections.Counter(r["change"] for r in rows))))
+        print(f"  {total} links, annotations {before_anns} -> {after_anns}")
+        if not args.apply:
+            print("\nDRY RUN. Every phase was applied to THIS DATABASE, because each one has to see "
+                  "what the last one wrote. Use a throwaway copy.")
 
 
 def _by_key(state, rid, pos):

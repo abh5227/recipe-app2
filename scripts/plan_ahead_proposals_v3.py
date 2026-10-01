@@ -20,7 +20,6 @@ extensions, so the existing rows stay 'always'. The conditional ones all came ou
 import csv
 import pathlib
 import re
-import sqlite3
 import sys
 
 BASE = pathlib.Path(__file__).resolve().parent.parent
@@ -29,7 +28,9 @@ import planahead                                                  # noqa: E402
 
 V2 = BASE / "previews" / "plan-ahead-proposals.csv"
 OUT = BASE / "previews" / "plan-ahead-proposals-v3.csv"
-DB = BASE / "recipes.db"
+# ⚠️ NO DATABASE. This reads the v2 CSV and nothing else, and it carried an unused
+#    `DB = BASE / "recipes.db"` beside an unused `import sqlite3`. A name pointing at
+#    the live database in a script that never opens one is an invitation.
 
 FIELDS = ["recipe_id", "type", "kind", "when_kind", "when_label", "step_position", "label",
           "min_minutes", "max_minutes", "ext_label", "ext_min_minutes", "ext_max_minutes",

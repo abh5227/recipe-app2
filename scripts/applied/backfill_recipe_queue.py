@@ -35,7 +35,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent   # scripts/applied/ -> scripts/ -> the repo root
 DB = BASE_DIR / "recipes.db"
 
 TAG = "To Make"          # the exact ·-delimited element to promote out of category
@@ -129,6 +129,11 @@ def backfill(db=DB, apply=False):
 
 
 if __name__ == "__main__":
+    # ⚠️ SPENT. See scripts/applied/_spent.py — this refuses rather than running.
+    import sys as _sys, pathlib as _pathlib
+    _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+    from _spent import refuse_spent
+    refuse_spent(__file__, "promoted the global 'To Make' tag into the per-user recipe_queue (migration 024)", '0 recipes carry the tag, 132 queue rows exist')
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--apply", action="store_true", help="write changes; default is a dry-run that writes nothing")
     args = ap.parse_args()

@@ -1,4 +1,4 @@
-"""The hero-album backfill (scripts/backfill_hero_album_rows.py) — hero↔album unification Stage 2's
+"""The hero-album backfill (scripts/applied/backfill_hero_album_rows.py) — hero↔album unification Stage 2's
 data-transforming step. Pins the script's DB behavior: a HERO-ONLY recipe (recipes.image set, no
 cook_photos row at that path) gets ONE cook-less (cook_log_id NULL) album row for its hero at the album's
 END (max position + 1); an already-consistent/promoted hero (a row already matches recipes.image) is
@@ -13,7 +13,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 def _load_backfill(db_path):
     spec = importlib.util.spec_from_file_location(
-        "backfill_hero_album_rows", REPO / "scripts" / "backfill_hero_album_rows.py")
+        "backfill_hero_album_rows", REPO / "scripts" / "applied" / "backfill_hero_album_rows.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     mod.DB = Path(db_path)                     # point the script at our throwaway DB

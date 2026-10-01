@@ -41,6 +41,8 @@ import sqlite3
 import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # for corpus_guard
+from corpus_guard import refuse_live                              # noqa: E402
 CSV_OUT = REPO / "docs" / "data-repairs" / "import-flags-archived-2026-09-30.csv"
 COLS = ("id", "recipe_id", "position", "flag", "reason", "created_at")
 # ⚠️ THE ONE FLAG THAT IS LIVE. It carries no position, so it is outside the WHERE below anyway; it is
@@ -85,10 +87,18 @@ def run(db, apply=False, csv_out=CSV_OUT):
     conn.close()
 
     csv_out.parent.mkdir(parents=True, exist_ok=True)
-    with open(csv_out, "w", newline="", encoding="utf-8") as fh:
-        w = csv.writer(fh, lineterminator="\n")
-        w.writerow(COLS)
-        w.writerows([tuple(r[c] for c in COLS) for r in rows])
+    # ⚠️ AN EMPTY REPORT DOES NOT OVERWRITE A COMMITTED ONE. These CSVs live in
+    #    docs/data-repairs/, which holds the record of what was done to the data. The pass has
+    #    already run, so a re-run finds nothing, and writing anyway truncated the record to its
+    #    header line. Measured during the review: three committed files at once, from DRY RUNS.
+    #    A dry run that destroys a record is not a dry run.
+    if not rows:
+        print(f"nothing to report, so {csv_out} is left exactly as it is")
+    else:
+        with open(csv_out, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh, lineterminator="\n")
+            w.writerow(COLS)
+            w.writerows([tuple(r[c] for c in COLS) for r in rows])
 
     by_flag = collections.Counter(r["flag"] for r in rows)
     print(f"{'APPLIED' if apply else 'REHEARSAL'} — {len(rows)} positioned flag(s) "
@@ -109,5 +119,10 @@ if __name__ == "__main__":
     ap.add_argument("--db", default=str(REPO / "recipes.db"))
     ap.add_argument("--apply", action="store_true", help="write (default is a read-only rehearsal)")
     ap.add_argument("--csv", default=str(CSV_OUT))
+    ap.add_argument("--i-mean-live", action="store_true",
+                    help="required to write the repo's own recipes.db")
     a = ap.parse_args()
+    # ⚠️ THE SHARED GUARD. A live run is a sentence a person had to type. See
+    #    scripts/corpus_guard.py — one definition, every script that can write.
+    refuse_live(a.db, a.i_mean_live)
     run(a.db, apply=a.apply, csv_out=pathlib.Path(a.csv))

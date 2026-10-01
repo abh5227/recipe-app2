@@ -1,4 +1,4 @@
-"""The cook-photo position backfill (scripts/backfill_cook_photo_position.py) — Stage 4 build 3d-i's
+"""The cook-photo position backfill (scripts/applied/backfill_cook_photo_position.py) — Stage 4 build 3d-i's
 data-transforming seed. Pins the script's DB behavior: per recipe it assigns position 0,1,2,… in the
 album's CURRENT display order (cook-linked newest-first, undated last), it CONTINUES from a recipe's
 existing max (never disturbing a row that already has a position), and it is IDEMPOTENT (the WHERE
@@ -12,7 +12,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 def _load_backfill(db_path):
     spec = importlib.util.spec_from_file_location(
-        "backfill_cook_photo_position", REPO / "scripts" / "backfill_cook_photo_position.py")
+        "backfill_cook_photo_position", REPO / "scripts" / "applied" / "backfill_cook_photo_position.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     mod.DB = Path(db_path)                     # point the script at our throwaway DB

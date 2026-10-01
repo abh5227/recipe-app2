@@ -39,7 +39,7 @@ import argparse
 import sqlite3
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parent.parent.parent   # scripts/applied/ -> scripts/ -> the repo root
 DB = REPO / "recipes.db"
 
 MIGRATION = "048_ratings_cluster.sql"
@@ -165,4 +165,9 @@ def main():
 
 
 if __name__ == "__main__":
+    # ⚠️ SPENT. See scripts/applied/_spent.py — this refuses rather than running.
+    import sys as _sys, pathlib as _pathlib
+    _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+    from _spent import refuse_spent
+    refuse_spent(__file__, 'moved every recipe-level rating onto the cook it was a verdict on (migration 048)', '120 cook_log rows carry a rating')
     main()

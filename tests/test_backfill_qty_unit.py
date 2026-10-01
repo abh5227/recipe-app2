@@ -1,4 +1,4 @@
-"""The one-off qty/unit backfill (scripts/backfill_qty_unit.py) — the repo's first data-transforming
+"""The one-off qty/unit backfill (scripts/applied/backfill_qty_unit.py) — the repo's first data-transforming
 step. The transform itself is import_cleanup.split_qty (tested in test_import_cleanup); here we pin the
 script's DB behavior: it fills only non-heading rows WHERE quantity IS NULL, leaves qty untouched, and
 is IDEMPOTENT (a second run touches nothing — the guard, since it runs outside migrate's tracker)."""
@@ -11,7 +11,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 def _load_backfill(db_path):
     spec = importlib.util.spec_from_file_location(
-        "backfill_qty_unit", REPO / "scripts" / "backfill_qty_unit.py")
+        "backfill_qty_unit", REPO / "scripts" / "applied" / "backfill_qty_unit.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     mod.DB = Path(db_path)                    # point the script at our throwaway DB

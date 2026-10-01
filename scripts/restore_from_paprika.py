@@ -56,6 +56,8 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(Path(__file__).resolve().parent))            # for corpus_guard
+from corpus_guard import refuse_live                              # noqa: E402
 
 import paprika_native_reader as pr                    # noqa: E402
 from snapshot_serialize import content_blob           # noqa: E402  THE snapshot format, single-sourced
@@ -294,6 +296,14 @@ def write_csvs(live_plan, snap_plan, csv_dir):
                  "display_before", "display_after"]
     for name, cols, rows in ((LIVE_CSV, live_cols, [p for p in live_plan if p["verdict"] == "RESTORE"]),
                              (SNAP_CSV, snap_cols, [p for p in snap_plan if p["verdict"] == "CORRECT"])):
+        # ⚠️ AN EMPTY REPORT DOES NOT OVERWRITE A COMMITTED ONE. These two CSVs are in
+        #    docs/data-repairs/, which holds the record of what was done to the data. The pass has
+        #    already run, so a re-run finds 0 rows, and writing anyway truncated both records to
+        #    their header lines. Measured during the review, from a DRY RUN. A dry run that
+        #    destroys a record is not a dry run.
+        if not rows:
+            print(f"nothing to report, so {csv_dir / name} is left exactly as it is")
+            continue
         with open(csv_dir / name, "w", newline="", encoding="utf-8") as fh:
             # ⚠️ LF, not csv.writer's default CRLF. .gitattributes pins text to LF and names this
             #    exact trap: a CSV rewritten through the default turns a small edit into a
@@ -322,7 +332,12 @@ def main():
     ap.add_argument("--no-csv", action="store_true")
     ap.add_argument("--allow-any-counts", action="store_true",
                     help="write even if the plan no longer matches the reviewed counts")
+    ap.add_argument("--i-mean-live", action="store_true",
+                    help="required to write the repo's own recipes.db")
     args = ap.parse_args()
+    # ⚠️ THE SHARED GUARD. A live run is a sentence a person had to type. See
+    #    scripts/corpus_guard.py — one definition, every script that can write.
+    refuse_live(args.db, args.i_mean_live)
 
     conn = sqlite3.connect(args.db if args.apply else f"file:{args.db}?mode=ro", uri=not args.apply)
     live_plan, live_tally = plan_live(conn)

@@ -36,7 +36,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parent.parent.parent   # scripts/applied/ -> scripts/ -> the repo root
 sys.path.insert(0, str(REPO))
 
 import import_cleanup                                             # noqa: E402
@@ -114,4 +114,9 @@ def main(argv):
 
 
 if __name__ == "__main__":
+    # ⚠️ SPENT. See scripts/applied/_spent.py — this refuses rather than running.
+    import sys as _sys, pathlib as _pathlib
+    _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+    from _spent import refuse_spent
+    refuse_spent(__file__, 're-split stored lines once a counting noun beside an ingredient read as the unit')
     sys.exit(main(sys.argv))

@@ -1,4 +1,4 @@
-"""The per-cook ratings backfill (scripts/backfill_percook_ratings.py) — migration 048's data half.
+"""The per-cook ratings backfill (scripts/applied/backfill_percook_ratings.py) — migration 048's data half.
 
 Pins the 5-clause attach rule, the refusals, and the two invariants the script exists to guarantee:
 every rating lands on exactly one cook, and the NEW headline (AVG of rated cooks) equals the OLD
@@ -14,7 +14,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 def _load(db_path):
     spec = importlib.util.spec_from_file_location(
-        "backfill_percook_ratings", REPO / "scripts" / "backfill_percook_ratings.py")
+        "backfill_percook_ratings", REPO / "scripts" / "applied" / "backfill_percook_ratings.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     mod.DB = Path(db_path)                     # point the script at our throwaway DB

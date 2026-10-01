@@ -1,4 +1,4 @@
-"""The name->unit backfill (scripts/backfill_name_unit.py) — moving a leading size/count descriptor
+"""The name->unit backfill (scripts/applied/backfill_name_unit.py) — moving a leading size/count descriptor
 out of the ingredient NAME into the empty unit field. Tests the PURE rule (plan_name_split) on
 representative strings + the DB write/idempotency against a throwaway DB. No live-DB access."""
 import importlib.util
@@ -10,7 +10,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 def _load(db_path=None):
     spec = importlib.util.spec_from_file_location(
-        "backfill_name_unit", REPO / "scripts" / "backfill_name_unit.py")
+        "backfill_name_unit", REPO / "scripts" / "applied" / "backfill_name_unit.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     if db_path is not None:

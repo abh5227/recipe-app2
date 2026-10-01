@@ -1,4 +1,4 @@
-"""The heading backfill (scripts/backfill_headings.py) — promoting is_heading=0 rows that are really
+"""The heading backfill (scripts/applied/backfill_headings.py) — promoting is_heading=0 rows that are really
 SECTION HEADINGS (Bucket A: for/to flagged rows; Bucket B: detector via section_signal — emphasis /
 X-Ingredients / unit-system / Day-N / prep allowlist). Tests the PURE classifier (plan_heading) + the
 DB promote/idempotency against a throwaway DB. No live-DB access."""
@@ -11,7 +11,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 def _load(db_path=None):
     spec = importlib.util.spec_from_file_location(
-        "backfill_headings", REPO / "scripts" / "backfill_headings.py")
+        "backfill_headings", REPO / "scripts" / "applied" / "backfill_headings.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     if db_path is not None:

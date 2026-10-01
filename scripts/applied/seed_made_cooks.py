@@ -18,7 +18,7 @@ import argparse
 import sqlite3
 from pathlib import Path
 
-DB = Path(__file__).resolve().parent.parent / "recipes.db"
+DB = Path(__file__).resolve().parent.parent.parent / "recipes.db"
 SOURCE = "paprika-import"
 
 # recipe_id -> Paprika 'created' DATE (date part of the source timestamp; cook_log stores YYYY-MM-DD).
@@ -73,4 +73,9 @@ def main():
 
 
 if __name__ == "__main__":
+    # ⚠️ SPENT. See scripts/applied/_spent.py — this refuses rather than running.
+    import sys as _sys, pathlib as _pathlib
+    _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+    from _spent import refuse_spent
+    refuse_spent(__file__, "seeded a provisional cook for each Paprika 'Made'-tagged recipe that had none")
     main()

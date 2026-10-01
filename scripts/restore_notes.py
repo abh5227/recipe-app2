@@ -41,6 +41,8 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # for corpus_guard
+from corpus_guard import refuse_live                              # noqa: E402
 
 import resplit                                          # noqa: E402  baseline_rows only
 
@@ -139,7 +141,12 @@ def main():
     ap.add_argument("--db", required=True)
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--csv", default=str(CSV_OUT))
+    ap.add_argument("--i-mean-live", action="store_true",
+                    help="required to write the repo's own recipes.db")
     args = ap.parse_args()
+    # ⚠️ THE SHARED GUARD. A live run is a sentence a person had to type. See
+    #    scripts/corpus_guard.py — one definition, every script that can write.
+    refuse_live(args.db, args.i_mean_live)
 
     conn = sqlite3.connect(args.db)
     planned = plan(conn)
@@ -165,16 +172,24 @@ def main():
                          "before": want_live[c], "after": want_target[c],
                          "source": "the row's reason='original' baseline"})
     pathlib.Path(args.csv).parent.mkdir(parents=True, exist_ok=True)
-    with open(args.csv, "w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=["recipe_id", "position", "column", "before", "after",
-                                           "source"], lineterminator="\n")
-        w.writeheader()
-        for r in rows:
-            w.writerow(r)
-    print(f"\n{len(rows)} column changes -> {args.csv}")
-    conn.close()
-    if not args.apply:
-        print("DRY RUN. Nothing was written.")
+    # ⚠️ AN EMPTY REPORT DOES NOT OVERWRITE A COMMITTED ONE. These CSVs live in
+    #    docs/data-repairs/, which holds the record of what was done to the data. The pass has
+    #    already run, so a re-run finds nothing, and writing anyway truncated the record to its
+    #    header line. Measured during the review: three committed files at once, from DRY RUNS.
+    #    A dry run that destroys a record is not a dry run.
+    if not rows:
+        print(f"nothing to report, so {args.csv} is left exactly as it is")
+    else:
+        with open(args.csv, "w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=["recipe_id", "position", "column", "before", "after",
+                                               "source"], lineterminator="\n")
+            w.writeheader()
+            for r in rows:
+                w.writerow(r)
+        print(f"\n{len(rows)} column changes -> {args.csv}")
+        conn.close()
+        if not args.apply:
+            print("DRY RUN. Nothing was written.")
 
 
 if __name__ == "__main__":

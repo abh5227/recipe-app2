@@ -1,4 +1,4 @@
-"""Original-baseline backfill (scripts/backfill_original_snapshots.py) — O-b's data-transforming step.
+"""Original-baseline backfill (scripts/applied/backfill_original_snapshots.py) — O-b's data-transforming step.
 Pins: it captures each recipe's CURRENT content as a reason='original' snapshot (cook_log_id NULL,
 user_id=owner, created_at=recipe.created_at); the backfilled original diffs to ZERO against current
 (clean-by-construction — no false annotations); it's idempotent (WHERE NOT EXISTS reason='original'); and
@@ -15,7 +15,7 @@ REPO = Path(__file__).resolve().parent.parent
 
 def _load():
     spec = importlib.util.spec_from_file_location(
-        "backfill_original_snapshots", REPO / "scripts" / "backfill_original_snapshots.py")
+        "backfill_original_snapshots", REPO / "scripts" / "applied" / "backfill_original_snapshots.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)                # uses app.orm_session() -> app.DB (redirected by kitchen)
     return mod

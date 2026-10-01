@@ -47,6 +47,8 @@ import sys
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # for corpus_guard
+from corpus_guard import refuse_live                              # noqa: E402
 
 import resplit                                   # noqa: E402  THE shared re-split path
 from snapshot_serialize import content_blob      # noqa: E402
@@ -230,7 +232,12 @@ def main():
     ap.add_argument("--db", required=True)
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--csv", default=str(CSV_OUT))
+    ap.add_argument("--i-mean-live", action="store_true",
+                    help="required to write the repo's own recipes.db")
     args = ap.parse_args()
+    # ⚠️ THE SHARED GUARD. A live run is a sentence a person had to type. See
+    #    scripts/corpus_guard.py — one definition, every script that can write.
+    refuse_live(args.db, args.i_mean_live)
 
     conn = sqlite3.connect(args.db)
     hand = hand_repointed(conn)
@@ -255,12 +262,20 @@ def main():
     pathlib.Path(args.csv).parent.mkdir(parents=True, exist_ok=True)
     cols = ["recipe_id", "position", "verdict", "changed", "raw_text", "old_qty", "new_qty",
             "old_quantity", "new_quantity", "old_unit", "new_unit", "old_label", "new_label"]
-    with open(args.csv, "w", newline="", encoding="utf-8") as fh:
-        w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore", lineterminator="\n")
-        w.writeheader()
-        for d in sorted(plan, key=lambda x: (x["verdict"] != "WRITE", x["recipe_id"], x["position"])):
-            w.writerow(d)
-    print(f"\nCSV: {args.csv}")
+    # ⚠️ AN EMPTY REPORT DOES NOT OVERWRITE A COMMITTED ONE. These CSVs live in
+    #    docs/data-repairs/, which holds the record of what was done to the data. The pass has
+    #    already run, so a re-run finds nothing, and writing anyway truncated the record to its
+    #    header line. Measured during the review: three committed files at once, from DRY RUNS.
+    #    A dry run that destroys a record is not a dry run.
+    if not plan:
+        print(f"nothing to report, so {args.csv} is left exactly as it is")
+    else:
+        with open(args.csv, "w", newline="", encoding="utf-8") as fh:
+            w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore", lineterminator="\n")
+            w.writeheader()
+            for d in sorted(plan, key=lambda x: (x["verdict"] != "WRITE", x["recipe_id"], x["position"])):
+                w.writerow(d)
+        print(f"\nCSV: {args.csv}")
 
     if not args.apply:
         # the catch-up was applied to get a true rule-2 reading; roll the file back by refusing to

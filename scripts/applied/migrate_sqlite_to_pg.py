@@ -17,7 +17,27 @@ Safety:
     `alembic upgrade head` to retry.
   * Copies inside ONE transaction (all-or-nothing); on any error, nothing is committed.
   * Skips schema_migrations (SQLite migration tracking; Postgres uses alembic_version).
+
+⚠️ ARCHIVED AND NOT RUNNABLE, AND IT HAS NOT BEEN RUNNABLE FOR SOME TIME. It imports models.Person,
+which went with the 36 hand-authored ingredient rows (migration 046), so running it has raised
+ImportError at module scope rather than copying anything. The migration it performed is complete (see
+CLAUDE.md), Alembic owns the Postgres schema, and a fresh Postgres is built with
+`alembic upgrade head` rather than by copying SQLite.
+
+⚠️ ITS REFUSAL IS ABOVE THE IMPORTS, the one exception to the rule in _spent.py. Nothing imports this
+module, and the broken module-scope import would otherwise answer with a traceback where the point is
+to say plainly that the work is done.
 """
+if __name__ == "__main__":                       # before the imports; see the note above
+    import sys as _sys
+    import pathlib as _pathlib
+    _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+    from _spent import refuse_spent
+    refuse_spent(__file__,
+                 "copied every app table from SQLite into Postgres once, for the SQLite to "
+                 "Postgres migration",
+                 "the migration is complete and Alembic owns the Postgres schema")
+
 import os
 import sqlite3
 import sys

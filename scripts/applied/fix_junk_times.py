@@ -29,7 +29,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parent.parent.parent   # scripts/applied/ -> scripts/ -> the repo root
 DB = REPO / "recipes.db"
 
 # (recipe_id, column, the exact value that may be cleared)
@@ -79,4 +79,9 @@ def main(argv):
 
 
 if __name__ == "__main__":
+    # ⚠️ SPENT. See scripts/applied/_spent.py — this refuses rather than running.
+    import sys as _sys, pathlib as _pathlib
+    _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+    from _spent import refuse_spent
+    refuse_spent(__file__, 'nulled the two stored times that were not times', '0 junk times remain')
     sys.exit(main(sys.argv))

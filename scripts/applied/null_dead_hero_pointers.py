@@ -24,7 +24,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent   # scripts/applied/ -> scripts/ -> the repo root
 DB = BASE_DIR / "recipes.db"
 
 # The 5 former-seed recipes with dead image pointers (diagnosed: image set, file missing). Explicit —
@@ -73,6 +73,11 @@ def null_dead_pointers(dry_run=False):
 
 
 if __name__ == "__main__":
+    # ⚠️ SPENT. See scripts/applied/_spent.py — this refuses rather than running.
+    import sys as _sys, pathlib as _pathlib
+    _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+    from _spent import refuse_spent
+    refuse_spent(__file__, 'nulled recipes.image for the 5 former-seed recipes pointing at a JPG that never shipped', 'all 5 are empty')
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true", help="report what it would NULL; write nothing")
     args = ap.parse_args()

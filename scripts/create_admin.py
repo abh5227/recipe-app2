@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # repo root im
 from sqlalchemy import select
 
 import app
+import models
 from auth import hash_password
 from models import User
 
@@ -49,7 +50,20 @@ def main():
     ap = argparse.ArgumentParser(description="Create a seed admin user (is_admin=1).")
     ap.add_argument("--email", help="admin email (prompted if omitted)")
     ap.add_argument("--display-name", help="optional display name")
+    # ⚠️ IT NAMES ITS DATABASE AND LIVE IS SAID OUT LOUD. This went straight to app.DB with no way
+    #    to point it at a copy, so there was no way to rehearse it and no sentence to type before it
+    #    wrote to the real database. It is one INSERT and it refuses a duplicate email, so there is
+    #    no dry-run mode to default to: the explicit flag IS the guard.
+    ap.add_argument("--db", help=f"the database to write to (default: {app.DB})")
+    ap.add_argument("--i-mean-live", action="store_true",
+                    help="required to write the repo's own recipes.db")
     args = ap.parse_args()
+    sys.path.insert(0, str(Path(__file__).resolve().parent))   # for corpus_guard
+    from corpus_guard import refuse_live                       # noqa: E402
+    if args.db:
+        app.DB = Path(args.db)
+        models.DB = Path(args.db)
+    refuse_live(app.DB, args.i_mean_live)
 
     email = (args.email or input("Admin email: ")).strip().lower()
     password = getpass.getpass("Password: ")

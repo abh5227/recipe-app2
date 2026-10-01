@@ -1,5 +1,5 @@
 """Stage 1 of the photo uploader: the shared resize core (images.resize_image_bytes), extracted from
-scripts/backfill_photos.py. Pins the resize contract (downscale long edge to 1600, never upscale,
+scripts/applied/backfill_photos.py. Pins the resize contract (downscale long edge to 1600, never upscale,
 EXIF-oriented, RGB, JPEG q85) and asserts the backfill's process_photo stays behavior-preserving
 through the extracted helper. Synthesizes inputs with Pillow — no fixtures, no DB.
 
@@ -55,7 +55,7 @@ def test_exif_orientation_applied():
 
 
 def _process_photo():
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts" / "applied"))
     import backfill_photos
     return backfill_photos.process_photo
 

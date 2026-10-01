@@ -47,7 +47,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent   # scripts/applied/ -> scripts/ -> the repo root
 sys.path.insert(0, str(BASE_DIR))
 from import_cleanup import section_signal, strip_emphasis   # SAME strip + section test the detector uses
 
@@ -139,6 +139,11 @@ def run(apply=False):
 
 
 if __name__ == "__main__":
+    # ⚠️ SPENT. See scripts/applied/_spent.py — this refuses rather than running.
+    import sys as _sys, pathlib as _pathlib
+    _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+    from _spent import refuse_spent
+    refuse_spent(__file__, 'promoted amount-less ingredient rows that were really section headings')
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--apply", action="store_true", help="perform the UPDATEs (default: dry-run, writes nothing)")
     args = ap.parse_args()

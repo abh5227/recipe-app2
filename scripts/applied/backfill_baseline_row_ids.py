@@ -63,7 +63,7 @@ import pathlib
 import sqlite3
 import sys
 
-REPO = pathlib.Path(__file__).resolve().parent.parent
+REPO = pathlib.Path(__file__).resolve().parent.parent.parent   # scripts/applied/ -> scripts/ -> the repo root
 sys.path.insert(0, str(REPO))
 
 from snapshot_diff import _canon_amount, _ing_name                    # noqa: E402  THE app's own readers
@@ -207,6 +207,11 @@ def run(db, apply=False, csv_out=CSV_OUT):
 
 
 if __name__ == "__main__":
+    # ⚠️ SPENT. See scripts/applied/_spent.py — this refuses rather than running.
+    import sys as _sys, pathlib as _pathlib
+    _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+    from _spent import refuse_spent
+    refuse_spent(__file__, "gave every reason='original' baseline its row ids (option C, commit 3)", '24 rows over 19 recipes had no content match and never will')
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--db", default=str(REPO / "recipes.db"))
     ap.add_argument("--apply", action="store_true", help="write (default is a read-only rehearsal)")

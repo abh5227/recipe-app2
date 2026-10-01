@@ -1,4 +1,4 @@
-"""scripts/backfill_baseline_row_ids.py — the one-off that gave all 300 reason='original' baselines
+"""scripts/applied/backfill_baseline_row_ids.py — the one-off that gave all 300 reason='original' baselines
 their row ids (option C, commit 3).
 
 The rehearsal on a copy of live is the real proof and it is recorded in docs/data-repairs/. These
@@ -11,7 +11,7 @@ import sqlite3
 
 import pytest
 
-from scripts import backfill_baseline_row_ids as bf
+from scripts.applied import backfill_baseline_row_ids as bf
 from snapshot_serialize import SNAPSHOT_ING_FIELDS, content_blob
 
 RECIPE = {k: None for k in (

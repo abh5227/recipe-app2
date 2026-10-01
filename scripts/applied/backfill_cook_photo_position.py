@@ -22,7 +22,7 @@ import sqlite3
 import sys
 from pathlib import Path
 
-BASE_DIR = Path(__file__).resolve().parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent   # scripts/applied/ -> scripts/ -> the repo root
 DB = BASE_DIR / "recipes.db"
 
 # The album's CURRENT display order (3a), kept in ONE place so the seed matches the payload exactly:
@@ -76,6 +76,11 @@ def backfill(dry_run=False):
 
 
 if __name__ == "__main__":
+    # ⚠️ SPENT. See scripts/applied/_spent.py — this refuses rather than running.
+    import sys as _sys, pathlib as _pathlib
+    _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+    from _spent import refuse_spent
+    refuse_spent(__file__, "seeded cook_photos.position (migration 027) from the album's display order", '0 rows have a null position')
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dry-run", action="store_true", help="report id->position; write nothing")
     args = ap.parse_args()

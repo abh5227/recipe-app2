@@ -32,7 +32,7 @@ import sys
 import zipfile
 from pathlib import Path
 
-REPO = Path(__file__).resolve().parent.parent
+REPO = Path(__file__).resolve().parent.parent.parent   # scripts/applied/ -> scripts/ -> the repo root
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
@@ -160,4 +160,9 @@ def main():
 
 
 if __name__ == "__main__":
+    # ⚠️ SPENT. See scripts/applied/_spent.py — this refuses rather than running.
+    import sys as _sys, pathlib as _pathlib
+    _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+    from _spent import refuse_spent
+    refuse_spent(__file__, 'gave each imported recipe its original Paprika dish photo as a hero image')
     main()
