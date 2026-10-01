@@ -647,6 +647,41 @@ def _row_qty_parts(row):
     return qty, quantity, unit
 
 
+def _label_key(text):
+    """A wait's or storage row's wording, whitespace-folded. Case is NOT folded: changing a letter is
+    an edit, and this decides whether a stored figure still describes what the row now says."""
+    return " ".join((text or "").split())
+
+
+def _minute_carry(s, table, rid, own, ext):
+    """The stored minutes for this recipe's rows, keyed by wording, each usable ONCE.
+
+    Returns a function take(label, ext_label) -> (own_minutes, ext_minutes), where each is a dict of
+    the stored column values when the wording matches and None when it does not. Consume-once for the
+    same reason the ingredient carry is: a recipe may hold two waits whose labels read identically,
+    and the first incoming one must not take the second's row twice.
+
+    ⚠️ THE TWO HALVES ARE DECIDED SEPARATELY, because they are two pieces of wording on one row. A
+    cook who rewrites the extension and leaves the wait alone has edited the extension only, so the
+    wait's own minutes still describe its own words and are kept."""
+    pool = {}
+    for m in s.execute(select(table).where(table.c.recipe_id == rid)).mappings():
+        pool.setdefault(_label_key(m["label"]), []).append(m)
+
+    def take(label, ext_label):
+        bucket = pool.get(_label_key(label))
+        if not bucket:
+            return None, None
+        row = bucket.pop(0)
+        mine = {k: row[k] for k in own}
+        theirs = None
+        if ext is not None and _label_key(row["ext_label"]) == _label_key(ext_label):
+            theirs = {k: row[k] for k in ext}
+        return mine, theirs
+
+    return take
+
+
 def write_plan_ahead(s, rid, payload):
     """Replace a recipe's waits and storage from the save payload.
 
@@ -673,6 +708,24 @@ def write_plan_ahead(s, rid, payload):
     resolve_recipe_payload, before anything is written, for the same reason the ingredient and step
     lists are checked there: a wrong type must cost nothing."""
     rw, rs = RecipeWait.__table__, RecipeStorage.__table__
+    # ⚠️ THE STORED ROWS ARE READ BEFORE THE DELETE, BECAUSE A SAVE MUST NOT CHANGE A WAIT THE COOK
+    #    DID NOT EDIT. The minutes behind a wait are read from what a person typed, and some of them
+    #    were read by a REVIEWER rather than by read_duration: brioche-bread's extension says "or an
+    #    hour of fridge rest if you skip the overnight proof" and carries the reviewed 60, where
+    #    read_duration answers 480 because the word overnight is in the sentence.
+    #
+    #    Re-deriving every row on every save therefore overwrote a reviewed figure with a worse one,
+    #    and it did so on a save that changed nothing at all. Measured over the 107 stored waits: 0
+    #    labels and exactly 1 extension re-read differently from what is stored, so the blast radius
+    #    is one row today and the rule is what matters. The page showed it as a wait "modified" entry
+    #    whose from and to were the same words, since the printed label does not include the minutes.
+    #
+    #    THE RULE: stored minutes are kept unless that wait's own wording changed. Only an edited
+    #    wait is re-read. read_duration is untouched — its reading of that sentence is a separate
+    #    defect and it is on the roadmap with the Round B parser item.
+    carry_w = _minute_carry(s, rw, rid, ("min_minutes", "max_minutes"),
+                            ("ext_min_minutes", "ext_max_minutes"))
+    carry_s = _minute_carry(s, rs, rid, ("min_minutes", "max_minutes"), None)
     if "waits" in payload:
         s.execute(delete(rw).where(rw.c.recipe_id == rid))
     if "storage" in payload:
@@ -699,9 +752,17 @@ def write_plan_ahead(s, rid, payload):
         label = (w.get("label") or "").strip()
         if not label:
             continue
-        lo, hi = planahead.read_duration(label)
+        # ⚠️ KEPT, NOT RE-READ, WHEN THE WORDING IS THE SAME. See the note above the carry.
         ext = (w.get("ext_label") or "").strip() or None
-        elo, ehi = planahead.read_duration(ext) if ext else (None, None)
+        kept, kept_ext = carry_w(label, ext)
+        if kept is not None:
+            lo, hi = kept["min_minutes"], kept["max_minutes"]
+        else:
+            lo, hi = planahead.read_duration(label)
+        if kept_ext is not None:
+            elo, ehi = kept_ext["ext_min_minutes"], kept_ext["ext_max_minutes"]
+        else:
+            elo, ehi = planahead.read_duration(ext) if ext else (None, None)
         kind = w.get("kind") if w.get("kind") in planahead.KINDS else "other"
         # ⚠️ only_if WITHOUT A CONDITION FALLS BACK TO always, because the CHECK rejects the row and
         #    a save must not 500 on a half-filled picker. "if" with nothing after it says nothing.
@@ -754,7 +815,11 @@ def write_plan_ahead(s, rid, payload):
         label = (x.get("label") or "").strip()
         if not label:
             continue
-        lo, hi = planahead.read_duration(label)
+        # ⚠️ STORAGE RE-DERIVES ON SAVE TOO, so it gets the same rule. A storage row has one piece of
+        #    wording and no extension, so there is one half to decide.
+        kept, _ = carry_s(label, None)
+        lo, hi = ((kept["min_minutes"], kept["max_minutes"]) if kept is not None
+                  else planahead.read_duration(label))
         where = x.get("where_kept") if x.get("where_kept") in planahead.WHERES else "other"
         s.execute(insert(rs).values(
             recipe_id=rid, position=pos, where_kept=where,
