@@ -254,3 +254,28 @@ def test_running_an_archived_script_refuses_with_a_nonzero_exit():
     assert out.returncode == 2, out
     assert "spent one-time backfill" in out.stderr
     assert "nulled the two stored times" in out.stderr
+
+
+def test_rule_seven_promotes_a_component_name_and_nothing_else(tmp_path):
+    """⚠️ IT PROMOTED EVERY LEVEL-2 HEADING IN THE CORPUS. The guard asked label_level with no
+    context, and since Andy's ruling that returns SECTION for every label, so `!= SECTION` was never
+    true. Measured on a chained copy of live, one run: level 2 went from 112 to 2, in lockstep, so
+    it was silent. Rule 7 asks whether the label NAMES A COMPONENT, which is its own predicate."""
+    import apply_label_rules
+
+    db = _kitchen(tmp_path, [
+        (9100, 1, "Make the dough"),          # a component: promoted
+        (9101, 0, "Mix the flour and water until shaggy."),
+        (9102, 1, "Deseed"),                  # a caption: left alone
+        (9103, 0, "Trim and discard the stems."),
+    ])
+    c = sqlite3.connect(db)
+    c.execute("UPDATE recipe_steps SET heading_level=2 WHERE is_heading=1")
+    c.commit()
+    c.close()
+
+    apply_label_rules.run(str(db), True)
+
+    levels = {r["text"]: r["heading_level"] for r in _steps(db) if r["is_heading"]}
+    assert levels["Make the dough"] == 1, "a component name was not promoted"
+    assert levels["Deseed"] == 2, "a caption was promoted, which flattens the corpus"

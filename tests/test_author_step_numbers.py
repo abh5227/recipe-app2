@@ -21,10 +21,25 @@ def test_a_consecutive_run_is_the_authors_numbering():
 
 
 def test_every_separator_the_brief_names():
-    for sep in (".", ")", ":", " -", " –"):
+    """Andy named four forms: "1.", "1)", "Step 1:" and "Step 1 -". The colon and the dash come
+    WITH the word Step in his list, and that turns out to be load-bearing rather than incidental.
+
+    ⚠️ A BARE "1 - " OR "1: " IS A RANGE, NOT A LIST MARKER. This test used to assert them without
+    the word Step, which is wider than the brief, and a review showed what that width costs:
+    "1 - 2 days ahead, make the stock" was read as step 1 and came out "2 days ahead", turning a
+    quantity into its top end. The bare forms are asserted as REFUSED below."""
+    for sep in (".", ")"):
         got = ic.strip_author_numbers([f"1{sep} First.", f"2{sep} Second."])
         assert got == ["First.", "Second."], sep
-    assert ic.strip_author_numbers(["Step 1: First.", "Step 2: Second."]) == ["First.", "Second."]
+    for sep in (":", " -", " –"):
+        got = ic.strip_author_numbers([f"Step 1{sep} First.", f"Step 2{sep} Second."])
+        assert got == ["First.", "Second."], sep
+
+
+def test_a_bare_dash_or_colon_after_the_number_is_a_range_and_is_refused():
+    for sep in (":", " -", " –"):
+        rows = [f"1{sep} 2 days ahead, make the stock.", f"2{sep} 3 hours before, warm it."]
+        assert ic.strip_author_numbers(rows) == rows, sep
 
 
 def test_a_step_that_merely_starts_with_a_number_is_never_touched():

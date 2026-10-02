@@ -41,6 +41,7 @@ from corpus_guard import BASE, refuse_live                        # noqa: E402
 import snapshot_serialize                                        # noqa: E402
 from units import compare_text                                     # noqa: E402
 from import_cleanup import (SECTION, SUBHEADING, _ALTERNATIVE,   # noqa: E402
+                            names_a_component,
                             capitalize_first_visible, label_level,
                             move_link_out_of_label, split_lead_label)
 
@@ -146,7 +147,13 @@ def run(db, apply_it):
     for row in [dict(x) for x in c.execute(
             "SELECT id, recipe_id, text FROM recipe_steps WHERE is_heading=1 AND heading_level=2 "
             "ORDER BY recipe_id, position")]:
-        if label_level(row["text"]) != SECTION:
+        # ⚠️ "DOES THIS LABEL NAME A COMPONENT", NOT "WHAT LEVEL SHOULD IT BE". This asked
+        #    label_level with no context, and since Andy's ruling that function defaults to SECTION
+        #    when nothing opens a group above the label, so every heading came back SECTION, this
+        #    guard was never true and the sweep promoted EVERY level-2 heading in the corpus.
+        #    Measured on a chained copy of live, one run: level 2 went from 112 to 2, in lockstep,
+        #    so it was silent.
+        if not names_a_component(row["text"]):
             continue
         body = _baseline(c, row["recipe_id"])
         if body is None or not _set_level(c, body, row["id"], SECTION):

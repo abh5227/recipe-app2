@@ -205,6 +205,8 @@ def _note_rows(notes_text):
     rows, flags = [], []
     for i, para in enumerate(notes_rules.paragraphs(notes_text)):
         mentions = notes_rules.scan_step_mentions(para)
+        # the first letter a reader sees, by the same rule the steps take
+        para = cleanup.capitalize_first_visible(para)
         rows.append({"position": i, "kind": notes_rules.kind_of(para), "text": para,
                      "mentions": [{"ref_index": m["ref_index"], "match_text": m["match_text"]}
                                   for m in mentions]})
@@ -233,6 +235,19 @@ def _step_rows(cleaned):
     an import's judgement calls already show, and the step row menu can convert a heading back or
     change its level without losing the row id."""
     rows, notes, conversions = cleanup.plan_step_rows(cleaned["directions"], cleaned.get("notes"))
+    # ⚠️ THE SAME FIRST-LETTER RULE THE CORPUS PASS APPLIES, AND IT WAS MISSING HERE. plan_step_rows
+    #    capitalizes a step only where it LIFTED a label, so an import whose author wrote in
+    #    lowercase landed that way and scripts/apply_capitalization.py would have had to repair it
+    #    afterwards. That is the FIX BY RULE failure mode: the corpus and the next import disagreeing
+    #    about the same defect. A continuation line is left alone for the reason the pass leaves it
+    #    alone, which is that the row above it does not finish its sentence.
+    for i, row in enumerate(rows):
+        if row.get("is_heading"):
+            continue
+        prev = rows[i - 1]["text"] if i else None
+        if prev is not None and not str(prev or "").rstrip().endswith((".", "!", "?", ":", ";")):
+            continue
+        row["text"] = cleanup.capitalize_first_visible(row["text"])
     flags = [{"position": c["position"], "flag": c["flag"],
               "reason": f"{c['reason']} ({c['detail']})" if c.get("detail") else c["reason"]}
              for c in conversions]

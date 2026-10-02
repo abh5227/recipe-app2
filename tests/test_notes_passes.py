@@ -279,3 +279,71 @@ def test_the_survey_writes_nothing_to_the_recipe_data(tmp_path):
     before = _rows(db, "SELECT * FROM recipes") + _rows(db, "SELECT * FROM recipe_waits")
     scan_notes_for_waits.run(str(db))
     assert _rows(db, "SELECT * FROM recipes") + _rows(db, "SELECT * FROM recipe_waits") == before
+
+
+# ---- apply_capitalization, and the invariants it must not break --------------------------------
+
+def test_capitalization_keeps_the_derived_notes_column_in_step(tmp_path):
+    """⚠️ recipes.notes IS A DERIVED COPY OF THE NOTE ROWS. A pass that rewrites a row has to
+    rebuild it, and nothing else catches the drift: notes left the snapshot when they became a
+    playground, so the column disagreeing with its rows moves no bytes and mints no mark. Measured
+    before the fix: 4 recipes ended the chain with "tip: As soon as…" in the column and
+    "Tip: As soon as…" in the rows."""
+    import apply_capitalization
+    import notes_to_rows
+
+    db = _kitchen(tmp_path, notes="tip: warm the plates first.\n\nkeeps three days.")
+    notes_to_rows.run(str(db), apply=True)
+    apply_capitalization.run(str(db), apply=True)
+
+    rows = [r["text"] for r in _rows(db, "SELECT text FROM recipe_notes ORDER BY position")]
+    assert rows == ["Tip: warm the plates first.", "Keeps three days."]
+    col = _rows(db, "SELECT notes FROM recipes WHERE id='beans'")[0]["notes"]
+    assert col == "\n\n".join(rows), "the derived column drifted away from its rows"
+
+
+def test_capitalization_leaves_a_continuation_line_alone(tmp_path):
+    """⚠️ A STEP WHOSE PREDECESSOR DOES NOT FINISH IS THE TAIL OF A SENTENCE. The import split
+    homemade-pasta-dough's step 1, so "consistency forms." is its own row: on its own words it looks
+    like a step starting lowercase, and in context capitalizing it capitalizes mid-sentence."""
+    import apply_capitalization
+
+    db = _kitchen(tmp_path)
+    with sqlite3.connect(db) as c:
+        c.execute("UPDATE recipe_steps SET text='Mix with a fork until a shaggy' WHERE position=0 "
+                  "AND recipe_id='beans'")
+        c.execute("UPDATE recipe_steps SET text='consistency forms.' WHERE position=1 "
+                  "AND recipe_id='beans'")
+    apply_capitalization.run(str(db), apply=True)
+    assert [r["text"] for r in _rows(
+        db, "SELECT text FROM recipe_steps WHERE recipe_id='beans' ORDER BY position")] == [
+        "Mix with a fork until a shaggy", "consistency forms."]
+
+
+def test_capitalization_is_a_no_op_on_a_second_run(tmp_path):
+    import apply_capitalization
+    import notes_to_rows
+
+    db = _kitchen(tmp_path, notes="tip: warm the plates first.")
+    notes_to_rows.run(str(db), apply=True)
+    apply_capitalization.run(str(db), apply=True)
+    first = (_rows(db, "SELECT id, text FROM recipe_steps ORDER BY id"),
+             _rows(db, "SELECT id, text FROM recipe_notes ORDER BY id"),
+             _rows(db, "SELECT notes FROM recipes"))
+    apply_capitalization.run(str(db), apply=True)
+    assert (_rows(db, "SELECT id, text FROM recipe_steps ORDER BY id"),
+            _rows(db, "SELECT id, text FROM recipe_notes ORDER BY id"),
+            _rows(db, "SELECT notes FROM recipes")) == first
+
+
+def test_the_lookalike_pass_reaches_every_content_column(tmp_path):
+    """⚠️ THE SURFACE LIST WAS HAND-WRITTEN AND SHORT. A review injected a Cyrillic А into five
+    columns that are content by the project's own definition and the pass found 0 rows. The list is
+    derived from snapshot_serialize now, so the next column added is covered."""
+    import normalize_lookalikes
+
+    cols = {(t, c) for t, _i, c, _k, _f in normalize_lookalikes._surfaces()}
+    for want in (("recipe_waits", "ext_label"), ("recipe_waits", "when_label"),
+                 ("recipe_storage", "label"), ("recipe_ingredients", "note")):
+        assert want in cols, f"{want} is not scanned"
+    assert "author" in normalize_lookalikes.RECIPE_COLUMNS

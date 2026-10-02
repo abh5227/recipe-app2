@@ -73,7 +73,12 @@ export function stepNoteIndex(rows, table) {
     if (!sid) return;
     if (!by.has(sid)) by.set(sid, []);
     const seen = by.get(sid);
-    if (seen.some((x) => x.id === n.id && n.id != null)) return;
+    // ⚠️ KEYED ON THE ID WHERE THERE IS ONE, AND ON THE WORDS WHERE THERE IS NOT. The id test alone
+    //    let a row with a null id through twice, so a note with two references to the same step was
+    //    listed twice in that step's popover. Server rows always carry an id, so this is the
+    //    defensive direction rather than a repair.
+    const key = n.id != null ? `#${n.id}` : `t:${n.text || ""}`;
+    if (seen.some((x) => (x.id != null ? `#${x.id}` : `t:${x.text || ""}`) === key)) return;
     // ⚠️ THE SAME DISPLAY TEXT THE NOTES SECTION SHOWS. These are the raw rows, so without this the
     //    popover printed the label ("Variation: ...") that the section strips, and one note read
     //    two different ways on one page.

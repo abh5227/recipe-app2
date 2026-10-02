@@ -23,6 +23,7 @@ A new source belongs in its own reader + preview, never here.
 import json
 import pathlib
 import re
+import unicodedata
 
 # Reuse the EXISTING amount/fraction parser — do not write a third copy. These are
 # underscore-private in stepscale today; importing them is an accepted temporary
@@ -960,9 +961,15 @@ _LEAD_AMOUNT = re.compile(
 #    the filling" all open a part of the recipe rather than captioning one step, and the words they
 #    start with are what says so. Andy's list, and the last two were added to it after his
 #    click-through: a "Make the X" label reads as a component every time.
+# ⚠️ "Make the X" NAMES A COMPONENT ONLY WHEN X IS A THING, NOT A PROPERTY. "Make the dough" opens a
+#    part of the recipe; "Make the cut shallow" and "While stirring, make sure the heat stays low"
+#    are captions on one step, and the word after the noun is what tells them apart. A review found
+#    all three. The trailing (?!...) refuses the shapes where an adjective or "sure" follows.
 _SECTION_LABEL = re.compile(
-    r"^\s*(?:to\s+make\b|for\s+the\b|for\b|if\b|make\s+the\b"
-    r"|while\b[^,]*,\s*make\b)", re.IGNORECASE)
+    r"^\s*(?:to\s+make\b|for\s+the\b|for\b|if\b"
+    r"|make\s+the\s+\w+\s*$"
+    r"|make\s+the\s+(?!\w+\s+(?:shallow|deep|thin|thick|smooth|even|sure)\b)\w+\b(?=\s*[:,]|\s*$)"
+    r"|while\b[^,]*,\s*make\s+the\b)", re.IGNORECASE)
 
 # Sibling headings that are ALTERNATIVES rather than consecutive stages.
 _ALTERNATIVE = re.compile(
@@ -1165,10 +1172,10 @@ LOOKALIKE_LETTERS = {
     # Cyrillic -> Latin
     "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "O", "Р": "P",
     "С": "C", "Т": "T", "Х": "X", "а": "a", "е": "e", "о": "o", "р": "p", "с": "c",
-    "у": "y", "х": "x", "і": "i", "Ј": "J", "ј": "j", "Ѕ": "S", "ѕ": "s", "І": "I",
+    "х": "x", "і": "i", "Ј": "J", "ј": "j", "Ѕ": "S", "ѕ": "s", "І": "I",
     # Greek -> Latin
     "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H", "Ι": "I", "Κ": "K", "Μ": "M",
-    "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X", "ο": "o", "ν": "v",
+    "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X", "ο": "o",
 }
 
 # A look-alike standing in for a DIGIT. Separate from the table above because the replacement is not
@@ -1179,26 +1186,76 @@ LOOKALIKE_NUMERALS = {"З": "3", "з": "3", "О": "0", "о": "0", "І": "1", "і
 _HAS_LATIN = re.compile(r"[A-Za-z]")
 
 
+def _is_real_other_script(text):
+    """True when the text carries a Cyrillic or Greek letter that has NO Latin look-alike.
+
+    ⚠️ THIS IS THE EVIDENCE THAT THE TEXT REALLY IS IN ANOTHER SCRIPT, and it is the only test that
+    tells the two cases apart. A copy-paste artifact is made ENTIRELY of letters that happen to look
+    Latin, because that is what made it invisible in the first place. Real Russian reaches for the
+    rest of the alphabet within a word or two: Борщ has Б and щ, сметана has м and т... and neither
+    is in the table."""
+    for ch in text:
+        if ch.isalpha() and ord(ch) > 127 and ch not in LOOKALIKE_LETTERS:
+            try:
+                if unicodedata.name(ch).startswith(("CYRILLIC", "GREEK")):
+                    return True
+            except ValueError:
+                pass
+    return False
+
+
 def normalize_lookalikes(text):
     """Replace shape-identical Cyrillic or Greek letters with their Latin twins -> the text.
 
-    ⚠️ ONLY IN A TEXT THAT IS OTHERWISE ENGLISH. The test is whether the text contains any Latin
-    letter at all, which is what "an otherwise-English word" means once the word itself is entirely
-    look-alike: "МАКЕ THE CHICKEN" has THE and CHICKEN in Latin, so the first word is a copy-paste
-    artifact rather than Russian. A text with no Latin letters anywhere is left completely alone,
-    because that is the only honest reading of a sentence that might really be in another script.
+    ⚠️ IT TAKES TWO PIECES OF EVIDENCE, AND ONE OF THEM WAS MISSING. The text has to contain a Latin
+    letter (so "МАКЕ THE CHICKEN" is a copy-paste artifact rather than Russian) AND it must carry no
+    Cyrillic or Greek letter that the table does not know. The second half is what a review caught:
+    on the presence test alone, one Latin character anywhere was enough, so a transliteration in
+    brackets or a unit condemned the whole string. Measured against the shapes a recipe collection
+    really holds:
+        'Борщ (Borscht)'            became 'Бopщ (Borscht)'
+        'Молоко 200 ml'             became 'Moлoкo 200 ml'
+        'Σπανακόπιτα - Spanakopita' became 'Σπαvακόπιτα - Spanakopita'
+    clean_recipe runs this on the recipe NAME, which reaches the slug, so that is a title turned to
+    mojibake on the way in. The one corpus row it exists for is still repaired, because every
+    non-Latin character in "МАКЕ" is in the table.
 
     ⚠️ AND IT RUNS BEFORE THE LABEL AND NUMBER RULES, NOT AFTER. Both of those match on Latin
     characters, so a look-alike left in place silently defeats them and the step keeps a number or
     an unlifted label with nothing saying why."""
     t = str(text or "")
-    if not _HAS_LATIN.search(t):
+    if not _HAS_LATIN.search(t) or _is_real_other_script(t):
         return t
     return "".join(LOOKALIKE_LETTERS.get(ch, ch) for ch in t)
 
 
-_AUTHOR_NUM_SEP = re.compile(r"^\s*(?:step\s*)?(\d+)\s*[.):\u2013\u2014-]\s+", re.IGNORECASE)
+# ⚠️ A BARE DASH OR COLON AFTER THE NUMBER IS NOT A LIST MARKER, IT IS A RANGE. This accepted
+#    "1 - 2 days ahead, make the stock" as step 1 of a make-ahead recipe and "1: 2 is the ratio of
+#    rice to water" as step 1 of another, and stripped the first half of each, turning a quantity
+#    into its top end. A review found it with the corpus at 0 exposure, which is the only good time.
+#    A number that OPENS A LIST is written "1." or "1)". The dash and the colon are allowed only
+#    when the word "Step" is there to say what the number is ("Step 1 - Do the thing").
+_AUTHOR_NUM_SEP = re.compile(
+    r"^\s*(?:(?:step\s*)?(\d+)\s*[.)]\s+|step\s*(\d+)\s*[:\u2013\u2014-]\s+)", re.IGNORECASE)
+
+
+def _author_num(m):
+    """The number out of either arm of _AUTHOR_NUM_SEP."""
+    return int(m.group(1) or m.group(2))
 _AUTHOR_NUM_BARE = re.compile(r"^\s*(\d+)\s+([A-Z\u00c0-\u00dd])")
+# ⚠️ A SINGLE LETTER AND A FULL STOP IS A LIST MARKER, NOT THE START OF A SENTENCE. karak-chai's
+#    steps 8 to 10 read "a. Bring the pot to a boil", "b. Remove the pot", "c. Once the pot has
+#    stopped boiling", under the author's own heading. Capitalizing the marker rewrites their list,
+#    which is what apply_label_rules' rule 6 has always refused to do. Stepped over, exactly as a
+#    number is, so the first letter of the SENTENCE is the one considered.
+_LIST_LETTER = re.compile(r"^\s*[a-z]\s*[.)]\s+", re.IGNORECASE)
+# ⚠️ THE RELAXED DOOR TAKES A LIST MARKER AND NOTHING ELSE. _AUTHOR_NUM_SEP also accepts a colon and
+#    a dash, which are fine when the ordinal agrees (the strict door checks that) and dangerous when
+#    it does not: "1 - 2 days ahead, make the stock" and "3 - 4 tablespoons of milk" are RANGES, and
+#    read through the relaxed door they became "2 days ahead" and "4 tablespoons". A review found
+#    this with the corpus at 0 exposure, which is the only time to find it. A number that opens a
+#    list is written "1." or "1)".
+_LIST_NUMBER = re.compile(r"^\s*(?:step\s*)?(\d+)\s*[.)]\s+", re.IGNORECASE)
 
 
 def author_step_number(text, ordinal):
@@ -1216,8 +1273,8 @@ def author_step_number(text, ordinal):
     if flat[:1] in LOOKALIKE_NUMERALS:
         flat = LOOKALIKE_NUMERALS[flat[:1]] + flat[1:]
     m = _AUTHOR_NUM_SEP.match(flat)
-    if m and int(m.group(1)) == ordinal:
-        return int(m.group(1)), flat[m.end():].lstrip()
+    if m and _author_num(m) == ordinal:
+        return _author_num(m), flat[m.end():].lstrip()
     m = _AUTHOR_NUM_BARE.match(flat)
     if m and int(m.group(1)) == ordinal:
         return int(m.group(1)), flat[m.start(2):]
@@ -1264,7 +1321,7 @@ def strip_author_numbers(step_texts):
         flat = str(t or "")
         if flat[:1] in LOOKALIKE_NUMERALS:
             flat = LOOKALIKE_NUMERALS[flat[:1]] + flat[1:]
-        m = _AUTHOR_NUM_SEP.match(flat)
+        m = _LIST_NUMBER.match(flat)
         if m:
             sep.append((i, int(m.group(1)), flat[m.end():].lstrip()))
     if len(sep) >= 2 and [n for _i, n, _r in sep] == list(range(1, len(sep) + 1)):
@@ -1350,6 +1407,18 @@ def split_lead_label(text, label=None):
     return label, rest
 
 
+def names_a_component(label):
+    """Does this label NAME a part of the recipe ("Make the dough", "For the sauce")?
+
+    ⚠️ A DIFFERENT QUESTION FROM label_level, AND CONFLATING THEM FLATTENED THE CORPUS. label_level
+    answers "what level should this heading be", which since Andy's ruling depends on what sits
+    ABOVE it and defaults to SECTION when nothing does. apply_label_rules' rule 7 asks "is this
+    label a component name", and it was asking label_level with no context: every label came back
+    SECTION, so its `!= SECTION` guard was never true and the sweep promoted every level-2 heading
+    it could find. Measured on a chained copy of live, one run: level 2 went from 112 to 2."""
+    return bool(_SECTION_LABEL.match(label or ""))
+
+
 def label_level(label, section_above=False):
     """A lifted label -> SECTION or SUBHEADING.
 
@@ -1362,7 +1431,7 @@ def label_level(label, section_above=False):
     ⚠️ AND A LABEL THAT NAMES A COMPONENT IS A SECTION WHATEVER SITS ABOVE IT. "Make the chicken"
     under a "Marinade" section is still a part of the recipe, not a caption on one step. See
     _SECTION_LABEL for the list."""
-    if _SECTION_LABEL.match(label or ""):
+    if names_a_component(label):
         return SECTION
     return SUBHEADING if section_above else SECTION
 
@@ -1477,13 +1546,24 @@ def ingredient_name_case(name, canonical=None, lowercase_elsewhere=False):
     if not word[0].isupper():
         return t, CASE_CERTAIN, "already lowercase"
     if canonical:
-        # the library decides this one, including when the library says capitals
+        # ⚠️ THE LIBRARY'S CASING IS ADOPTED FOR THE PART THE LIBRARY NAMES, AND ONLY THAT PART.
+        #    The canonical is the ingredient, and the stored line is the ingredient plus whatever
+        #    the author added ("Cream Cheese, softened"). Taking the canonical's first letter alone
+        #    would leave "cream Cheese, softened", which is the half-cased string this rule exists
+        #    to avoid. Where the canonical is a prefix of the line, its spelling replaces that
+        #    prefix and the author's tail is untouched. Where it is not ("Crimini Mushrooms" against
+        #    "edible mushroom"), the library is answering a different question and the line falls
+        #    through to the checks below.
         want = canonical.strip()
         first = next((ch for ch in want if ch.isalpha()), "")
+        body = t[len(pre):]
+        if body.lower().startswith(want.lower()):
+            if body[:len(want)] == want:
+                return t, CASE_LINKED, f"already matches the library's {want!r}"
+            return (pre + want + body[len(want):], CASE_LINKED,
+                    f"the library writes it {want!r}")
         if first and first.isupper():
-            return t, CASE_LINKED, f"the library writes it {want!r}"
-        lowered = pre + word[0].lower() + word[1:] + t[m.end():]
-        return lowered, CASE_LINKED, f"the library writes it {want!r}"
+            return t, CASE_PROPER, f"the library capitalizes {want!r}"
     if word.isupper() and len(word) > 1:
         return t, CASE_ACRONYM, "all capitals"
     if word.lower() in ACRONYMS:
@@ -1525,7 +1605,7 @@ def capitalize_first_visible(text):
     #    cornmeal") and three are measurements the page must not touch ("30 minutes before you
     #    start cooking", "180 degrees.", "24 pieces (6 short rows)"). A number followed by "." or
     #    ")" is a list marker; a number followed by a space is a quantity.
-    m2 = _AUTHOR_NUM_SEP.match(t)
+    m2 = _AUTHOR_NUM_SEP.match(t) or _LIST_LETTER.match(t)
     head = m2.end() if m2 else 0
     for i, ch in enumerate(t[head:], head):
         if ch.isalpha():

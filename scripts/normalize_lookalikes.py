@@ -34,14 +34,38 @@ from corpus_guard import refuse_live, report_target                          # n
 
 CSV_NAME = "lookalike-letters.csv"
 
-# (table, id column, the text column, the baseline key, the key inside that entry)
-SURFACES = (
-    ("recipe_steps", "id", "text", "steps", "text"),
-    ("recipe_ingredients", "id", "label", "ingredients", "label"),
-    ("recipe_ingredients", "id", "raw_text", "ingredients", "raw_text"),
-    ("recipe_notes", "id", "text", None, None),
-    ("recipe_waits", "id", "label", "waits", "label"),
-)
+# ⚠️ DERIVED FROM THE SNAPSHOT FIELDS, NOT LISTED BY HAND. The hand-written list missed five
+#    columns that are content by the project's own definition: recipes.author,
+#    recipe_storage.label, recipe_waits.ext_label, recipe_waits.when_label and
+#    recipe_ingredients.note. A review injected a Cyrillic А into each of them and this pass found
+#    0 rows. when_label now reaches the page through conditional_totals as well. Taking the columns
+#    from snapshot_serialize means the next one added is covered without anyone remembering this
+#    file exists.
+#
+# (table, the baseline key, the text columns)
+_TEXT_COLUMNS = {
+    "recipe_steps": ("steps", ("text",)),
+    "recipe_ingredients": ("ingredients", ("label", "raw_text", "note", "heading")),
+    "recipe_waits": ("waits", ("label", "ext_label", "when_label")),
+    "recipe_storage": ("storage", ("label", "applies_to")),
+    "recipe_notes": (None, ("text",)),           # a note is a playground: not in the baseline
+}
+RECIPE_COLUMNS = ("name", "author", "descr", "notes")
+
+
+def _surfaces():
+    """[(table, column, baseline key, the key inside that entry)] for every TEXT column the snapshot
+    records, plus the note rows the snapshot deliberately leaves out."""
+    import snapshot_serialize as ss
+    snap = {"steps": ss.SNAPSHOT_STEP_FIELDS, "ingredients": ss.SNAPSHOT_ING_FIELDS,
+            "waits": ss.SNAPSHOT_WAIT_FIELDS, "storage": ss.SNAPSHOT_STORAGE_FIELDS}
+    out = []
+    for table, (key, cols) in _TEXT_COLUMNS.items():
+        for col in cols:
+            if key is not None and col not in snap.get(key, ()):
+                continue                      # not content, so this pass does not reach it
+            out.append((table, "id", col, key, col))
+    return out
 
 
 def run(db, apply=False, record=False):
@@ -53,7 +77,7 @@ def run(db, apply=False, record=False):
 
     hits = []
     with app.orm_session() as s:
-        for table, idcol, col, key, field in SURFACES:
+        for table, idcol, col, key, field in _surfaces():
             for row in s.execute(sqlalchemy.text(
                     f"SELECT {idcol} AS rid, recipe_id, {col} AS t FROM {table} "
                     f"WHERE {col} IS NOT NULL AND {col} != '' ORDER BY {idcol}")).mappings():
@@ -63,7 +87,7 @@ def run(db, apply=False, record=False):
                                  "recipe_id": row["recipe_id"], "column": col,
                                  "key": key, "field": field, "was": row["t"], "now": fixed})
         # the recipe's own text columns
-        for col in ("name", "descr", "notes"):
+        for col in RECIPE_COLUMNS:
             for row in s.execute(sqlalchemy.text(
                     f"SELECT id AS rid, {col} AS t FROM recipes "
                     f"WHERE {col} IS NOT NULL AND {col} != '' ORDER BY id")).mappings():

@@ -387,7 +387,6 @@ def _conditional_phrase(w):
     label = (w.get("when_label") or "").strip()
     if when == "only_if":
         return f"if {label}" if label else "on that path"
-    verb = (w.get("label") or "").strip()
     if label:
         return f"with {label}"
     return f"with the optional {_kind_noun(w)}" if _kind_noun(w) else "with the optional step"
