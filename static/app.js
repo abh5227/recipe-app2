@@ -1145,12 +1145,13 @@ function stepNoteMarkerHTML(notes, stepId) {
   if (!notes || !notes.length) return "";
   const id = `note-pop-${stepId}`;
   const label = notes.length > 1 ? `${notes.length} notes on this step` : "a note on this step";
-  return ` <button type="button" class="step-note-marker" aria-expanded="false"
-      aria-controls="${id}" aria-label="${esc(label)}" data-step-note="${stepId}">
-      <span aria-hidden="true">&#9432;</span></button>` +
-    `<span class="step-note-pop" id="${id}" role="tooltip" hidden>${
-      notes.map((n) => `<span class="step-note-line">${noteTextHTML(n)}</span>`).join("")
-    }</span>`;
+  // ⚠️ NO WHITESPACE INSIDE THE BUTTON. .step-body is white-space: pre-wrap, so a newline and an
+  //    indent in this template render as a gap between the step's full stop and the marker. Written
+  //    on one line on purpose.
+  return ` <button type="button" class="step-note-marker" aria-expanded="false" aria-controls="${id}" aria-label="${esc(label)}" data-step-note="${stepId}"><span aria-hidden="true">&#9432;</span></button>` +
+    `<span class="step-note-pop" id="${id}" role="tooltip" hidden>` +
+    notes.map((n) => `<span class="step-note-line">${noteTextHTML(n)}</span>`).join("") +
+    `</span>`;
 }
 
 function renderStepsList(steps) {
