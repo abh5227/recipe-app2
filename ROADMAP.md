@@ -901,6 +901,52 @@ going live, which is where they belonged: they are about the database surviving 
   `tests/test_migration_atomicity.py` if the rule is widened.
 
 
+### The baseline realign — three machine reasons a recipe left the short-circuit · ✅ SHIPPED 2026-10-01 (live run pending)
+
+**`scripts/realign_baseline.py`** (was `realign_baseline_row_ids.py`, renamed because row ids turned
+out to be one case of three). A recipe's `reason='original'` baseline is compared to its current
+content BYTE FOR BYTE to decide whether to run the diff at all, so a machine change that moves those
+bytes costs the recipe its short-circuit permanently while the page shows nothing.
+
+**Measured on live 2026-10-01, read-only: 6 of 300 recipes, 66 differences, 0 of them visible
+anywhere.** Every one fell into one of three cases, and **none of the 66 should have shown**, so
+there is no bug in `snapshot_diff`.
+
+- **A row id.** The old `write_plan_ahead` replaced wait and storage rows instead of updating them.
+  Fixed at the source by `app._match_rows`. brioche-bread was the one instance and it was realigned
+  on live during the go-live, taking the short-circuit set from 274 to 275.
+- **A released ingredient link**, 50 lines over 6 recipes. **Migration 046** deleted the 36
+  hand-authored ingredient rows and nulled every `recipe_ingredients.ingredient_id` pointing at
+  them. The 50 baseline links name **36 distinct ingredients, which is exactly the 36 rows 046
+  deleted**, all 50 name a row that no longer exists and none names one that does.
+  ⚠️ **046 patched the live rows and left the baselines alone, which is a lockstep violation in a
+  migration.** The lockstep rule is stated for corpus passes, and `migrations/*.sql` is checked by
+  nothing. A migration that rewrites a content column is a machine repair by another name. Worth a
+  folder-level test in the shape `tests/test_corpus_passes.py` already uses.
+- **NULL written as an empty string**, 8 recipes. The client sends every header field as a trimmed
+  string, so a column stored as NULL came back as `""` and the save wrote it. Fixed at the source by
+  `app._kept` on 2026-09-29. This clears the residue.
+
+**The refusal is what makes it safe.** `_normalize` erases exactly those three cases and nothing
+more, both documents are reduced and must then match byte for byte, and any other difference skips
+the recipe and reports it. Two aborts are armed on every write. The link case carries a third clause
+that is not decoration: a link counts as released only when the row it NAMES is absent from
+`ingredients`, because a cook unlinks a line by retyping its name and the save drops the link only
+when the name changed, so a cook-origin unlink always arrives with a text change that stops the
+recipe. The direction is enforced too, so a re-link stops it as well.
+⚠️ **It folds `None` against `""` and never whitespace.** `units.compare_text` folds a re-wrap and
+this must not, because a cook who re-wrapped a headnote made a real edit. Compare loosely, write
+faithfully, realign narrowly.
+
+**Rehearsed on a fresh copy of live 2026-10-01, gate passed:** short-circuit 275 to 280, the five
+joining are `aloo-gobhi`, `asparagus-with-eggs-and-za-atar-halayone-w-bayd`, `basic-hummus`,
+`mussakhan` and `no-knead-bread`, nothing left the set, the annotation set was unchanged entry by
+entry at 49 over 20 recipes, integrity ok, 0 foreign key violations and no count moved.
+
+**NOT YET RUN ON LIVE.** Andy's ruling: it goes with the next round's go-live, with the usual backup
+and the usual before-against-after set comparison. 12 tests in `tests/test_realign_baseline.py`, and
+the two new cases are refused by the old id-only rule, which is what proves the widening does work.
+
 ### Open decision for Andy — an off-Mac copy of the backups AND the photos
 
 ⚠️ **Right now, one disk failure loses everything that cannot be regenerated.** `recipes.db` holds
@@ -926,7 +972,8 @@ convenience differently.
 *Needs:* Andy's call on which, and on whether recipe photos may sit in a cloud account.
 *Touches:* `backup.py` gains a second destination, and the README's Backups section.
 *Size:* small for the cloud option. Today that is **42 MB of photos** across 121 recipes, which is
-nothing, and **13 GB of backups**, which is not. The backups compress poorly, being near-identical
+nothing, and **1.9 GB of backups**, which is six databases after the 2026-10-01 cleanup took the
+folder from 86 files and 21 GB. The backups compress poorly, being near-identical
 330 MB SQLite files, so syncing only the newest few is worth considering. The photos are the part
 with no second copy, and they are also the cheap part.
 
@@ -939,7 +986,7 @@ Development leftovers that are worth keeping but do not belong in the repo live 
 recipe-app-archive/
   screenshots/2026-09-28/   2 files     the login hero and album captures
   screenshots/2026-09-30/   18 files    the plan-ahead and step-heading rounds
-  screenshots/2026-10-01/   7 files     the go-live render checks at 1400 and 390
+  screenshots/2026-10-01/   13 files    the go-live render checks at 1400 and 390
   previews-2026-10.zip      336 MB      the whole previews/ folder, 550 files, verified
                                         file-by-file against the original before it was removed
 ```
