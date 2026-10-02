@@ -138,12 +138,51 @@ def seed_all(conn):
     _seed_weights(conn)
 
 
+# ⚠️ REFERENCE DATA THE SCHEMA ITSELF CREATES, AND TRUNCATING IT BREAKS WHAT POINTS AT IT.
+#    Migration 060 and its Alembic mirror insert the five note kinds, nothing reseeds them, and
+#    recipe_notes.kind is a FOREIGN KEY to that table. Reproduced before this line existed: after
+#    one reset the table held 0 rows and POST /api/recipes with any note returned 500 on
+#    recipe_notes_kind_fkey, with NO payload able to succeed, because write_notes reads the allowed
+#    kinds from the table and falls back to 'notes', which was also missing. The whole Postgres leg
+#    of CI could not store a note and nothing said so.
+KEEP_THROUGH_RESET = {"schema_migrations", "note_kinds"}
+
+
 def reset_and_seed(engine):
     """Truncate-and-reseed isolation primitive for the Postgres test DB: TRUNCATE every seed/data
     table (RESTART IDENTITY resets the SERIAL sequences for deterministic IDs; CASCADE ignores FK
     order), then reseed — all in one transaction. Leaves alembic_version (the Alembic stamp) alone.
     Assumes the schema already exists (alembic upgrade head)."""
-    names = [t.name for t in models.Base.metadata.sorted_tables if t.name != "schema_migrations"]
+    # ⚠️ note_kinds IS REFERENCE DATA THE SCHEMA ITSELF CREATES, AND TRUNCATING IT BREAKS EVERY
+    #    NOTE. Migration 060 and its Alembic mirror insert the five kinds, nothing reseeds them, and
+    #    recipe_notes.kind is a FOREIGN KEY to this table. Reproduced: after one reset the table held
+    #    0 rows and POST /api/recipes with any note returned 500 on recipes_notes_kind_fkey, with no
+    #    payload able to succeed, because write_notes reads the allowed kinds from this table and
+    #    falls back to 'notes', which was also missing. Left alone for the same reason
+    #    schema_migrations is: the migration owns it, not the seed.
+    names = [t.name for t in models.Base.metadata.sorted_tables
+             if t.name not in KEEP_THROUGH_RESET]
     with engine.begin() as conn:
         conn.execute(text("TRUNCATE " + ", ".join(names) + " RESTART IDENTITY CASCADE"))
         seed_all(conn)
+        ensure_note_kinds(conn)
+
+
+def ensure_note_kinds(conn):
+    """Put the five kinds back if anything has emptied the table, from the one file that defines
+    them.
+
+    ⚠️ KEEPING THE TABLE OUT OF THE TRUNCATE IS NOT ENOUGH ON ITS OWN, and that was measured the
+    moment the fix was tested: a single run of the OLD harness emptied note_kinds, and because
+    nothing reseeds it the database stayed unable to store a note afterwards. Keeping it is what
+    protects the rows; this is what heals a database that already lost them. Idempotent, and it
+    reads static/note-kinds.json, which tests/test_note_kinds_table.py already pins against both
+    the SQLite migration and the Alembic mirror."""
+    import json
+
+    kinds = json.loads((Path(__file__).resolve().parent.parent
+                        / "static" / "note-kinds.json").read_text())["kinds"]
+    for i, k in enumerate(kinds):
+        conn.execute(text("INSERT INTO note_kinds (kind, header, position) "
+                          "VALUES (:k, :h, :p) ON CONFLICT (kind) DO NOTHING"),
+                     {"k": k["kind"], "h": k["header"], "p": i})

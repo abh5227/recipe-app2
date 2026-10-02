@@ -1051,3 +1051,94 @@ def test_a_wait_keeps_its_row_id_across_a_save_on_postgres(pg):
     assert [r[1] for r in rotated] == [0, 1, 2]
     assert {r[2]: r[0] for r in rotated} == {r[2]: r[0] for r in planted}, \
         "a rotation minted new row ids on Postgres"
+
+
+# ---- notes as rows, on the production dialect (review fix) --------------------------------------
+# ⚠️ THE WHOLE NOTES WRITE PATH HAD NO POSTGRES COVERAGE. This leg runs the integration file and the
+# parity file, and neither wrote a note: the two tests that mentioned notes used the legacy
+# recipes.notes COLUMN. That gap was already hiding a fixture bug which made every note impossible
+# to store on Postgres (pg_harness truncated note_kinds, so recipe_notes.kind had nothing to point
+# at and every create carrying a note returned 500).
+
+def _notes_body(got):
+    return {
+        "name": got["recipe"]["name"],
+        "ingredients": [{"id": x["id"], "quantity": x["quantity"] or "", "unit": x["unit"] or "",
+                         "text": x["label"] or x["raw_text"]} for x in got["ingredients"]],
+        "steps": [{"id": st["id"], "text": st["text"]} for st in got["steps"]],
+    }
+
+
+def test_a_note_can_be_stored_at_all_on_postgres(pg):
+    slug = pg.client.post("/api/recipes", json={
+        "name": "Note dialect", "ingredients": [{"qty": "1", "text": "flour"}],
+        "steps": ["Mix.", "Rest."],
+        "notes": [{"text": "A plain note.", "kind": "notes"},
+                  {"text": "Keeps three days.", "kind": "storage"}]}).get_json()["id"]
+    got = pg.client.get(f"/api/recipes/{slug}").get_json()
+    assert [(n["kind"], n["text"]) for n in got["notes"]] == [
+        ("notes", "A plain note."), ("storage", "Keeps three days.")]
+
+
+def test_a_note_keeps_its_row_id_across_a_save_on_postgres(pg):
+    """The same rule the waits test above proves, on the table that arrived with migration 060.
+    recipe_notes carries UNIQUE (recipe_id, position) too, so a reorder needs the negative-position
+    pass on this dialect as much as on SQLite."""
+    slug = pg.client.post("/api/recipes", json={
+        "name": "Note identity", "ingredients": [{"qty": "1", "text": "flour"}],
+        "steps": ["Mix.", "Rest."]}).get_json()["id"]
+    got = pg.client.get(f"/api/recipes/{slug}").get_json()
+    body = _notes_body(got) | {"notes": [{"text": "One.", "kind": "notes"},
+                                         {"text": "Two.", "kind": "tips"},
+                                         {"text": "Three.", "kind": "serving"}]}
+    assert pg.client.put(f"/api/recipes/{slug}", json=body).status_code == 200
+
+    def rows():
+        with pg.engine.connect() as c:
+            return [(r[0], r[1], r[2]) for r in c.execute(text(
+                "SELECT id, position, text FROM recipe_notes WHERE recipe_id=:r "
+                "ORDER BY position"), {"r": slug})]
+
+    planted = rows()
+    assert [r[2] for r in planted] == ["One.", "Two.", "Three."]
+    assert pg.client.put(f"/api/recipes/{slug}", json=body).status_code == 200
+    assert rows() == planted, "an unchanged save changed the note row ids on Postgres"
+
+    body["notes"] = [body["notes"][2], body["notes"][0], body["notes"][1]]
+    assert pg.client.put(f"/api/recipes/{slug}", json=body).status_code == 200
+    rotated = rows()
+    assert [r[2] for r in rotated] == ["Three.", "One.", "Two."]
+    assert sorted(r[0] for r in rotated) == sorted(r[0] for r in planted), \
+        "a reorder minted new note ids on Postgres"
+
+
+def test_a_note_s_step_reference_and_links_hold_on_postgres(pg):
+    slug = pg.client.post("/api/recipes", json={
+        "name": "Note links", "ingredients": [{"qty": "1", "text": "flour"}],
+        "steps": ["Mix.", "Rest."]}).get_json()["id"]
+    got = pg.client.get(f"/api/recipes/{slug}").get_json()
+    step2, ing = got["steps"][1]["id"], got["ingredients"][0]["id"]
+    body = _notes_body(got) | {"notes": [
+        {"text": "Carry on at step 2.", "kind": "notes", "step_id": step2,
+         "ingredient_row_id": ing,
+         "refs": [{"ref_index": 0, "match_text": "step 2", "step_id": step2}]}]}
+    assert pg.client.put(f"/api/recipes/{slug}", json=body).status_code == 200
+    after = pg.client.get(f"/api/recipes/{slug}").get_json()["notes"][0]
+    assert after["step_id"] == step2 and after["ingredient_row_id"] == ing
+    assert after["refs"][0]["step_id"] == step2 and after["refs"][0]["step_no"] == 2
+
+
+def test_a_copy_carries_its_notes_on_postgres(pg):
+    slug = pg.client.post("/api/recipes", json={
+        "name": "Note copy", "ingredients": [{"qty": "1", "text": "flour"}],
+        "steps": ["Mix.", "Rest."]}).get_json()["id"]
+    got = pg.client.get(f"/api/recipes/{slug}").get_json()
+    step2 = got["steps"][1]["id"]
+    body = _notes_body(got) | {"notes": [{"text": "Carry on at step 2.", "kind": "notes",
+                                          "step_id": step2}]}
+    assert pg.client.put(f"/api/recipes/{slug}", json=body).status_code == 200
+    new = pg.client.post(f"/api/recipes/{slug}/copy", json={}).get_json()["id"]
+    copied = pg.client.get(f"/api/recipes/{new}").get_json()
+    assert [n["text"] for n in copied["notes"]] == ["Carry on at step 2."]
+    own = {s["id"] for s in copied["steps"]}
+    assert copied["notes"][0]["step_id"] in own, "the copy's note points at the original's step"
