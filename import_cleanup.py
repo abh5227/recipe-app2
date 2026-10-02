@@ -1436,6 +1436,13 @@ PROPER_NOUNS = frozenset("""
 ACRONYMS = frozenset({"msg", "ap", "ny", "nyc", "uk", "us", "usa", "bbq", "evoo", "diy", "sos"})
 
 _LEAD_WORD = re.compile(r"^([^A-Za-z]*)([A-Za-z][\w'\u2019-]*)")
+# Any word after the first that begins with a capital, which is what makes a name title-cased. The
+# split is on whitespace AND on a hyphen, because "All-Purpose Flour" is title-cased too.
+_WORDS_AFTER_LEAD = re.compile(r"[A-Za-z][A-Za-z'\u2019]*")
+
+
+def _is_title_cased(rest):
+    return any(w[:1].isupper() for w in _WORDS_AFTER_LEAD.findall(rest or ""))
 
 # The certain / uncertain split for an ingredient NAME, as the review CSV reports it.
 CASE_CERTAIN = "certain"
@@ -1476,6 +1483,13 @@ def ingredient_name_case(name, canonical=None, lowercase_elsewhere=False):
         return t, CASE_ACRONYM, f"{word} is an acronym"
     if word.lower() in PROPER_NOUNS:
         return t, CASE_PROPER, f"{word} is on the proper-noun list"
+    # ⚠️ A TITLE-CASED NAME IS A DECISION ABOUT EVERY WORD IN IT, NOT ABOUT THE FIRST ONE. Lowering
+    #    the leading word alone leaves a worse string than it found: measured over the corpus, 99 of
+    #    262 came out half-cased, including "all-Purpose Flour", "cream Cheese, softened" and
+    #    "fresh Parsley". Which of the later words are names ("Fresh Parmesan") is exactly the
+    #    question this rule cannot answer, so the whole name goes to the review list.
+    if _is_title_cased(t[m.end(2):]):
+        return t, CASE_UNCERTAIN, "title-cased, so lowering the first word alone would be worse"
     if lowercase_elsewhere:
         return (pre + word[0].lower() + word[1:] + t[m.end():], CASE_CERTAIN,
                 "the corpus writes this word lowercase elsewhere and it is not a name")
