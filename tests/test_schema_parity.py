@@ -108,8 +108,8 @@ def _norm_check(sqltext):
 
     Measured differences, all rendering: Postgres writes `x IN (a,b)` as `x = ANY (ARRAY[a,b])`,
     writes `BETWEEN a AND b` as `>= a AND <= b`, lowercases function names, appends `::text` to
-    string literals, spells integers in a numeric array as `1::numeric`, and drops parentheses it
-    considers redundant.
+    string literals, spells integers in a numeric array as `1::numeric`, writes `trim(x)` as
+    `trim(both from x)`, and drops parentheses it considers redundant.
     """
     s = " ".join((sqltext or "").split()).lower()
     s = CAST.sub("", s)
@@ -118,6 +118,10 @@ def _norm_check(sqltext):
     # between a and b -> >= a and <= b, keeping the subject
     s = re.sub(r"(\b[\w.]+)\s+between\s+(\S+)\s+and\s+(\S+)",
                lambda m: f"{m.group(1)} >= {m.group(2)} and {m.group(1)} <= {m.group(3)}", s)
+    # trim(both from x) -> trim(x). Postgres spells the SQL standard form of TRIM in full and SQLite
+    # writes the one-argument shorthand. Same function, same result, two renderings — and this is
+    # the first CHECK in the schema to call trim at all (recipe_notes, migration 060).
+    s = re.sub(r"\btrim\s*\(\s*both\s+from\s+", "trim(", s)
     s = re.sub(r"\b(\d+)\.0+\b", r"\1", s)              # 1.0 -> 1
     s = s.replace("(", " ").replace(")", " ")           # parens carry no meaning in these predicates
     s = re.sub(r"\s*,\s*", ",", s)
@@ -370,6 +374,19 @@ def test_live_s_schema_is_what_the_migrations_build(schemas, tmp_path):
     live = pathlib.Path(corpus_guard.live_db())
     if not live.exists():
         pytest.skip("no live database here, which is the fresh-clone and CI case")
+
+    # ⚠️ A MIGRATION WRITTEN BUT NOT YET RUN ON LIVE IS A DEPLOY WINDOW, NOT A DIVERGENCE. The order
+    #    rule puts an additive migration BEFORE the deploy, so between writing one and the go-live
+    #    the two schemas are legitimately different and this test would be red for days, which is how
+    #    a test stops being read. It names the pending files and skips; the moment live has them it
+    #    compares again, and a divergence with NOTHING pending still fails.
+    applied = {r[0] for r in sqlite3.connect(f"file:{live}?mode=ro", uri=True)
+               .execute("SELECT filename FROM schema_migrations")}
+    on_disk = {f.name for f in (REPO / "migrations").glob("*.sql")}
+    pending = sorted(on_disk - applied)
+    if pending:
+        pytest.skip(f"live is {len(pending)} migration(s) behind this checkout, which is the "
+                    f"deploy window: {', '.join(pending)}")
 
     fresh_db, fresh_insp, _pi = schemas
     # a creator rather than a URL: the repo path contains spaces, and this makes mode=ro explicit

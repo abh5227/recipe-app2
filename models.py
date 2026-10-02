@@ -309,6 +309,72 @@ class RecipeStorage(Base):
     )
 
 
+class NoteKind(Base):
+    """The five note kinds, as ROWS rather than a CHECK. Adding a sixth is one INSERT; as a CHECK on
+    recipe_notes it would be a create-copy-drop-rename on every note in the database, because SQLite
+    cannot widen a CHECK in place. Mirrors static/note-kinds.json, which the client and
+    import_cleanup already share, and tests/test_note_kinds_table.py fails if they disagree."""
+    __tablename__ = "note_kinds"
+    kind = Column(Text, primary_key=True)
+    header = Column(Text, nullable=False)
+    position = Column(Integer, nullable=False)
+
+
+class RecipeNote(Base):
+    """One paragraph of a recipe's notes. SEVERAL per recipe: 95 of the 300 carry notes and they hold
+    177 paragraphs between them, from one up to ten on the bagel. See migration 060 and notes.py.
+
+    ⚠️ THE TEXT IS VERBATIM, LABEL AND ALL. 27 paragraphs lead with a label the kind table does not
+    know and the display keeps those whole, so storing the kind beside the words rather than instead
+    of them is what let the corpus move byte-for-byte and the lockstep be provable.
+
+    ⚠️ step_id IS A POINTER AND NEVER A SNIPPET, which is where the wait pointer ended up after 051
+    added a text snippet and 054 dropped it. ON DELETE SET NULL is the database's backstop; the save
+    path refuses a step_id naming no step of the recipe, which is what clears the link when a linked
+    step is deleted.
+
+    ⚠️ ingredient_row_id IS WRITTEN BY NOTHING YET. It names a LINE of this recipe, not a library
+    row, because the line is what a note is about and the line already carries its own library link.
+    The picker is a later round; the column is here so that round needs no migration in its deploy
+    window."""
+    __tablename__ = "recipe_notes"
+    id = Column(Integer, primary_key=True)
+    recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+    position = Column(Integer, nullable=False)
+    kind = Column(Text, ForeignKey("note_kinds.kind"), nullable=False, server_default="notes")
+    text_ = Column("text", Text, nullable=False)        # "text" shadows sqlalchemy.text, as on steps
+    step_id = Column(Integer, ForeignKey("recipe_steps.id", ondelete="SET NULL"))
+    ingredient_row_id = Column(Integer, ForeignKey("recipe_ingredients.id", ondelete="SET NULL"))
+    __table_args__ = (
+        Index("idx_recipe_notes_recipe", "recipe_id", "position"),
+        Index("idx_recipe_notes_step", "step_id"),
+        Index("idx_recipe_notes_ing", "ingredient_row_id"),
+        CheckConstraint("length(trim(text)) > 0"),
+        UniqueConstraint("recipe_id", "position"),
+        {"sqlite_autoincrement": True},
+    )
+
+
+class RecipeNoteStepRef(Base):
+    """A step named inside a note's own words ("proceed with step 9"), stored as the step's ID plus
+    WHICH mention in the text it is. The number on the page is resolved from the step's current
+    position every time, so moving a step keeps the sentence right instead of freezing a number that
+    quietly stops being true."""
+    __tablename__ = "recipe_note_step_refs"
+    id = Column(Integer, primary_key=True)
+    note_id = Column(Integer, ForeignKey("recipe_notes.id", ondelete="CASCADE"), nullable=False)
+    ref_index = Column(Integer, nullable=False)
+    match_text = Column(Text, nullable=False)
+    step_id = Column(Integer, ForeignKey("recipe_steps.id", ondelete="SET NULL"))
+    __table_args__ = (
+        Index("idx_note_step_refs_note", "note_id"),
+        Index("idx_note_step_refs_step", "step_id"),
+        CheckConstraint("ref_index >= 0"),
+        UniqueConstraint("note_id", "ref_index"),
+        {"sqlite_autoincrement": True},
+    )
+
+
 class SchemaMigration(Base):
     __tablename__ = "schema_migrations"
     filename = Column(Text, primary_key=True)
