@@ -21,9 +21,15 @@ from collections.abc import Mapping
 # (id/created_at/source/uid/hash/owner — those live on the recipe, not the version), plus the ingredient
 # columns below. Order is irrelevant (sort_keys), but kept explicit as the content contract. Mirrors
 # snapshot_diff.CONTENT_FIELDS (the diff's copy of the same 11).
+# ⚠️ `notes` IS NOT HERE, AND THAT IS ANDY'S RULING RATHER THAN AN OVERSIGHT. A note is a
+# playground: it takes no part in "your changes", it mints no annotation entry, and editing one must
+# not cost a recipe its place in the byte-equal (untouched) set. The derived column would put a note
+# edit straight back into these bytes, so it is left out, and the note ROWS are left out below for
+# the same reason. The author's original words are kept in recipe_notes_original (migration 061),
+# which nothing compares and nothing shows.
 SNAPSHOT_RECIPE_FIELDS = (
     "name", "author", "source_url", "category", "servings", "prep_time",
-    "cook_time", "total_time", "descr", "notes", "image",
+    "cook_time", "total_time", "descr", "image",
 )
 # ⚠️ `id` IS THE ROW'S DATABASE PRIMARY KEY, AND IT IS THE WHOLE POINT OF OPTION C. Every other key
 # here describes the row's CONTENT. This one says WHICH ROW IT IS, which is the question text could
@@ -174,29 +180,7 @@ SNAPSHOT_STORAGE_FIELDS = (
     "id", "position", "where_kept", "applies_to", "label", "min_minutes", "max_minutes",
 )
 
-# ⚠️ A NOTE'S TEXT IS ITS CONTENT AND ITS LINKS ARE TOO. step_id and ingredient_row_id are what the
-#    cook attached, not provenance, so a note that gains or loses a link has changed. `refs` is the
-#    step each "step N" mention in the text points at, by mention ordinal, and it is omitted when
-#    the note names no step, so a note with no references serializes exactly as it did before
-#    references existed.
-SNAPSHOT_NOTE_FIELDS = (
-    "id", "position", "kind", "text", "step_id", "ingredient_row_id",
-)
-
-
-def snapshot_note_row(n):
-    """One note row -> its snapshot dict. `refs` is added only when the note names a step, which is
-    the omit-when-default trick heading_level already uses: a note with no reference serializes
-    exactly as it would have before references existed."""
-    out = {k: _get(n, k) for k in SNAPSHOT_NOTE_FIELDS}
-    refs = _get(n, "refs")
-    if refs:
-        out["refs"] = [{"ref_index": _get(r, "ref_index"), "step_id": _get(r, "step_id")}
-                       for r in refs]
-    return out
-
-
-def content_blob(recipe, ingredients, steps, waits=None, storage=None, notes=None):
+def content_blob(recipe, ingredients, steps, waits=None, storage=None):
     """The stable JSON snapshot of a recipe's content. `recipe` is one row-like; the rest are lists of
     row-likes (steps carry 'text'). Projects the content fields, sorts keys, compact + ascii-safe
     -> a byte-stable string. THE format recipe_snapshots.content stores and snapshot_diff consumes.
@@ -207,10 +191,11 @@ def content_blob(recipe, ingredients, steps, waits=None, storage=None, notes=Non
     every one of them differ from its baseline, forcing the diff to run 300 times to return the same
     answer. A recipe that GAINS a wait stops being byte-equal, which is correct: it changed.
 
-    ⚠️ AND notes IS OMITTED THE SAME WAY, FOR THE SAME REASON. Every baseline predates the
-    recipe_notes table, so emitting "notes":[] on all 300 would end the byte-equal short-circuit for
-    every recipe at once the day migration 060 shipped. 95 recipes gain the key and have their
-    baselines patched in the same transaction; the other 205 emit nothing and never move.
+    ⚠️ AND NOTES ARE NOT IN HERE AT ALL. They were, for one round. Andy's ruling is that a note is
+    a playground: no annotation entry, no mark, and no recipe leaving the byte-equal set because
+    somebody reworded a tip. Both the rows and the derived column are therefore left out, and the
+    author's original words live in recipe_notes_original instead. scripts/notes_to_rows.py strips
+    the key from the 300 stored baselines in the same pass, in lockstep, so nothing moves.
 
     ⚠️ step_position IS NOT IN THE SNAPSHOT. It records which step a wait was read from, which is
     provenance rather than content, and moving a step would otherwise read as an edit to the wait.
@@ -224,6 +209,4 @@ def content_blob(recipe, ingredients, steps, waits=None, storage=None, notes=Non
         body["waits"] = [{k: _get(w, k) for k in SNAPSHOT_WAIT_FIELDS} for w in waits]
     if storage:
         body["storage"] = [{k: _get(x, k) for k in SNAPSHOT_STORAGE_FIELDS} for x in storage]
-    if notes:
-        body["notes"] = [snapshot_note_row(n) for n in notes]
     return json.dumps(body, sort_keys=True, ensure_ascii=False, separators=(",", ":"))

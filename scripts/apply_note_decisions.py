@@ -23,7 +23,9 @@ baseline from current content, and the review proved what that costs: kfc-spicy-
 with one real cook edit to a step came out of this pass with that edit absorbed into the baseline
 and its mark gone, because a rebuild declares the recipe born in its edited state. 20 recipes carry
 49 entries between them, and one recorded decision on any of them would have erased the lot.
-Only the touched note's entry and the inserted wait's entry move, read back from the live rows.
+Only the inserted wait's entry moves, read back from the live row. The note links and the step
+references need no baseline at all now that notes are a playground, which is Andy's ruling: a note
+mints no mark and editing one costs a recipe nothing.
 
 ⚠️ AND THE GATE RUNS BEFORE THE COMMIT, NOT AFTER IT. It was a post-mortem: the writes committed
 per recipe and the mark check ran at the end, so the abort printed a verdict on data that was
@@ -74,24 +76,6 @@ def _state(s, sqlalchemy, app, rid):
         {"r": rid}).scalar_one_or_none()
     return {"byte_equal": got is not None and cur == got,
             "marks": json.dumps(app._recipe_annotations(s, rid), sort_keys=True)}
-
-
-def _patch_note(doc, s, sqlalchemy, snapshot_serialize, note_id):
-    """Replace exactly the one note entry this pass touched, read back from the live row."""
-    row = s.execute(sqlalchemy.text(
-        "SELECT id, position, kind, text, step_id, ingredient_row_id "
-        "FROM recipe_notes WHERE id=:n"), {"n": note_id}).mappings().first()
-    refs = s.execute(sqlalchemy.text(
-        "SELECT ref_index, step_id FROM recipe_note_step_refs WHERE note_id=:n "
-        "ORDER BY ref_index"), {"n": note_id}).mappings().all()
-    entry = snapshot_serialize.snapshot_note_row(
-        dict(row) | {"refs": [dict(r) for r in refs]})
-    for i, e in enumerate(doc.get("notes") or ()):
-        if e.get("id") == note_id:
-            doc["notes"][i] = entry
-            return
-    # No entry to replace. The gate below is what reports it, because a baseline that does not
-    # describe the note being linked is a disagreement this pass must not paper over.
 
 
 def _patch_wait(doc, s, sqlalchemy, snapshot_serialize, wait_id):
@@ -222,12 +206,12 @@ def run(db, apply=False):
                          "elo": entry["ext_min_minutes"], "ehi": entry["ext_max_minutes"],
                          "wk": entry["when_kind"], "wl": entry["when_label"],
                          "sid": entry["step_id"]}).scalar_one()
-                # ⚠️ THE OTHER HALF, IN THE SAME TRANSACTION, AND ONLY THE ENTRY THAT MOVED.
-                if doc is not None:
-                    if what in ("link", "ref"):
-                        _patch_note(doc, s, sqlalchemy, snapshot_serialize, row["id"])
-                    else:
-                        _patch_wait(doc, s, sqlalchemy, snapshot_serialize, wid)
+                # ⚠️ ONLY THE WAIT NEEDS THE OTHER HALF NOW. A note link and a step reference are
+                #    not in recipe_snapshots.content at all since notes became a playground, so
+                #    there is nothing to patch for them and nothing they can mark. A wait is still
+                #    content, so its entry moves in the same transaction as the row.
+                if doc is not None and what == "wait":
+                    _patch_wait(doc, s, sqlalchemy, snapshot_serialize, wid)
             if doc is not None:
                 s.execute(sqlalchemy.text(
                     "UPDATE recipe_snapshots SET content=:c WHERE recipe_id=:r "

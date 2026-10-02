@@ -237,12 +237,10 @@ def sync_heading_layout(old_blob, current_ingredients, current_steps):
                       skip_converted=True),
         old.get("waits"),
         old.get("storage"),
-        # ⚠️ AND notes, FOR THE REASON THE PARAGRAPH ABOVE GIVES. The key arrived with migration 060
-        #    and content_blob omits what it is not handed, so leaving this line out would strip every
-        #    note from the baseline of any recipe a save rewrote, and all of them would read as
-        #    "added" in "your changes" for good. P3 caught it, which is what P3 is stated over the
-        #    whole key set for.
-        old.get("notes"),
+        # ⚠️ THERE IS NO notes KEY TO HAND BACK ANY MORE. It arrived with migration 060 and left
+        #    again when Andy ruled that notes are a playground, so content_blob no longer takes
+        #    them. P1 to P4 are stated over the whole key set, so if the key ever comes back and
+        #    this call forgets it, P3 fails here rather than on 95 recipes' baselines.
     )
 
 

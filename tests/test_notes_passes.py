@@ -94,11 +94,20 @@ def test_the_notes_move_into_rows_in_lockstep_and_mint_no_mark(tmp_path):
     rows = _rows(db, "SELECT position, kind, text FROM recipe_notes ORDER BY position")
     assert [r["kind"] for r in rows] == ["notes", "tips"]
     assert rows[0]["text"].startswith("Soak the beans")
-    # the derived column and the baseline moved with them, so the page shows nothing new
     assert _marks(db) == [], "a machine repair minted a mark"
+
+    # ⚠️ THE BASELINE CARRIES NO NOTES AT ALL, EITHER KEY. Notes are a playground, so the pass
+    #    STRIPS what the old serializer used to put there rather than adding to it.
     doc = json.loads(_rows(db, "SELECT content FROM recipe_snapshots WHERE reason='original'")[0]
                      ["content"])
-    assert [n["text"] for n in doc["notes"]] == [r["text"] for r in rows]
+    assert "notes" not in doc, "the baseline still carries the note rows"
+    assert "notes" not in doc["recipe"], "the baseline still carries the derived column"
+
+    # ⚠️ AND THE AUTHOR'S WORDS ARE KEPT WHERE NOTHING COMPARES THEM, so a future restore has a
+    #    source. This is the only copy once the cook starts editing.
+    orig = _rows(db, "SELECT position, kind, text FROM recipe_notes_original ORDER BY position")
+    assert [r["text"] for r in orig] == [r["text"] for r in rows]
+    assert [r["kind"] for r in orig] == ["notes", "tips"]
 
 
 def test_a_second_run_moves_nothing(tmp_path):
@@ -111,7 +120,7 @@ def test_a_second_run_moves_nothing(tmp_path):
     assert _rows(db, "SELECT id, text FROM recipe_notes ORDER BY id") == before
 
 
-def test_a_run_that_would_move_a_mark_writes_nothing_at_all(tmp_path):
+def test_a_lockstep_failure_writes_nothing_at_all(tmp_path, monkeypatch):
     """⚠️ THE GATE RUNS BEFORE THE COMMIT. It ran after every recipe had committed, so an abort was
     a verdict on data already on disk: the rows were written, the baseline was half moved, and the
     message read as though nothing had happened. On a 95-recipe pass that is a restore from backup.
@@ -122,22 +131,24 @@ def test_a_run_that_would_move_a_mark_writes_nothing_at_all(tmp_path):
     import notes_to_rows
 
     db = _kitchen(tmp_path)
-    doc = json.loads(_rows(db, "SELECT content FROM recipe_snapshots WHERE reason='original'")[0]
-                     ["content"])
-    doc["notes"] = [{"id": 999, "position": 0, "kind": "notes", "text": "a note the cook deleted",
-                     "step_id": None, "ingredient_row_id": None}]
-    with sqlite3.connect(db) as c:
-        c.execute("UPDATE recipe_snapshots SET content=? WHERE reason='original'",
-                  (json.dumps(doc, sort_keys=True, ensure_ascii=False, separators=(",", ":")),))
-    before = _marks(db)
-    assert len(before) == 1, f"the fixture does not carry the mark this test is about: {before}"
+    assert _marks(db) == [], "the fixture did not start byte-equal to its baseline"
+
+    # A baseline patch that writes something the live rows do not say, which is what any lockstep
+    # bug looks like from here: the recipe was byte-equal before the pass and must not stop being
+    # byte-equal because of it.
+    def wrong(doc):
+        doc.pop("notes", None)
+        (doc.get("recipe") or {}).pop("notes", None)
+        doc["steps"][0]["text"] = "Something the live row does not say."
+        return doc
+    monkeypatch.setattr(notes_to_rows, "strip_notes", wrong)
 
     with pytest.raises(SystemExit) as e:
         notes_to_rows.run(str(db), apply=True)
-    assert "annotation set" in str(e.value) or "byte-equal" in str(e.value)
+    assert "byte-equal" in str(e.value) or "annotation set" in str(e.value)
     assert _rows(db, "SELECT * FROM recipe_notes") == [], "the abort left rows behind"
+    assert _rows(db, "SELECT * FROM recipe_notes_original") == [], "the abort left a record behind"
     assert _rows(db, "SELECT notes FROM recipes")[0]["notes"] == NOTES, "the column was rewritten"
-    assert _marks(db) == before, "the cook's mark moved"
 
 
 # ---- apply_note_decisions ----------------------------------------------------------------------

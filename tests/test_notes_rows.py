@@ -181,19 +181,42 @@ def test_a_notes_string_from_an_old_client_still_works(dish, kitchen):
 
 # ---- marks ------------------------------------------------------------------------------------
 
-def test_a_note_edit_marks_once(dish, kitchen):
-    """⚠️ ONCE, ON ITS ROW. recipes.notes is a derived copy of the rows, so diffing both would mark
-    one edit twice, the second entry reading as the whole notes field having been replaced."""
+def test_a_note_is_a_playground_and_an_edit_marks_nothing(dish, kitchen):
+    """⚠️ ANDY'S RULING, AND IT IS THE WHOLE RULE. A note takes no part in "your changes". Editing
+    one, moving it between kinds, attaching it to a step or detaching it again mints no annotation
+    entry AND costs the recipe nothing: it stays byte-equal to its baseline, so it stays on the
+    untouched list. The notes are not in recipe_snapshots.content at all, which is what makes both
+    halves true at once rather than one of them."""
     with kitchen.conn() as c:
         c.execute("UPDATE recipe_snapshots SET content=? WHERE recipe_id=? AND reason='original'",
                   (_blob(dish), dish))
         c.commit()
+    before = _blob(dish)
     d = _get(kitchen, dish)
-    _save(kitchen, dish, d, notes=[{"text": "Soaking is required.", "kind": "notes"},
-                                   {"text": "Keeps three days.", "kind": "storage"}])
-    marks = _marks(dish)
-    assert len(marks) == 1, marks
-    assert marks[0]["kind"] == "note"
+    step2 = d["steps"][1]["id"]
+    _save(kitchen, dish, d, notes=[
+        {"text": "Soaking is required.", "kind": "tips", "step_id": step2},
+        {"text": "Keeps three days.", "kind": "storage"}])
+    assert _marks(dish) == [], "a note edit minted a mark"
+    assert _blob(dish) == before, "a note edit moved the snapshot bytes"
+    # the rows really did change, so the test is not passing by doing nothing
+    assert [n["text"] for n in _notes(kitchen, dish)] == ["Soaking is required.",
+                                                          "Keeps three days."]
+    assert _notes(kitchen, dish)[0]["step_id"] == step2
+
+
+def test_deleting_every_note_still_marks_nothing(dish, kitchen):
+    """The strongest form of the same rule. 177 notes over 95 recipes, and losing all of one
+    recipe's is a playground action like any other."""
+    with kitchen.conn() as c:
+        c.execute("UPDATE recipe_snapshots SET content=? WHERE recipe_id=? AND reason='original'",
+                  (_blob(dish), dish))
+        c.commit()
+    before = _blob(dish)
+    _save(kitchen, dish, _get(kitchen, dish), notes=[])
+    assert _notes(kitchen, dish) == []
+    assert _marks(dish) == []
+    assert _blob(dish) == before
 
 
 def test_a_capitalization_only_edit_does_not_mark(dish, kitchen):

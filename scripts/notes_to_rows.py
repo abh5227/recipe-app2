@@ -17,10 +17,16 @@ snapshot records a note's id, so a baseline holding different ids would pair not
 note would read as a change. Measured before writing this: all 95 baselines agree with live on the
 notes text, so the rows the baseline describes ARE the rows live now holds.
 
-⚠️ AND recipe.notes MOVES WITH THEM. The column is a derived copy from here on, rebuilt from the
-rows, and 6 of the 95 see it renormalize (a four-newline gap, trailing whitespace). It is in the
-snapshot, so the baseline's copy has to move too or those 6 stop being byte-equal for a reason
-nobody could see on the page.
+⚠️ AND THE NOTES LEAVE THE BASELINE ALTOGETHER, WHICH IS WHY THIS PASS TOUCHES ALL 300 AND NOT 95.
+Andy's ruling: notes are a playground. They mint no "your changes" entry and editing one must not
+cost a recipe its place in the byte-equal set, so neither the rows nor the derived column are in
+recipe_snapshots.content any more. Every one of the 300 stored baselines still carries
+`recipe.notes` from before that ruling, so the key is stripped here, in the same transaction as the
+rows, and the recipe stays byte-equal to its own baseline throughout.
+
+⚠️ AND THE AUTHOR'S WORDS ARE RECORDED BEFORE ANYTHING CHANGES THEM. recipe_notes_original
+(migration 061) is written once per recipe from the column as it is read, so a future "restore the
+original notes" has something to restore from. Nothing compares it and nothing shows it.
 """
 import argparse
 import json
@@ -34,6 +40,18 @@ from corpus_guard import refuse_live, report_target                          # n
 CSV_NAME = "notes-to-rows.csv"
 
 
+def strip_notes(doc):
+    """Take both notes keys out of a stored baseline, in place. The other half of the lockstep.
+
+    ⚠️ A NAMED RULE RATHER THAN TWO INLINE CALLS, so the gate below can be tested by taking it away.
+    content_blob stopped emitting either key when notes became a playground, so a baseline that
+    keeps one disagrees with the serializer for good and the recipe never reads as untouched
+    again."""
+    doc.pop("notes", None)
+    (doc.get("recipe") or {}).pop("notes", None)
+    return doc
+
+
 def run(db, apply=False, record=False):
     import app
     import models
@@ -41,10 +59,17 @@ def run(db, apply=False, record=False):
     import sqlalchemy
     app.DB = models.DB = pathlib.Path(db)
 
-    planned, skipped = [], []
+    planned, skipped, strip_only = [], [], []
     with app.orm_session() as s:
         rows = s.execute(sqlalchemy.text(
             "SELECT id, notes FROM recipes WHERE notes IS NOT NULL AND notes != '' ORDER BY id")).all()
+        # ⚠️ EVERY RECIPE WHOSE BASELINE STILL NAMES notes, not just the ones with notes to move.
+        #    The key was in all 300 baselines before notes became a playground, and a baseline that
+        #    keeps it disagrees with the new serializer forever.
+        for (rid,) in s.execute(sqlalchemy.text(
+                "SELECT recipe_id FROM recipe_snapshots WHERE reason='original' "
+                "AND content LIKE '%\"notes\":%' ORDER BY recipe_id")).all():
+            strip_only.append(rid)
         for rid, text in rows:
             existing = s.execute(sqlalchemy.text(
                 "SELECT COUNT(*) FROM recipe_notes WHERE recipe_id=:r"), {"r": rid}).scalar_one()
@@ -87,9 +112,10 @@ def run(db, apply=False, record=False):
 
     # read BEFORE anything is written: which of these recipes were byte-equal, and how many marks
     # each one carried. The gate below is stated against this and against nothing else.
+    touched = sorted({rid for rid, _p in planned} | set(strip_only))
     before_state = {}
     with app.orm_session() as s:
-        for rid, _paras in planned:
+        for rid in touched:
             cur = app.serialize_recipe_content(s, rid)
             got = s.execute(sqlalchemy.text(
                 "SELECT content FROM recipe_snapshots WHERE recipe_id=:r AND reason='original'"),
@@ -99,36 +125,38 @@ def run(db, apply=False, record=False):
             before_state[rid] = {"byte_equal": got is not None and cur == got,
                                  "marks": json.dumps(app._recipe_annotations(s, rid),
                                                      sort_keys=True)}
+    print(f"  baselines to strip        : {len(strip_only)}")
     print(f"  before this run           : {sum(1 for v in before_state.values() if v['byte_equal'])}"
-          f" of {len(planned)} byte-equal, "
+          f" of {len(touched)} byte-equal, "
           f"{sum(len(json.loads(v['marks'])) for v in before_state.values())} mark(s) between them")
 
-    import snapshot_serialize
+    moves = dict(planned)
     written = 0
-    for rid, paras in planned:
+    for rid in touched:
+        paras = moves.get(rid) or []
         with app.orm_session() as s:
             stored = s.execute(sqlalchemy.text(
                 "SELECT content FROM recipe_snapshots WHERE recipe_id=:r AND reason='original'"),
                 {"r": rid}).scalar_one_or_none()
-            # the rows
-            ids = []
+            # the rows, and the record of what the author wrote, taken before anything changes it
             for i, (p, k) in enumerate(paras):
-                ids.append(s.execute(sqlalchemy.text(
+                s.execute(sqlalchemy.text(
                     "INSERT INTO recipe_notes (recipe_id, position, kind, text) "
-                    "VALUES (:r, :p, :k, :t) RETURNING id"),
-                    {"r": rid, "p": i, "k": k, "t": p}).scalar_one())
-            derived = notes_rules.derived_text([{"text": p} for p, _k in paras])
-            s.execute(sqlalchemy.text("UPDATE recipes SET notes=:n WHERE id=:r"),
-                      {"n": derived, "r": rid})
-            # ⚠️ THE OTHER HALF, IN THE SAME TRANSACTION. Surgical: the baseline gains the notes key
-            #    and its recipe.notes moves to the derived text, and nothing else in it is touched.
+                    "VALUES (:r, :p, :k, :t)"), {"r": rid, "p": i, "k": k, "t": p})
+                s.execute(sqlalchemy.text(
+                    "INSERT INTO recipe_notes_original (recipe_id, position, kind, text, "
+                    "recorded_at) VALUES (:r, :p, :k, :t, :w) "
+                    "ON CONFLICT (recipe_id, position) DO NOTHING"),
+                    {"r": rid, "p": i, "k": k, "t": p, "w": app.now_utc()})
+            if paras:
+                s.execute(sqlalchemy.text("UPDATE recipes SET notes=:n WHERE id=:r"),
+                          {"n": notes_rules.derived_text([{"text": p} for p, _k in paras]),
+                           "r": rid})
+            # ⚠️ THE OTHER HALF, IN THE SAME TRANSACTION, AND IT STRIPS RATHER THAN ADDS. Notes are
+            #    a playground, so the baseline holds neither the rows nor the derived column. Both
+            #    keys go, and nothing else in the document is touched.
             if stored is not None:
-                doc = json.loads(stored)
-                doc["notes"] = [snapshot_serialize.snapshot_note_row(
-                    {"id": ids[i], "position": i, "kind": k, "text": p,
-                     "step_id": None, "ingredient_row_id": None})
-                    for i, (p, k) in enumerate(paras)]
-                (doc.setdefault("recipe", {}))["notes"] = derived
+                doc = strip_notes(json.loads(stored))
                 s.execute(sqlalchemy.text(
                     "UPDATE recipe_snapshots SET content=:c WHERE recipe_id=:r AND reason='original'"),
                     {"c": json.dumps(doc, sort_keys=True, ensure_ascii=False,
@@ -153,7 +181,8 @@ def run(db, apply=False, record=False):
             s.commit()
             written += len(paras)
 
-    print(f"  WROTE {written} note row(s) over {len(planned)} recipe(s) -> {db}")
+    print(f"  WROTE {written} note row(s) over {len(planned)} recipe(s), stripped "
+          f"{len(strip_only)} baseline(s) -> {db}")
 
     # ⚠️ THE ABORT COMPARES AGAINST THE BEFORE-STATE OF THIS RUN, NEVER AGAINST A FIXED EXPECTATION.
     #    It read "every moved recipe must be byte-equal afterwards", which is false for a reason that
@@ -163,7 +192,7 @@ def run(db, apply=False, record=False):
     #    and both have to come back the same.
     lost, changed = [], []
     with app.orm_session() as s:
-        for rid, _paras in planned:
+        for rid in touched:
             cur = app.serialize_recipe_content(s, rid)
             got = s.execute(sqlalchemy.text(
                 "SELECT content FROM recipe_snapshots WHERE recipe_id=:r AND reason='original'"),

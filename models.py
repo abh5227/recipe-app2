@@ -355,6 +355,33 @@ class RecipeNote(Base):
     )
 
 
+class RecipeNoteOriginal(Base):
+    """The author's original notes, kept as a RECORD and compared by nothing (migration 061).
+
+    ⚠️ NOTES ARE A PLAYGROUND, WHICH IS WHY THIS TABLE EXISTS. Andy's ruling: a note takes no part in
+    "your changes", it mints no annotation entry, and editing one must not cost a recipe its place in
+    the byte-equal (untouched) set. So the notes left recipe_snapshots.content, and the baseline used
+    to be the only place the author's words were kept. They are kept here instead, so a future
+    "restore the original notes" is still possible.
+
+    ⚠️ WRITTEN ONCE PER RECIPE AND NEVER UPDATED. scripts/notes_to_rows.py fills it from the column
+    as it moves the corpus and import_write.commit_plan fills it as a recipe lands. Nothing reads it
+    on the page and snapshot_diff does not know it exists."""
+    __tablename__ = "recipe_notes_original"
+    id = Column(Integer, primary_key=True)
+    recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
+    position = Column(Integer, nullable=False)
+    kind = Column(Text, ForeignKey("note_kinds.kind"), nullable=False, server_default="notes")
+    text_ = Column("text", Text, nullable=False)
+    recorded_at = Column(Text, nullable=False)
+    __table_args__ = (
+        Index("idx_recipe_notes_original_recipe", "recipe_id"),
+        CheckConstraint("length(trim(text)) > 0"),
+        UniqueConstraint("recipe_id", "position"),
+        {"sqlite_autoincrement": True},
+    )
+
+
 class RecipeNoteStepRef(Base):
     """A step named inside a note's own words ("proceed with step 9"), stored as the step's ID plus
     WHICH mention in the text it is. The number on the page is resolved from the step's current

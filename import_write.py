@@ -50,8 +50,8 @@ import snapshot_serialize  # single-source snapshot FORMAT — the original-base
 import import_cleanup as cleanup
 import notes as notes_rules      # the shared notes brain: the split, the kind and the mentions
 import paprika_native_reader as reader
-from models import (CookLog, Recipe, RecipeIngredient, RecipeNote, RecipeNoteStepRef,
-                    RecipeSnapshot, RecipeStep, ImportFlag, SourceRating, User)
+from models import (CookLog, Recipe, RecipeIngredient, RecipeNote, RecipeNoteOriginal,
+                    RecipeNoteStepRef, RecipeSnapshot, RecipeStep, ImportFlag, SourceRating, User)
 
 BASE_DIR = Path(__file__).resolve().parent
 DB = BASE_DIR / "recipes.db"
@@ -389,6 +389,13 @@ def commit_plan(executor, plan, owner_id=None, snapshot=True):
             executor.execute(insert(RecipeNoteStepRef.__table__).values(
                 note_id=note_id, ref_index=m["ref_index"], match_text=m["match_text"],
                 step_id=None))
+        # ⚠️ AND THE AUTHOR'S WORDS ARE KEPT AS A RECORD, WRITTEN ONCE AND NEVER UPDATED. Notes are
+        #    a playground now, so they are not in the baseline and nothing compares them. This is
+        #    the only copy of what the publisher actually wrote (migration 061), and it is what a
+        #    future "restore the original notes" would read.
+        executor.execute(insert(RecipeNoteOriginal.__table__).values(
+            recipe_id=r["id"], position=row["position"], kind=row["kind"],
+            text=row["text"], recorded_at=r["created_at"]))
     snap = RecipeSnapshot.__table__
     exists = snapshot and executor.execute(
         select(snap.c.id).where(snap.c.recipe_id == r["id"], snap.c.reason == "original")).first()
@@ -402,29 +409,16 @@ def commit_plan(executor, plan, owner_id=None, snapshot=True):
         # nothing to match on. Reading back is one select per table, inside the caller's transaction,
         # after the inserts. tests/test_import_write.py pins it byte-for-byte against the ORM path.
         ri, rs = RecipeIngredient.__table__, RecipeStep.__table__
-        rn, rnr = RecipeNote.__table__, RecipeNoteStepRef.__table__
         ing_rows = executor.execute(select(ri).where(ri.c.recipe_id == r["id"])
                                     .order_by(ri.c.position, ri.c.id)).mappings().all()
         step_rows = executor.execute(select(rs).where(rs.c.recipe_id == r["id"])
                                      .order_by(rs.c.position, rs.c.id)).mappings().all()
-        # ⚠️ READ BACK WITH THEIR REFERENCES, for the reason the rows above are read back: the
-        #    snapshot records each row's id and a note's references travel inside its entry, so a
-        #    baseline built from the plan would disagree with the live rows on the day the recipe
-        #    landed and the recipe would never be byte-equal to its own origin.
-        note_rows = [dict(n) for n in executor.execute(
-            select(rn).where(rn.c.recipe_id == r["id"])
-            .order_by(rn.c.position, rn.c.id)).mappings()]
-        if note_rows:
-            refs = executor.execute(select(rnr).where(rnr.c.note_id.in_(
-                [n["id"] for n in note_rows])).order_by(rnr.c.note_id, rnr.c.ref_index)).mappings()
-            by_note = {}
-            for ref in refs:
-                by_note.setdefault(ref["note_id"], []).append(dict(ref))
-            for n in note_rows:
-                n["refs"] = by_note.get(n["id"], [])
+        # ⚠️ THE NOTES ARE NOT IN THE BASELINE. They were for one round, and Andy's ruling took
+        #    them out: a note mints no mark and editing one must not cost the recipe its place in
+        #    the byte-equal set. recipe_notes_original above is the record instead.
         executor.execute(insert(snap).values(
             recipe_id=r["id"], cook_log_id=None, user_id=owner_id, reason="original",
-            content=snapshot_serialize.content_blob(r, ing_rows, step_rows, notes=note_rows),
+            content=snapshot_serialize.content_blob(r, ing_rows, step_rows),
             created_at=r["created_at"]))
     # ⚠️ AN IMPORTED RATING GETS A COOK TO HANG ON, and that is the whole of the fix. This used to
     # insert a recipe-level ratings row with no cook behind it, which is how 107 verdicts ended up

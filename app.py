@@ -1423,23 +1423,11 @@ def serialize_recipe_content(s, rid):
                       .order_by(RecipeWait.position, RecipeWait.id)).mappings().all()
     storage = s.execute(select(RecipeStorage.__table__).where(RecipeStorage.recipe_id == rid)
                         .order_by(RecipeStorage.position, RecipeStorage.id)).mappings().all()
-    # ⚠️ A NOTE'S REFERENCES TRAVEL WITH IT, because a reference lives in its own table and the
-    #    snapshot is what the diff compares. Read as plain dicts so content_blob sees the column
-    #    names rather than the ORM's `text_` rename.
-    note_rows = [dict(n) for n in s.execute(
-        select(RecipeNote.__table__).where(RecipeNote.recipe_id == rid)
-        .order_by(RecipeNote.position, RecipeNote.id)).mappings()]
-    if note_rows:
-        refs = s.execute(
-            select(RecipeNoteStepRef.__table__)
-            .where(RecipeNoteStepRef.note_id.in_([n["id"] for n in note_rows]))
-            .order_by(RecipeNoteStepRef.note_id, RecipeNoteStepRef.ref_index)).mappings().all()
-        by_note = {}
-        for ref in refs:
-            by_note.setdefault(ref["note_id"], []).append(dict(ref))
-        for n in note_rows:
-            n["refs"] = by_note.get(n["id"], [])
-    return snapshot_serialize.content_blob(r, ingredients, steps, waits, storage, note_rows)
+    # ⚠️ THE NOTES ARE NOT READ HERE, AND NOR IS THE DERIVED COLUMN PROJECTED. A note is a
+    #    playground: it mints no "your changes" entry and editing one must not cost the recipe its
+    #    place in the byte-equal set, so it cannot be in these bytes. The author's original words
+    #    are kept in recipe_notes_original, which nothing compares. See content_blob.
+    return snapshot_serialize.content_blob(r, ingredients, steps, waits, storage)
 
 
 def snapshot_recipe(s, rid, cook_log_id, reason):
@@ -1837,6 +1825,13 @@ def get_recipe(rid):
             #    prep + cook + the counted waits, and missing either part means no total at all.
             #    Measured over the 300: 14 carry a publisher total, 90 can be computed, 196 cannot.
             "total": dict(zip(("label", "note"), planahead.recipe_total(r, waits))),
+            # ⚠️ THE SECOND TOTAL, ONE LINE PER CONDITIONAL WAIT, AND THE MAIN TOTAL IS UNCHANGED.
+            #    An optional soak is not time a cook has to set aside, so it stays out of the figure
+            #    above. A cook who IS going to soak still has to know what it costs, and the page can
+            #    do that arithmetic for them. Measured over the 300: 5 recipes carry a conditional
+            #    wait and one carries two. Computed here for the same reason the Total is, so the
+            #    client prints what it is handed.
+            "conditional_totals": planahead.conditional_totals(r, waits),
         }
     )
 

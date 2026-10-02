@@ -60,10 +60,14 @@ def test_serialize_captures_content_excludes_noncontent_and_is_stable(kitchen):
     assert blob == blob2                                    # deterministic (stable order + sorted keys)
     data = json.loads(blob)                                 # round-trips
     assert set(data.keys()) == {"recipe", "ingredients", "steps"}
-    # the 11 content fields captured; non-content excluded
+    # the 10 content fields captured; non-content excluded
+    # ⚠️ `notes` IS DELIBERATELY NOT ONE OF THEM. A note is a playground: it mints no "your changes"
+    #    entry and editing one must not cost the recipe its place in the byte-equal set, so neither
+    #    the derived column nor the note rows are in these bytes. The author's original words are
+    #    kept in recipe_notes_original, which nothing compares and nothing shows.
     assert data["recipe"]["name"] == "Snapshot Dish"
     assert set(data["recipe"].keys()) == {"name", "author", "source_url", "category", "servings",
-        "prep_time", "cook_time", "total_time", "descr", "notes", "image"}
+        "prep_time", "cook_time", "total_time", "descr", "image"}
     for k in ("id", "owner", "source", "uid", "hash", "created_at"):
         assert k not in data["recipe"]
     # ingredient rows ordered by position; the heading captured
