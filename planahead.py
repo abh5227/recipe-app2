@@ -330,15 +330,29 @@ def conditional_totals(recipe, waits):
                    if _when(w) in ("optional", "only_if")]
     if not conditional:
         return []
-    # the figure these are added TO: the same base the main Total uses, so the two agree
-    plo, phi = clock_minutes(get("prep_time"))
-    clo, chi = clock_minutes(get("cook_time"))
-    if plo is None or clo is None:
-        return []
-    counted = [w for w in (waits or []) if counts(w)]
-    wlo, whi = total(counted)
-    base_lo = plo + clo + (wlo or 0)
-    base_hi = None if (whi is None and counted) else phi + chi + (whi or 0)
+    # ⚠️ THE BASE IS THE FIGURE THE PAGE ACTUALLY PRINTS, NOT A SECOND OPINION ABOUT IT. The second
+    #    Total is read as "the Total, plus this", so a reader subtracts one from the other. If the
+    #    author STATED a total, that is what sits above this line, and computing from prep + cook
+    #    instead would put two figures on the page whose difference is not the wait. no-knead-bread
+    #    is the case: it states 2 hr 45 min and its stated figure already includes the rise.
+    shown, _note = recipe_total(recipe, waits)
+    # ⚠️ A TRAILING "+" IS THE OPEN END, AND clock_minutes CANNOT SEE IT. _range_label prints the
+    #    floor plus a "+" whenever the real answer is longer, so reading the label back gives one
+    #    number and loses that. Dropping it would turn "11 hr 10 min+" into "11 hr 10 min" and state
+    #    a ceiling the recipe never had.
+    open_ended = bool(shown) and shown.rstrip().endswith("+")
+    base_lo, base_hi = clock_minutes(shown.rstrip("+")) if shown else (None, None)
+    if open_ended:
+        base_hi = None
+    if base_lo is None:
+        plo, phi = clock_minutes(get("prep_time"))
+        clo, chi = clock_minutes(get("cook_time"))
+        if plo is None or clo is None:
+            return []
+        counted = [w for w in (waits or []) if counts(w)]
+        wlo, whi = total(counted)
+        base_lo = plo + clo + (wlo or 0)
+        base_hi = None if (whi is None and counted) else phi + chi + (whi or 0)
 
     out = []
     for w in conditional:

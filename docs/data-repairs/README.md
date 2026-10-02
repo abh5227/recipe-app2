@@ -1,6 +1,6 @@
 # The corpus passes, and the order they run in
 
-Nine scripts carry the repairs over all 300 recipes, four for Round A and five for the notes round
+Eleven scripts carry the repairs over all 300 recipes, four for Round A and seven for the notes round
 below. They are not interchangeable and they are not independent. Each one reads the state the one
 before it left, so running them out of order produces a different corpus, and running one twice is
 not always a no-op.
@@ -41,15 +41,20 @@ chain against one database is now five ordinary command lines:
 
 ### The notes round, which runs after all of the above
 
-    python3.13 migrate.py --db "$DB"                              060, the recipe_notes tables
-    python3.13 scripts/realign_baseline.py "$DB" --apply          first: it moves 5 recipes back
-                                                                  into the byte-equal set, so the
-                                                                  passes below start from 280
-    python3.13 scripts/notes_to_rows.py "$DB" --apply             177 paragraphs become rows
+    python3.13 migrate.py --db "$DB"                              060 and 061, the notes tables
+    python3.13 scripts/notes_to_rows.py "$DB" --apply             177 paragraphs become rows, the
+                                                                  author's words are recorded, and
+                                                                  the notes key is STRIPPED from
+                                                                  all 300 baselines
+    python3.13 scripts/normalize_lookalikes.py "$DB" --apply      Cyrillic letters inside English
+                                                                  words, BEFORE the label rules
+    python3.13 scripts/realign_baseline.py "$DB" --apply          moves 5 recipes back into the
+                                                                  byte-equal set
     python3.13 scripts/apply_note_decisions.py "$DB" --apply      the links, the step references
                                                                   and the waits Andy recorded
     python3.13 scripts/strip_author_step_numbers.py "$DB" --apply the author's own numbering, and
                                                                   the labels it was hiding
+    python3.13 scripts/apply_capitalization.py "$DB" --apply      first letters, LAST
 
 ⚠️ **`strip_author_step_numbers` RUNS AFTER `apply_note_decisions`, AND THE ORDER IS NOT A
 PREFERENCE.** A step reference stores a step ID, so renumbering cannot move it. But RESOLVING one
@@ -57,7 +62,17 @@ reads the author's numbering out of the step text to find its target, and the nu
 deletes that evidence. Run the other way round, aloo-potato-parathas' "step 2" would have nothing
 left to match against.
 
-⚠️ **`realign_baseline` RUNS FIRST**, because every pass after it gates on the byte-equal set and a
+⚠️ **`notes_to_rows` RUNS FIRST NOW, AND THAT ORDER WAS FOUND BY RUNNING IT THE OTHER WAY.** Notes
+are a playground, so `recipe_snapshots.content` no longer carries them, and every one of the 300
+stored baselines still names `recipe.notes` until this pass strips it. Run with `realign_baseline`
+first instead, the realign saw that difference, could not match it against any of its three declared
+cases, and wrote **0 baselines** where it should have written 5. Stripping first restores
+byte-equality, which is what every later pass's gate is stated against.
+
+⚠️ **AND `apply_capitalization` RUNS LAST**, because every pass before it rewrites step text.
+Capitalizing a step that is about to lose its first three words is work thrown away.
+
+⚠️ **`realign_baseline` RUNS BEFORE THE DECISIONS**, because every pass after it gates on the byte-equal set and a
 set that is about to gain five recipes for an unrelated reason makes that gate unreadable.
 
 ## What may be written here, and by what

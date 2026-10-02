@@ -1045,6 +1045,33 @@ would be, moves into it. A bracketed group that parses as an amount but belongs 
 case that needs a person. *Touches:* `recipe_line_parser`, `import_cleanup`, a corpus pass with the
 usual lockstep, and a review CSV for the variant case. *Expected yield:* 3 lines moved, 1 flagged.
 
+**Round B also carries, added after Andy's recheck:**
+
+- **Estimated cook times.** baked-cauliflower is the test case. It waits on the mixed-number parser
+  fix, because a recipe whose times cannot be read cannot have one estimated either.
+  marbled-chocolate-sugar-cookies is the reason it matters: it carries no prep, no cook and no
+  stated total, so the second Total has no figure to add its 30 minutes to and the line does not
+  appear at all.
+- **The merged and split ingredient row sweep.** Lines the import joined or broke in the wrong
+  place, which no rule has looked at yet.
+
+### Next round after go-live — notes, waits and storage edited inline
+
+Today they are edited in a block under the method, styled unlike anything else on the page, while
+ingredients and steps are edited in place where they are read. The three row types all have their
+own tables now and all update in place by id, so the editor is the only part still working the old
+way. Styled like the ingredient and step editors, which means the reading view and the editing view
+stop being two different pages.
+
+### A note can be restored to what the author wrote
+
+Migration 061 keeps every recipe's original notes in `recipe_notes_original`, written once and never
+updated. Nothing reads it yet. Notes are a playground now, with no "your changes" marks and no cost
+to the byte-equal set, and the whole point of a playground is that it is safe to make a mess in. The
+way back is a per-recipe "restore the original notes", which reads that table and rewrites the rows.
+*Why it is not built now:* nobody has made a mess yet, and the shape of the control (one recipe, one
+kind, one note?) is a decision rather than a rule.
+
 ### Backlog #4 — a long parenthetical on an ingredient line is a note about that ingredient
 
 Migration 060 added `recipe_notes.ingredient_row_id`, written by nothing today, for exactly this.

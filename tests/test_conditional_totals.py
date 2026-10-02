@@ -104,3 +104,16 @@ def test_a_zero_floor_conditional_gets_no_line():
 def test_no_prep_or_cook_means_no_second_total():
     assert planahead.conditional_totals({"prep_time": None, "cook_time": "30 min"}, [
         _w(min_minutes=120, max_minutes=120, when_kind="optional")]) == []
+
+
+def test_the_base_is_the_figure_the_page_prints():
+    """⚠️ A READER SUBTRACTS ONE LINE FROM THE OTHER. The second Total reads as "the Total, plus
+    this", so it has to be anchored to whatever the Total actually shows. no-knead-bread STATES
+    2 hr 45 min and that figure already includes its rise, so computing from prep + cook instead
+    would put two figures on the page whose difference is not the wait."""
+    recipe = {"prep_time": "5 min", "cook_time": "40 min", "total_time": "2 hr 45 min"}
+    waits = [_w(kind="resting", min_minutes=45, max_minutes=60, when_kind="only_if",
+                when_label="chilled")]
+    assert planahead.recipe_total(recipe, waits)[0] == "2 hr 45 min"
+    assert planahead.conditional_totals(recipe, waits) == [
+        {"label": "3 hr 30 min+", "when": "if chilled"}]

@@ -178,6 +178,31 @@
     }
    ],
    "expected": []
+  },
+  {
+   "name": "a stated total is the base, because it is the figure on the page",
+   "recipe": {
+    "prep_time": "5 min",
+    "cook_time": "40 min",
+    "total_time": "2 hr 45 min"
+   },
+   "waits": [
+    {
+     "kind": "resting",
+     "label": "45-60 min",
+     "min_minutes": 45,
+     "max_minutes": 60,
+     "when_kind": "only_if",
+     "when_label": "chilled",
+     "ext_label": null
+    }
+   ],
+   "expected": [
+    {
+     "label": "3 hr 30 min+",
+     "when": "if chilled"
+    }
+   ]
   }
  ]
 }

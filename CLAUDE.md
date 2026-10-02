@@ -430,6 +430,68 @@ How this project is run:
   it and the database stayed broken afterwards, so `ensure_note_kinds` puts the rows back from the
   one file that defines them. The gap that hid it: the Postgres leg runs two files and neither
   wrote a note.
+- **A NOTE IS A PLAYGROUND. IT TAKES NO PART IN "YOUR CHANGES" AND COSTS A RECIPE NOTHING.** Andy's
+  ruling. Editing a note, moving it between kinds, attaching it to a step or deleting every one of
+  them mints no annotation entry AND does not take the recipe off the untouched list. Both halves
+  need the notes OUT of `recipe_snapshots.content`, not merely out of the diff, so neither the rows
+  nor the derived column are in the blob and `snapshot_diff` does not compare notes at all.
+  ⚠️ **MEASURED BEFORE IT WAS BUILT, BECAUSE THE QUESTION WAS WHAT WOULD DISAPPEAR.** None of live's
+  49 annotation entries is a note edit. The set is 49 over 20 recipes computed either way, with
+  notes excluded as the new code does it and with `notes` restored to `CONTENT_FIELDS` as the
+  running deploy does it, and 0 recipes carry notes text that differs from their baseline.
+  ⚠️ **THE BASELINE WAS THE ONLY RECORD OF THE AUTHOR'S WORDS, SO THE RECORD MOVED.** Migration 061
+  adds `recipe_notes_original`, written once per recipe by `scripts/notes_to_rows.py` and by
+  `import_write.commit_plan`, read by nothing on the page and unknown to `snapshot_diff`. A
+  playground is only safe if there is a way back.
+  ⚠️ **AND THE STRIP RUNS FIRST IN THE CHAIN, WHICH WAS FOUND BY RUNNING IT LAST.** All 300 stored
+  baselines name `recipe.notes` until the pass strips it. With `realign_baseline` ahead of it, the
+  realign saw that difference, matched it against none of its three declared cases, and wrote 0
+  baselines where it should have written 5.
+- **A LIFTED LABEL IS A SUBHEADING ONLY WHEN A SECTION SITS ABOVE IT.** Andy's rule, and it makes the
+  level a property of the RECIPE rather than of the label: with nothing above it there is no group to
+  belong to, so it opens one. A label that names a COMPONENT ("To make", "For the", "If",
+  "Make the X", "While …, make the X") is a section whatever sits above it. All four callers read
+  what precedes the step before they lift, so `label_level(label, section_above=...)` cannot be
+  asked a different question in two places.
+  ⚠️ **IT APPLIES AT THE LIFT AND IS NOT SWEPT OVER EXISTING HEADINGS, AND THAT IS MEASURED RATHER
+  THAN LAZY.** A retroactive sweep over the 60 already-lifted labels would change 33 levels, and
+  several of those are plainly worse: acqua-pazza's 8 one-step captions become 8 sections,
+  french-fries' 5 one-word captions become 5 sections, and brioche-bread's "Shaping options" is
+  DEMOTED, which contradicts the alternatives rule it sits above. kfc-spicy-chicken-rice-bowl is the
+  case Andy flagged (seven subheadings under nothing, then "Assembly" as the only section) and a
+  sweep half-fixes it, promoting 5 of the 7. A case a rule cannot settle is a recorded decision, not
+  a wider rule.
+- **THE AUTHOR'S NUMBERS NEED A RUN FROM 1, NOT AGREEMENT WITH THE ORDINALS.** "Only when the
+  recipe's steps carry a consecutive 1..N sequence" is the rule, and demanding `number == ordinal` is
+  stricter than that: an import that split one step into continuation lines pushes every later
+  ordinal along, so the dal recipes carry a perfect 1, 2, 3, 4 at ordinals 1, 4, 6 and 7. The
+  separator form is admitted when the numbers read in order form a gapless run from 1. Measured: 3
+  more recipes and 10 more steps, every one the author's own numbering, 0 that are not.
+  ⚠️ **THE BARE FORM IS NOT RELAXED**, so "2 cups flour" can never be admitted by a run it happens to
+  fit. The ordinal and a following capital are the two pieces of evidence that keep it safe.
+- **A LOOK-ALIKE LETTER IS REPAIRED BEFORE ANY RULE READS THE TEXT.** Two words in the 300 carry
+  Cyrillic inside English sentences and each one defeated a later rule in silence: "МАКЕ THE
+  CHICKEN:" never lifted its label because the rule wants Latin capitals, and "З. MAKE THE
+  SEASONING:" could not be read as a number at all. `normalize_lookalikes` runs over a text only
+  when it contains a Latin letter somewhere, so a sentence that really is in another script is left
+  completely alone.
+  ⚠️ **A LETTER NEVER BECOMES A DIGIT ON THE STRENGTH OF A SHAPE.** Cyrillic ZE looks like a 3, and
+  what proves it IS the 3 is the author's own 1, 2, _, 4 run. `author_step_number` reads it and the
+  number is then REMOVED, so no digit is ever written.
+- **AN INGREDIENT NAME STARTS LOWERCASE, AND THE CORPUS CANNOT BE THE AUTHORITY ON THE EXCEPTIONS.**
+  Proper nouns, brands and acronyms keep their capitals, from a maintained list, plus the library's
+  own capitalization wherever the line is linked. *Why the list:* measured over the 455 capitalized
+  names, the corpus writes "shaoxing" lowercase 16 times and "chinese" 4 times, so "the corpus does
+  it somewhere" would have lowercased two demonyms and a Chinese city. **Evidence of common USE is
+  not evidence of a common NOUN.** 296 names have evidence they are ordinary words and are changed;
+  the other 159 go in a review CSV with the reason and wait for a decision.
+- **THE SECOND TOTAL IS ANCHORED TO THE FIGURE THE PAGE PRINTS.** A conditional wait stays out of the
+  Total (`planahead.counts`), and a smaller line under it says what the recipe costs on that path.
+  A reader subtracts one line from the other, so the base has to be the Total actually shown: where
+  the author STATED a total, that is the base, because no-knead-bread's stated 2 hr 45 min already
+  includes its rise and computing from prep plus cook would print two figures whose difference is not
+  the wait. ⚠️ **AND A TRAILING "+" IS THE OPEN END**, which `clock_minutes` cannot see, so reading
+  the label back has to preserve it or the line states a ceiling the recipe never had.
 - **A STEP NAMED IN A NOTE'S OWN WORDS IS A REFERENCE TO AN ID, NEVER A FROZEN NUMBER.** "proceed
   with step 9" has to keep meaning the right step after the steps move, so `recipe_note_step_refs`
   stores the step's ID and WHICH mention in the text it belongs to, and the number on the page is
