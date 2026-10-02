@@ -375,9 +375,13 @@ def test_commit_writes_step_rows_text_heading_and_order(kitchen):
     ]
 
 
-def test_an_imported_lead_in_label_becomes_a_subheading_above_its_step(kitchen):
-    """The shape birria-tacos and butter-chicken arrive in. The label names ONE step, so it is a
-    level 2 heading and the step under it keeps the author's remaining words."""
+def test_an_imported_lead_in_label_opens_a_section_then_the_next_sits_under_it(kitchen):
+    """The shape birria-tacos and butter-chicken arrive in.
+
+    ⚠️ ANDY'S LEVEL RULE, WHICH READS THE RECIPE AND NOT THE LABEL. The FIRST lifted label has
+    nothing opening a group above it, so it opens one (level 1). The second now does have a section
+    above it, so it belongs to that group (level 2). The step under each keeps the author's
+    remaining words either way."""
     c = _cleaned(name="Labelled Dish", ingredient_lines=["1 egg"],
                  directions=["Deseed – Trim and discard the stems.",
                              "Bake for 30 – 35 minutes.",
@@ -390,12 +394,12 @@ def test_an_imported_lead_in_label_becomes_a_subheading_above_its_step(kitchen):
             "SELECT position, is_heading, heading_level, text FROM recipe_steps "
             "WHERE recipe_id='labelled-dish' ORDER BY position").fetchall()
     assert [tuple(r) for r in rows] == [
-        (0, 1, 2, "Deseed"),
+        (0, 1, 1, "Deseed"),                 # the first heading: it opens the group
         (1, 0, 1, "Trim and discard the stems."),
         # ⚠️ A NUMERIC RANGE IS NOT A LABEL. Without that guard this row would have become a heading
         #    reading "Bake for 30" with "35 minutes." as the step under it.
         (2, 0, 1, "Bake for 30 – 35 minutes."),
-        (3, 1, 2, "Marinade"),
+        (3, 1, 2, "Marinade"),               # a section is open above it now, so it sits under it
         (4, 0, 1, "Mix the chicken with the yogurt."),
     ]
 

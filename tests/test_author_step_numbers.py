@@ -131,3 +131,67 @@ def test_the_importer_leaves_an_unnumbered_recipe_alone(kitchen):
         "Mix the dough.",
     ])
     assert rows[0]["text"] == "30 minutes before you start, freeze the butter."
+
+
+# ---- the relaxed separator door (Andy's recheck) -----------------------------------------------
+# ⚠️ WHY IT EXISTS. Andy's rule is "only when the recipe's steps carry a consecutive 1..N sequence",
+# and demanding that each number equal its own ORDINAL is stricter than that. An import that split
+# one step into two continuation lines pushes every later ordinal along, so basic-dal,
+# caramelized-onion-dal and khichdi each carry a perfect 1, 2, 3(, 4) sitting at ordinals 1, 4, 6
+# and 7 and kept a number the page also prints. Measured over the 300: the relaxed door admits
+# exactly those 3 recipes and 10 steps, every one the author's own numbering, and no step that is not.
+
+def test_a_clean_run_is_stripped_even_when_the_ordinals_moved():
+    """The dal shape: continuation lines between the numbered steps."""
+    steps = [
+        "1. MAKE THE DAL: In a deep skillet, combine the lentils and water.",
+        "(Alternatively, use a multi-cooker on high pressure.)",
+        "Add the lime juice and set aside.",
+        "2. MEANWHILE, MAKE THE ONION: In a large skillet, warm the oil.",
+        "Cook, stirring every few minutes, until deeply browned.",
+        "3. MAKE THE SEASONING: In a small pan, warm the ghee.",
+        "4. Top the dal with the seasoning.",
+    ]
+    got = ic.strip_author_numbers(steps)
+    assert got[0] == "MAKE THE DAL: In a deep skillet, combine the lentils and water."
+    assert got[3] == "MEANWHILE, MAKE THE ONION: In a large skillet, warm the oil."
+    assert got[5] == "MAKE THE SEASONING: In a small pan, warm the ghee."
+    assert got[6] == "Top the dal with the seasoning."
+    assert got[1] == steps[1] and got[2] == steps[2] and got[4] == steps[4]
+
+
+def test_a_run_that_does_not_start_at_one_is_refused():
+    """priya-s-dal and sarma-hot-honey-cornbread start at 3, which is the evidence that earlier
+    steps were lost or merged. A number whose run does not begin at 1 is not safe to call the
+    author's."""
+    steps = ["3. MAKE THE SEASONING: warm the ghee.",
+             "4. Add the seasoning to the cooked dal."]
+    assert ic.strip_author_numbers(steps) == steps
+
+
+def test_the_relaxed_door_refuses_a_run_with_a_gap():
+    """The ordinals have moved AND a number is missing, so the sequence is not evidence of the
+    author's own numbering. (A gap whose numbers still match their ordinals is a different case and
+    the strict path above handles it: those that match are stripped, the rest are left.)"""
+    steps = ["1. Do the first thing.",
+             "A continuation line that carries no number.",
+             "2. Do the second thing.",
+             "Another continuation line.",
+             "4. Do the fourth thing."]
+    assert ic.strip_author_numbers(steps) == steps
+
+
+def test_the_bare_form_cannot_take_the_relaxed_door():
+    """⚠️ THE ONE THAT MATTERS. "2 cups flour" has no separator, so a measurement line can never be
+    admitted by a run it happens to fit. Only the separator form is relaxed."""
+    steps = ["1 cup of water, boiled and cooled.", "2 cups flour, sifted twice.",
+             "Mix them in a bowl."]
+    assert ic.strip_author_numbers(steps) == steps
+
+
+def test_a_cyrillic_numeral_in_the_number_s_place_is_read_as_its_digit():
+    """caramelized-onion-dal step 5 reads "З. MAKE THE SEASONING:" with Cyrillic ZE where the 3
+    belongs. The digit is never written: the number is recognized so it can be REMOVED."""
+    steps = ["1. First.", "2. Second.", "З. Third.", "4. Fourth."]
+    got = ic.strip_author_numbers(steps)
+    assert got == ["First.", "Second.", "Third.", "Fourth."]

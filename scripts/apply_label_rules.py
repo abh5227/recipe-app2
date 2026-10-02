@@ -189,9 +189,13 @@ def run(db, apply_it):
         if bi is None:
             log["skipped"].append((rid, sid, "lift: not in the baseline"))
             continue
-        level = label_level(label)
         rows = _live_steps(c, rid)
         at = next(i for i, s in enumerate(rows) if s["id"] == sid)
+        # ⚠️ THE LEVEL DEPENDS ON WHAT SITS ABOVE THIS STEP, not on the label alone. Andy's rule: a
+        #    lifted label is a subheading only when a section heading already opens a group above
+        #    it, so the rows BEFORE this one are the evidence and they have to be read first.
+        level = label_level(label, section_above=any(
+            r["is_heading"] and r["heading_level"] == SECTION for r in rows[:at]))
         cur = c.execute("INSERT INTO recipe_steps (recipe_id, position, is_heading, heading_level, "
                         "text) VALUES (?,?,1,?,?)", (rid, -1, level, label))
         new_id = cur.lastrowid

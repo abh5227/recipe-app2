@@ -1166,8 +1166,12 @@ def test_butter_chicken_shape_a_colon_label_and_a_dash_label_are_the_same_thing(
         "Optional blitz – Blend the sauce until smooth.",
         "Cook the chicken for 20 minutes.",
     ])
+    # ⚠️ LEVEL 1 FOR BOTH, BECAUSE NOTHING OPENS A GROUP ABOVE THEM (Andy's rule). "Marinade" is
+    #    the first heading in the recipe, so it opens a part rather than belonging to one, and
+    #    "Optional blitz" sits under it as a sibling section for the same reason: the demotion
+    #    needs a SECTION above, and the first lifted label is what creates the first one.
     assert shape == [
-        (2, "Marinade"), (0, "Mix the chicken with the yogurt and spices."),
+        (1, "Marinade"), (0, "Mix the chicken with the yogurt and spices."),
         # ⚠️ "Blend", NOT "blend". Lifting a label leaves the step starting mid-sentence, so its
         #    first visible letter is capitalized (rule 6).
         (2, "Optional blitz"), (0, "Blend the sauce until smooth."),
@@ -1273,7 +1277,8 @@ def test_a_link_with_no_later_mention_lifts_anyway_and_is_flagged():
     than the heading being refused. Capitalized after the label, so this is about the link and not
     about the sentence gate."""
     shape, _, flags = _plan(["Wilt the [[spinach]]: Heat the oil and cook briefly."])
-    assert shape == [(2, "Wilt the spinach"), (0, "Heat the oil and cook briefly.")]
+    # level 1: it is the recipe's first heading, so nothing opens a group above it (Andy's rule)
+    assert shape == [(1, "Wilt the spinach"), (0, "Heat the oil and cook briefly.")]
     assert "step_label_link_lost" in flags
 
 
@@ -1310,16 +1315,22 @@ def test_an_ingredient_amount_is_not_a_label(text):
     assert ic.split_lead_label(text) == "an ingredient amount, not a label"
 
 
+# ⚠️ THE LEVEL TAKES THE RECIPE INTO ACCOUNT NOW, NOT THE LABEL ALONE (Andy's rule). A lifted label
+# is a subheading only when a section heading already opens a group above it; with nothing above it
+# there is no group to belong to, so it opens one itself. A label that NAMES A COMPONENT is a section
+# either way.
 @pytest.mark.parametrize("label, level", [
     ("To make the chocolate icing", 1),
     ("If using dried chickpeas", 1),
     ("For the dough", 1),
     ("For same day baking", 1),
-    ("Deseed", 2),
-    ("Simmer", 2),
-    ("30 min cool", 2),
+    ("Make the marinade", 1),
+    ("While the dough rests, make the filling", 1),
+    ("Deseed", 1),
+    ("Simmer", 1),
+    ("30 min cool", 1),
 ])
-def test_a_label_that_names_a_section_becomes_one(label, level):
+def test_a_label_with_nothing_above_it_opens_a_section(label, level):
     assert ic.label_level(label) == level
 
 
@@ -1684,3 +1695,20 @@ def test_the_two_kinds_of_no_are_different_flags():
     unjudged = ic.plan_step_rows(["Salt lightly - this draws the liquid out."])[2]
     assert [c["flag"] for c in declined] == ["step_label_declined"]
     assert [c["flag"] for c in unjudged] == ["step_label_unjudged"]
+
+
+@pytest.mark.parametrize("label", ["Deseed", "Simmer", "30 min cool", "Assembly",
+                                   "Fry the chicken"])
+def test_a_label_under_a_section_heading_is_a_subheading(label):
+    """The other half of Andy's rule: a group is open above it, so the label belongs to that group."""
+    assert ic.label_level(label, section_above=True) == 2
+
+
+@pytest.mark.parametrize("label", ["To make the chocolate icing", "For the dough",
+                                   "If using dried chickpeas", "Make the marinade",
+                                   "While the dough rests, make the filling"])
+def test_a_label_that_names_a_component_is_a_section_whatever_sits_above_it(label):
+    """⚠️ A COMPONENT IS A PART OF THE RECIPE, NOT A CAPTION ON A STEP. "Make the chicken" under a
+    "Marinade" section opens its own part, which is the case Andy's click-through turned up."""
+    assert ic.label_level(label, section_above=True) == 1
+    assert ic.label_level(label, section_above=False) == 1

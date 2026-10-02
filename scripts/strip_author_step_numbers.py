@@ -43,6 +43,15 @@ def plan(s, sqlalchemy, rid, cleanup):
     for r, new_text in zip(steps, stripped):
         if r["text"] == new_text:
             continue
+        # ⚠️ WHAT SITS ABOVE THIS STEP, read from the recipe's own rows. A heading this pass is
+        #    about to insert for an EARLIER step counts too, which is why the planned changes are
+        #    consulted as well as the stored rows.
+        section_above = any(
+            x["is_heading"] and x["heading_level"] == cleanup.SECTION
+            and x["position"] < r["position"] for x in rows) or any(
+            ch.get("level") == cleanup.SECTION
+            and next((x["position"] for x in rows if x["id"] == ch["id"]), 1e9) < r["position"]
+            for ch in changes)
         # now that the number is gone, a lead-in label may be visible for the first time
         lift = cleanup.split_lead_label(new_text)
         if isinstance(lift, tuple):
@@ -52,7 +61,10 @@ def plan(s, sqlalchemy, rid, cleanup):
                             #    same rule the heading recasing already uses, and is_caps is what
                             #    says a heading was stored in capitals rather than written that way.
                             "heading": cleanup.sentence_case(label) if cleanup.is_caps(label) else label,
-                            "level": cleanup.label_level(label)})
+                            # ⚠️ THE SAME CONTEXT QUESTION (Andy's rule): a lifted label is a
+                            #    subheading only under a section heading. `section_above` is read
+                            #    from the rows this recipe already has, before this lift.
+                            "level": cleanup.label_level(label, section_above=section_above)})
         else:
             changes.append({"id": r["id"], "was": r["text"], "text": new_text,
                             "heading": None, "level": None, "refusal": lift})

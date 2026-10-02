@@ -955,11 +955,14 @@ _LEAD_AMOUNT = re.compile(
     r"|kg|oz|ounce|ounces|lb|lbs|pound|pounds|ml|l|litre|litres|liter|liters|clove|cloves"
     r"|can|cans|slice|slices|piece|pieces|pinch|pinches|stick|sticks)\b", re.IGNORECASE)
 
-# ⚠️ A LIFTED LABEL THAT NAMES A SECTION IS A SECTION. "To make the chocolate icing" and "If using
-#    dried chickpeas" open a part of the recipe rather than captioning one step, and the words they
-#    start with are what says so. Measured on the corpus: exactly 2 lifted labels match, and they are
-#    the two Andy picked out of the level-1 candidates list by hand.
-_SECTION_LABEL = re.compile(r"^\s*(?:to\s+make\b|for\s+the\b|for\b|if\b)", re.IGNORECASE)
+# ⚠️ A LIFTED LABEL THAT NAMES A COMPONENT IS ALWAYS A SECTION. "To make the chocolate icing", "For
+#    the dough", "If using dried chickpeas", "Make the marinade" and "While the dough rests, make
+#    the filling" all open a part of the recipe rather than captioning one step, and the words they
+#    start with are what says so. Andy's list, and the last two were added to it after his
+#    click-through: a "Make the X" label reads as a component every time.
+_SECTION_LABEL = re.compile(
+    r"^\s*(?:to\s+make\b|for\s+the\b|for\b|if\b|make\s+the\b"
+    r"|while\b[^,]*,\s*make\b)", re.IGNORECASE)
 
 # Sibling headings that are ALTERNATIVES rather than consecutive stages.
 _ALTERNATIVE = re.compile(
@@ -1141,6 +1144,59 @@ def _raw_cut_for_rendered_label(flat, label):
 #    them the author's numbering (oven-baked-ribs 1 to 5, potato-scallion-cakes 3,
 #    white-bean-stuffed-poblanos 2), and refuses the 3 real ones ("30 minutes...", "180 degrees...",
 #    "24 pieces..."), each of which is excluded by the ordinal clause alone.
+# ⚠️ LOOK-ALIKE LETTERS, MEASURED BEFORE THE TABLE WAS WRITTEN. Two words in the 300 carry Cyrillic
+#    characters inside English sentences, and each one BLOCKED A LATER RULE, which is why this runs
+#    first:
+#      garlic-ginger-chicken-with-cilantro-and-mint step 2  "3. МАКЕ THE CHICKEN:"  (М А К Е Cyrillic)
+#          the label rule expects Latin capitals, so the lead-in label could not lift.
+#      caramelized-onion-dal step 5                 "З. MAKE THE SEASONING:"        (З Cyrillic ZE)
+#          the author-number rule expects a digit, so it could not read that step's number at all.
+#          Its numbering was refused for a second reason as well, which measurement found and
+#          guesswork would not have: the numbers sit at ordinals 1, 4, 6 and 7 because the import
+#          split three steps into continuation lines. See strip_author_numbers' relaxed door.
+#    The second one is a NUMERAL, not a letter, and it is handled by the numeral table below rather
+#    than here, because turning a letter into a digit needs the author's own numbering as evidence.
+#
+# ⚠️ ONLY SHAPE-IDENTICAL PAIRS GO IN HERE. А and A are the same glyph in every face the app loads;
+#    Cyrillic У against Latin Y is close but not identical in Spectral, and a pair that is merely
+#    similar would rewrite somebody's actual Cyrillic. Greek is included for the same reason the
+#    Cyrillic is: both came out of the same kind of copy-paste.
+LOOKALIKE_LETTERS = {
+    # Cyrillic -> Latin
+    "А": "A", "В": "B", "Е": "E", "К": "K", "М": "M", "Н": "H", "О": "O", "Р": "P",
+    "С": "C", "Т": "T", "Х": "X", "а": "a", "е": "e", "о": "o", "р": "p", "с": "c",
+    "у": "y", "х": "x", "і": "i", "Ј": "J", "ј": "j", "Ѕ": "S", "ѕ": "s", "І": "I",
+    # Greek -> Latin
+    "Α": "A", "Β": "B", "Ε": "E", "Ζ": "Z", "Η": "H", "Ι": "I", "Κ": "K", "Μ": "M",
+    "Ν": "N", "Ο": "O", "Ρ": "P", "Τ": "T", "Υ": "Y", "Χ": "X", "ο": "o", "ν": "v",
+}
+
+# A look-alike standing in for a DIGIT. Separate from the table above because the replacement is not
+# a letter, so it is admitted only where the author's own numbering proves which digit it is (see
+# author_step_number).
+LOOKALIKE_NUMERALS = {"З": "3", "з": "3", "О": "0", "о": "0", "І": "1", "і": "1", "Ѕ": "5"}
+
+_HAS_LATIN = re.compile(r"[A-Za-z]")
+
+
+def normalize_lookalikes(text):
+    """Replace shape-identical Cyrillic or Greek letters with their Latin twins -> the text.
+
+    ⚠️ ONLY IN A TEXT THAT IS OTHERWISE ENGLISH. The test is whether the text contains any Latin
+    letter at all, which is what "an otherwise-English word" means once the word itself is entirely
+    look-alike: "МАКЕ THE CHICKEN" has THE and CHICKEN in Latin, so the first word is a copy-paste
+    artifact rather than Russian. A text with no Latin letters anywhere is left completely alone,
+    because that is the only honest reading of a sentence that might really be in another script.
+
+    ⚠️ AND IT RUNS BEFORE THE LABEL AND NUMBER RULES, NOT AFTER. Both of those match on Latin
+    characters, so a look-alike left in place silently defeats them and the step keeps a number or
+    an unlifted label with nothing saying why."""
+    t = str(text or "")
+    if not _HAS_LATIN.search(t):
+        return t
+    return "".join(LOOKALIKE_LETTERS.get(ch, ch) for ch in t)
+
+
 _AUTHOR_NUM_SEP = re.compile(r"^\s*(?:step\s*)?(\d+)\s*[.):\u2013\u2014-]\s+", re.IGNORECASE)
 _AUTHOR_NUM_BARE = re.compile(r"^\s*(\d+)\s+([A-Z\u00c0-\u00dd])")
 
@@ -1151,6 +1207,14 @@ def author_step_number(text, ordinal):
     `ordinal` is the step's position in the recipe, counting ordinary steps only. A number that does
     not match it is not this step's number and is left alone."""
     flat = text or ""
+    # ⚠️ A LOOK-ALIKE IN THE NUMBER'S PLACE IS READ AS THE DIGIT IT IS SHAPED LIKE, and the evidence
+    #    that it really is that digit is the one strip_author_numbers already demands: the run has to
+    #    be consecutive from 1 and agree with each step's own ordinal. caramelized-onion-dal's steps
+    #    read 1., 2., З., 4., so the Cyrillic ZE sits exactly where 3 belongs and nothing else would
+    #    satisfy the run. The digit is never WRITTEN: a number that passes is removed, so this only
+    #    ever decides whether the character comes off.
+    if flat[:1] in LOOKALIKE_NUMERALS:
+        flat = LOOKALIKE_NUMERALS[flat[:1]] + flat[1:]
     m = _AUTHOR_NUM_SEP.match(flat)
     if m and int(m.group(1)) == ordinal:
         return int(m.group(1)), flat[m.end():].lstrip()
@@ -1170,12 +1234,38 @@ def strip_author_numbers(step_texts):
     too. Headings are not passed in and so never interrupt the count.
 
     A gap is allowed (a step the author left unnumbered) as long as every number present matches its
-    ordinal, because that is still one sequence with a hole rather than two different things."""
+    ordinal, because that is still one sequence with a hole rather than two different things.
+
+    ⚠️ AND A NUMBER WITH A SEPARATOR AFTER IT NEED NOT MATCH ITS ORDINAL, as long as the separator
+    numbers READ IN ORDER form a run from 1 with no gaps. Andy's rule is "only when the recipe's
+    steps carry a consecutive 1..N sequence", and demanding number == ordinal is stricter than that:
+    an import that split one step into two continuation lines pushes every later ordinal along, so
+    the dal recipes carry a perfect 1, 2, 3, 4 at ordinals 1, 4, 6 and 7 and were refused. Measured
+    over the 300: this admits 3 more recipes and 10 more steps, every one of them the author's own
+    numbering ("1. MAKE THE DAL:"), and 0 steps that are not.
+    ⚠️ THE BARE FORM IS DELIBERATELY NOT RELAXED. "2 cups flour" has no separator, and the ordinal
+    plus a following capital are the two pieces of evidence that keep it safe. Only the separator
+    form takes this door, which is why a measurement line cannot reach it at all."""
     found = [author_step_number(t, i) for i, t in enumerate(step_texts, 1)]
     numbered = [i for i, f in enumerate(found) if f is not None]
-    if len(numbered) < 2 or 0 not in numbered:
-        return list(step_texts)                 # not numbered, or not numbered from the start
-    return [found[i][1] if found[i] is not None else t for i, t in enumerate(step_texts)]
+    if len(numbered) >= 2 and 0 in numbered:
+        return [found[i][1] if found[i] is not None else t for i, t in enumerate(step_texts)]
+
+    # the relaxed door: separator numbers only, read in order, a gapless run from 1
+    sep = []
+    for i, t in enumerate(step_texts):
+        flat = str(t or "")
+        if flat[:1] in LOOKALIKE_NUMERALS:
+            flat = LOOKALIKE_NUMERALS[flat[:1]] + flat[1:]
+        m = _AUTHOR_NUM_SEP.match(flat)
+        if m:
+            sep.append((i, int(m.group(1)), flat[m.end():].lstrip()))
+    if len(sep) < 2 or [n for _i, n, _r in sep] != list(range(1, len(sep) + 1)):
+        return list(step_texts)
+    out = list(step_texts)
+    for i, _n, rest in sep:
+        out[i] = rest
+    return out
 
 
 def split_lead_label(text, label=None):
@@ -1253,10 +1343,21 @@ def split_lead_label(text, label=None):
     return label, rest
 
 
-def label_level(label):
-    """A lifted label -> SECTION or SUBHEADING. A label that names a part of the recipe opens a
-    group; one that captions a single step sits tight to it. See _SECTION_LABEL."""
-    return SECTION if _SECTION_LABEL.match(label or "") else SUBHEADING
+def label_level(label, section_above=False):
+    """A lifted label -> SECTION or SUBHEADING.
+
+    ⚠️ ANDY'S RULE, AND IT NEEDS THE RECIPE RATHER THAN THE LABEL ALONE. A lifted label is a
+    SUBHEADING only when a section heading already sits above it in that recipe. With nothing above
+    it there is no group for it to belong to, and a page of level-2 headings under no level-1 reads
+    as a list of fragments rather than a recipe in parts. So the default is SECTION and
+    `section_above` is what demotes it.
+
+    ⚠️ AND A LABEL THAT NAMES A COMPONENT IS A SECTION WHATEVER SITS ABOVE IT. "Make the chicken"
+    under a "Marinade" section is still a part of the recipe, not a caption on one step. See
+    _SECTION_LABEL for the list."""
+    if _SECTION_LABEL.match(label or ""):
+        return SECTION
+    return SUBHEADING if section_above else SECTION
 
 
 # ⚠️ LINKS RESOLVE BY THE ID INSIDE [[...]], NOT BY THE WORDS. app.js openPanel fetches
@@ -1301,6 +1402,86 @@ def move_link_out_of_label(label, rest):
     return plain, out, moved_any
 
 
+# ⚠️ A MAINTAINED LIST, AND IT IS THE AUTHORITY RATHER THAN THE CORPUS. Ingredient names start
+#    lowercase, and the exceptions are proper nouns, brands and acronyms. The corpus's own
+#    capitalization cannot decide this: measured over 455 capitalized names, it writes "shaoxing"
+#    lowercase 16 times and "chinese" 4 times, so "the corpus does it somewhere" would have
+#    lowercased two demonyms and a Chinese city. Evidence of common USE is not evidence of a common
+#    NOUN.
+#
+# ⚠️ WHERE THE LINE IS LINKED, THE LIBRARY WINS. A linked row names a library entry that carries its
+#    own canonical capitalization, which is a decision somebody already made about that exact
+#    ingredient. This list is for the unlinked lines, which is most of them.
+#
+# Demonyms and places, brands, and varieties named after a person or a place.
+PROPER_NOUNS = frozenset("""
+    indian thai chinese korean persian japanese vietnamese mexican french spanish italian greek
+    turkish lebanese moroccan ethiopian jamaican cuban peruvian brazilian german english irish
+    scottish welsh russian polish hungarian swedish danish norwegian swiss belgian dutch
+    sichuan szechuan shaoxing kashmiri gochujang hunan shanxi yunnan guizhou
+    worcestershire parmesan parmigiano reggiano pecorino romano asiago gruyere emmental manchego
+    gouda cheddar brie camembert roquefort gorgonzola mozzarella provolone feta halloumi
+    dijon marzano roma campari cornish yukon idaho vidalia walla maui bermuda
+    granny braeburn gala fuji honeycrisp bosc anjou bartlett seckel
+    diamond crystal king arthur fleischmann saf tabasco cholula crystal maldon kewpie
+    heinz hellmann duke kikkoman lkk aleppo calabrian espelette cayenne
+    bragg nutella oreo graham ritz nilla biscoff speculoos
+    arborio carnaroli vialone bomba calasparra basmati jasmine
+    serrano habanero poblano ancho guajillo chipotle pasilla morita arbol
+    yorkshire devon cumberland lancashire wensleydale stilton
+    smith marzano meyer seville valencia cara
+""".split())
+
+# Acronyms and initialisms that a reader needs in capitals.
+ACRONYMS = frozenset({"msg", "ap", "ny", "nyc", "uk", "us", "usa", "bbq", "evoo", "diy", "sos"})
+
+_LEAD_WORD = re.compile(r"^([^A-Za-z]*)([A-Za-z][\w'\u2019-]*)")
+
+# The certain / uncertain split for an ingredient NAME, as the review CSV reports it.
+CASE_CERTAIN = "certain"
+CASE_PROPER = "proper noun, left alone"
+CASE_ACRONYM = "acronym, left alone"
+CASE_LINKED = "the library's own capitalization"
+CASE_UNCERTAIN = "uncertain"
+
+
+def ingredient_name_case(name, canonical=None, lowercase_elsewhere=False):
+    """An ingredient name -> (the name it should carry, the verdict, why).
+
+    `canonical` is the library's own form when the line is LINKED, which wins outright.
+    `lowercase_elsewhere` says the corpus writes this same leading word lowercase somewhere, which is
+    the secondary signal that it is an ordinary food word rather than a name.
+
+    ⚠️ A VERDICT OF uncertain IS A REAL ANSWER AND THE CSV IS WHERE IT GOES. 159 of the 455
+    capitalized names have no evidence either way, and lowercasing a name on a guess is how
+    "Kashmiri chili" becomes "kashmiri chili" and a reader stops being able to find it."""
+    t = str(name or "")
+    m = _LEAD_WORD.match(t)
+    if not m:
+        return t, CASE_CERTAIN, "no leading word"
+    pre, word = m.group(1), m.group(2)
+    if not word[0].isupper():
+        return t, CASE_CERTAIN, "already lowercase"
+    if canonical:
+        # the library decides this one, including when the library says capitals
+        want = canonical.strip()
+        first = next((ch for ch in want if ch.isalpha()), "")
+        if first and first.isupper():
+            return t, CASE_LINKED, f"the library writes it {want!r}"
+        lowered = pre + word[0].lower() + word[1:] + t[m.end():]
+        return lowered, CASE_LINKED, f"the library writes it {want!r}"
+    if word.isupper() and len(word) > 1:
+        return t, CASE_ACRONYM, "all capitals"
+    if word.lower() in ACRONYMS:
+        return t, CASE_ACRONYM, f"{word} is an acronym"
+    if word.lower() in PROPER_NOUNS:
+        return t, CASE_PROPER, f"{word} is on the proper-noun list"
+    if lowercase_elsewhere:
+        return (pre + word[0].lower() + word[1:] + t[m.end():], CASE_CERTAIN,
+                "the corpus writes this word lowercase elsewhere and it is not a name")
+    return t, CASE_UNCERTAIN, "no lowercase use anywhere and not on the list"
+
+
 def capitalize_first_visible(text):
     """Capitalize the first letter a READER sees, leaving link ids alone.
 
@@ -1317,7 +1498,15 @@ def capitalize_first_visible(text):
         if not word or not word[0].isalpha() or word[0].isupper():
             return t
         return f"[[{key}|{word[0].upper() + word[1:]}]]" + t[m.end():]
-    for i, ch in enumerate(t):
+    # ⚠️ AN AUTHOR'S NUMBER IS STEPPED OVER, A MEASUREMENT IS NOT, and the separator is what tells
+    #    them apart. Measured over the 300: 5 steps begin with a number and then a lowercase letter.
+    #    Two are the author's own numbering ("1. bring a salted water to a boil", "3. combine the
+    #    cornmeal") and three are measurements the page must not touch ("30 minutes before you
+    #    start cooking", "180 degrees.", "24 pieces (6 short rows)"). A number followed by "." or
+    #    ")" is a list marker; a number followed by a space is a quantity.
+    m2 = _AUTHOR_NUM_SEP.match(t)
+    head = m2.end() if m2 else 0
+    for i, ch in enumerate(t[head:], head):
         if ch.isalpha():
             return t if ch.isupper() else t[:i] + ch.upper() + t[i + 1:]
         if not ch.isspace() and ch not in "([\u201c\"'":
@@ -1482,7 +1671,8 @@ def plan_step_rows(directions, notes=""):
             # 6 — the step now starts mid-sentence, so its first visible letter is capitalized.
             rest = capitalize_first_visible(rest)
             # 7 — a label that names a part of the recipe is a section, not a caption.
-            level = label_level(label)
+            level = label_level(label, section_above=any(
+                r.get("is_heading") and r.get("heading_level") == SECTION for r in rows))
             note("step_label_lifted", f"{label} (level {level})")
             rows.append({"is_heading": 1, "heading_level": level, "text": label})
             rows.append({"is_heading": 0, "heading_level": SECTION, "text": rest})
@@ -1693,11 +1883,15 @@ def clean_recipe(norm):
     drops nothing; flags incompletes at the recipe level."""
     # Already a list of non-empty, stripped step lines — the reader owns that split, exactly as it
     # already owns ingredient_lines'. Copied so the cleaned result never aliases the reader's list.
-    directions = list(norm["directions"] or [])
+    # ⚠️ LOOK-ALIKE LETTERS COME OUT FIRST, BEFORE ANY RULE READS THE TEXT. Both rules that match on
+    #    Latin characters are downstream of this line: the author-number rule and the lead-in label
+    #    rule. Measured on the corpus, one Cyrillic word defeated each of them (see
+    #    normalize_lookalikes), and nothing on the page said why.
+    directions = [normalize_lookalikes(t) for t in (norm["directions"] or [])]
     # step-section headings -> hint words, so a bare ingredient header that mirrors a step section
     # (e.g. "Habanero Syrup" ~ the "Habanero Syrup -" step) can be promoted (secondary signal, 3b).
     hints = {_step_heading_key(t) for t in directions if classify_step(t)[0]} - {""}
-    ings = [classify_line(ln, hints) for ln in norm["ingredient_lines"]]
+    ings = [classify_line(normalize_lookalikes(ln), hints) for ln in norm["ingredient_lines"]]
     has_img = bool(norm.get("images") or norm.get("primary_photo"))
     no_ing = len(norm["ingredient_lines"]) == 0
     no_dir = len(directions) == 0
@@ -1709,12 +1903,14 @@ def clean_recipe(norm):
     if no_ing and no_dir and has_img:
         flags.append("photo_only")
     return {
-        "name": norm["name"], "uid": norm["uid"], "hash": norm["hash"],
+        # ⚠️ THE TITLE, THE HEADNOTE AND THE NOTES GET IT TOO. Andy's rule is stated over every text
+        #    surface, and a look-alike in a title is worse than one in a step: it reaches the slug.
+        "name": normalize_lookalikes(norm["name"]), "uid": norm["uid"], "hash": norm["hash"],
         "servings": parse_servings(norm["servings_raw"]),
         "servings_raw": norm["servings_raw"],
         "categories": norm["categories"], "source": norm["source"],
-        "source_url": norm["source_url"], "notes": norm["notes"],
-        "description": norm["description"], "rating": norm["rating"],
+        "source_url": norm["source_url"], "notes": normalize_lookalikes(norm["notes"]),
+        "description": normalize_lookalikes(norm["description"]), "rating": norm["rating"],
         # Normalized ON THE WAY IN, so a new import stores the one form. Nothing already stored is
         # touched by this, and an unreadable value passes through exactly as the publisher wrote it.
         "times": {"prep": normalize_time(norm["prep_time"]),

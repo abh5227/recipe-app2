@@ -172,7 +172,13 @@ def _lift(c, log, csv_path, tag):
         #    scripts whose whole claim is that one rule must not have two copies. See
         #    import_cleanup.plan_step_rows rules 5, 6 and 7.
         rest = capitalize_first_visible(rest)
-        level = label_level(label)
+        # ⚠️ THE LEVEL DEPENDS ON WHAT SITS ABOVE THIS STEP (Andy's rule), so the live rows are read
+        #    before the lift rather than the label being asked on its own.
+        _above = c.execute(
+            "SELECT 1 FROM recipe_steps WHERE recipe_id=? AND is_heading=1 AND heading_level=? "
+            "AND position < (SELECT position FROM recipe_steps WHERE id=?) LIMIT 1",
+            (rid, SECTION, sid)).fetchone() is not None
+        level = label_level(label, section_above=_above)
         body = _baseline(c, rid)
         steps = (body or {}).get("steps") or []
         bi = next((i for i, s in enumerate(steps) if s.get("id") == sid), None)
