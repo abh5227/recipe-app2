@@ -811,6 +811,9 @@ STEP_STRUCTURE_REASONS = {
         "a heading stored in capitals was rewritten in sentence case",
     "note_fragment_removed":
         "a notes paragraph that was only a label, naming nothing, was removed",
+    "note_step_mention":
+        "a note names a step by number; the number is the author's, counted over their own list, "
+        "so the reference is recorded unresolved and a person decides which step it means",
     "step_label_link_lost":
         "a lifted label held an ingredient link with no later mention to move it to",
     "step_alternatives":

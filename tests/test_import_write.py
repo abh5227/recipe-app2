@@ -606,3 +606,90 @@ def test_the_import_baseline_carries_the_inserted_row_ids(kitchen):
     assert live_ing and live_step
     assert [r["id"] for r in doc["ingredients"]] == live_ing
     assert [r["id"] for r in doc["steps"]] == live_step
+
+
+# ------------------------------------------------- the notes are ROWS, and the importer makes them
+# ⚠️ WHY THESE EXIST. The importer wrote recipes.notes as TEXT and no recipe_notes rows at all, and
+# once get_recipe started serving notes from the rows that made every imported note invisible: the
+# API returned "notes": [], the page showed nothing, and the first ordinary save rebuilt the derived
+# column from 0 rows and deleted the publisher's text. The URL import path opens the recipe straight
+# in the editor, so that save is the next thing that happens. This is clause (2) of FIX BY RULE, and
+# the rule set is notes.paragraphs plus notes.kind_of, which is what moved the corpus.
+
+def test_an_imported_recipe_s_notes_become_rows(kitchen):
+    c = _cleaned(name="Noted Import", directions=["Mix."], uid="NOTE-UID",
+                 notes="Flour. Use bread flour.\n\nStoring. Keeps three days.")
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, _plan(c)) is True
+        s.commit()
+    with kitchen.conn() as conn:
+        rows = conn.execute(
+            "SELECT position, kind, text FROM recipe_notes WHERE recipe_id='noted-import' "
+            "ORDER BY position").fetchall()
+    assert [r["text"] for r in rows] == ["Flour. Use bread flour.", "Storing. Keeps three days."]
+    # the kind comes from the shared table, so a labelled paragraph lands under its own header
+    assert [r["kind"] for r in rows] == ["notes", "storage"]
+
+
+def test_an_imported_recipe_s_notes_survive_the_first_save(kitchen):
+    """The failure this closes: the editor sends back what the API gave it, so with 0 rows it sent
+    notes: [] and the column was rebuilt as NULL."""
+    import harness
+    c = _cleaned(name="Saved Import", directions=["Mix."], uid="SAVE-UID",
+                 notes="Keep this paragraph.")
+    # Owned by the client's own user, the way the URL import route does it (app.py sets
+    # plan["recipe"]["owner"] before committing), because the SAVE is what this test is about.
+    uid = harness.ensure_test_user()
+    plan = _plan(c)
+    plan["recipe"]["owner"] = uid
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, plan, owner_id=uid) is True
+        s.commit()
+    d = kitchen.client.get("/api/recipes/saved-import").get_json()
+    assert [n["text"] for n in d["notes"]] == ["Keep this paragraph."]
+    r = kitchen.client.put("/api/recipes/saved-import", json={
+        "name": d["recipe"]["name"],
+        "ingredients": [],
+        "steps": [{"id": s_["id"], "text": s_["text"]} for s_ in d["steps"]],
+        "notes": [{"text": n["text"], "kind": n["kind"],
+                   "step_id": n["step_id"], "refs": n.get("refs") or []} for n in d["notes"]]})
+    assert r.status_code == 200, r.get_json()
+    after = kitchen.client.get("/api/recipes/saved-import").get_json()
+    assert [n["text"] for n in after["notes"]] == ["Keep this paragraph."]
+
+
+def test_an_imported_note_that_names_a_step_is_recorded_and_flagged_not_guessed(kitchen):
+    """⚠️ THE NUMBER IS THE AUTHOR'S. It is counted over the list they wrote, and the app's own
+    numbering has already moved away from it. The reference row keeps the mention's ordinal with
+    step_id NULL, and the recipe is flagged so a person decides."""
+    c = _cleaned(name="Mention Import", directions=["Mix.", "Bake."], uid="MENT-UID",
+                 notes="Tip. Do this before step 2.")
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, _plan(c)) is True
+        s.commit()
+    with kitchen.conn() as conn:
+        refs = conn.execute(
+            "SELECT r.ref_index, r.match_text, r.step_id FROM recipe_note_step_refs r "
+            "JOIN recipe_notes n ON n.id=r.note_id WHERE n.recipe_id='mention-import'").fetchall()
+        flags = [r["flag"] for r in conn.execute(
+            "SELECT flag FROM import_flags WHERE recipe_id='mention-import'").fetchall()]
+    assert [(r["ref_index"], r["match_text"], r["step_id"]) for r in refs] == [(0, "step 2", None)]
+    assert "note_step_mention" in flags
+
+
+def test_an_imported_recipe_is_byte_equal_to_its_own_baseline(kitchen):
+    """The baseline has to describe the note ROWS, or an imported recipe with notes never matches
+    its own origin and carries a permanent invisible handicap: the diff runs on every page view."""
+    import app
+    c = _cleaned(name="Baseline Notes", directions=["Mix."], uid="BLN-UID",
+                 notes="One paragraph.\n\nTip. Another one.")
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, _plan(c)) is True
+        s.commit()
+    with kitchen.conn() as conn:
+        stored = conn.execute(
+            "SELECT content FROM recipe_snapshots WHERE recipe_id='baseline-notes' "
+            "AND reason='original'").fetchone()["content"]
+    with app.orm_session() as s:
+        assert app.serialize_recipe_content(s, "baseline-notes") == stored
+        assert app._recipe_annotations(s, "baseline-notes") == []

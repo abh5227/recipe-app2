@@ -48,9 +48,10 @@ from sqlalchemy import create_engine, event, insert, select
 import snapshot_serialize  # single-source snapshot FORMAT — the original-baseline blob matches app.py's byte-for-byte
 
 import import_cleanup as cleanup
+import notes as notes_rules      # the shared notes brain: the split, the kind and the mentions
 import paprika_native_reader as reader
-from models import (CookLog, Recipe, RecipeIngredient, RecipeSnapshot, RecipeStep, ImportFlag,
-                    SourceRating, User)
+from models import (CookLog, Recipe, RecipeIngredient, RecipeNote, RecipeNoteStepRef,
+                    RecipeSnapshot, RecipeStep, ImportFlag, SourceRating, User)
 
 BASE_DIR = Path(__file__).resolve().parent
 DB = BASE_DIR / "recipes.db"
@@ -180,6 +181,40 @@ def _ingredient_rows(cleaned):
     return rows, flags
 
 
+def _note_rows(notes_text):
+    """The recipe's notes as ROWS, by the same two rules the corpus move used -> (rows, flags).
+
+    ⚠️ ONE RULE SET, TWO CALLERS. notes.paragraphs and notes.kind_of are what
+    scripts/notes_to_rows.py ran over the 300, so a note imported today lands in the shape the
+    corpus was moved into. This is clause (2) of FIX BY RULE, and it was missing: the importer
+    wrote the recipes.notes TEXT COLUMN and no rows at all, which was invisible until the page
+    started reading rows. Measured on a throwaway kitchen: an imported recipe came back from the
+    API with "notes": [], so the publisher's text showed nowhere, and the first ordinary save
+    rebuilt the derived column from 0 rows and deleted it. The URL import path opens the recipe
+    straight in the editor, so that save is the next thing that happens.
+
+    ⚠️ A "step N" IN A NOTE'S OWN WORDS IS RECORDED AND NOT RESOLVED. The number is the AUTHOR'S,
+    counted over the list they wrote, and the app's numbering has already moved away from it (the
+    2026-09-30 chain lifted 104 labels into headings and took 7 Note steps out of the method).
+    the-best-new-york-style-bagel's "step 9" is the app's step 8 for exactly that reason. The
+    reference row is written with step_id NULL so the mention keeps its place and its ordinal, and
+    the recipe is flagged so a person decides. A guess here puts a link on the wrong step with
+    nothing on the page saying it is wrong, which is the one outcome the decline-over-guess rule
+    exists to prevent."""
+    import notes as notes_rules
+    rows, flags = [], []
+    for i, para in enumerate(notes_rules.paragraphs(notes_text)):
+        mentions = notes_rules.scan_step_mentions(para)
+        rows.append({"position": i, "kind": notes_rules.kind_of(para), "text": para,
+                     "mentions": [{"ref_index": m["ref_index"], "match_text": m["match_text"]}
+                                  for m in mentions]})
+        for m in mentions:
+            flags.append({"position": None, "flag": "note_step_mention",
+                          "reason": f"{cleanup.STEP_STRUCTURE_REASONS['note_step_mention']} "
+                                    f"({m['match_text']!r} in note {i + 1})"})
+    return rows, flags
+
+
 def _step_rows(cleaned):
     """directions (already split into lines by the cleanup core) -> (recipe_steps rows, notes,
     review-queue rows). Plain text, position-ordered, NO {{...}} markup.
@@ -222,6 +257,7 @@ def plan_recipe(cleaned, uid_index, taken_slugs, now=None):
     slug = mint_slug(cleaned["name"], taken_slugs)
     ing_rows, line_flags = _ingredient_rows(cleaned)
     step_rows, step_notes, step_flags = _step_rows(cleaned)
+    note_rows, note_flags = _note_rows(step_notes)
     recipe_flag_rows = [{"position": None, "flag": f, "reason": None}
                         for f in cleaned["recipe_flags"]]
 
@@ -239,7 +275,11 @@ def plan_recipe(cleaned, uid_index, taken_slugs, now=None):
         "descr": cleaned["description"] or None,
         # ⚠️ step_notes, NOT cleaned["notes"]: a Note step moved out of the directions is appended
         #    to whatever the publisher already put in the notes field (see _step_rows).
-        "notes": step_notes or None,
+        # ⚠️ AND IT IS THE DERIVED FORM OF THE ROWS, NOT THE RAW BLOB. The column is a derived copy
+        #    of recipe_notes from migration 060 on, so the two have to agree the day the recipe
+        #    lands or the first save renormalizes it and the recipe silently leaves the byte-equal
+        #    short-circuit.
+        "notes": notes_rules.derived_text(note_rows) or None,
         # ALWAYS NULL AT INSERT, and for the URL path that is the design rather than a gap: the hero
         # is fetched AFTER this row is committed (app._attach_imported_hero -> url_image), so a dead
         # or refused image url cannot take a good import down with it. Paprika's photos[] is still
@@ -255,12 +295,13 @@ def plan_recipe(cleaned, uid_index, taken_slugs, now=None):
         "recipe": recipe_row,
         "ingredients": ing_rows,
         "steps": step_rows,
+        "notes": note_rows,
         "rating": _rating_row(cleaned["rating"]),
         # The publisher's number, carried as the reader found it. Written to its own table by
         # commit_plan, never near the cook's verdict.
         "source_rating": cleaned.get("source_rating"),
         "recipe_flags": cleaned["recipe_flags"],
-        "review_flags": line_flags + step_flags + recipe_flag_rows,
+        "review_flags": line_flags + step_flags + note_flags + recipe_flag_rows,
     }
 
 
@@ -336,6 +377,18 @@ def commit_plan(executor, plan, owner_id=None, snapshot=True):
     # Guarded so a recipe's original is captured once (belt-and-suspenders; commit_plan is create-only —
     # uid-dedup skips existing recipes, so the false branch is unreachable through this function).
     # cook_log_id NULL; user_id = the import owner; created_at = the recipe's birth timestamp.
+    # ⚠️ THE NOTES ARE ROWS, AND THIS IS WHERE THEY ARE MADE. Writing only the text column left
+    #    every imported note invisible on the page and deleted by the first save (see _note_rows).
+    #    A reference is written for each "step N" the note contains, with step_id NULL, so the
+    #    mention keeps its ordinal and a person resolves it from the review queue.
+    for row in plan.get("notes") or ():
+        note_id = executor.execute(insert(RecipeNote.__table__).values(
+            recipe_id=r["id"], position=row["position"], kind=row["kind"],
+            text=row["text"])).inserted_primary_key[0]
+        for m in row.get("mentions") or ():
+            executor.execute(insert(RecipeNoteStepRef.__table__).values(
+                note_id=note_id, ref_index=m["ref_index"], match_text=m["match_text"],
+                step_id=None))
     snap = RecipeSnapshot.__table__
     exists = snapshot and executor.execute(
         select(snap.c.id).where(snap.c.recipe_id == r["id"], snap.c.reason == "original")).first()
@@ -349,13 +402,29 @@ def commit_plan(executor, plan, owner_id=None, snapshot=True):
         # nothing to match on. Reading back is one select per table, inside the caller's transaction,
         # after the inserts. tests/test_import_write.py pins it byte-for-byte against the ORM path.
         ri, rs = RecipeIngredient.__table__, RecipeStep.__table__
+        rn, rnr = RecipeNote.__table__, RecipeNoteStepRef.__table__
         ing_rows = executor.execute(select(ri).where(ri.c.recipe_id == r["id"])
                                     .order_by(ri.c.position, ri.c.id)).mappings().all()
         step_rows = executor.execute(select(rs).where(rs.c.recipe_id == r["id"])
                                      .order_by(rs.c.position, rs.c.id)).mappings().all()
+        # ⚠️ READ BACK WITH THEIR REFERENCES, for the reason the rows above are read back: the
+        #    snapshot records each row's id and a note's references travel inside its entry, so a
+        #    baseline built from the plan would disagree with the live rows on the day the recipe
+        #    landed and the recipe would never be byte-equal to its own origin.
+        note_rows = [dict(n) for n in executor.execute(
+            select(rn).where(rn.c.recipe_id == r["id"])
+            .order_by(rn.c.position, rn.c.id)).mappings()]
+        if note_rows:
+            refs = executor.execute(select(rnr).where(rnr.c.note_id.in_(
+                [n["id"] for n in note_rows])).order_by(rnr.c.note_id, rnr.c.ref_index)).mappings()
+            by_note = {}
+            for ref in refs:
+                by_note.setdefault(ref["note_id"], []).append(dict(ref))
+            for n in note_rows:
+                n["refs"] = by_note.get(n["id"], [])
         executor.execute(insert(snap).values(
             recipe_id=r["id"], cook_log_id=None, user_id=owner_id, reason="original",
-            content=snapshot_serialize.content_blob(r, ing_rows, step_rows),
+            content=snapshot_serialize.content_blob(r, ing_rows, step_rows, notes=note_rows),
             created_at=r["created_at"]))
     # ⚠️ AN IMPORTED RATING GETS A COOK TO HANG ON, and that is the whole of the fix. This used to
     # insert a recipe-level ratings row with no cook behind it, which is how 107 verdicts ended up
