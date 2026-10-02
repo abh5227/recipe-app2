@@ -6,7 +6,9 @@
 //
 // `esc` is INJECTED rather than imported, exactly as note-blocks.js takes the kind table: this
 // module stays dependency-free for the zero-dep JS suite, and the app keeps one escaping function
-// rather than a second copy of it.
+// rather than a second copy of it. displayText comes from note-blocks.js, which is dependency-free
+// too, so the step popover and the Notes block strip a label by one rule and not two.
+import { displayText } from "./note-blocks.js";
 
 // ⚠️ A MIRROR OF notes.py::STEP_MENTION, AND NOT THE OBVIOUS SPELLING OF IT. Python's \b, \s and
 // \d are Unicode-aware on a str and JavaScript's are ASCII-only, so /\bsteps?\s+(\d+)\b/ and the
@@ -56,3 +58,30 @@ export function noteTextHTML(note, esc) {
 
 
 export { STEP_MENTION };
+
+
+// ⚠️ A NOTE IS CONNECTED TO A STEP BY EITHER ROUTE, AND BOTH SHOW THE MARKER. An attached link
+// (step_id, chosen in the editor) and a "step N" written in the note's own words are two ways of
+// saying the same thing, and a reader on the step wants the note either way. This counted only the
+// attached link, so the bagel's "proceed with step 9" note showed on the page as a link in the Notes
+// block and left step 8 with no marker at all.
+// ⚠️ AND A NOTE CONNECTED BOTH WAYS APPEARS ONCE. Two markers on one sentence reads as two
+// different kinds of thing, which is the same reason two notes on one step share a marker.
+export function stepNoteIndex(rows, table) {
+  const by = new Map();
+  const add = (sid, n) => {
+    if (!sid) return;
+    if (!by.has(sid)) by.set(sid, []);
+    const seen = by.get(sid);
+    if (seen.some((x) => x.id === n.id && n.id != null)) return;
+    // ⚠️ THE SAME DISPLAY TEXT THE NOTES SECTION SHOWS. These are the raw rows, so without this the
+    //    popover printed the label ("Variation: ...") that the section strips, and one note read
+    //    two different ways on one page.
+    seen.push({ ...n, display: displayText(n, table) });
+  };
+  for (const n of rows || []) {
+    add(n.step_id, n);
+    for (const r of (n.refs || [])) add(r.step_id, n);
+  }
+  return by;
+}

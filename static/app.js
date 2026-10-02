@@ -19,7 +19,7 @@ import { isToMake } from "./tomake.js";
 import { browseList, cardTags, monthYear } from "./browse.js";
 import { panelBlocks } from "./panel-blocks.js";
 import { noteBlocks, displayText } from "./note-blocks.js";
-import { noteTextHTML } from "./note-text.js";
+import { noteTextHTML, stepNoteIndex } from "./note-text.js";
 // ⚠️ THE KIND TABLE IS ONE FILE, IMPORTED, NOT A COPY KEPT IN STEP BY A TEST. Vite inlines
 // the JSON at build time and import_cleanup reads the SAME path for the data rule, so the
 // display and the importer cannot disagree about what "Storing." means.
@@ -1105,19 +1105,6 @@ function notesSectionHTML(rows) {
 }
 
 // {step id -> the notes attached to it}. Built once per render so a step row does not scan the list.
-function stepNoteIndex(rows) {
-  const by = new Map();
-  for (const n of rows || []) {
-    if (!n.step_id) continue;
-    if (!by.has(n.step_id)) by.set(n.step_id, []);
-    // ⚠️ THE SAME DISPLAY TEXT THE NOTES SECTION SHOWS. These are the raw rows, so without this the
-    //    popover printed the label ("Variation: ...") that the section strips, and one note read
-    //    two different ways on one page.
-    by.get(n.step_id).push({ ...n, display: displayText(n, NOTE_KINDS.kinds) });
-  }
-  return by;
-}
-
 // ⚠️ INLINE, AT THE END OF THE STEP, IN BODY COLOUR — NEVER IN THE MARGIN. The margin is where the
 // "your changes" marks live, and a reader who learns that the left edge means "you edited this"
 // must not meet a second marker there meaning something else entirely. This one sits in the text
@@ -1141,7 +1128,7 @@ function renderStepsList(steps) {
   const { step, removedStep } = annotationIndex(view.data.annotations);   // keyed by ROW ID
   // ⚠️ A NOTE ON A ROW THAT IS NOW A HEADING IS NOT SHOWN, and its link is still stored. The server
   //    keeps step_id and simply resolves no number, so this index only ever reaches ordinary steps.
-  const noteBy = stepNoteIndex(view.data.notes);
+  const noteBy = stepNoteIndex(view.data.notes, NOTE_KINDS.kinds);
   const items = steps.map((row) => ({
     isHeading: !!row.is_heading,
     headingText: row.is_heading ? (row.text || "") : null,
@@ -1370,6 +1357,21 @@ function scaleMetaBlock(r) {
     })
     .join(`<span class="meta-sep"> · </span>`);
   if (times) stack.push(`<span class="meta-item">${META_CLOCK}<span>${times}</span></span>`);
+  // ⚠️ THE SECOND TOTAL SITS UNDER THE FIRST AND IS SMALLER. One line per conditional wait, each
+  //    naming its own condition, so a cook who is going to take that path reads the figure instead
+  //    of working it out from the Total and a bullet. The main Total is unchanged. The server
+  //    computes both (planahead.conditional_totals) for the reason it computes the Total: one
+  //    implementation, and the client prints what it is handed.
+  const conds = (view.data && view.data.conditional_totals) || [];
+  for (const c of conds) {
+    if (!c || !c.label) continue;
+    // The empty first cell keeps it in the same column as the Total above it: .meta-stack lays
+    // each item out as [icon, text] and this line has no icon of its own.
+    stack.push(`<span class="meta-item meta-conditional">`
+      + `<span aria-hidden="true"></span>`
+      + `<span><span class="meta-val">${esc(bindUnits(c.label))}</span>`
+      + `${c.when ? ` ${esc(c.when)}` : ""}</span></span>`);
+  }
   // ⚠️ THE WAIT ROW NEVER SCALES, and it gets that for free by living in scaleMetaBlock beside the
   // times rather than in the ledger. Doubling a recipe does not double a rise.
   const waits = (view.waits || []);

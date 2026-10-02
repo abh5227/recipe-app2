@@ -17,7 +17,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { STEP_MENTION, noteTextHTML } from "../../static/note-text.js";
+import { STEP_MENTION, noteTextHTML, stepNoteIndex } from "../../static/note-text.js";
 
 const FIX = JSON.parse(readFileSync(new URL("../fixtures/step-mention-cases.json", import.meta.url)));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) =>
@@ -101,4 +101,59 @@ test("a stripped label does not shift the ordinals", () => {
 test("a note with no references is escaped and otherwise untouched", () => {
   assert.equal(noteTextHTML({ text: "Use <b>good</b> butter & salt." }, esc),
                "Use &lt;b&gt;good&lt;/b&gt; butter &amp; salt.");
+});
+
+// ---- the marker works both ways (Andy's recheck) -----------------------------------------------
+// ⚠️ ANDY SAW NO ⓘ ON THE BAGEL, AND HALF OF THAT WAS THIS. A note is connected to a step by an
+// attached link OR by a "step N" written in its own words, and only the attached link produced a
+// marker. The bagel's "proceed with step 9" note therefore printed a link in the Notes block and
+// left step 8 with nothing on it, which is the one place a reader standing on that step would look.
+const TABLE = [{ kind: "notes", header: "Notes", labels: ["Note"] },
+               { kind: "tips", header: "Tips", labels: ["Tip"] }];
+
+test("a note attached to a step shows on that step", () => {
+  const by = stepNoteIndex([{ id: 1, text: "Use fresh yeast.", step_id: 10, refs: [] }], TABLE);
+  assert.deepEqual([...by.keys()], [10]);
+  assert.equal(by.get(10).length, 1);
+});
+
+test("a note that only NAMES a step in its words shows on that step too", () => {
+  const by = stepNoteIndex(
+    [{ id: 2, text: "Then proceed with step 9.", step_id: null,
+       refs: [{ ref_index: 0, match_text: "step 9", step_id: 42, step_no: 8 }] }], TABLE);
+  assert.deepEqual([...by.keys()], [42], "a step reference produced no marker");
+  assert.equal(by.get(42)[0].id, 2);
+});
+
+test("a note connected both ways appears once on that step", () => {
+  const by = stepNoteIndex(
+    [{ id: 3, text: "See step 2.", step_id: 7,
+       refs: [{ ref_index: 0, match_text: "step 2", step_id: 7, step_no: 2 }] }], TABLE);
+  assert.equal(by.get(7).length, 1, "the same note was counted twice on one step");
+});
+
+test("one note can show on two different steps", () => {
+  const by = stepNoteIndex(
+    [{ id: 4, text: "Do this at step 5.", step_id: 11,
+       refs: [{ ref_index: 0, match_text: "step 5", step_id: 22, step_no: 5 }] }], TABLE);
+  assert.deepEqual([...by.keys()].sort((a, b) => a - b), [11, 22]);
+});
+
+test("a reference whose step is gone makes no marker", () => {
+  const by = stepNoteIndex(
+    [{ id: 5, text: "See step 4.", step_id: null,
+       refs: [{ ref_index: 0, match_text: "step 4", step_id: null, step_no: null }] }], TABLE);
+  assert.equal(by.size, 0);
+});
+
+test("two notes on one step share one entry, and the popover shows both", () => {
+  const by = stepNoteIndex([{ id: 6, text: "First.", step_id: 9, refs: [] },
+                            { id: 7, text: "Second.", step_id: 9, refs: [] }], TABLE);
+  assert.equal(by.get(9).length, 2);
+});
+
+test("the popover text has its label stripped, like the Notes block", () => {
+  const by = stepNoteIndex([{ id: 8, kind: "tips", text: "Tip: chill it first.", step_id: 3,
+                             refs: [] }], TABLE);
+  assert.equal(by.get(3)[0].display, "chill it first.");
 });
