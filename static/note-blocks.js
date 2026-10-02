@@ -3,8 +3,16 @@
 // app.js imports it in the browser and tests/js/note-blocks.test.js imports it the same way —
 // the same arrangement panel-blocks.js and step-row.js use.
 //
-// ⚠️ GROUPING IS DISPLAY-ONLY. The stored text keeps the author's own labels, exactly as written.
-// This decides what the page SHOWS, and nothing here is ever written back.
+// ⚠️ IT TAKES ROWS NOW, NOT A STRING. Migration 060 made a note a row with its own id, kind and
+// links, and recipes.notes became a derived copy kept only so the previous deploy can still serve.
+// The paragraph split still exists below for that older shape and for a test fixture, but the page
+// never calls it.
+//
+// ⚠️ GROUPING IS DISPLAY-ONLY AND THE STORED TEXT IS UNTOUCHED. The row's `kind` column decides
+// which group it sits in. The LABEL is a separate question: a label the table knows is stripped for
+// display, and one it does not know stays, because stripping it would delete the only thing naming
+// what the note is about. 27 of the corpus's 177 paragraphs are in that shape against 23 in the
+// other, so the unlisted case is the common one.
 //
 // ⚠️ THE KIND TABLE IS A SHARED FIXTURE, not a literal in this file. import_cleanup reads the same
 // static/note-kinds.json for the data rule, so the two cannot disagree about what "Storing."
@@ -13,25 +21,22 @@
 
 // A leading label: a short capitalized-ish phrase, then a colon or a period, then the note itself.
 // The period form is real and common ("Flour. This recipe works best with..." on brioche-bread).
+// ⚠️ KEEP IN STEP WITH import_cleanup._NOTE_LEAD. tests/js/note-kinds-sync.test.js pins it.
 const LEAD = /^\s*([A-Za-z][A-Za-z '’/-]{0,28}?)\s*[:.–—-]\s+(\S[\s\S]*)$/;
-
-// A paragraph that is ONLY a label, with nothing under it.
 
 function normLabel(s) {
   return String(s || "").replace(/’/g, "'").trim().replace(/\s+/g, " ").toLowerCase();
 }
 
 // Split stored notes into paragraphs. A blank line separates them, which is the convention the
-// corpus already keeps (78 of its 79 newline runs are exactly one blank line).
+// corpus already keeps (82 of its newline runs are exactly one blank line, 19 are a single newline
+// INSIDE a paragraph). Kept for the old string shape; the row path never calls it.
 function noteParagraphs(text) {
   return String(text == null ? "" : text).split(/\n\s*\n/).map((p) => p.trim()).filter(Boolean);
 }
 
 // One paragraph -> {kind, header, text}. `table` is the shared kind list.
-// ⚠️ AN UNLISTED LABEL KEEPS ITS TEXT WHOLE AND SITS UNDER "Notes". Stripping a label the table does
-// not know would silently delete the only thing naming what the note is about ("Blind Bake:",
-// "Tomato Bouillon:"). 17 of the corpus's labelled paragraphs are in that shape, so this is the
-// common case, not the edge one.
+// ⚠️ AN UNLISTED LABEL KEEPS ITS TEXT WHOLE AND SITS UNDER "Notes". See the header note.
 function classifyNote(para, table) {
   const m = LEAD.exec(para);
   if (m) {
@@ -46,18 +51,38 @@ function classifyNote(para, table) {
   return { kind: first.kind, header: first.header, text: para };        // unchanged
 }
 
-// Stored notes -> [{kind, header, paras: [text]}], in order of a kind's first appearance.
-// ⚠️ A KIND IS ONE BLOCK EVEN WHEN ITS PARAGRAPHS ARE NOT ADJACENT. beans writes Note, Note, Tip and
-// reads as two blocks; a recipe that alternates would otherwise print the same header twice.
-export function noteBlocks(text, table) {
-  const order = [];
-  const byKind = new Map();
-  for (const para of noteParagraphs(text)) {
-    const c = classifyNote(para, table);
-    if (!byKind.has(c.kind)) { byKind.set(c.kind, { kind: c.kind, header: c.header, paras: [] }); order.push(c.kind); }
-    byKind.get(c.kind).paras.push(c.text);
-  }
-  return order.map((k) => byKind.get(k)).filter((b) => b.paras.length);
+// ⚠️ THE LABEL IS STRIPPED ONLY WHEN IT AGREES WITH THE ROW'S KIND. A cook who moves a note reading
+// "Tip: ..." into Storage has changed the kind and not the words, and hiding the word "Tip" would
+// quietly edit the note to match a decision they can still undo.
+function displayText(row, table) {
+  const c = classifyNote(String(row.text || ""), table);
+  return c.kind === row.kind && c.text !== row.text ? c.text : String(row.text || "");
 }
 
-export { noteParagraphs, classifyNote, normLabel, LEAD };
+// Note ROWS -> [{kind, header, notes: [row]}], in order of a kind's first appearance.
+// ⚠️ A KIND IS ONE BLOCK EVEN WHEN ITS ROWS ARE NOT ADJACENT. beans writes Note, Note, Tip and reads
+// as two blocks; a recipe that alternates would otherwise print the same header twice.
+export function noteBlocks(rows, table) {
+  const headers = new Map(table.map((k) => [k.kind, k.header]));
+  const order = [];
+  const byKind = new Map();
+  for (const row of rows || []) {
+    const kind = headers.has(row.kind) ? row.kind : table[0].kind;
+    if (!byKind.has(kind)) {
+      byKind.set(kind, { kind, header: headers.get(kind), notes: [] });
+      order.push(kind);
+    }
+    byKind.get(kind).notes.push({ ...row, display: displayText({ ...row, kind }, table) });
+  }
+  return order.map((k) => byKind.get(k)).filter((b) => b.notes.length);
+}
+
+// The old string shape, for a payload that predates migration 060.
+export function noteBlocksFromText(text, table) {
+  return noteBlocks(noteParagraphs(text).map((p, i) => {
+    const c = classifyNote(p, table);
+    return { id: -1 - i, kind: c.kind, text: p, step_id: null, step_no: null, refs: [] };
+  }), table);
+}
+
+export { noteParagraphs, classifyNote, normLabel, displayText, LEAD };

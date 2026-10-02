@@ -2540,3 +2540,70 @@ a.meta-step:focus-visible { color: var(--berry); outline: 1px dotted currentColo
 .ie-add { font-family: var(--font-sans); font-size: 12.5px; color: var(--green); background: none;
   border: none; cursor: pointer; padding: 2px 0; }
 .ie-add:hover { color: var(--green-lift); text-decoration: underline; }
+
+/* ---------- notes as rows: the step marker and its popover ---------- */
+/* ⚠️ INLINE, IN BODY COLOUR, NEVER IN THE MARGIN. The margin is where the "your changes" marks sit,
+   and a reader who has learned that the left edge means "you edited this" must not meet a second
+   marker there meaning something else. This one sits at the end of the step's own sentence, in the
+   text flow, and it is a button rather than a passive dot: it has something to open. */
+.step-note-marker {
+  display: inline;
+  margin-left: .28em;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-size: .86em;
+  line-height: 1;
+  color: var(--ink-soft);
+  cursor: pointer;
+  vertical-align: baseline;
+}
+.step-note-marker:hover { color: var(--berry); }
+.step-note-marker:focus-visible { outline: 1px dotted currentColor; outline-offset: 2px; border-radius: 2px; }
+
+/* Hover opens it on a pointer device. Focus does the same through JS, so the keyboard path and the
+   pointer path show the same thing. */
+.step-body:has(.step-note-marker:hover) .step-note-pop { display: block; }
+
+.step-note-pop {
+  display: block;
+  margin: 6px 0 2px;
+  padding: 8px 11px;
+  border-left: 2px solid var(--rule, #d8d2c4);
+  background: color-mix(in srgb, var(--paper, #fbf7ee) 70%, #000 3%);
+  border-radius: 3px;
+  font-size: .92em;
+  color: var(--ink-soft);
+}
+.step-note-pop[hidden] { display: none; }
+.step-note-line { display: block; }
+.step-note-line + .step-note-line { margin-top: 6px; }
+
+/* ⚠️ A PHONE HAS NOWHERE TO FLOAT. At 390px the popover is a full-width block under the step rather
+   than a box beside it, which is what it already is above — the narrow case is the one that drove
+   the shape, not an exception to it. */
+@media (max-width: 560px) {
+  .step-note-pop { margin-left: 0; margin-right: 0; }
+}
+
+/* The "step N" link inside a note's own words. Same affordance as a wait's link, because it is the
+   same promise: this takes you to that step. */
+a.note-stepref { color: inherit; text-decoration: underline; text-decoration-style: dotted;
+                 text-underline-offset: 2px; cursor: pointer; }
+a.note-stepref:hover { color: var(--berry); text-decoration-style: solid; }
+a.note-stepref:focus-visible { color: var(--berry); outline: 1px dotted currentColor; outline-offset: 2px; }
+a.meta-step.note-step { font-size: .92em; color: var(--ink-soft); }
+
+/* ---------- notes as rows: the editor ---------- */
+.ie-note-block .ie-noterow { display: block; margin-bottom: 10px; }
+.ie-note-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
+.ie-note-tag {
+  font-size: .8em; padding: 1px 6px; border-radius: 10px;
+  background: color-mix(in srgb, var(--paper, #fbf7ee) 60%, #000 6%);
+  color: var(--ink-soft);
+}
+.ie-move { border: 0; background: none; cursor: pointer; font: inherit; color: var(--ink-soft);
+           padding: 2px 5px; }
+.ie-move:disabled { opacity: .3; cursor: default; }
+.ie-move:focus-visible { outline: 1px dotted currentColor; outline-offset: 2px; }

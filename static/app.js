@@ -1025,7 +1025,7 @@ function stepHeadingClass(row) {
   return `group h${stepLevel(row)}`;
 }
 
-function renderStepRow(row, ann) {
+function renderStepRow(row, ann, notes) {
   if (row.is_heading) return `<li class="${stepHeadingClass(row)}">${esc(stepHeadingTitle(row.text))}</li>`;
   // O-c-1: an added step -> the whole line in the hand ink (NO "+" marker — a full paragraph of ink
   // against printed prose announces itself; see the .step-add note in styles.css); a reworded step ->
@@ -1043,8 +1043,9 @@ function renderStepRow(row, ann) {
   if (ann && ann.mod) return `<li class="step"><div class="step-body">${wordDiffHTML(ann.mod.from, ann.mod.to)}</div></li>`;
   const html = stepBodyHTML(row);
   // .step-body wraps the step content inside li.step — the reserved attach point for future
-  // per-step photos and R2 step-notes. Inert in R1 (a bare block that fills the same box).
-  return `<li class="step"><div class="step-body">${html}</div></li>`;
+  // per-step photos. The note marker lives INSIDE it, at the end of the step's own text, which is
+  // what keeps it out of the margin where the "your changes" marks are.
+  return `<li class="step"><div class="step-body">${html}${stepNoteMarkerHTML(notes, row.id)}</div></li>`;
 }
 
 // O-c-1: render the step list with its annotation layer. Own 0-based li.step counter (heading-EXCLUDED,
@@ -1080,20 +1081,88 @@ function jumpToStep(n) {
 //    under Notes with its text untouched — 17 of the corpus's labelled paragraphs are in that shape
 //    ("Blind Bake:", "Tomato Bouillon:") and stripping a label nobody has approved would delete the
 //    only thing naming what the note is about.
-function notesSectionHTML(note) {
-  const blocks = note ? noteBlocks(note, NOTE_KINDS.kinds) : [];
+// ⚠️ KEEP IN STEP WITH notes.py STEP_MENTION AND note-blocks.js. A note names a step by NUMBER and
+// by nothing else: measured over the 177 corpus paragraphs, 2 do that and 0 say "the step above" or
+// "see step". Every match here becomes a link on the page, so a pattern that guessed at prose would
+// put links on phrases nobody meant as a reference.
+const STEP_MENTION = /\bsteps?\s+(\d+)\b/gi;
+
+// A note's words, with each stored step reference turned into a link that always reads the step's
+// CURRENT number.
+// ⚠️ THE NUMBER ON SCREEN IS NOT THE NUMBER IN THE TEXT. The author wrote "step 9" against their own
+// numbering, and the steps have moved since. What is stored is the step's id, so the sentence keeps
+// meaning the same step and the figure is resolved every time the page draws.
+// ⚠️ A REFERENCE WHOSE STEP BECAME A HEADING, OR WENT, RENDERS AS PLAIN TEXT. step_no comes back
+// null and the words stay exactly as written, which is the rule waits already follow: a wrong
+// number is worse than no link.
+function noteTextHTML(note) {
+  const refs = note.refs || [];
+  const text = String(note.display != null ? note.display : (note.text || ""));
+  let out = "", last = 0, i = 0;
+  STEP_MENTION.lastIndex = 0;
+  for (let m = STEP_MENTION.exec(text); m; m = STEP_MENTION.exec(text)) {
+    const ref = refs[i++];
+    out += esc(text.slice(last, m.index));
+    out += (ref && ref.step_no)
+      ? `<a class="note-stepref" href="#" data-note-step="${ref.step_no}">step ${ref.step_no}</a>`
+      : esc(m[0]);
+    last = m.index + m[0].length;
+  }
+  return out + esc(text.slice(last));
+}
+
+function notesSectionHTML(rows) {
+  const blocks = noteBlocks(rows || [], NOTE_KINDS.kinds);
   if (!blocks.length) return "";
   return `<div class="notes">${blocks.map((b) => `
     <h3 class="notes-kind">${esc(b.header)}</h3>
-    ${b.paras.map((t) => `<p class="notes-para">${esc(t)}</p>`).join("")}`).join("")}</div>`;
+    ${b.notes.map((n) => `<p class="notes-para">${noteTextHTML(n)}${
+      // ⚠️ THE SAME SHAPE A WAIT'S LINK HAS, for the same reason: one pattern for "this belongs to
+      //    step N" means a cook learns it once. It appears only when the server resolved a number,
+      //    so a note attached to a heading reads without it rather than with a wrong one.
+      n.step_no ? ` <a class="meta-step note-step" href="#" data-note-step="${n.step_no}">(step ${n.step_no})</a>` : ""
+    }</p>`).join("")}`).join("")}</div>`;
+}
+
+// {step id -> the notes attached to it}. Built once per render so a step row does not scan the list.
+function stepNoteIndex(rows) {
+  const by = new Map();
+  for (const n of rows || []) {
+    if (!n.step_id) continue;
+    if (!by.has(n.step_id)) by.set(n.step_id, []);
+    by.get(n.step_id).push(n);
+  }
+  return by;
+}
+
+// ⚠️ INLINE, AT THE END OF THE STEP, IN BODY COLOUR — NEVER IN THE MARGIN. The margin is where the
+// "your changes" marks live, and a reader who learns that the left edge means "you edited this"
+// must not meet a second marker there meaning something else entirely. This one sits in the text
+// flow, is a BUTTON rather than a passive dot, and carries the note it opens.
+// ⚠️ TWO NOTES ON ONE STEP GET ONE MARKER SHOWING BOTH, because two markers on one sentence reads
+// as two different kinds of thing.
+function stepNoteMarkerHTML(notes, stepId) {
+  if (!notes || !notes.length) return "";
+  const id = `note-pop-${stepId}`;
+  const label = notes.length > 1 ? `${notes.length} notes on this step` : "a note on this step";
+  return ` <button type="button" class="step-note-marker" aria-expanded="false"
+      aria-controls="${id}" aria-label="${esc(label)}" data-step-note="${stepId}">
+      <span aria-hidden="true">&#9432;</span></button>` +
+    `<span class="step-note-pop" id="${id}" role="tooltip" hidden>${
+      notes.map((n) => `<span class="step-note-line">${noteTextHTML(n)}</span>`).join("")
+    }</span>`;
 }
 
 function renderStepsList(steps) {
   const { step, removedStep } = annotationIndex(view.data.annotations);   // keyed by ROW ID
+  // ⚠️ A NOTE ON A ROW THAT IS NOW A HEADING IS NOT SHOWN, and its link is still stored. The server
+  //    keeps step_id and simply resolves no number, so this index only ever reaches ordinary steps.
+  const noteBy = stepNoteIndex(view.data.notes);
   const items = steps.map((row) => ({
     isHeading: !!row.is_heading,
     headingText: row.is_heading ? (row.text || "") : null,
-    html: row.is_heading ? renderStepRow(row) : renderStepRow(row, step.get(row.id)),
+    html: row.is_heading ? renderStepRow(row)
+                         : renderStepRow(row, step.get(row.id), noteBy.get(row.id)),
   }));
   insertRemovedRows(items, removedStep, removedStepRow);
   return items.map((x) => x.html).join("");
@@ -2141,7 +2210,7 @@ function paintRecipe() {
             <h2 class="col-title">Method</h2>
             <ol class="steps" id="steps-list">${steps}</ol>
             ${editing ? stepAddersHTML() : ""}
-            ${editing ? ieNoteHTML(r) : notesSectionHTML(note)}
+            ${editing ? ieNotesHTML(data) : notesSectionHTML(data.notes)}
           </section>
         </div>
         ${editing ? "" : albumSectionHTML(data)}
@@ -2533,6 +2602,29 @@ function handlePlanAheadAction(t) {
   if (wd) { d.waits.splice(+wd.dataset.waitDel, 1); view.dirty = true; repaint(); return true; }
   const sd = t.closest("[data-store-del]");
   if (sd) { d.storage.splice(+sd.dataset.storeDel, 1); view.dirty = true; repaint(); return true; }
+  if (t.closest("[data-note-add]")) {
+    (d.notes = d.notes || []).push({ text: "", kind: "notes", step_id: null,
+                                     ingredient_row_id: null, refs: [] });
+    view.dirty = true; repaint(); return true;
+  }
+  const nd = t.closest("[data-note-del]");
+  if (nd) { d.notes.splice(+nd.dataset.noteDel, 1); view.dirty = true; repaint(); return true; }
+  // ⚠️ MOVING A NOTE SWAPS THE OBJECTS, NOT THEIR TEXT. The row carries its id, its links and its
+  //    references, and moving the words alone would leave every one of those behind.
+  const nu = t.closest("[data-note-up]");
+  if (nu) {
+    const i = +nu.dataset.noteUp;
+    if (i > 0) { const a = d.notes; [a[i - 1], a[i]] = [a[i], a[i - 1]]; view.dirty = true; repaint(); }
+    return true;
+  }
+  const nw = t.closest("[data-note-down]");
+  if (nw) {
+    const i = +nw.dataset.noteDown;
+    if (d.notes && i < d.notes.length - 1) {
+      const a = d.notes; [a[i], a[i + 1]] = [a[i + 1], a[i]]; view.dirty = true; repaint();
+    }
+    return true;
+  }
   return false;
 }
 
@@ -2582,6 +2674,16 @@ function handlePlanAheadInput(el) {
     }
     return true;
   }
+  if (el.dataset.noteText !== undefined) return set(d.notes, +el.dataset.noteText, "text");
+  if (el.dataset.noteKind !== undefined) return set(d.notes, +el.dataset.noteKind, "kind");
+  if (el.dataset.noteStepPick !== undefined) {
+    const i = +el.dataset.noteStepPick;
+    if (d.notes && d.notes[i]) {
+      d.notes[i].step_id = el.value === "" ? null : +el.value;
+      view.dirty = true;
+    }
+    return true;
+  }
   if (el.dataset.storeWhere !== undefined) return set(d.storage, +el.dataset.storeWhere, "where_kept");
   if (el.dataset.storeWhat  !== undefined) return set(d.storage, +el.dataset.storeWhat, "applies_to");
   if (el.dataset.storeLabel !== undefined) return set(d.storage, +el.dataset.storeLabel, "label");
@@ -2589,8 +2691,34 @@ function handlePlanAheadInput(el) {
 }
 
 // The note edits at the BOTTOM (after the steps), mirroring reading's closing "Note. …" block.
-function ieNoteHTML(r) {
-  return `<div class="ie-noterow ie-note-block"><span class="ie-vlabel">Note</span><textarea class="ie ie-prose ie-note" data-inline-edit-field="notes" rows="2" placeholder="A private note…">${esc(r.notes || "")}</textarea></div>`;
+// ⚠️ ONE TEXTAREA PER NOTE, NOT ONE FOR ALL OF THEM. A note is a row with its own id, kind and
+// links since migration 060, and a single blob of prose has nowhere to put any of that. The shape
+// mirrors the plan-ahead list beside it, deliberately: a cook learns one set of controls.
+// ⚠️ REORDERING IS BUTTONS, NOT DRAG. Up and down work from the keyboard with no pointer and no
+// drop target, which is the accessible default; drag can be added beside them later without
+// changing anything stored.
+function ieNotesHTML(d) {
+  const kinds = (d.note_kinds || NOTE_KINDS.kinds).map((k) => [k.kind, k.header]);
+  const rows = (d.notes || []).map((n, i) => `
+    <div class="ie-noterow">
+      <textarea class="ie ie-prose ie-note" data-note-text="${i}" rows="2"
+                placeholder="A note…">${esc(n.text || "")}</textarea>
+      <div class="ie-note-controls">
+        ${pickHTML(kinds, String(n.kind || "notes"), "note-kind", i)}
+        ${pickHTML(stepChoices(d), n.step_id == null ? "" : String(n.step_id), "note-step-pick", i)}
+        ${(n.refs || []).filter((r) => r.step_no).map((r) =>
+          `<span class="ie-note-tag" title="this note names step ${r.step_no} in its own words"
+                 >${esc(r.match_text)} &rarr; step ${r.step_no}</span>`).join("")}
+        <button type="button" class="ie-move" data-note-up="${i}" ${i === 0 ? "disabled" : ""}
+                aria-label="Move this note up">&uarr;</button>
+        <button type="button" class="ie-move" data-note-down="${i}"
+                ${i === (d.notes || []).length - 1 ? "disabled" : ""}
+                aria-label="Move this note down">&darr;</button>
+        <button type="button" class="ie-x" data-note-del="${i}" aria-label="Remove this note">×</button>
+      </div>
+    </div>`).join("");
+  return `<div class="ie-block ie-note-block"><span class="ie-vlabel">Notes</span>${rows}
+      <button type="button" class="ie-add" data-note-add>+ add a note</button></div>`;
 }
 // (Image path is intentionally NOT editable here — real photo upload is the next feature; the recipe's
 // existing image round-trips unchanged on save via draftPayload.)
@@ -3110,7 +3238,10 @@ function draftPayload() {
   return {
     name: oneLine(r.name), author: oneLine(r.author), source_url: t(r.source_url), category: t(r.category),
     servings: t(r.servings), prep_time: t(r.prep_time), cook_time: t(r.cook_time), total_time: t(r.total_time),
-    image: t(r.image), descr: t(r.descr), notes: t(r.notes),
+    // ⚠️ `notes` IS A LIST OF ROWS NOW, BUILT BELOW, AND IT IS NOT A HEADER FIELD. recipes.notes is a
+    //    derived copy the server rebuilds from those rows, so sending the old string as well would
+    //    fight write_notes for the same column.
+    image: t(r.image), descr: t(r.descr),
     ingredients: nonEmptyRows(view.draft.ingredients).map(ingToPayload),   // drop blank rows the user left WIP
     steps: nonEmptySteps(view.draft.steps).map(stepToPayload),             // ditto — CLEARING a step's text deletes it
     // A row whose text box is empty is one the user left WIP, exactly like a blank ingredient.
@@ -3124,6 +3255,17 @@ function draftPayload() {
       ext_step_id: w.ext_step_id == null ? null : +w.ext_step_id })),
     storage: (view.draft.storage || []).filter((x) => t(x.label)).map((x) => ({
       where_kept: t(x.where_kept) || "fridge", applies_to: t(x.applies_to) || null, label: t(x.label) })),
+    // ⚠️ A NOTE WHOSE TEXT BOX IS EMPTY IS ONE THE USER LEFT WIP, like a blank ingredient. Clearing
+    //    a note's text is how the editor deletes it without reaching for the × .
+    // ⚠️ THE REFERENCES ARE ROUND-TRIPPED VERBATIM. The server re-scans the text on every save and
+    //    carries a stored link forward while its mention survives, so sending them back is what
+    //    keeps a link alive through an edit that merely moved the words around it.
+    notes: (view.draft.notes || []).filter((n) => t(n.text)).map((n) => ({
+      text: t(n.text), kind: t(n.kind) || "notes",
+      step_id: n.step_id == null ? null : +n.step_id,
+      ingredient_row_id: n.ingredient_row_id == null ? null : +n.ingredient_row_id,
+      refs: (n.refs || []).map((x) => ({ ref_index: x.ref_index,
+                                         step_id: x.step_id == null ? null : +x.step_id })) })),
   };
 }
 
@@ -3913,6 +4055,53 @@ async function submitBackdate() {
   else statsEl?.querySelector("[data-backdate-open]")?.focus();   // photoless: stats already patched -> just restore focus
 }
 
+/* ---------- the step note popover ---------- */
+// ⚠️ ONE CONTROL, FOUR WAYS IN, AND THEY ARE THE SAME CONTROL. The marker is a real <button>, so it
+// is in the tab order with no tabindex and a screen reader announces it as a button. Hover and
+// focus open it, which means a keyboard user gets what a mouse user gets without a second code
+// path. Tap opens it on a phone, where hover does not exist. Escape closes it and puts focus back.
+// ⚠️ aria-expanded IS THE STATE AND `hidden` IS THE RENDERING, and both are set together. Setting
+// only the attribute leaves a screen reader announcing a collapsed popover whose text is still in
+// the accessibility tree.
+function closeStepNote(pop) {
+  if (!pop) return;
+  pop.hidden = true;
+  const btn = document.querySelector(`[aria-controls="${pop.id}"]`);
+  if (btn) btn.setAttribute("aria-expanded", "false");
+}
+
+function closeAllStepNotes(except) {
+  document.querySelectorAll(".step-note-pop:not([hidden])").forEach((p) => {
+    if (p !== except) closeStepNote(p);
+  });
+}
+
+function toggleStepNote(btn, force) {
+  const pop = document.getElementById(btn.getAttribute("aria-controls"));
+  if (!pop) return;
+  const open = force === undefined ? pop.hidden : force;
+  closeAllStepNotes(open ? pop : null);
+  pop.hidden = !open;
+  btn.setAttribute("aria-expanded", open ? "true" : "false");
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape") return;
+  const open = document.querySelector(".step-note-pop:not([hidden])");
+  if (!open) return;
+  const btn = document.querySelector(`[aria-controls="${open.id}"]`);
+  closeStepNote(open);
+  if (btn) btn.focus();        // Escape returns focus to where it came from, never to the document
+});
+
+// Focus opens it, blur closes it, which is the keyboard half of hover. Delegated, because the
+// markers are rebuilt on every repaint.
+document.addEventListener("focusin", (e) => {
+  const btn = e.target.closest && e.target.closest(".step-note-marker");
+  if (btn) toggleStepNote(btn, true);
+  else closeAllStepNotes(null);
+});
+
 /* ---------- events ---------- */
 // One click listener for the whole page (instead of attaching one to every button,
 // which is impossible here since the buttons are rebuilt constantly). When any click
@@ -3929,6 +4118,14 @@ document.addEventListener("click", (e) => {
   // editor the same number is a picker, not a link.
   const wstep = e.target.closest("[data-wait-step]");
   if (wstep) { e.preventDefault(); jumpToStep(+wstep.dataset.waitStep); return; }
+  const nstep = e.target.closest("[data-note-step]");
+  if (nstep) { e.preventDefault(); jumpToStep(+nstep.dataset.noteStep); return; }
+  // The note marker at the end of a step. A tap on a phone and a click on a desktop are the same
+  // thing here; hover is CSS and does not come through this path.
+  const nmark = e.target.closest(".step-note-marker");
+  if (nmark) { e.preventDefault(); toggleStepNote(nmark); return; }
+  // A click anywhere else closes an open one, the way the photo and row menus already behave.
+  if (!e.target.closest(".step-note-pop")) closeAllStepNotes(null);
   if (view && view.editMode && handlePlanAheadAction(e.target)) { markDirty(); return; }
 
   // Inline recipe editor: enter / save / cancel (namespaced data-inline-edit-*). Handled first.
