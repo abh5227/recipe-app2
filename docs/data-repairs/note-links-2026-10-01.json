@@ -1,0 +1,79 @@
+{
+  "_what": "Recorded decisions for the notes-as-rows round. READ BY scripts/apply_note_decisions.py, which is why this file is committed: a pass that cannot be re-run from a fresh clone is a hand edit with more steps.",
+  "_rules": [
+    "Every entry names the recipe AND the note's position AND a fragment of its text. The script requires all three to agree before it writes, so a note that has moved or been reworded stops the pass instead of being silently mis-linked.",
+    "A step is named by its row id, never by a number. The number on the page is resolved from the step's current position every time.",
+    "Andy decided each of these. Nothing here was inferred by a rule."
+  ],
+
+  "step_links": [
+    {
+      "recipe_id": "the-best-new-york-style-bagel",
+      "note_position": 9,
+      "text_fragment": "Please see directions on your brand of yeast",
+      "step_id": 3779,
+      "why": "The yeast note. Yeast is a dry ingredient on this recipe ('dry yeast (overnight bagels)'), and step 1 is the only step that takes the dry ingredients in: 'Add all dry ingredients to a medium sized bowl or in the bowl of a standing mixer and blend.'"
+    },
+    {
+      "recipe_id": "kfc-spicy-chicken-rice-bowl",
+      "note_position": 0,
+      "text_fragment": "only toss the chicken you'll eat now",
+      "step_id": 2658,
+      "why": "The double-fry step, which says the same thing in its own parenthesis: '(Only double-fry what you will eat now, the rest you can refrigerate...)'. Step 9 of this recipe is the one step in the whole corpus that points back at a note, 'PER EACH SERVING OF CHICKEN (see note above)'; retiring that parenthesis is a text edit and is NOT part of this round."
+    },
+    {
+      "recipe_id": "coconut-curried-golden-lentils",
+      "note_position": 0,
+      "text_fragment": "To improve digestibility and slightly speed cooking time",
+      "step_id": 4208,
+      "why": "Andy's call. THERE IS NO SOAK STEP on this recipe: five steps, none mentions soaking, and it had no wait rows. Soaking happens immediately before step 1, 'Bring water to a boil ... Add lentils', so that is where the marker belongs."
+    },
+    {
+      "recipe_id": "coconut-curried-golden-lentils",
+      "note_position": 1,
+      "text_fragment": "Soaking lentils is optional",
+      "step_id": 4208,
+      "why": "The same step, for the same reason. These two notes say the same thing twice, one as the how and one as the whether; merging them is editorial and was deliberately not done here."
+    }
+  ],
+
+  "step_references": [
+    {
+      "recipe_id": "aloo-potato-parathas",
+      "note_position": 0,
+      "text_fragment": "grated cheddar cheese to the potatoes in step 2",
+      "ref_index": 0,
+      "step_id": 4214,
+      "evidence": "TWO INDEPENDENT PIECES. The author's own numbering survives verbatim in this recipe's step text: seven of its eight steps literally begin '1.' to '7.', and the row beginning '2.' is id 4214. And the wording agrees: the note adds cheese 'to the potatoes', and step 2 is 'WHILE THE DOUGH IS RESTING, MAKE THE FILLING', which is where the potatoes are mashed. 10 of the 300 recipes kept the author's numbering this way."
+    }
+  ],
+
+  "flagged_references": [
+    {
+      "recipe_id": "the-best-new-york-style-bagel",
+      "note_position": 0,
+      "text_fragment": "proceed with step 9",
+      "ref_index": 0,
+      "why": "UNRESOLVED ON PURPOSE. The author's numbering is gone: 0 of this recipe's 15 steps carry a number in their text, there is no stored original (no Paprika directions and no cached page for feelingfoodish.com in tests/fixtures/pages), and the app's own step 9 is 'place in the refrigerator', the NEXT-DAY path, inside a note describing the SAME-DAY version. Linking it would send a cook to the opposite of what the sentence means. The rule is flag, do not link.",
+      "how_to_resolve": "Fetch the source page's structured data and take the author's ninth instruction, then match it by wording to a current step. Not done here: it is an outward request to a third-party site and it was not needed for any other entry."
+    }
+  ],
+
+  "waits": [
+    {
+      "recipe_id": "coconut-curried-golden-lentils",
+      "position": 0,
+      "kind": "soaking",
+      "label": "6–8 hr",
+      "min_minutes": 360,
+      "max_minutes": 480,
+      "ext_label": "or overnight",
+      "ext_min_minutes": 480,
+      "ext_max_minutes": null,
+      "when_kind": "optional",
+      "when_label": null,
+      "step_id": 4208,
+      "why": "Andy's call. The recipe describes a soak only in its notes and had no wait row for it, so the plan-ahead panel said nothing about a step that takes eight hours. when_kind is 'optional', so it is listed in the breakdown and does NOT reach the total: planahead.counts already answers that and needed no change."
+    }
+  ]
+}

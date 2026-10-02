@@ -805,7 +805,8 @@ STEP_STRUCTURE_REASONS = {
     "step_label_lifted":
         "a lead-in label was lifted out of its step and became a subheading above it",
     "step_note_moved":
-        "a Note or Tip step was moved into the recipe's notes",
+        "a Note or Tip step was moved into the recipe's notes; the step it followed is recorded "
+        "so it can be linked in one click, and no link is made automatically",
     "step_heading_recased":
         "a heading stored in capitals was rewritten in sentence case",
     "note_fragment_removed":
@@ -1373,7 +1374,16 @@ def plan_step_rows(directions, notes=""):
         m = _NOTE_STEP.match(raw)
         if m:
             body = " ".join(raw.split())
-            note("step_note_moved", body)
+            # ⚠️ THE NEIGHBOUR IS RECORDED AND THE LINK IS NOT MADE. A Note step sat somewhere in the
+            #    method, and the step it sat after is nearly always what it is about — but "nearly
+            #    always" is a guess, and a guess here puts a marker on the wrong step with nothing
+            #    to say it is wrong. The detail carries the neighbour so the review queue can offer
+            #    it as one click, and recipe_notes.step_id stays NULL until a person takes it.
+            after = next((r for r in reversed(rows) if not r.get("is_heading")), None)
+            neighbour = " ".join(str(after["text"]).split())[:80] if after else ""
+            note("step_note_moved",
+                 f"{body}\u2003\u2003[after step: {neighbour}]" if neighbour
+                 else f"{body}\u2003\u2003[no step before it]")
             notes = body if not notes.strip() else f"{notes.rstrip()}{NOTE_SEPARATOR}{body}"
             continue
         # 2 — the existing whole-line heading rule.
