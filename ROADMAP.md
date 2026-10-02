@@ -947,6 +947,49 @@ entry at 49 over 20 recipes, integrity ok, 0 foreign key violations and no count
 and the usual before-against-after set comparison. 12 tests in `tests/test_realign_baseline.py`, and
 the two new cases are refused by the old id-only rule, which is what proves the widening does work.
 
+### Round B — an amount written inside brackets belongs in the amount column
+
+**Measured over all 3,349 ingredient lines before this was written, which is what makes it small.**
+
+- **A leading bracketed amount: 3 lines.** `(3 quarts) water` and
+  `(1 tablespoon) brown sugar, honey, or barley malt syrup` on the-best-new-york-style-bagel, and
+  `(224 grams), plus more for dusting` on malted-brownie-biscotti. All three carry `qty = NULL`, so
+  the amount column is EMPTY on the page while the figure sits in the name. Scaling cannot touch
+  them and the metric/imperial switch cannot either, which is the real cost.
+- **Two or more bracketed groups: 40 lines**, and **most of them are correct already**. The common
+  shape is the metric/imperial pair the parser understands, `300 grams (2 large semi-ripe bananas)`
+  and `170 grams (6 ounces) bittersweet chocolate`. The one that is not is the bagel's
+  `dry yeast (overnight bagels) (1 tablespoon for same-day bagels)`, where the second bracket is an
+  AMOUNT for a different version of the recipe rather than a gloss on the first.
+
+*The rule to write:* a bracketed group that parses as an amount, and sits where the amount column
+would be, moves into it. A bracketed group that parses as an amount but belongs to a VARIANT
+("1 tablespoon for same-day bagels") is not the line's amount and must not be moved, which is the
+case that needs a person. *Touches:* `recipe_line_parser`, `import_cleanup`, a corpus pass with the
+usual lockstep, and a review CSV for the variant case. *Expected yield:* 3 lines moved, 1 flagged.
+
+### Backlog #4 — a long parenthetical on an ingredient line is a note about that ingredient
+
+Migration 060 added `recipe_notes.ingredient_row_id`, written by nothing today, for exactly this.
+
+**Measured: 45 parentheticals of 8 words or more, over 31 recipes.** They are not glosses, they are
+sentences:
+
+```text
+the-best-new-york-style-bagel   18 words  (just use enough to allow at least 3 or 4 bagels to float…)
+spicy-crispy-pork-noodles       22 words  (anything that wilts quickly and has a mild flavor will do…)
+pan-fried-cod                   18 words  (if you have a large fillet, cut in half crosswise…)
+caramelized-onion-dal           17 words  (also known as split and husked black gram lentils…)
+```
+
+Each is advice about the ingredient, printed inline where it lengthens the line and competes with
+the amount. As a note attached to the line it would sit behind the same marker the step notes use.
+
+⚠️ **THE BOUNDARY IS A JUDGEMENT AND THE RULE MUST FLAG RATHER THAN GUESS.** "(rinsed and drained)"
+is preparation and belongs on the line. "(also known as whole red lentils or brown lentils)" is a
+note. Word count alone will not separate them, and the corpus holds both at similar lengths.
+*Depends on:* the ingredient-line marker and picker, which are the round after this one.
+
 ### Open decision for Andy — an off-Mac copy of the backups AND the photos
 
 ⚠️ **Right now, one disk failure loses everything that cannot be regenerated.** `recipes.db` holds
