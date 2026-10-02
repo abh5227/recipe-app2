@@ -195,3 +195,34 @@ def test_a_cyrillic_numeral_in_the_number_s_place_is_read_as_its_digit():
     steps = ["1. First.", "2. Second.", "З. Third.", "4. Fourth."]
     got = ic.strip_author_numbers(steps)
     assert got == ["First.", "Second.", "Third.", "Fourth."]
+
+
+def test_the_more_complete_reading_wins_when_both_doors_apply():
+    """⚠️ THE STRICT DOOR RAN FIRST AND LEFT A NUMBER ON THE PAGE. garlic-ginger-chicken is numbered
+    1 to 5 with one unnumbered continuation line in the middle, so the ordinals agree for 1 to 4 and
+    the strict reading stripped four numbers and left "5." beside the circle the app draws. Both
+    doors are gated on evidence, so the question is which reading accounts for more of the recipe's
+    own numbering."""
+    steps = ["1. MAKE THE MARINADE: In a medium bowl, mix the garlic.",
+             "2. In a small bowl, mix together the coriander.",
+             "3. MAKE THE CHICKEN: Place the chicken breasts in the marinade.",
+             "4. Warm a large skillet over medium-high heat.",
+             "Reduce the heat to low, cover, and cook for 10 minutes.",
+             "5. Check to make sure the breasts are cooked through.",
+             "Garnish with mint and cilantro."]
+    got = ic.strip_author_numbers(steps)
+    assert got[5] == "Check to make sure the breasts are cooked through."
+    assert got[0] == "MAKE THE MARINADE: In a medium bowl, mix the garlic."
+    assert got[4] == steps[4] and got[6] == steps[6]
+
+
+def test_the_bare_form_still_wins_where_only_it_applies():
+    """white-bean-stuffed-poblanos' shape: a bare "2 In a large skillet" that only the ordinal plus
+    a following capital can admit. The relaxed door cannot see it, so the strict reading stands."""
+    steps = ["1. Preheat the oven to 350F.",
+             "2 In a large skillet over medium-high heat, warm the oil.",
+             "3. While the onions cool, mash the beans."]
+    got = ic.strip_author_numbers(steps)
+    assert got == ["Preheat the oven to 350F.",
+                   "In a large skillet over medium-high heat, warm the oil.",
+                   "While the onions cool, mash the beans."]

@@ -1246,12 +1246,19 @@ def strip_author_numbers(step_texts):
     ⚠️ THE BARE FORM IS DELIBERATELY NOT RELAXED. "2 cups flour" has no separator, and the ordinal
     plus a following capital are the two pieces of evidence that keep it safe. Only the separator
     form takes this door, which is why a measurement line cannot reach it at all."""
+    # ⚠️ BOTH DOORS ARE TRIED AND THE MORE COMPLETE ANSWER WINS. They are both gated on evidence, so
+    #    the question is which reading of the same recipe accounts for more of its numbering. The
+    #    strict door ran first and that was wrong: garlic-ginger-chicken is numbered 1 to 5 with one
+    #    unnumbered continuation line in the middle, so the ordinals match for 1 to 4 and the strict
+    #    door stripped four numbers and left "5." on the page beside the circle the app draws.
+    strict = list(step_texts)
     found = [author_step_number(t, i) for i, t in enumerate(step_texts, 1)]
     numbered = [i for i, f in enumerate(found) if f is not None]
     if len(numbered) >= 2 and 0 in numbered:
-        return [found[i][1] if found[i] is not None else t for i, t in enumerate(step_texts)]
+        strict = [found[i][1] if found[i] is not None else t for i, t in enumerate(step_texts)]
 
     # the relaxed door: separator numbers only, read in order, a gapless run from 1
+    relaxed = list(step_texts)
     sep = []
     for i, t in enumerate(step_texts):
         flat = str(t or "")
@@ -1260,12 +1267,12 @@ def strip_author_numbers(step_texts):
         m = _AUTHOR_NUM_SEP.match(flat)
         if m:
             sep.append((i, int(m.group(1)), flat[m.end():].lstrip()))
-    if len(sep) < 2 or [n for _i, n, _r in sep] != list(range(1, len(sep) + 1)):
-        return list(step_texts)
-    out = list(step_texts)
-    for i, _n, rest in sep:
-        out[i] = rest
-    return out
+    if len(sep) >= 2 and [n for _i, n, _r in sep] == list(range(1, len(sep) + 1)):
+        for i, _n, rest in sep:
+            relaxed[i] = rest
+
+    changed = lambda out: sum(1 for a, b in zip(step_texts, out) if a != b)
+    return relaxed if changed(relaxed) > changed(strict) else strict
 
 
 def split_lead_label(text, label=None):
