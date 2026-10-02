@@ -33,7 +33,7 @@ from units import canon_unit_str   # the Python mirror of scaler.js canonicalize
 # their own raw sqlite3 connections (out of Stage 1 scope). Stage 2 swaps the engine to Postgres
 # (see docs/migration-plan.md).
 from models import (
-    Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep, RecipeStorage, RecipeWait,
+    Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep, NoteKind, RecipeNote, RecipeNoteStepRef, RecipeStorage, RecipeWait,
     LibraryName,         # the id -> canonical lookup the library search reads (migration 029)
     # ⚠️ Rating (the `ratings` table) is INTENTIONALLY NOT IMPORTED. Migration 048 froze it: the
     # verdict lives on CookLog.rating now. Re-importing it here is how a stray read gets written.
@@ -45,6 +45,7 @@ from auth import auth_bp   # JSON auth endpoints (auth-2); auth.py imports model
 import images              # shared image brain: resize + the save_image storage seam (Stage 1/2)
 import snapshot_serialize  # single-source recipe-content snapshot FORMAT (shared ORM/serve + raw import)
 import planahead
+import notes as notes_rules   # the shared notes brain: split, kind, step references
 import snapshot_diff        # derived change-tracking DIFF (O-c): current-vs-original recipe-page annotations
 import snapshot_headsync    # pure baseline TRANSFORM: keep the original's heading layout in step with current
 import import_write         # U4 preview: the PURE planner (plan_recipe) + db_state; the writer stays unused here
@@ -653,7 +654,7 @@ def _label_key(text):
     return " ".join((text or "").split())
 
 
-def _match_rows(stored, incoming, has_ext):
+def _match_rows(stored, incoming, has_ext, field="label"):
     """Pair each incoming row with the stored row it CONTINUES, or None when it is genuinely new.
 
     TWO PASSES, AND THEIR ORDER IS THE WHOLE RULE:
@@ -675,9 +676,12 @@ def _match_rows(stored, incoming, has_ext):
     wording is what changed. A row matched in pass 1 keeps both. Collapsing the two would either
     re-read a wait nobody edited, which is the defect decision 1 fixed, or carry a stale figure onto
     wording it no longer describes."""
+    # ⚠️ `field` IS THE COLUMN THE WORDING LIVES IN, and it is a parameter because a note's wording
+    #    is its `text` while a wait's is its `label`. The RULE is identical for both and is stated
+    #    once here, which is the point.
     pool = {}
     for m in stored:
-        pool.setdefault(_label_key(m["label"]), []).append(m)
+        pool.setdefault(_label_key(m[field]), []).append(m)
 
     pairs = [None] * len(incoming)
     claimed = set()
@@ -910,6 +914,117 @@ def write_plan_ahead(s, rid, payload):
         _apply_rows(s, rw, plan_w, doomed_w)
     if "storage" in payload:
         _apply_rows(s, rs, plan_s, doomed_s)
+
+
+def _copy_row_map(s, table, old_rid, new_rid):
+    """{old row id: the new row's id} for a table copied in position order.
+
+    ⚠️ POSITION IS THE KEY, AND IT IS THE ONLY ONE AVAILABLE. The copy is written with
+    INSERT…SELECT … ORDER BY position, so the two sides line up by position and by nothing else: the
+    new ids are whatever AUTOINCREMENT handed out. A row the original holds twice at one position
+    cannot happen, because every one of these tables is unique on (recipe_id, position) or is
+    written in a single ordered pass."""
+    old = {m["position"]: m["id"] for m in s.execute(
+        select(table.c.id, table.c.position).where(table.c.recipe_id == old_rid)).mappings()}
+    new = {m["position"]: m["id"] for m in s.execute(
+        select(table.c.id, table.c.position).where(table.c.recipe_id == new_rid)).mappings()}
+    return {oid: new[pos] for pos, oid in old.items() if pos in new}
+
+
+def write_notes(s, rid, payload):
+    """Write a recipe's NOTE rows from a validated payload, in place, and rebuild the derived column.
+
+    ⚠️ ABSENT IS NOT EMPTY, which is the rule that once erased a headnote. A PUT that does not name
+    `notes` leaves the rows exactly as they are. An explicit [] clears them, which is how the editor
+    empties the list.
+
+    ⚠️ THE ROWS ARE MATCHED AND UPDATED IN PLACE FROM DAY ONE. _match_rows pairs incoming to stored
+    BY WORDING FIRST, each stored row used once, then by ORDER over what is left. An unchanged save
+    therefore writes the same rows back with the same ids, the snapshot bytes do not move, and the
+    recipe keeps its place in the byte-equal short-circuit. Waits got this late and it cost
+    brioche-bread its place in the set; notes start with it.
+
+    ⚠️ A STEP MENTIONED IN THE TEXT IS RE-SCANNED ON EVERY SAVE, and a reference survives only while
+    its mention does. Carrying by (ref_index, match_text) means inserting a sentence before "step 9"
+    keeps the link, and deleting the words "step 9" drops it, which is what a reference to something
+    that is no longer written should do."""
+    if "notes" not in payload:
+        return
+    rn, rnr = RecipeNote.__table__, RecipeNoteStepRef.__table__
+    sent = payload.get("notes")
+    # ⚠️ A STRING IS THE OLD SHAPE AND IT STILL WORKS, which is what makes the deploy window safe in
+    #    both directions. The previous client sends one textarea's worth of prose; it is split by the
+    #    SAME rule the corpus move used, so it lands as the same rows the new client would have sent.
+    if isinstance(sent, str):
+        sent = [{"text": para, "kind": notes_rules.kind_of(para)}
+                for para in notes_rules.paragraphs(sent)]
+    incoming = [n for n in (sent or ())
+                if isinstance(n, dict) and (n.get("text") or "").strip()]
+    in_n = [((n.get("text") or "").strip(), None) for n in incoming]
+    pairs_n, doomed_n = _match_rows(_stored_rows(s, rn, rid), in_n, False, field="text")
+
+    # The ids this recipe actually has, read AFTER write_recipe_rows so they are the rows this save
+    # just wrote. Headings are in the step set for the reason write_plan_ahead gives: a conversion
+    # has to be reversible, and the id lives nowhere else.
+    step_ids = {m["id"] for m in s.execute(
+        select(RecipeStep.__table__.c.id).where(RecipeStep.__table__.c.recipe_id == rid)).mappings()}
+    ing_ids = {m["id"] for m in s.execute(
+        select(RecipeIngredient.__table__.c.id)
+        .where(RecipeIngredient.__table__.c.recipe_id == rid)).mappings()}
+    kinds = {m["kind"] for m in s.execute(select(NoteKind.__table__.c.kind)).mappings()}
+
+    # The references each stored row carries, so a kept row can carry them forward.
+    stored_refs = {}
+    for ref in s.execute(select(rnr).where(rnr.c.note_id.in_(
+            [m["id"] for m in _stored_rows(s, rn, rid)] or [0]))).mappings():
+        stored_refs.setdefault(ref["note_id"], {})[(ref["ref_index"], ref["match_text"])] = ref["step_id"]
+
+    plan, want_refs = [], []
+    pos = -1
+    for i, n in enumerate(incoming):
+        text_ = (n.get("text") or "").strip()
+        pos += 1
+        kept = pairs_n[i][0]
+        sid = n.get("step_id")
+        sid = sid if sid in step_ids else None
+        iid = n.get("ingredient_row_id")
+        iid = iid if iid in ing_ids else None
+        kind = n.get("kind") if n.get("kind") in kinds else notes_rules.DEFAULT_KIND
+        plan.append((kept, dict(recipe_id=rid, position=pos, kind=kind, text=text_,
+                                step_id=sid, ingredient_row_id=iid)))
+        # What this note's references should be after the save: one per "step N" in the text,
+        # taking an explicit payload value when the editor sent one, else the stored link when the
+        # same mention was there before.
+        sent = {r.get("ref_index"): r.get("step_id")
+                for r in (n.get("refs") or ()) if isinstance(r, dict)}
+        carried = stored_refs.get(kept["id"] if kept is not None else None, {})
+        refs = []
+        for m in notes_rules.scan_step_mentions(text_):
+            target = sent.get(m["ref_index"], carried.get((m["ref_index"], m["match_text"])))
+            refs.append({"ref_index": m["ref_index"], "match_text": m["match_text"],
+                         "step_id": target if target in step_ids else None})
+        want_refs.append(refs)
+
+    _apply_rows(s, rn, plan, doomed_n)
+
+    # ⚠️ THE REFERENCES ARE WRITTEN AFTER THE ROWS, because an inserted note has no id until then.
+    #    Re-read rather than guess: _apply_rows assigns positions, so position is the key that ties
+    #    each written row back to the plan that built it.
+    written = _stored_rows(s, rn, rid)
+    by_pos = {m["position"]: m["id"] for m in written}
+    for i, refs in enumerate(want_refs):
+        note_id = by_pos.get(i)
+        if note_id is None:
+            continue
+        s.execute(delete(rnr).where(rnr.c.note_id == note_id))
+        for r in refs:
+            s.execute(insert(rnr).values(note_id=note_id, **r))
+
+    # ⚠️ THE OLD COLUMN IS A DERIVED COPY NOW. It keeps being written so the previous deploy can
+    #    still serve a recipe during the window, and a later migration drops it. snapshot_diff no
+    #    longer compares it, so rebuilding it cannot mint a second mark for one note edit.
+    s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rid)
+              .values(notes=notes_rules.derived_text(written) or None))
 
 
 def _check_row_ids(clean, stored_ing, stored_step):
@@ -1278,7 +1393,23 @@ def serialize_recipe_content(s, rid):
                       .order_by(RecipeWait.position, RecipeWait.id)).mappings().all()
     storage = s.execute(select(RecipeStorage.__table__).where(RecipeStorage.recipe_id == rid)
                         .order_by(RecipeStorage.position, RecipeStorage.id)).mappings().all()
-    return snapshot_serialize.content_blob(r, ingredients, steps, waits, storage)
+    # ⚠️ A NOTE'S REFERENCES TRAVEL WITH IT, because a reference lives in its own table and the
+    #    snapshot is what the diff compares. Read as plain dicts so content_blob sees the column
+    #    names rather than the ORM's `text_` rename.
+    note_rows = [dict(n) for n in s.execute(
+        select(RecipeNote.__table__).where(RecipeNote.recipe_id == rid)
+        .order_by(RecipeNote.position, RecipeNote.id)).mappings()]
+    if note_rows:
+        refs = s.execute(
+            select(RecipeNoteStepRef.__table__)
+            .where(RecipeNoteStepRef.note_id.in_([n["id"] for n in note_rows]))
+            .order_by(RecipeNoteStepRef.note_id, RecipeNoteStepRef.ref_index)).mappings().all()
+        by_note = {}
+        for ref in refs:
+            by_note.setdefault(ref["note_id"], []).append(dict(ref))
+        for n in note_rows:
+            n["refs"] = by_note.get(n["id"], [])
+    return snapshot_serialize.content_blob(r, ingredients, steps, waits, storage, note_rows)
 
 
 def snapshot_recipe(s, rid, cook_log_id, reason):
@@ -1485,10 +1616,14 @@ def create_recipe():
             id=slug, name=clean["name"], author=payload.get("author"), source_url=payload.get("source_url"),
             category=payload.get("category"), servings=payload.get("servings"), prep_time=payload.get("prep_time"),
             cook_time=payload.get("cook_time"), total_time=payload.get("total_time"), descr=payload.get("descr"),
-            notes=payload.get("notes"), image=payload.get("image"), created_at=now_utc(), source=source,
+            # ⚠️ THE COLUMN GOES IN EMPTY AND write_notes FILLS IT FROM THE ROWS. A create payload
+            #    may carry notes as a list (the new client) or as prose (the old one), and neither
+            #    belongs in a text column written before the rows exist.
+            notes=None, image=payload.get("image"), created_at=now_utc(), source=source,
             owner=current_user.id,   # R4: a created recipe lands in the creator's box
         ))
         write_recipe_rows(s, slug, clean)
+        write_notes(s, slug, payload)   # after the rows, so a note's step_id names a step that exists
         snapshot_original(s, slug)   # O-a: capture the pristine reason='original' baseline at birth (for O-c annotations)
         s.commit()
     return jsonify({"id": slug}), 201
@@ -1565,6 +1700,27 @@ def get_recipe(rid):
         #    the step NUMBER the page prints. Migration 053 made the link a step id, so there is
         #    nothing left to verify — a pointer either names a step of this recipe or is null.
         planahead.resolve_steps(waits, steps)
+        # ⚠️ NOTES ARE ROWS SINCE MIGRATION 060, and recipes.notes is a derived copy kept only so the
+        #    previous deploy can still serve during the window. The page reads these.
+        note_rows = [dict(n) for n in s.execute(
+            select(RecipeNote.__table__).where(RecipeNote.recipe_id == rid)
+            .order_by(RecipeNote.position, RecipeNote.id)).mappings()]
+        if note_rows:
+            ref_rows = s.execute(
+                select(RecipeNoteStepRef.__table__)
+                .where(RecipeNoteStepRef.note_id.in_([n["id"] for n in note_rows]))
+                .order_by(RecipeNoteStepRef.note_id, RecipeNoteStepRef.ref_index)).mappings().all()
+            by_note = {}
+            for ref in ref_rows:
+                by_note.setdefault(ref["note_id"], []).append(dict(ref))
+            for n in note_rows:
+                n["refs"] = by_note.get(n["id"], [])
+        # ⚠️ THE NUMBER IS RESOLVED HERE AND NEVER STORED, exactly as it is for a wait. A note whose
+        #    step became a HEADING comes back with step_no None and renders without a link rather
+        #    than with a wrong number, and the same is true of every "step N" mention in its text.
+        notes_rules.resolve(note_rows, steps)
+        note_kind_rows = [dict(k) for k in s.execute(
+            select(NoteKind.__table__).order_by(NoteKind.position)).mappings()]
         # ⚠️ WHAT THE PAGE PRINTS FOR EACH WAIT IS DECIDED HERE, NOT IN JS. A stored "overnight" has
         #    480 minutes behind it already, and printing the author's word alone told a cook nothing
         #    they could plan around. display_label turns the 14 rows whose floor IS the word into
@@ -1639,6 +1795,10 @@ def get_recipe(rid):
             # never enters it, and a max exists only when EVERY wait has one. See planahead.total.
             "waits": waits,
             "storage": storage,
+            # The note ROWS, and the kind table that groups them. The client stopped splitting
+            # recipes.notes into paragraphs the day migration 060 landed.
+            "notes": note_rows,
+            "note_kinds": note_kind_rows,
             "wait_total": {"min_minutes": wait_min, "max_minutes": wait_max,
                            "label": planahead.total_label(waits)},
             # ⚠️ THE TOTAL IS DECIDED HERE AND COMPUTED AT DISPLAY, NEVER STORED. A stored total goes
@@ -1653,8 +1813,12 @@ def get_recipe(rid):
 
 # The 10 header fields a PUT may change, beside `name` (required and validated, so never null and
 # never absent). The tuple exists so the write cannot fall out of step with the keep rule.
+# ⚠️ `notes` LEFT THIS TUPLE WHEN A NOTE BECAME A ROW (migration 060). The column is a DERIVED copy
+#    that write_notes rebuilds from the rows, so writing it here as well would put a payload list
+#    into a text column on the new client and fight write_notes on the old one. The keep rule still
+#    governs the other nine.
 EDITABLE_HEADER_FIELDS = ("author", "source_url", "category", "servings", "prep_time", "cook_time",
-                          "total_time", "descr", "notes", "image")
+                          "total_time", "descr", "image")
 
 
 def _kept(new, old):
@@ -1745,6 +1909,9 @@ def update_recipe(rid):
         # ⚠️ BEFORE the baseline capture and the heading sync below, so a snapshot taken in this
         # same transaction sees the waits this save wrote.
         write_plan_ahead(s, rid, payload)
+        # ⚠️ AFTER write_recipe_rows, for the reason write_plan_ahead is: a note's step_id has to be
+        #    checked against the steps THIS SAVE wrote, not the ones it replaced.
+        write_notes(s, rid, payload)
         # U5: an imported recipe is written with NO reason='original' baseline, because it arrives as
         # the publisher wrote it and the user is about to fix the parse errors. THIS save is the first
         # moment the content is something they have approved, so the baseline is captured here, from
@@ -1904,10 +2071,53 @@ def copy_recipe(rid):
                SELECT :new_id, position, is_heading, qty, quantity, unit, ingredient_id, label, note, raw_text, grams, secondary_measure
                FROM recipe_ingredients WHERE recipe_id = :rid ORDER BY position"""
         ), {"new_id": new_id, "rid": rid})
+        # ⚠️ heading_level WAS MISSING FROM THIS LIST AND A COPY FLATTENED EVERY SUBHEADING. Measured:
+        #    an original with a level-2 heading produced a copy with level 1. The column arrived in
+        #    migration 059 and this route, written long before, named its columns one by one.
         s.execute(text(
-            """INSERT INTO recipe_steps (recipe_id, position, is_heading, text)
-               SELECT :new_id, position, is_heading, text FROM recipe_steps WHERE recipe_id = :rid ORDER BY position"""
+            """INSERT INTO recipe_steps (recipe_id, position, is_heading, heading_level, text)
+               SELECT :new_id, position, is_heading, heading_level, text FROM recipe_steps WHERE recipe_id = :rid ORDER BY position"""
         ), {"new_id": new_id, "rid": rid})
+        # ⚠️ EVERY POINTER IS REMAPPED, WHICH IS WHY THESE ARE NOT INSERT…SELECT. A wait, a note and a
+        #    note's step reference all name a ROW of the recipe they belong to. Copying the id would
+        #    leave the copy's rows pointing at the ORIGINAL's steps, so editing the original would
+        #    change what the copy's links mean. The two tables above are written in position order, so
+        #    position is what ties an old row to the new one that replaced it.
+        step_map = _copy_row_map(s, RecipeStep.__table__, rid, new_id)
+        ing_map = _copy_row_map(s, RecipeIngredient.__table__, rid, new_id)
+        # ⚠️ WAITS AND STORAGE WERE NOT COPIED AT ALL. Measured before this line existed: an original
+        #    with one wait and one storage row produced a copy with none of either. Both tables
+        #    arrived in migration 049, after this route was written, and nothing tested it.
+        for w in s.execute(select(RecipeWait.__table__).where(RecipeWait.__table__.c.recipe_id == rid)
+                           .order_by(RecipeWait.position, RecipeWait.id)).mappings():
+            vals = {k: v for k, v in dict(w).items() if k != "id"}
+            vals["recipe_id"] = new_id
+            for key in ("step_id", "alongside_step_id", "ext_step_id"):
+                vals[key] = step_map.get(vals.get(key))
+            s.execute(insert(RecipeWait.__table__).values(**vals))
+        for x in s.execute(select(RecipeStorage.__table__)
+                           .where(RecipeStorage.__table__.c.recipe_id == rid)
+                           .order_by(RecipeStorage.position, RecipeStorage.id)).mappings():
+            vals = {k: v for k, v in dict(x).items() if k != "id"}
+            vals["recipe_id"] = new_id
+            s.execute(insert(RecipeStorage.__table__).values(**vals))
+        # ⚠️ AND NOTES, WHICH SURVIVED A COPY ONLY WHILE THEY WERE A COLUMN. Migration 060 made a note
+        #    a row, so without this a copy would silently lose every note it had, which is a worse
+        #    failure than the two above because the text has no second home.
+        for n in s.execute(select(RecipeNote.__table__).where(RecipeNote.__table__.c.recipe_id == rid)
+                           .order_by(RecipeNote.position, RecipeNote.id)).mappings():
+            vals = {k: v for k, v in dict(n).items() if k != "id"}
+            vals["recipe_id"] = new_id
+            vals["step_id"] = step_map.get(vals.get("step_id"))
+            vals["ingredient_row_id"] = ing_map.get(vals.get("ingredient_row_id"))
+            new_note_id = s.execute(insert(RecipeNote.__table__).values(**vals)).inserted_primary_key[0]
+            for ref in s.execute(select(RecipeNoteStepRef.__table__)
+                                 .where(RecipeNoteStepRef.__table__.c.note_id == n["id"])
+                                 .order_by(RecipeNoteStepRef.ref_index)).mappings():
+                rv = {k: v for k, v in dict(ref).items() if k != "id"}
+                rv["note_id"] = new_note_id
+                rv["step_id"] = step_map.get(rv.get("step_id"))
+                s.execute(insert(RecipeNoteStepRef.__table__).values(**rv))
         snapshot_original(s, new_id)   # O-a: the copy's original = its copied content at birth (before editing)
         s.commit()
     return jsonify({"id": new_id}), 201

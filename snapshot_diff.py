@@ -54,9 +54,16 @@ import units   # pure unit abbreviator (mirrors scaler.js) — canonical amount 
 # cleanly in the gap. (Linked ingredients ignore this — an ingredient_id match is unambiguous regardless.)
 SIMILARITY_THRESHOLD = 0.6
 
+# ⚠️ `notes` IS DELIBERATELY ABSENT, AND IT USED TO BE HERE. Since migration 060 a note is a ROW and
+#    recipes.notes is a DERIVED COPY of those rows, kept only so the previous deploy can still serve
+#    during the window. Diffing both would mark a single note edit twice: once on the row the cook
+#    actually changed and once on the whole blob of text it is rebuilt into, where the entry would
+#    read as the entire notes field having been replaced. It stays in the SNAPSHOT, because the
+#    column still round-trips, and it is simply not compared. A later migration drops the column and
+#    this comment with it.
 CONTENT_FIELDS = (
     "name", "author", "source_url", "category", "servings", "prep_time",
-    "cook_time", "total_time", "descr", "notes", "image",
+    "cook_time", "total_time", "descr", "image",
 )
 
 
@@ -70,6 +77,12 @@ def diff_snapshots(old_blob, new_blob):
     #    empty list against a missing key must read as no change rather than as a deletion.
     changes += _diff_rows("wait", old.get("waits") or [], new.get("waits") or [], WAIT_LABEL)
     changes += _diff_rows("storage", old.get("storage") or [], new.get("storage") or [], STORAGE_LABEL)
+    # ⚠️ A NOTE DIFFS LIKE A WAIT, by row id first and then by order, so a reordered note is one row
+    #    that moved rather than two modifications. `or []` on both sides for the same reason the two
+    #    lines above carry it: every baseline written before migration 060 has no notes key at all,
+    #    and a missing key must read as no change rather than as 177 deletions.
+    changes += _diff_rows("note", _note_rows(old.get("notes") or []),
+                          _note_rows(new.get("notes") or []), NOTE_LABEL, text_of=_note_text)
 
     ing_h = lambda r: r.get("raw_text") or ""
     o_lines, o_ing_h = _split(old.get("ingredients") or [])
@@ -371,6 +384,11 @@ WAIT_LABEL = ("label", "kind", "min_minutes", "max_minutes", "ext_label", "ext_m
               "ext_max_minutes", "when_kind", "when_label")
 STORAGE_LABEL = ("label", "where_kept", "applies_to", "min_minutes", "max_minutes")
 
+# ⚠️ THE TEXT, THE KIND AND BOTH LINKS. A note that moved from Tips to Storage changed, and so did
+#    one that gained a step. `_refs` is folded in by _note_rows below rather than stored, because a
+#    reference lives in its own table and a cook detaching one has changed the note.
+NOTE_LABEL = ("text", "kind", "step_id", "ingredient_row_id", "_refs")
+
 
 def _row_text(r, fields):
     """The one line a wait or storage row reads as, so a change reports what a person would see.
@@ -396,7 +414,7 @@ def _differ(o, n, fields):
     return any(units.compare_text(o.get(f)) != units.compare_text(n.get(f)) for f in fields)
 
 
-def _diff_rows(kind, old_rows, new_rows, fields):
+def _diff_rows(kind, old_rows, new_rows, fields, text_of=None):
     """Waits and storage. BY ROW ID FIRST, then positionally over whatever is left.
 
     ⚠️ THE POSITIONAL FALLBACK USED TO BE THE WHOLE THING, and its reason has expired. It read "these
@@ -408,24 +426,57 @@ def _diff_rows(kind, old_rows, new_rows, fields):
     ordinal of a row it left behind. Both tables are empty on live today (0 rows, and the keys are
     omitted from the snapshot entirely when empty), so this is the shape the feature will land on
     rather than a repair of anything currently visible."""
+    text_of = text_of or _row_text
     o_pos = {id(r): i for i, r in enumerate(old_rows)}
     n_pos = {id(r): i for i, r in enumerate(new_rows)}
     pairs, old_left, new_left = _id_split(old_rows, new_rows)
     out = []
     for o, n in pairs:
         if _differ(o, n, fields):
-            out.append(_mod(kind, _row_text(o, fields), _row_text(n, fields),
+            out.append(_mod(kind, text_of(o, fields), text_of(n, fields),
                             n_pos[id(n)], o_pos[id(o)], _rid(n)))
     for i in range(max(len(old_left), len(new_left))):
         o = old_left[i] if i < len(old_left) else None
         n = new_left[i] if i < len(new_left) else None
         if o is None:
-            out.append(_added(kind, _row_text(n, fields), n_pos[id(n)], _rid(n)))
+            out.append(_added(kind, text_of(n, fields), n_pos[id(n)], _rid(n)))
         elif n is None:
-            out.append(_removed(kind, _row_text(o, fields), o_pos[id(o)], None))
+            out.append(_removed(kind, text_of(o, fields), o_pos[id(o)], None))
         elif _differ(o, n, fields):
-            out.append(_mod(kind, _row_text(o, fields), _row_text(n, fields),
+            out.append(_mod(kind, text_of(o, fields), text_of(n, fields),
                             n_pos[id(n)], o_pos[id(o)], _rid(n)))
+    return out
+
+
+def _note_text(r, _fields=None):
+    """The one line a note reads as. Its own words, which is what a person would recognise, rather
+    than the dotted join _row_text builds for a wait out of a label and a kind.
+
+    ⚠️ THE KIND AND THE LINK ARE PART OF THE LINE, for the reason _row_text's qualifier is part of
+    its own: moving a note from Notes to Tips, or attaching it to a step, changes nothing about its
+    words, so without these the entry would print the same sentence twice and read as no change at
+    all."""
+    bits = str(r.get("text") or "")
+    kind = r.get("kind")
+    if kind and kind != "notes":
+        bits += f" \u00b7 {kind}"
+    if r.get("step_id"):
+        bits += " (linked to a step)"
+    if r.get("ingredient_row_id"):
+        bits += " (linked to an ingredient)"
+    return bits
+
+
+def _note_rows(rows):
+    """Note rows with their references folded into one comparable scalar. The refs table is keyed on
+    the note, so a note's references are part of what the note IS, and a diff that read only the
+    columns would call a detached reference no change at all."""
+    out = []
+    for r in rows:
+        refs = r.get("refs") or []
+        folded = dict(r)
+        folded["_refs"] = " ".join(f"{x.get('ref_index')}:{x.get('step_id')}" for x in refs)
+        out.append(folded)
     return out
 
 

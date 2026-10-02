@@ -174,8 +174,29 @@ SNAPSHOT_STORAGE_FIELDS = (
     "id", "position", "where_kept", "applies_to", "label", "min_minutes", "max_minutes",
 )
 
+# ⚠️ A NOTE'S TEXT IS ITS CONTENT AND ITS LINKS ARE TOO. step_id and ingredient_row_id are what the
+#    cook attached, not provenance, so a note that gains or loses a link has changed. `refs` is the
+#    step each "step N" mention in the text points at, by mention ordinal, and it is omitted when
+#    the note names no step, so a note with no references serializes exactly as it did before
+#    references existed.
+SNAPSHOT_NOTE_FIELDS = (
+    "id", "position", "kind", "text", "step_id", "ingredient_row_id",
+)
 
-def content_blob(recipe, ingredients, steps, waits=None, storage=None):
+
+def snapshot_note_row(n):
+    """One note row -> its snapshot dict. `refs` is added only when the note names a step, which is
+    the omit-when-default trick heading_level already uses: a note with no reference serializes
+    exactly as it would have before references existed."""
+    out = {k: _get(n, k) for k in SNAPSHOT_NOTE_FIELDS}
+    refs = _get(n, "refs")
+    if refs:
+        out["refs"] = [{"ref_index": _get(r, "ref_index"), "step_id": _get(r, "step_id")}
+                       for r in refs]
+    return out
+
+
+def content_blob(recipe, ingredients, steps, waits=None, storage=None, notes=None):
     """The stable JSON snapshot of a recipe's content. `recipe` is one row-like; the rest are lists of
     row-likes (steps carry 'text'). Projects the content fields, sorts keys, compact + ascii-safe
     -> a byte-stable string. THE format recipe_snapshots.content stores and snapshot_diff consumes.
@@ -185,6 +206,11 @@ def content_blob(recipe, ingredients, steps, waits=None, storage=None):
     baselines were written before these keys existed. Emitting "waits":[] on every recipe would make
     every one of them differ from its baseline, forcing the diff to run 300 times to return the same
     answer. A recipe that GAINS a wait stops being byte-equal, which is correct: it changed.
+
+    ⚠️ AND notes IS OMITTED THE SAME WAY, FOR THE SAME REASON. Every baseline predates the
+    recipe_notes table, so emitting "notes":[] on all 300 would end the byte-equal short-circuit for
+    every recipe at once the day migration 060 shipped. 95 recipes gain the key and have their
+    baselines patched in the same transaction; the other 205 emit nothing and never move.
 
     ⚠️ step_position IS NOT IN THE SNAPSHOT. It records which step a wait was read from, which is
     provenance rather than content, and moving a step would otherwise read as an edit to the wait.
@@ -198,4 +224,6 @@ def content_blob(recipe, ingredients, steps, waits=None, storage=None):
         body["waits"] = [{k: _get(w, k) for k in SNAPSHOT_WAIT_FIELDS} for w in waits]
     if storage:
         body["storage"] = [{k: _get(x, k) for k in SNAPSHOT_STORAGE_FIELDS} for x in storage]
+    if notes:
+        body["notes"] = [snapshot_note_row(n) for n in notes]
     return json.dumps(body, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
