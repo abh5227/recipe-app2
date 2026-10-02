@@ -463,6 +463,22 @@ def resolve_recipe_payload(s, payload, standing_step_links=frozenset()):
     for key in ("waits", "storage"):
         if key in payload and not isinstance(payload[key], list):
             return None, f"{key} must be a list"
+    # ⚠️ NOTES TAKES A LIST OR A BARE STRING, AND NOTHING ELSE REACHES write_notes. The rows came
+    #    with migration 060, and the string is the previous client's single textarea, split by the
+    #    same rule the corpus move used. Every other type was read as "delete them all": a dict
+    #    iterates to its KEYS and a list of numbers filters to nothing, so `notes: [1, 2, 3]`
+    #    answered 200 and left the recipe with 0 note rows. Live carries 177 notes over 95 recipes,
+    #    and the waits key two lines up is in this function for exactly the same reason.
+    if "notes" in payload and not isinstance(payload["notes"], (list, str)):
+        return None, "notes must be a list of notes, or text"
+    # ⚠️ AND AN ENTRY OF THE WRONG TYPE IS THE SAME CLIENT BUG AS A LIST OF THE WRONG TYPE. An int
+    #    in `waits` reached w.get("label") and raised a 500. The same int in `notes` was skipped in
+    #    silence, which is the deletion above through a narrower door. `steps` is deliberately not
+    #    on this list: a bare string IS a legitimate step, which is what _step_parts reads.
+    for key in ("waits", "storage", "notes"):
+        rows = payload.get(key)
+        if isinstance(rows, list) and any(not isinstance(r, dict) for r in rows):
+            return None, f"each entry in {key} must be an object"
 
     known = set(s.scalars(select(Ingredient.id)))
 
@@ -919,16 +935,22 @@ def write_plan_ahead(s, rid, payload):
 def _copy_row_map(s, table, old_rid, new_rid):
     """{old row id: the new row's id} for a table copied in position order.
 
-    ⚠️ POSITION IS THE KEY, AND IT IS THE ONLY ONE AVAILABLE. The copy is written with
-    INSERT…SELECT … ORDER BY position, so the two sides line up by position and by nothing else: the
-    new ids are whatever AUTOINCREMENT handed out. A row the original holds twice at one position
-    cannot happen, because every one of these tables is unique on (recipe_id, position) or is
-    written in a single ordered pass."""
-    old = {m["position"]: m["id"] for m in s.execute(
-        select(table.c.id, table.c.position).where(table.c.recipe_id == old_rid)).mappings()}
-    new = {m["position"]: m["id"] for m in s.execute(
-        select(table.c.id, table.c.position).where(table.c.recipe_id == new_rid)).mappings()}
-    return {oid: new[pos] for pos, oid in old.items() if pos in new}
+    ⚠️ THE ORDER IS THE KEY, NOT THE POSITION VALUE. The copy is written row by row in
+    (position, id) order, so the two sides line up by RANK in that order and by nothing else: the
+    new ids are whatever AUTOINCREMENT handed out.
+
+    ⚠️ IT KEYED ON THE POSITION VALUE AND CLAIMED THAT COULD NOT COLLIDE, WHICH IS FALSE FOR TWO OF
+    THE FOUR TABLES IT SERVES. recipe_waits and recipe_storage carry UNIQUE (recipe_id, position);
+    recipe_steps and recipe_ingredients carry no such constraint (migrations/001, and _apply_rows
+    says so). Forced on a throwaway kitchen: two steps at position 0 collapsed to one entry in the
+    dict and a wait pointing at the other was remapped to NULL, losing the link in silence. Live has
+    no duplicate group today, so this is the defensive direction rather than a repair. Ranking is
+    correct either way and needs no premise about the data."""
+    def ranked(rid):
+        return [m["id"] for m in s.execute(
+            select(table.c.id, table.c.position).where(table.c.recipe_id == rid)
+            .order_by(table.c.position, table.c.id)).mappings()]
+    return dict(zip(ranked(old_rid), ranked(new_rid)))
 
 
 def write_notes(s, rid, payload):
@@ -995,12 +1017,20 @@ def write_notes(s, rid, payload):
         # What this note's references should be after the save: one per "step N" in the text,
         # taking an explicit payload value when the editor sent one, else the stored link when the
         # same mention was there before.
-        sent = {r.get("ref_index"): r.get("step_id")
+        # ⚠️ A SENT REFERENCE NAMES THE WORDS IT BELONGS TO, NOT JUST THE ORDINAL. This was keyed on
+        #    ref_index alone, and the editor round-trips refs VERBATIM while the cook types, so the
+        #    ordinal matched across an edit that changed the words underneath it: "proceed with
+        #    step 3" reworded to "step 1" came back still pointing at step 3, and the page prints
+        #    the REFERENCED step's current number, so the sentence read "step 3" however it was
+        #    typed. Measured through the real save path. The carry below has always been keyed this
+        #    way, which is exactly the check the payload was skipping.
+        sent = {(r.get("ref_index"), r.get("match_text")): r.get("step_id")
                 for r in (n.get("refs") or ()) if isinstance(r, dict)}
         carried = stored_refs.get(kept["id"] if kept is not None else None, {})
         refs = []
         for m in notes_rules.scan_step_mentions(text_):
-            target = sent.get(m["ref_index"], carried.get((m["ref_index"], m["match_text"])))
+            key = (m["ref_index"], m["match_text"])
+            target = sent[key] if key in sent else carried.get(key)
             refs.append({"ref_index": m["ref_index"], "match_text": m["match_text"],
                          "step_id": target if target in step_ids else None})
         want_refs.append(refs)
@@ -2040,6 +2070,12 @@ def _unique_copy_id(s, base_name):
         n += 1
 
 
+# ⚠️ WHAT A COPY DELIBERATELY DOES NOT CARRY, stated so that everything else on the table IS
+#    carried and a column added tomorrow lands in the copy by default. The route named its columns
+#    one by one for years and the list was short every time anyone measured it. See copy_recipe.
+COPY_RESET_RECIPE_FIELDS = frozenset({"id", "name", "created_at", "source", "uid", "hash", "owner"})
+
+
 @app.route("/api/recipes/<rid>/copy", methods=["POST"])
 def copy_recipe(rid):
     """Duplicate a recipe's CONTENT into a new recipe, resetting the accruing layer to zero.
@@ -2053,31 +2089,33 @@ def copy_recipe(rid):
         if src is None:
             return jsonify({"error": "recipe not found"}), 404
         new_name, new_id = _unique_copy_id(s, src["name"])
+        # ⚠️ STATED OVER THE TABLE. This named 11 columns and the table has 18, so a copy lost
+        #    total_includes_waits (migration 058) and printed a different Total from the recipe it
+        #    was made from. 1 of live's 300 carries it.
         s.execute(insert(Recipe.__table__).values(
-            id=new_id, name=new_name, author=src["author"], source_url=src["source_url"],
-            category=src["category"], servings=src["servings"], prep_time=src["prep_time"],
-            cook_time=src["cook_time"], total_time=src["total_time"], descr=src["descr"],
-            notes=src["notes"], image=src["image"], created_at=now_utc(),
+            id=new_id, name=new_name, created_at=now_utc(),
             source=("test" if is_test else "app"), uid=None, hash=None,
             owner=current_user.id,   # R4 (box model): the copy is owned by whoever made it, even copying your own
+            **{k: v for k, v in dict(src).items() if k not in COPY_RESET_RECIPE_FIELDS},
         ))
         # Direct row-copy: carries all content INCL. harvested grams/secondary_measure (write_recipe_rows
         # would NULL those). cook_log / ratings / import_flags / per-person tables are deliberately NOT
-        # copied — that's what makes the copy start clean. INSERT…SELECT kept verbatim via text() (exact
-        # parity; standard SQL, Postgres-portable), executed on the ORM session.
-        s.execute(text(
-            """INSERT INTO recipe_ingredients
-               (recipe_id, position, is_heading, qty, quantity, unit, ingredient_id, label, note, raw_text, grams, secondary_measure)
-               SELECT :new_id, position, is_heading, qty, quantity, unit, ingredient_id, label, note, raw_text, grams, secondary_measure
-               FROM recipe_ingredients WHERE recipe_id = :rid ORDER BY position"""
-        ), {"new_id": new_id, "rid": rid})
-        # ⚠️ heading_level WAS MISSING FROM THIS LIST AND A COPY FLATTENED EVERY SUBHEADING. Measured:
-        #    an original with a level-2 heading produced a copy with level 1. The column arrived in
-        #    migration 059 and this route, written long before, named its columns one by one.
-        s.execute(text(
-            """INSERT INTO recipe_steps (recipe_id, position, is_heading, heading_level, text)
-               SELECT :new_id, position, is_heading, heading_level, text FROM recipe_steps WHERE recipe_id = :rid ORDER BY position"""
-        ), {"new_id": new_id, "rid": rid})
+        # copied — that's what makes the copy start clean.
+        # ⚠️ EVERY COLUMN BUT THE ROW'S OWN id, AND THAT IS THE WHOLE POINT. These were two
+        #    INSERT…SELECT statements naming their columns by hand, and both lists were short.
+        #    heading_level was missing and a copy FLATTENED every subheading (measured: a level-2
+        #    heading came back level 1). The ingredient list was missing five: heading (052) and
+        #    catalog_id, link_confidence, link_rule, link_matched (033), so a copy lost its library
+        #    linkage on 2,851 of live's 3,572 ingredient rows. Written as a loop over the table's
+        #    own rows, like the waits, storage and notes loops below, a column added tomorrow is
+        #    carried without anyone remembering this route exists. Position order is preserved
+        #    because _copy_row_map pairs an old row to its new one BY POSITION.
+        for table in (RecipeIngredient.__table__, RecipeStep.__table__):
+            for row in s.execute(select(table).where(table.c.recipe_id == rid)
+                                 .order_by(table.c.position, table.c.id)).mappings():
+                vals = {k: v for k, v in dict(row).items() if k != "id"}
+                vals["recipe_id"] = new_id
+                s.execute(insert(table).values(**vals))
         # ⚠️ EVERY POINTER IS REMAPPED, WHICH IS WHY THESE ARE NOT INSERT…SELECT. A wait, a note and a
         #    note's step reference all name a ROW of the recipe they belong to. Copying the id would
         #    leave the copy's rows pointing at the ORIGINAL's steps, so editing the original would

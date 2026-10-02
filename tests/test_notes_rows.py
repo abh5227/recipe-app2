@@ -184,8 +184,6 @@ def test_a_notes_string_from_an_old_client_still_works(dish, kitchen):
 def test_a_note_edit_marks_once(dish, kitchen):
     """⚠️ ONCE, ON ITS ROW. recipes.notes is a derived copy of the rows, so diffing both would mark
     one edit twice, the second entry reading as the whole notes field having been replaced."""
-    with app.orm_session() as s:
-        app.snapshot_original.__wrapped__ if False else None
     with kitchen.conn() as c:
         c.execute("UPDATE recipe_snapshots SET content=? WHERE recipe_id=? AND reason='original'",
                   (_blob(dish), dish))
@@ -253,10 +251,15 @@ def test_a_link_to_another_recipes_step_is_refused(dish, kitchen):
 
 
 def test_a_step_mention_becomes_a_reference(dish, kitchen):
+    """⚠️ A PAYLOAD REFERENCE NAMES THE WORDS IT BELONGS TO. These four tests used to set a link
+    with the ordinal alone, which the save path accepted, and that is exactly what let the editor's
+    echoed refs survive a reword and leave a stale step id behind the new words. A writer that wants
+    to link a mention says which mention, in the words the mention is made of."""
     d = _get(kitchen, dish)
     sid = d["steps"][2]["id"]
     _save(kitchen, dish, d, notes=[{"text": "Then proceed with step 3.", "kind": "notes",
-                                    "refs": [{"ref_index": 0, "step_id": sid}]}])
+                                    "refs": [{"ref_index": 0, "match_text": "step 3",
+                                              "step_id": sid}]}])
     got = _get(kitchen, dish)["notes"][0]
     assert got["refs"][0]["match_text"] == "step 3"
     assert got["refs"][0]["step_id"] == sid
@@ -269,7 +272,8 @@ def test_a_reference_follows_its_step_when_the_steps_move(dish, kitchen):
     d = _get(kitchen, dish)
     sid = d["steps"][2]["id"]
     _save(kitchen, dish, d, notes=[{"text": "Then proceed with step 3.", "kind": "notes",
-                                    "refs": [{"ref_index": 0, "step_id": sid}]}])
+                                    "refs": [{"ref_index": 0, "match_text": "step 3",
+                                              "step_id": sid}]}])
     d = _get(kitchen, dish)
     _save(kitchen, dish, d, steps=[{"id": d["steps"][1]["id"], "text": d["steps"][1]["text"]},
                                    {"id": sid, "text": d["steps"][2]["text"]}],
@@ -283,7 +287,8 @@ def test_deleting_the_words_drops_the_reference(dish, kitchen):
     d = _get(kitchen, dish)
     sid = d["steps"][2]["id"]
     _save(kitchen, dish, d, notes=[{"text": "Then proceed with step 3.", "kind": "notes",
-                                    "refs": [{"ref_index": 0, "step_id": sid}]}])
+                                    "refs": [{"ref_index": 0, "match_text": "step 3",
+                                              "step_id": sid}]}])
     d = _get(kitchen, dish)
     _save(kitchen, dish, d, notes=[{"text": "Then carry on.", "kind": "notes"}])
     assert _get(kitchen, dish)["notes"][0].get("refs") == []
@@ -294,8 +299,95 @@ def test_inserting_words_before_a_mention_keeps_its_reference(dish, kitchen):
     d = _get(kitchen, dish)
     sid = d["steps"][2]["id"]
     _save(kitchen, dish, d, notes=[{"text": "Proceed with step 3.", "kind": "notes",
-                                    "refs": [{"ref_index": 0, "step_id": sid}]}])
+                                    "refs": [{"ref_index": 0, "match_text": "step 3",
+                                              "step_id": sid}]}])
     d = _get(kitchen, dish)
     _save(kitchen, dish, d, notes=[{"text": "If it has risen enough, proceed with step 3.",
                                     "kind": "notes"}])
     assert _get(kitchen, dish)["notes"][0]["refs"][0]["step_id"] == sid
+
+
+# ---- what a save does with a reference whose words moved (review fixes) ------------------------
+
+def _refs(kitchen, rid):
+    with kitchen.conn() as c:
+        c.row_factory = sqlite3.Row
+        return [dict(r) for r in c.execute(
+            "SELECT r.ref_index, r.match_text, r.step_id FROM recipe_note_step_refs r "
+            "JOIN recipe_notes n ON n.id = r.note_id WHERE n.recipe_id=? "
+            "ORDER BY n.position, r.ref_index", (rid,))]
+
+
+def test_rewording_the_mention_drops_the_link_the_editor_echoed(dish, kitchen):
+    """⚠️ A SENT REFERENCE NAMES THE WORDS IT BELONGS TO, NOT JUST THE ORDINAL. The editor
+    round-trips refs verbatim while the cook types, so keying the payload on ref_index alone matched
+    across an edit that changed the words underneath it. Measured through this path: "proceed with
+    step 3" reworded to "step 1" came back still pointing at step 3, and the page prints the
+    REFERENCED step's current number, so the sentence read "step 3" however it was typed. A wrong
+    number is worse than no link."""
+    d = _get(kitchen, dish)
+    third = d["steps"][2]["id"]
+    _save(kitchen, dish, d, notes=[{"text": "For a softer crust, proceed with step 3.",
+                                    "kind": "notes"}])
+    # link it the way a recorded decision does, then read back what the editor would hold
+    d = _get(kitchen, dish)
+    sent = [{"ref_index": r["ref_index"], "match_text": r["match_text"], "step_id": third}
+            for r in d["notes"][0]["refs"]]
+    _save(kitchen, dish, d, notes=[{"text": d["notes"][0]["text"], "kind": "notes", "refs": sent}])
+    assert _refs(kitchen, dish) == [{"ref_index": 0, "match_text": "step 3", "step_id": third}]
+
+    # now the cook rewords the mention, and the editor echoes the refs it was given
+    d = _get(kitchen, dish)
+    echo = [{"ref_index": r["ref_index"], "match_text": r["match_text"], "step_id": r["step_id"]}
+            for r in d["notes"][0]["refs"]]
+    _save(kitchen, dish, d, notes=[{"text": "For a softer crust, proceed with step 1.",
+                                    "kind": "notes", "refs": echo}])
+    assert _refs(kitchen, dish) == [{"ref_index": 0, "match_text": "step 1", "step_id": None}], \
+        "the stale step id survived a reword of the words that named it"
+
+
+def test_an_unchanged_save_keeps_a_reference_the_editor_echoes(dish, kitchen):
+    """The other half of the rule: the words did not move, so the link stands."""
+    d = _get(kitchen, dish)
+    second = d["steps"][1]["id"]
+    _save(kitchen, dish, d, notes=[{"text": "See step 2 first.", "kind": "notes"}])
+    d = _get(kitchen, dish)
+    _save(kitchen, dish, d, notes=[{"text": "See step 2 first.", "kind": "notes",
+                                    "refs": [{"ref_index": 0, "match_text": "step 2",
+                                              "step_id": second}]}])
+    d = _get(kitchen, dish)
+    echo = [{"ref_index": r["ref_index"], "match_text": r["match_text"], "step_id": r["step_id"]}
+            for r in d["notes"][0]["refs"]]
+    _save(kitchen, dish, d, notes=[{"text": "See step 2 first.", "kind": "notes", "refs": echo}])
+    assert _refs(kitchen, dish) == [{"ref_index": 0, "match_text": "step 2", "step_id": second}]
+
+
+def test_a_payload_reference_with_no_words_cannot_retarget_a_mention(dish, kitchen):
+    """A client that sends no match_text falls back to the stored link rather than being honoured
+    by ordinal, which is the same refusal stated from the other side."""
+    d = _get(kitchen, dish)
+    second, third = d["steps"][1]["id"], d["steps"][2]["id"]
+    _save(kitchen, dish, d, notes=[{"text": "See step 2 first.", "kind": "notes"}])
+    d = _get(kitchen, dish)
+    _save(kitchen, dish, d, notes=[{"text": "See step 2 first.", "kind": "notes",
+                                    "refs": [{"ref_index": 0, "match_text": "step 2",
+                                              "step_id": second}]}])
+    d = _get(kitchen, dish)
+    _save(kitchen, dish, d, notes=[{"text": "See step 2 first.", "kind": "notes",
+                                    "refs": [{"ref_index": 0, "step_id": third}]}])
+    assert _refs(kitchen, dish)[0]["step_id"] == second
+
+
+def test_a_kind_the_table_does_not_know_lands_under_notes(dish, kitchen):
+    """⚠️ A 500 IS THE ALTERNATIVE. recipe_notes.kind is a FOREIGN KEY to note_kinds, so an unknown
+    kind from a stale client or a script would be an IntegrityError on an otherwise valid save. It
+    falls back to the default instead, and nothing asserted that."""
+    d = _get(kitchen, dish)
+    r = kitchen.client.put(f"/api/recipes/{dish}", json={
+        "name": d["recipe"]["name"],
+        "ingredients": [{"id": x["id"], "quantity": x["quantity"] or "", "unit": x["unit"] or "",
+                         "text": x["label"]} for x in d["ingredients"]],
+        "steps": [{"id": s["id"], "text": s["text"]} for s in d["steps"]],
+        "notes": [{"text": "A note.", "kind": "nonsense"}]})
+    assert r.status_code == 200, r.get_json()
+    assert [n["kind"] for n in _notes(kitchen, dish)] == ["notes"]

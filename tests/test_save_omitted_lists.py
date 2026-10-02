@@ -36,6 +36,15 @@ def _recipe(client):
     return rid
 
 
+def _note_rows(kitchen, rid):
+    import sqlite3
+    with kitchen.conn() as c:
+        c.row_factory = sqlite3.Row
+        return [dict(r) for r in c.execute(
+            "SELECT position, kind, text FROM recipe_notes WHERE recipe_id=? ORDER BY position",
+            (rid,))]
+
+
 def _state(client, rid):
     d = client.get(f"/api/recipes/{rid}").get_json()
     return ([w["label"] for w in d["waits"]], [x["label"] for x in d["storage"]],
@@ -129,6 +138,45 @@ def test_a_waits_list_that_is_not_a_list_is_refused_rather_than_read_as_empty(ki
         r = kitchen.client.put(f"/api/recipes/{rid}", json=body)
         assert r.status_code == 400, f"{bad!r} was accepted ({r.status_code})"
         assert _state(kitchen.client, rid)[0] == ["rest 1 hour", "marinate overnight"], bad
+
+
+def test_a_notes_payload_that_is_not_a_list_is_refused_rather_than_read_as_empty(kitchen):
+    """⚠️ THE SAME DOOR AS waits, AND IT WAS LEFT OPEN FOR NOTES. write_notes iterates the payload,
+    so a DICT iterated to its KEYS and a list of numbers filtered to nothing: `notes: [1, 2, 3]`
+    answered 200, deleted every note row the recipe had and nulled the derived column, with no
+    annotation to show it. `notes: 7` was a 500. Live carries 177 notes over 95 recipes and the text
+    has no second home.
+
+    A bare STRING stays legal: that is the previous client's single textarea, and write_notes splits
+    it by the same rule the corpus move used."""
+    rid = _recipe(kitchen.client)
+    body = _bare(kitchen.client, rid) | {"notes": [
+        {"text": "Keep this note.", "kind": "notes"}]}
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    kept = _note_rows(kitchen, rid)
+    assert [n["text"] for n in kept] == ["Keep this note."]
+
+    for bad in (None, 7, 0, True, {"text": "x"}, [1, 2, 3], ["a note"], [None]):
+        body = _bare(kitchen.client, rid) | {"notes": bad}
+        r = kitchen.client.put(f"/api/recipes/{rid}", json=body)
+        assert r.status_code == 400, f"{bad!r} was accepted ({r.status_code})"
+        assert _note_rows(kitchen, rid) == kept, f"{bad!r} changed the note rows"
+
+    # and the old string shape still works, which is what makes the deploy window safe
+    body = _bare(kitchen.client, rid) | {"notes": "One paragraph.\n\nAnd another."}
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    assert [n["text"] for n in _note_rows(kitchen, rid)] == ["One paragraph.", "And another."]
+
+
+def test_an_entry_of_the_wrong_type_is_refused_in_every_one_of_the_three_lists(kitchen):
+    """An int in `waits` reached w.get("label") and raised a 500, and the same int in `notes` was
+    skipped in silence, which is the deletion above through a narrower door."""
+    rid = _recipe(kitchen.client)
+    for key in ("waits", "storage", "notes"):
+        body = _bare(kitchen.client, rid) | {key: [1]}
+        r = kitchen.client.put(f"/api/recipes/{rid}", json=body)
+        assert r.status_code == 400, f"{key}: [1] was accepted ({r.status_code})"
+        assert "object" in (r.get_json() or {}).get("error", ""), r.get_json()
 
 
 # ---- the two lists that were already safe, pinned so they stay that way -------------------------

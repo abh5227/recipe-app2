@@ -115,7 +115,6 @@ def test_editing_the_original_does_not_move_the_copys_links(full, kitchen):
     """The whole point of remapping: the two recipes are separate afterwards."""
     new = _copy(kitchen, full)
     before = _rows(kitchen, "recipe_notes", new)[0]["step_id"]
-    d = kitchen.client.get(f"/api/recipes/{full}").get_json()
     kitchen.client.put(f"/api/recipes/{full}", json={
         "name": "Everything", "ingredients": [], "steps": [], "waits": [], "storage": [],
         "notes": []})
@@ -127,3 +126,82 @@ def test_the_copy_is_byte_equal_to_its_own_baseline(full, kitchen):
     new = _copy(kitchen, full)
     with app.orm_session() as s:
         assert app._recipe_annotations(s, new) == []
+
+
+# ---- stated over the TABLE, not over a list of column names (review fix) ------------------------
+# ⚠️ EVERY HAND-WRITTEN COLUMN LIST IN THAT ROUTE HAS BEEN SHORT AT LEAST ONCE. heading_level was
+# missing and a copy flattened every subheading. The review then measured five more on
+# recipe_ingredients (heading from migration 052, and catalog_id, link_confidence, link_rule,
+# link_matched from 033) and one on recipes (total_includes_waits, 058). 2,851 of live's 3,572
+# ingredient rows carry a catalog_id, so copying almost any real recipe dropped its library linkage.
+# These tests fail when a column is added to a table and not carried, which is the only version of
+# this check that keeps working without anyone remembering the route exists.
+
+def _one(kitchen, table, rid):
+    import sqlite3
+    with kitchen.conn() as c:
+        c.row_factory = sqlite3.Row
+        rows = [dict(r) for r in c.execute(
+            f"SELECT * FROM {table} WHERE recipe_id=? ORDER BY position, id", (rid,))]
+    return rows
+
+
+@pytest.fixture
+def loaded(kitchen, full):
+    """The `full` recipe, with every remaining ingredient and recipe column given a distinctive
+    value so a column the copy drops is visible rather than coincidentally equal."""
+    import sqlite3
+    with kitchen.conn() as c:
+        c.execute("UPDATE recipes SET total_includes_waits=1 WHERE id=?", (full,))
+        c.execute("""UPDATE recipe_ingredients SET heading='For the dough', catalog_id='cat-1',
+                     link_confidence='high', link_rule='exact', link_matched='flour',
+                     grams=120, secondary_measure='1 cup', note='sifted', raw_text='1 cup flour'
+                     WHERE recipe_id=?""", (full,))
+        c.commit()
+    return full
+
+
+def test_the_copy_carries_every_column_of_every_content_table(loaded, kitchen):
+    from models import Recipe, RecipeIngredient, RecipeStep
+    new = _copy(kitchen, loaded)
+
+    for table in (RecipeIngredient.__table__, RecipeStep.__table__):
+        src_rows = _one(kitchen, table.name, loaded)
+        new_rows = _one(kitchen, table.name, new)
+        assert len(src_rows) == len(new_rows) > 0, table.name
+        for a, b in zip(src_rows, new_rows):
+            for col in table.c.keys():
+                if col in ("id", "recipe_id"):
+                    continue
+                assert a[col] == b[col], f"{table.name}.{col} was not carried: {a[col]!r} -> {b[col]!r}"
+
+    import sqlite3
+    with kitchen.conn() as c:
+        c.row_factory = sqlite3.Row
+        a = dict(c.execute("SELECT * FROM recipes WHERE id=?", (loaded,)).fetchone())
+        b = dict(c.execute("SELECT * FROM recipes WHERE id=?", (new,)).fetchone())
+    for col in Recipe.__table__.c.keys():
+        if col in app.COPY_RESET_RECIPE_FIELDS:
+            continue
+        assert a[col] == b[col], f"recipes.{col} was not carried: {a[col]!r} -> {b[col]!r}"
+
+
+def test_what_the_copy_resets_is_the_deliberate_half(loaded, kitchen):
+    """The reset list is what the route states, so a column added tomorrow is CARRIED by default.
+    Each of these has a reason, and a copy that carried them would be wrong."""
+    import sqlite3
+    new = _copy(kitchen, loaded)
+    with kitchen.conn() as c:
+        c.row_factory = sqlite3.Row
+        a = dict(c.execute("SELECT * FROM recipes WHERE id=?", (loaded,)).fetchone())
+        b = dict(c.execute("SELECT * FROM recipes WHERE id=?", (new,)).fetchone())
+    assert b["id"] != a["id"] and b["name"] != a["name"]
+    assert b["uid"] is None and b["hash"] is None      # import identity, never duplicated
+    assert b["owner"] is not None                      # owned by whoever made the copy
+    assert set(app.COPY_RESET_RECIPE_FIELDS) <= set(Recipe_columns()), \
+        "the reset list names a column the table does not have"
+
+
+def Recipe_columns():
+    from models import Recipe
+    return Recipe.__table__.c.keys()
