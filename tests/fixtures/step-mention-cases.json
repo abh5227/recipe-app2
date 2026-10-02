@@ -1,0 +1,339 @@
+{
+ "note": "Captured from notes.scan_step_mentions, which is the authority. Regenerate with python3.13 -c 'import json,notes;print(json.dumps([{\"text\":t,\"mentions\":notes.scan_step_mentions(t)} for t in TEXTS]))' and keep every case below. The first two are the corpus's only real cases (aloo-potato-parathas, the-best-new-york-style-bagel); the rest are the adversarial set, including the four shapes on which an ASCII JavaScript pattern disagreed with the Unicode Python one.",
+ "cases": [
+  {
+   "text": "Variation: Add ¼ cup grated cheddar cheese to the potatoes in step 2.",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "step 2",
+     "number": 2,
+     "start": 62,
+     "end": 68
+    }
+   ]
+  },
+  {
+   "text": "When substituting fresh yeast, you may want to make a few adjustments to the method. Fresh yeast does not need to be proofed like active dry yeast. The water, sugar, and yeast step will be unnecessary in this case, so do keep that in mind. But, as some have told me, they’ve simply substituted fresh yeast for the active dry yeast and followed the steps as directed without any issues.",
+   "mentions": []
+  },
+  {
+   "text": "SAME DAY VERSION: increase water to ~354 grams/1.5 cups and increase instant yeast to 1 tablespoon. After shaping, rise at room temp for about 20 minutes (warmer kitchen) or 30 minutes (cooler kitchen) and then proceed with step 9.",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "step 9",
+     "number": 9,
+     "start": 224,
+     "end": 230
+    }
+   ]
+  },
+  {
+   "text": "proceed with step 9.",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "step 9",
+     "number": 9,
+     "start": 13,
+     "end": 19
+    }
+   ]
+  },
+  {
+   "text": "see steps 3 and 4",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "steps 3",
+     "number": 3,
+     "start": 4,
+     "end": 11
+    }
+   ]
+  },
+  {
+   "text": "Step 1: do the thing",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "Step 1",
+     "number": 1,
+     "start": 0,
+     "end": 6
+    }
+   ]
+  },
+  {
+   "text": "step 03",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "step 03",
+     "number": 3,
+     "start": 0,
+     "end": 7
+    }
+   ]
+  },
+  {
+   "text": "step 0",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "step 0",
+     "number": 0,
+     "start": 0,
+     "end": 6
+    }
+   ]
+  },
+  {
+   "text": "step 12a",
+   "mentions": []
+  },
+  {
+   "text": "misstep 3",
+   "mentions": []
+  },
+  {
+   "text": "sidestep 4",
+   "mentions": []
+  },
+  {
+   "text": "backstep 2",
+   "mentions": []
+  },
+  {
+   "text": "step three",
+   "mentions": []
+  },
+  {
+   "text": "steps 3",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "steps 3",
+     "number": 3,
+     "start": 0,
+     "end": 7
+    }
+   ]
+  },
+  {
+   "text": "STEP 7",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "STEP 7",
+     "number": 7,
+     "start": 0,
+     "end": 6
+    }
+   ]
+  },
+  {
+   "text": "step  9",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "step  9",
+     "number": 9,
+     "start": 0,
+     "end": 7
+    }
+   ]
+  },
+  {
+   "text": "step\n9",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "step\n9",
+     "number": 9,
+     "start": 0,
+     "end": 6
+    }
+   ]
+  },
+  {
+   "text": "step\t9",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "step\t9",
+     "number": 9,
+     "start": 0,
+     "end": 6
+    }
+   ]
+  },
+  {
+   "text": "step 3½",
+   "mentions": []
+  },
+  {
+   "text": "step 3٠",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "step 3٠",
+     "number": 30,
+     "start": 0,
+     "end": 7
+    }
+   ]
+  },
+  {
+   "text": "éstep 3",
+   "mentions": []
+  },
+  {
+   "text": "step3",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "step3",
+     "number": 3,
+     "start": 0,
+     "end": 6
+    }
+   ]
+  },
+  {
+   "text": "step_3",
+   "mentions": []
+  },
+  {
+   "text": "1 step 2 step 3",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "step 2",
+     "number": 2,
+     "start": 2,
+     "end": 8
+    },
+    {
+     "ref_index": 1,
+     "match_text": "step 3",
+     "number": 3,
+     "start": 9,
+     "end": 15
+    }
+   ]
+  },
+  {
+   "text": "the step 10 and step 11",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "step 10",
+     "number": 10,
+     "start": 4,
+     "end": 11
+    },
+    {
+     "ref_index": 1,
+     "match_text": "step 11",
+     "number": 11,
+     "start": 16,
+     "end": 23
+    }
+   ]
+  },
+  {
+   "text": "step 9,",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "step 9",
+     "number": 9,
+     "start": 0,
+     "end": 6
+    }
+   ]
+  },
+  {
+   "text": "(step 9)",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "step 9",
+     "number": 9,
+     "start": 1,
+     "end": 7
+    }
+   ]
+  },
+  {
+   "text": "steps 10-12",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "steps 10",
+     "number": 10,
+     "start": 0,
+     "end": 8
+    }
+   ]
+  },
+  {
+   "text": "step 2nd",
+   "mentions": []
+  },
+  {
+   "text": "step",
+   "mentions": []
+  },
+  {
+   "text": "step ",
+   "mentions": []
+  },
+  {
+   "text": "steps",
+   "mentions": []
+  },
+  {
+   "text": "Steps 2 And 3",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "Steps 2",
+     "number": 2,
+     "start": 0,
+     "end": 7
+    }
+   ]
+  },
+  {
+   "text": "кstep 3",
+   "mentions": []
+  },
+  {
+   "text": "step 9",
+   "mentions": [
+    {
+     "ref_index": 0,
+     "match_text": "step 9",
+     "number": 9,
+     "start": 0,
+     "end": 6
+    }
+   ]
+  },
+  {
+   "text": "stepping 3",
+   "mentions": []
+  },
+  {
+   "text": "step-3",
+   "mentions": []
+  },
+  {
+   "text": "step.3",
+   "mentions": []
+  }
+ ]
+}

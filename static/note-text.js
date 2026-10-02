@@ -1,0 +1,58 @@
+"use strict";
+// Pure note-text transform (no DOM, no `view`): a note's words with each stored step reference
+// turned into a link. The notes sibling of note-blocks.js, and extracted for the same reason
+// step-row.js was — two bugs lived in the few lines below and neither was reachable from a test
+// while they sat inside app.js.
+//
+// `esc` is INJECTED rather than imported, exactly as note-blocks.js takes the kind table: this
+// module stays dependency-free for the zero-dep JS suite, and the app keeps one escaping function
+// rather than a second copy of it.
+
+// ⚠️ A MIRROR OF notes.py::STEP_MENTION, AND NOT THE OBVIOUS SPELLING OF IT. Python's \b, \s and
+// \d are Unicode-aware on a str and JavaScript's are ASCII-only, so /\bsteps?\s+(\d+)\b/ and the
+// Python pattern disagree on real text: "éstep 3" matched here and not there, "step 3٠" read as
+// step 3 here and as step 30 there. The server decides WHICH mention each stored reference belongs
+// to by its ordinal, so one side seeing a match the other does not shifts every later link onto the
+// wrong words. tests/js/step-mention-sync.test.js holds the two together over a shared fixture.
+const STEP_MENTION = /(?<![\p{L}\p{N}_])steps?[\s\u0085\u001c-\u001f]+(\p{Nd}+)(?![\p{L}\p{N}_])/giu;
+
+// A note's words, with each stored step reference turned into a link that always reads the step's
+// CURRENT number.
+// ⚠️ THE NUMBER ON SCREEN IS NOT THE NUMBER IN THE TEXT. The author wrote "step 9" against their own
+// numbering, and the steps have moved since. What is stored is the step's id, so the sentence keeps
+// meaning the same step and the figure is resolved every time the page draws.
+// ⚠️ A REFERENCE WHOSE STEP BECAME A HEADING, OR WENT, RENDERS AS PLAIN TEXT. step_no comes back
+// null and the words stay exactly as written, which is the rule waits already follow: a wrong
+// number is worse than no link.
+export function noteTextHTML(note, esc) {
+  const refs = note.refs || [];
+  const text = String(note.display != null ? note.display : (note.text || ""));
+  // ⚠️ THE DISPLAY TEXT CAN BE SHORTER THAN THE STORED TEXT, so the ordinals have to be lined up.
+  //    A label the kind table knows is stripped for display, the server counted its mentions
+  //    against the WHOLE stored text, and a mention inside that label would put every later
+  //    reference one place out. The strip is always a prefix, so counting what it removed is
+  //    enough.
+  const stored = String(note.text || "");
+  const cut = (note.display != null && stored && stored !== text) ? stored.indexOf(text) : 0;
+  const offset = cut > 0 ? (stored.slice(0, cut).match(STEP_MENTION) || []).length : 0;
+  let out = "", last = 0, i = 0;
+  STEP_MENTION.lastIndex = 0;
+  for (let m = STEP_MENTION.exec(text); m; m = STEP_MENTION.exec(text)) {
+    // ⚠️ BY ref_index, NEVER BY POSITION IN THE ARRAY. A reference the author left flagged, or one
+    //    a recorded decision wrote on its own, makes the set SPARSE: refs = [{ref_index: 1}] on a
+    //    note with two mentions paired that link to mention 0 and printed "Skip step 3" as
+    //    "Skip step 9". The flagged_references list in a decision file exists to produce exactly
+    //    that shape.
+    const ref = refs.find((r) => r.ref_index === i + offset);
+    i++;
+    out += esc(text.slice(last, m.index));
+    out += (ref && ref.step_no)
+      ? `<a class="note-stepref" href="#" data-note-step="${ref.step_no}">step ${ref.step_no}</a>`
+      : esc(m[0]);
+    last = m.index + m[0].length;
+  }
+  return out + esc(text.slice(last));
+}
+
+
+export { STEP_MENTION };

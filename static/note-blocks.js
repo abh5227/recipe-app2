@@ -78,6 +78,10 @@ export function noteBlocks(rows, table) {
 }
 
 // The old string shape, for a payload that predates migration 060.
+// ⚠️ NOTHING ON THE PAGE CALLS THIS. app.js renders rows through noteBlocks; this is reachable only
+// from the tests and from a caller holding pre-060 data. It is kept because the paragraph split and
+// the label classifier are stated through it in tests/js/note-blocks.test.js, and because the
+// column it reads is retired rather than dropped. Delete it with the column.
 export function noteBlocksFromText(text, table) {
   return noteBlocks(noteParagraphs(text).map((p, i) => {
     const c = classifyNote(p, table);

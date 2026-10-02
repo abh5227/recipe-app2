@@ -18,7 +18,8 @@ import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
 import { browseList, cardTags, monthYear } from "./browse.js";
 import { panelBlocks } from "./panel-blocks.js";
-import { noteBlocks } from "./note-blocks.js";
+import { noteBlocks, displayText } from "./note-blocks.js";
+import { noteTextHTML } from "./note-text.js";
 // ⚠️ THE KIND TABLE IS ONE FILE, IMPORTED, NOT A COPY KEPT IN STEP BY A TEST. Vite inlines
 // the JSON at build time and import_cleanup reads the SAME path for the data rule, so the
 // display and the importer cannot disagree about what "Storing." means.
@@ -1034,18 +1035,23 @@ function renderStepRow(row, ann, notes) {
   // ⚠️ AN ADDED STEP GOES THROUGH THE SPAN PATH, exactly like an unedited one, so its quantities
   //    move with the factor. It used to render row.text raw, which froze "add 1 tbsp oil" at its
   //    printed amount inside a doubled recipe.
-  if (ann && ann.added) return `<li class="step"><div class="step-body"><span class="step-add">${stepBodyHTML(row)}</span></div></li>`;
+  // ⚠️ THE MARKER IS APPENDED IN ALL THREE RETURNS. Both annotation branches returned before it,
+  //    so a cook who attached a note to a step and then reworded that step lost the marker with
+  //    nothing saying the link was still there. The row keeps its step_id either way, so this was
+  //    the display dropping it. Live carries 49 annotation entries over 20 recipes.
+  const marker = stepNoteMarkerHTML(notes, row.id);
+  if (ann && ann.added) return `<li class="step"><div class="step-body"><span class="step-add">${stepBodyHTML(row)}</span>${marker}</div></li>`;
   // ⚠️ A REWORDED STEP IS DELIBERATELY NOT SCALED, and this is the one gap left open. The word diff
   //    needs two raw strings, and only the CURRENT text has tagged spans, so scaling the pair means
   //    running the scaler over raw prose. Measured on the corpus's one reworded step, that turns
   //    "simmer for 4-6 minutes" into "8-12 minutes" at 2x. Doubling a cooking time is worse than
   //    leaving a quantity unscaled, so it waits for a tagger that can mark the baseline too.
-  if (ann && ann.mod) return `<li class="step"><div class="step-body">${wordDiffHTML(ann.mod.from, ann.mod.to)}</div></li>`;
+  if (ann && ann.mod) return `<li class="step"><div class="step-body">${wordDiffHTML(ann.mod.from, ann.mod.to)}${marker}</div></li>`;
   const html = stepBodyHTML(row);
   // .step-body wraps the step content inside li.step — the reserved attach point for future
   // per-step photos. The note marker lives INSIDE it, at the end of the step's own text, which is
   // what keeps it out of the margin where the "your changes" marks are.
-  return `<li class="step"><div class="step-body">${html}${stepNoteMarkerHTML(notes, row.id)}</div></li>`;
+  return `<li class="step"><div class="step-body">${html}${marker}</div></li>`;
 }
 
 // O-c-1: render the step list with its annotation layer. Own 0-based li.step counter (heading-EXCLUDED,
@@ -1085,38 +1091,12 @@ function jumpToStep(n) {
 // by nothing else: measured over the 177 corpus paragraphs, 2 do that and 0 say "the step above" or
 // "see step". Every match here becomes a link on the page, so a pattern that guessed at prose would
 // put links on phrases nobody meant as a reference.
-const STEP_MENTION = /\bsteps?\s+(\d+)\b/gi;
-
-// A note's words, with each stored step reference turned into a link that always reads the step's
-// CURRENT number.
-// ⚠️ THE NUMBER ON SCREEN IS NOT THE NUMBER IN THE TEXT. The author wrote "step 9" against their own
-// numbering, and the steps have moved since. What is stored is the step's id, so the sentence keeps
-// meaning the same step and the figure is resolved every time the page draws.
-// ⚠️ A REFERENCE WHOSE STEP BECAME A HEADING, OR WENT, RENDERS AS PLAIN TEXT. step_no comes back
-// null and the words stay exactly as written, which is the rule waits already follow: a wrong
-// number is worse than no link.
-function noteTextHTML(note) {
-  const refs = note.refs || [];
-  const text = String(note.display != null ? note.display : (note.text || ""));
-  let out = "", last = 0, i = 0;
-  STEP_MENTION.lastIndex = 0;
-  for (let m = STEP_MENTION.exec(text); m; m = STEP_MENTION.exec(text)) {
-    const ref = refs[i++];
-    out += esc(text.slice(last, m.index));
-    out += (ref && ref.step_no)
-      ? `<a class="note-stepref" href="#" data-note-step="${ref.step_no}">step ${ref.step_no}</a>`
-      : esc(m[0]);
-    last = m.index + m[0].length;
-  }
-  return out + esc(text.slice(last));
-}
-
 function notesSectionHTML(rows) {
   const blocks = noteBlocks(rows || [], NOTE_KINDS.kinds);
   if (!blocks.length) return "";
   return `<div class="notes">${blocks.map((b) => `
     <h3 class="notes-kind">${esc(b.header)}</h3>
-    ${b.notes.map((n) => `<p class="notes-para">${noteTextHTML(n)}${
+    ${b.notes.map((n) => `<p class="notes-para">${noteTextHTML(n, esc)}${
       // ⚠️ THE SAME SHAPE A WAIT'S LINK HAS, for the same reason: one pattern for "this belongs to
       //    step N" means a cook learns it once. It appears only when the server resolved a number,
       //    so a note attached to a heading reads without it rather than with a wrong one.
@@ -1130,7 +1110,10 @@ function stepNoteIndex(rows) {
   for (const n of rows || []) {
     if (!n.step_id) continue;
     if (!by.has(n.step_id)) by.set(n.step_id, []);
-    by.get(n.step_id).push(n);
+    // ⚠️ THE SAME DISPLAY TEXT THE NOTES SECTION SHOWS. These are the raw rows, so without this the
+    //    popover printed the label ("Variation: ...") that the section strips, and one note read
+    //    two different ways on one page.
+    by.get(n.step_id).push({ ...n, display: displayText(n, NOTE_KINDS.kinds) });
   }
   return by;
 }
@@ -1150,7 +1133,7 @@ function stepNoteMarkerHTML(notes, stepId) {
   //    on one line on purpose.
   return ` <button type="button" class="step-note-marker" aria-expanded="false" aria-controls="${id}" aria-label="${esc(label)}" data-step-note="${stepId}"><span aria-hidden="true">&#9432;</span></button>` +
     `<span class="step-note-pop" id="${id}" role="tooltip" hidden>` +
-    notes.map((n) => `<span class="step-note-line">${noteTextHTML(n)}</span>`).join("") +
+    notes.map((n) => `<span class="step-note-line">${noteTextHTML(n, esc)}</span>`).join("") +
     `</span>`;
 }
 
@@ -2168,7 +2151,6 @@ function paintRecipe() {
   // Reading-view prose, trimmed for the pre-wrap blocks. Edit mode is untouched: its textareas
   // round-trip the stored value byte-for-byte, so saving cannot rewrite what was never changed.
   const dek = proseText(r.descr);
-  const note = proseText(r.notes);
 
   const mastheadInner = editing
     ? mastheadEditHTML(r)
@@ -2211,7 +2193,8 @@ function paintRecipe() {
             <h2 class="col-title">Method</h2>
             <ol class="steps" id="steps-list">${steps}</ol>
             ${editing ? stepAddersHTML() : ""}
-            ${editing ? ieNotesHTML(data) : notesSectionHTML(data.notes)}
+            ${editing ? `<div class="ie-notes">${ieNotesHTML(view.draft)}</div>`
+                      : notesSectionHTML(data.notes)}
           </section>
         </div>
         ${editing ? "" : albumSectionHTML(data)}
@@ -2587,9 +2570,19 @@ function storageEditHTML(d) {
 function handlePlanAheadAction(t) {
   const d = view && view.draft;
   if (!d) return false;
+  // ⚠️ THE NOTES BLOCK IS REPAINTED TOO, AND IT IS NOT INSIDE .ie-planahead. The notes editor
+  //    renders into the Method section, so a repaint that rewrote only the plan-ahead host left
+  //    every note action invisible: "+ add a note" put a row in the draft and nothing appeared, ×
+  //    removed one that stayed on screen, and ↑/↓ swapped the draft objects while the DOM kept the
+  //    old order AND the old data-note-text indices. That last one corrupts: on [A, B, C], moving
+  //    A down made the draft [B, A, C], the box still showing "B" was index 1, and typing in it
+  //    wrote over A. paintRecipe cannot be used here (it would orphan the mounted step editors),
+  //    which is why each block owns a host.
   const repaint = () => {
     const host = document.querySelector(".ie-planahead");
     if (host) host.innerHTML = waitsEditHTML(d) + storageEditHTML(d);
+    const notesHost = document.querySelector(".ie-notes");
+    if (notesHost) notesHost.innerHTML = ieNotesHTML(d);
   };
   if (t.closest("[data-wait-add]")) {
     (d.waits = d.waits || []).push({ kind: "other", label: "", ext_label: "", when_kind: "always",
@@ -3265,7 +3258,12 @@ function draftPayload() {
       text: t(n.text), kind: t(n.kind) || "notes",
       step_id: n.step_id == null ? null : +n.step_id,
       ingredient_row_id: n.ingredient_row_id == null ? null : +n.ingredient_row_id,
-      refs: (n.refs || []).map((x) => ({ ref_index: x.ref_index,
+      // ⚠️ match_text TRAVELS WITH THE REFERENCE. The server pairs a sent reference to a mention by
+      //    the ordinal AND the words, because these are round-tripped verbatim: keyed on the
+      //    ordinal alone, rewording "proceed with step 3" to "step 1" came back still pointing at
+      //    step 3, and the page prints the referenced step's CURRENT number, so the sentence read
+      //    "step 3" however the cook typed it.
+      refs: (n.refs || []).map((x) => ({ ref_index: x.ref_index, match_text: x.match_text,
                                          step_id: x.step_id == null ? null : +x.step_id })) })),
   };
 }
@@ -4100,7 +4098,11 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("focusin", (e) => {
   const btn = e.target.closest && e.target.closest(".step-note-marker");
   if (btn) toggleStepNote(btn, true);
-  else closeAllStepNotes(null);
+  // ⚠️ NOT WHEN FOCUS LANDS INSIDE THE POPOVER. It holds a "step N" link, which is focusable the
+  //    moment the popover is shown, so tabbing off the marker closed the very thing focus had just
+  //    entered: the link was unreachable by keyboard and focus was dropped to the document. The
+  //    click handler below already makes this distinction.
+  else if (!(e.target.closest && e.target.closest(".step-note-pop"))) closeAllStepNotes(null);
 });
 
 /* ---------- events ---------- */
