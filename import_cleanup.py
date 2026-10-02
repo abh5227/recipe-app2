@@ -1026,7 +1026,7 @@ def _starts_a_sentence(rest):
     return bool(m) and rest[m.start()].isupper()
 
 
-def label_refusal(label):
+def label_refusal(label, caps_titled=False):
     """A reason string when `label` is not a title, else None. ONE function for both callers.
 
     ⚠️ IT RUNS FOR THE REVIEWED LABEL TOO, and that is deliberate. The corpus pass passes the label a
@@ -1057,6 +1057,19 @@ def label_refusal(label):
         if l.count(opener) != l.count(closer):
             # brownies: "Pour the batter into the prepared pan (it'll be thick" + "that's ok) and..."
             return f"a {opener}{closer} bracket is left open, so the label is half a sentence"
+    # ⚠️ AN ALL-CAPS LEAD-IN ENDING IN A COLON IS A TITLE, WHATEVER ITS SHAPE. The three refusals
+    #    below all read a label as prose, and prose is not written in capitals with a colon after
+    #    it. An author who typed "WHILE THE DOUGH IS RESTING, MAKE THE FILLING:" was writing a
+    #    heading and said so twice over, in the case and in the colon.
+    #    MEASURED BEFORE IT WAS WRITTEN, over all 300 recipes and after the author numbers come off:
+    #    exactly 2 labels take this door, 'WHILE THE DOUGH IS RESTING, MAKE THE FILLING'
+    #    (aloo-potato-parathas) and 'MEANWHILE, MAKE THE KACHUMBER TOPPING' (kachumber-tilapia), and
+    #    the 8 other currently-refused lead-ins are all mixed case and stay refused. The exemption
+    #    is narrow because the measurement said it could be.
+    #    ⚠️ IT DOES NOT REACH THE BRACKET REFUSAL ABOVE. A half-open bracket means the label is half
+    #    a sentence whatever its case, and lifting it would still cut the sentence in two.
+    if caps_titled:
+        return None
     if "," in l:
         return "a comma joins two clauses, and a title has one"
     if _LABEL_CONNECTIVE.match(l):
@@ -1114,6 +1127,52 @@ def _raw_cut_for_rendered_label(flat, label):
         raw_i += 1
         rendered += 1
     return raw_i if rendered == len(want) else None
+
+
+# ---- the author's own step numbers ---------------------------------------------------------------
+# ⚠️ TWO FORMS, AND THE SECOND IS THE RISKY ONE. A separator after the number ("1.", "1)", "Step 1:",
+#    "1 - ") is unambiguous. A BARE number followed by a space is not: "30 minutes before you start
+#    cooking throw your butter into the freezer" opens exactly that way and is a real instruction.
+#    The bare form is therefore admitted only when the number EQUALS the step's own ordinal and a
+#    capital letter follows it. Measured over all 300 recipes: that pair admits 7 steps, every one of
+#    them the author's numbering (oven-baked-ribs 1 to 5, potato-scallion-cakes 3,
+#    white-bean-stuffed-poblanos 2), and refuses the 3 real ones ("30 minutes...", "180 degrees...",
+#    "24 pieces..."), each of which is excluded by the ordinal clause alone.
+_AUTHOR_NUM_SEP = re.compile(r"^\s*(?:step\s*)?(\d+)\s*[.):\u2013\u2014-]\s+", re.IGNORECASE)
+_AUTHOR_NUM_BARE = re.compile(r"^\s*(\d+)\s+([A-Z\u00c0-\u00dd])")
+
+
+def author_step_number(text, ordinal):
+    """The author's own number at the front of a step -> (number, the text without it), else None.
+
+    `ordinal` is the step's position in the recipe, counting ordinary steps only. A number that does
+    not match it is not this step's number and is left alone."""
+    flat = text or ""
+    m = _AUTHOR_NUM_SEP.match(flat)
+    if m and int(m.group(1)) == ordinal:
+        return int(m.group(1)), flat[m.end():].lstrip()
+    m = _AUTHOR_NUM_BARE.match(flat)
+    if m and int(m.group(1)) == ordinal:
+        return int(m.group(1)), flat[m.start(2):]
+    return None
+
+
+def strip_author_numbers(step_texts):
+    """[step text] -> [step text], with the author's own numbering removed, or the list UNCHANGED.
+
+    ⚠️ ALL OR NOTHING, OVER THE WHOLE RECIPE. A number is removed only when the recipe's steps carry
+    a consecutive run starting at 1 that agrees with their own ordinals. One step beginning "2 cups
+    flour" in a recipe that is not numbered therefore cannot be touched, which is the whole point:
+    the evidence that a leading number is the AUTHOR'S is that the rest of the recipe is numbered
+    too. Headings are not passed in and so never interrupt the count.
+
+    A gap is allowed (a step the author left unnumbered) as long as every number present matches its
+    ordinal, because that is still one sequence with a hole rather than two different things."""
+    found = [author_step_number(t, i) for i, t in enumerate(step_texts, 1)]
+    numbered = [i for i, f in enumerate(found) if f is not None]
+    if len(numbered) < 2 or 0 not in numbered:
+        return list(step_texts)                 # not numbered, or not numbered from the start
+    return [found[i][1] if found[i] is not None else t for i, t in enumerate(step_texts)]
 
 
 def split_lead_label(text, label=None):
@@ -1175,7 +1234,11 @@ def split_lead_label(text, label=None):
     # ⚠️ LAST, AND FOR BOTH CALLERS. See label_refusal: the reviewed label and the detected one get
     #    the same question. The prefix is what lets plan_step_rows tell this from "no lead-in label"
     #    and put the candidate in front of a person instead of dropping it silently.
-    why = label_refusal(label)
+    # ⚠️ THE CASE AND THE COLON TOGETHER ARE THE EVIDENCE, and the colon has to come from the LINE
+    #    rather than from the label. A dash-separated ALL-CAPS lead-in is not this shape, which is
+    #    why `sep` is tested rather than just is_caps(label).
+    caps_titled = is_caps(label) and sep.strip().startswith(":")
+    why = label_refusal(label, caps_titled=caps_titled)
     if why:
         return LABEL_DECLINED + why
     # ⚠️ THE POSITIVE GATE RUNS ONLY WHERE NOBODY HAS JUDGED, which is the auto-detect path. A
@@ -1347,6 +1410,12 @@ def plan_step_rows(directions, notes=""):
     """
     rows, conversions = [], []
     notes = notes or ""
+    # ⚠️ THE AUTHOR'S OWN NUMBERS COME OFF FIRST, BEFORE ANY RULE READS THE LINE. The app prints its
+    #    own step number in a circle, so leaving "1." in the text shows the number twice, and a
+    #    lead-in label hiding behind one ("1. MAKE THE DOUGH: ...") cannot be seen by the label rule
+    #    at all. Stated over the WHOLE list: the ordinals are the author's own, counted over the
+    #    lines as they arrived, which is why this runs before anything becomes a heading or a note.
+    directions = strip_author_numbers(list(directions or []))
 
     def note(flag, detail):
         conversions.append({"position": len(rows), "flag": flag,

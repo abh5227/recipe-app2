@@ -3,9 +3,9 @@
   "_rules": [
     "Every entry names the recipe AND the note's position AND a fragment of its text. The script requires all three to agree before it writes, so a note that has moved or been reworded stops the pass instead of being silently mis-linked.",
     "A step is named by its row id, never by a number. The number on the page is resolved from the step's current position every time.",
-    "Andy decided each of these. Nothing here was inferred by a rule."
+    "Andy decided each of these. Nothing here was inferred by a rule.",
+    "A wait's when_kind is 'always' unless the recipe's own text says otherwise. 'optional' where the recipe offers a way to skip the wait entirely (canned beans). 'only_if' where the wait is required but only on one path, which carries the condition instead of hiding it behind the word optional."
   ],
-
   "step_links": [
     {
       "recipe_id": "the-best-new-york-style-bagel",
@@ -36,7 +36,6 @@
       "why": "The same step, for the same reason. These two notes say the same thing twice, one as the how and one as the whether; merging them is editorial and was deliberately not done here."
     }
   ],
-
   "step_references": [
     {
       "recipe_id": "aloo-potato-parathas",
@@ -45,20 +44,17 @@
       "ref_index": 0,
       "step_id": 4214,
       "evidence": "TWO INDEPENDENT PIECES. The author's own numbering survives verbatim in this recipe's step text: seven of its eight steps literally begin '1.' to '7.', and the row beginning '2.' is id 4214. And the wording agrees: the note adds cheese 'to the potatoes', and step 2 is 'WHILE THE DOUGH IS RESTING, MAKE THE FILLING', which is where the potatoes are mashed. 10 of the 300 recipes kept the author's numbering this way."
-    }
-  ],
-
-  "flagged_references": [
+    },
     {
       "recipe_id": "the-best-new-york-style-bagel",
       "note_position": 0,
       "text_fragment": "proceed with step 9",
       "ref_index": 0,
-      "why": "UNRESOLVED ON PURPOSE. The author's numbering is gone: 0 of this recipe's 15 steps carry a number in their text, there is no stored original (no Paprika directions and no cached page for feelingfoodish.com in tests/fixtures/pages), and the app's own step 9 is 'place in the refrigerator', the NEXT-DAY path, inside a note describing the SAME-DAY version. Linking it would send a cook to the opposite of what the sentence means. The rule is flag, do not link.",
-      "how_to_resolve": "Fetch the source page's structured data and take the author's ninth instruction, then match it by wording to a current step. Not done here: it is an outward request to a third-party site and it was not needed for any other entry."
+      "step_id": 3788,
+      "evidence": "RESOLVED FROM THE SOURCE PAGE, and it corrects the guess in the brief. The recipe card at feelingfoodish.com/authentic-ny-bagels carries 18 numbered instructions across six HowToSections. Its step 9 is the FIRST step of 'For Same Day Baking' ('Cover bagels with plastic wrap ... and let bagels rise for about 20 minutes in warmer weather or 30 minutes in cooler kitchens'), which matches the app's step 8, row 3788, at a wording similarity of 1.00. 'Preheat oven to 450 degrees', the first step of 'To Boil and Bake the Bagels', is the author's step 11, not 9. The offset is exactly one and its cause is visible in the card: the author's step 2 is the yeast Note, which the importer correctly moved out of the method and into the recipe's notes, where it is now note 9. Every other author step maps to an app step at similarity 0.83 or better, 13 of them at 1.00."
     }
   ],
-
+  "flagged_references": [],
   "waits": [
     {
       "recipe_id": "coconut-curried-golden-lentils",
@@ -74,6 +70,51 @@
       "when_label": null,
       "step_id": 4208,
       "why": "Andy's call. The recipe describes a soak only in its notes and had no wait row for it, so the plan-ahead panel said nothing about a step that takes eight hours. when_kind is 'optional', so it is listed in the breakdown and does NOT reach the total: planahead.counts already answers that and needed no change."
+    },
+    {
+      "recipe_id": "italian-two-bean-soup",
+      "position": 0,
+      "kind": "soaking",
+      "label": "8–10 hr",
+      "min_minutes": 480,
+      "max_minutes": 600,
+      "ext_label": null,
+      "ext_min_minutes": null,
+      "ext_max_minutes": null,
+      "when_kind": "optional",
+      "when_label": null,
+      "step_id": 2593,
+      "why": "The note says 'Soak beans for 8 - 10 hours before cooking' and both bean lines are dried, so an eight-hour step was invisible in Plan ahead. OPTIONAL rather than always, because the recipe's own notes offer the way out: 'You can also used canned beans, just be sure to drain and rinse before using.' Linked to step 2, which is where the soaked beans go in."
+    },
+    {
+      "recipe_id": "chipotle-black-beans",
+      "position": 0,
+      "kind": "soaking",
+      "label": "overnight",
+      "min_minutes": 480,
+      "max_minutes": null,
+      "ext_label": "or a 1 hr quick soak",
+      "ext_min_minutes": 60,
+      "ext_max_minutes": 60,
+      "when_kind": "always",
+      "when_label": null,
+      "step_id": 2148,
+      "why": "THE ONE HOUR IS AN ALTERNATIVE, NOT A WAIT OF ITS OWN, which is what the recipe's own words say: the ingredient line reads 'dried black beans rinsed, sorted, and soaked overnight', and the note is headed 'Quick soak: If you forgot to soak your beans the night before, use this method'. So the wait is the overnight soak and the hour is its extension, which is exactly the shape ext_label exists for and keeps the hour out of the total. ALWAYS, because the beans have to be soaked one way or the other and no canned option is offered. Linked to step 3, where the beans go in. ext_step_id is null: the quick-soak method is described in the notes and in no step."
+    },
+    {
+      "recipe_id": "marbled-chocolate-sugar-cookies",
+      "position": 0,
+      "kind": "resting",
+      "label": "30 min",
+      "min_minutes": 30,
+      "max_minutes": 30,
+      "ext_label": null,
+      "ext_min_minutes": null,
+      "ext_max_minutes": null,
+      "when_kind": "only_if",
+      "when_label": "the dough was refrigerated ahead",
+      "step_id": 2805,
+      "why": "⚠️ only_if RATHER THAN optional, WHICH IS A THIRD VALUE THE BRIEF DID NOT NAME. The note reads 'If wrapped tightly in plastic, both doughs CAN be stored in the refrigerator for several days before baking. When ready to bake, let sit at room temperature for about 30 minutes until you can easily form them into ropes.' The half hour is not optional in general, it is required on one specific path, and 'optional' would tell a cook who made the dough ahead that they could skip it. when_kind='only_if' carries the condition on the page and reaches the total no more than 'optional' does. Linked to step 8, which is where the ropes are formed."
     }
   ]
 }
