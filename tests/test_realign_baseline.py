@@ -241,3 +241,24 @@ def test_normalize_erases_the_three_cases_and_nothing_else():
     assert rl._normalize(base, live) != rl._normalize(blob(recipe__descr="something"), live), "real text MUST show"
     assert rl._normalize(base, live) != rl._normalize(blob(ingredients__ingredient_id="realign-probe"), live), \
         "a link to a row that EXISTS must show"
+
+
+def test_a_notes_row_is_one_of_the_row_lists_the_script_can_realign():
+    """⚠️ notes JOINED ROW_LISTS WITH MIGRATION 060 AND WAS LEFT OUT. A machine drift inside a note
+    row fell through to the raw comparison, so the recipe was reported as differing in something
+    real and could never be realigned. It failed safe rather than mis-writing, and it failed on
+    exactly the rows this round added."""
+    import realign_baseline
+
+    assert "notes" in realign_baseline.ROW_LISTS
+
+    stored = {"recipe": {"name": "X"},
+              "notes": [{"id": 12, "position": 0, "kind": "notes", "text": "A note.",
+                         "step_id": None, "ingredient_row_id": None}]}
+    current = {"recipe": {"name": "X"},
+               "notes": [{"id": 108, "position": 0, "kind": "notes", "text": "A note.",
+                          "step_id": None, "ingredient_row_id": None}]}
+    import json
+    cases, _detail = realign_baseline._cases(json.dumps(stored), json.dumps(current),
+                                             live_ingredients=set())
+    assert list(cases) == [realign_baseline.CASE_ID], cases

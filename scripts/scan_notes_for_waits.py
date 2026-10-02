@@ -93,18 +93,20 @@ def run(db, record=False):
 
     rows = []
     with app.orm_session() as s:
-        have_rows = s.execute(sqlalchemy.text(
-            "SELECT COUNT(*) FROM recipe_notes")).scalar_one()
         recipes = s.execute(sqlalchemy.text(
             "SELECT id, notes FROM recipes WHERE notes IS NOT NULL AND notes != '' ORDER BY id")).all()
         for rid, text in recipes:
             waits = [dict(w) for w in s.execute(sqlalchemy.text(
                 "SELECT kind, min_minutes, max_minutes FROM recipe_waits WHERE recipe_id=:r"),
                 {"r": rid}).mappings()]
-            paras = (notes_rules.paragraphs(text) if not have_rows else
-                     [r[0] for r in s.execute(sqlalchemy.text(
-                         "SELECT text FROM recipe_notes WHERE recipe_id=:r ORDER BY position"),
-                         {"r": rid}).all()])
+            # ⚠️ ROWS OR COLUMN, DECIDED PER RECIPE. This read one COUNT over the whole table and
+            #    applied the answer to all 300, so once any recipe had rows every recipe was read
+            #    from rows, and a recipe whose notes are still only in the column was counted as
+            #    having notes and scanned as empty. That is the state every imported recipe was in.
+            rows_here = [r[0] for r in s.execute(sqlalchemy.text(
+                "SELECT text FROM recipe_notes WHERE recipe_id=:r ORDER BY position"),
+                {"r": rid}).all()]
+            paras = rows_here if rows_here else notes_rules.paragraphs(text)
             for i, para in enumerate(paras):
                 for m in DURATION.finditer(para):
                     lo, hi = planahead.read_duration(m.group(0))
@@ -143,6 +145,13 @@ def run(db, record=False):
     print(f"  of those, read as STORAGE : {len(storage_like)}  (listed in the CSV, not proposed)")
     for r in storage_like:
         print(f"      {r['recipe_id']:44s} {r['duration']}")
+    # ⚠️ A RUN THAT FOUND NOTHING WRITES NOTHING. --record on an empty run otherwise put a
+    #    header-only file into the committed folder, which is how three records were truncated to
+    #    their headers once already (see corpus_guard.report_target).
+    if not rows:
+        print("  no candidates, so no review list was written.")
+        print("  NOTHING WAS WRITTEN. A wait is a judgement; this hands over candidates.")
+        return rows
     target = report_target(CSV_NAME, record)
     with open(target, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]) if rows else

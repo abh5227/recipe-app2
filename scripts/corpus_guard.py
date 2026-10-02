@@ -140,7 +140,21 @@ def is_live(db, base=None):
 
 
 def refuse_live(db, i_mean_live, base=None):
-    """Exit unless the caller said `--i-mean-live`, when `db` is (or might be) the live database."""
+    """Exit unless the caller said `--i-mean-live`, when `db` is (or might be) the live database.
+
+    ⚠️ AND A $DATABASE_URL BESIDE A --db IS REFUSED OUTRIGHT, BECAUSE THE PATH IS THEN A LIE. Every
+    pass rebinds app.DB and reads through app.orm_session(), which prefers $DATABASE_URL over the
+    file it was handed, and this guard only ever inspected filesystem paths. Measured with the two
+    lines the passes use: refuse_live passed a copy under /tmp, the engine opened
+    postgresql+psycopg://…/recipe_test, and the pass read 6 recipes where the copy holds 300. With
+    --apply against production Postgres it would have written production while printing the copy's
+    name. Pointing a pass at Postgres is a thing to build deliberately, not a thing to reach by
+    leaving a variable set in a shell."""
+    url = os.environ.get("DATABASE_URL")
+    if url and not i_mean_live:
+        sys.exit(f"refusing to run with DATABASE_URL set ({url.split('://')[0]}://…): this pass "
+                 f"takes a FILE and opens whatever that variable names instead. Unset it, or say "
+                 f"--i-mean-live if that database really is the target.")
     if i_mean_live:
         return
     if base is None:

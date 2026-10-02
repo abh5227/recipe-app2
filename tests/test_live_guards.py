@@ -303,3 +303,73 @@ def test_migrate_takes_a_path_as_an_argument_not_only_a_module_global():
     assert "db" in inspect.signature(migrate.migrate).parameters
     src = (REPO / "migrate.py").read_text()
     assert "from corpus_guard import refuse_live" in src, "a second copy of the guard, not the guard"
+
+
+# ---- a pass dry-runs until it is told to apply (review fix) -------------------------------------
+# ⚠️ STATED OVER THE FOLDER, NOT OVER A LIST OF FOUR. tests/test_corpus_passes.py pinned this by
+# naming add_missed_waits, apply_label_rules, apply_plan_ahead_proposals and convert_step_headings,
+# so the three passes this round added were covered by nothing, and a new pass that wrote by default
+# would fail no test. That is the exact shape of the defect the rule came from:
+# apply_plan_ahead_proposals took --dry and WROTE by default while the other three took --apply, so
+# one command shape had opposite effects depending on which script you typed.
+#
+# The older version of this check keyed on a regex for INSERT/UPDATE/DELETE, which is why it sat
+# unused: \bINSERT\b matches `sys.path.insert(`, so it called every script in the folder a writer.
+# What identifies a pass is that it takes a database and wires the guard.
+_NO_DRY_RUN = {
+    "create_admin.py":         "not a pass. Its whole job is the one INSERT the operator typed, and "
+                               "it refuses a duplicate email rather than writing twice",
+    "scan_notes_for_waits.py": "not a pass. A survey that writes a CSV and never touches recipe "
+                               "data, which the test below asserts",
+    "migrate.py":              "not a pass. Applying the pending migrations IS its job, it is "
+                               "idempotent by the schema_migrations ledger, and the chain's own "
+                               "rehearsal calls it first",
+}
+
+
+def test_every_pass_that_takes_a_database_dry_runs_until_it_is_told_to_apply():
+    bad = []
+    for p in _sources():
+        src = p.read_text(encoding="utf-8")
+        if "refuse_live(" not in src or p.name in _NO_DRY_RUN:
+            continue
+        if '"--apply"' not in src:
+            bad.append(p.name)
+    assert not bad, f"these passes write without being asked: {bad}"
+
+
+def test_the_no_dry_run_exemptions_are_still_what_they_say_they_are():
+    """An exemption is a named entry with a reason, and the reason has to stay true."""
+    for name in _NO_DRY_RUN:
+        p = (REPO / name) if name == "migrate.py" else (REPO / "scripts" / name)
+        assert p.exists(), f"{name} is exempted and no longer exists"
+    survey = (REPO / "scripts" / "scan_notes_for_waits.py").read_text(encoding="utf-8")
+    for write in ("INSERT INTO", "UPDATE recipe", "DELETE FROM"):
+        assert write not in survey, f"the survey script now runs {write}"
+
+
+# ---- $DATABASE_URL beside a --db (review fix) ---------------------------------------------------
+
+def test_the_guard_refuses_a_run_whose_database_url_overrides_the_path_it_was_given(tmp_path,
+                                                                                    monkeypatch):
+    """⚠️ THE PATH IS A LIE WHEN $DATABASE_URL IS SET. Every pass rebinds app.DB and then reads
+    through app.orm_session(), which prefers $DATABASE_URL over the file it was handed, and this
+    guard only ever inspected filesystem paths. Measured with the two lines the passes use:
+    refuse_live passed a copy under /tmp, the engine opened the test Postgres, and the pass read 6
+    recipes where the copy holds 300. With --apply against production Postgres it would have
+    written production while printing the copy's name."""
+    import corpus_guard
+
+    copy = tmp_path / "rehearsal.db"
+    copy.write_bytes(b"")
+    corpus_guard.refuse_live(copy, False)          # no variable set: an ordinary copy run
+
+    monkeypatch.setenv("DATABASE_URL", "postgresql+psycopg://u:p@127.0.0.1:55432/recipe_test")
+    with pytest.raises(SystemExit) as e:
+        corpus_guard.refuse_live(copy, False)
+    assert "DATABASE_URL" in str(e.value)
+    assert "postgresql" in str(e.value) and "u:p" not in str(e.value), \
+        "the refusal must name the scheme without printing the credentials"
+
+    # said out loud, it is allowed, because pointing a pass at Postgres is a thing to do on purpose
+    corpus_guard.refuse_live(copy, True)

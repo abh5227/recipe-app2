@@ -58,7 +58,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))      # f
 from corpus_guard import refuse_live, report_target                          # noqa: E402
 
 CSV_NAME = "baseline-realign.csv"
-ROW_LISTS = ("ingredients", "steps", "waits", "storage")
+# ⚠️ notes IS ONE OF THESE SINCE MIGRATION 060. It was missing, so a machine drift inside a note
+#    row (a row id, a released link, an empty string where a null belongs) fell through to the raw
+#    comparison and the recipe was reported as differing in something real, which this script is
+#    then unable to realign. It failed safe rather than mis-writing, and it failed on exactly the
+#    rows this round added.
+ROW_LISTS = ("ingredients", "steps", "waits", "storage", "notes")
 EMPTYISH = (None, "")
 
 CASE_ID = "row id"

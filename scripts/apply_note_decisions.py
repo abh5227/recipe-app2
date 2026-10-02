@@ -17,6 +17,24 @@ touched. The gate is 0 new marks, and the script aborts on anything else.
 ⚠️ EACH ENTRY MUST AGREE ON THREE THINGS BEFORE ANYTHING IS WRITTEN: the recipe, the note's
 position, and a fragment of its text. A note that has moved or been reworded stops the pass rather
 than being silently mis-linked. The decision was made about a sentence, not about a slot.
+
+⚠️ THE BASELINE IS PATCHED SURGICALLY, ONE ENTRY AT A TIME, NEVER REBUILT. It rebuilt the whole
+baseline from current content, and the review proved what that costs: kfc-spicy-chicken-rice-bowl
+with one real cook edit to a step came out of this pass with that edit absorbed into the baseline
+and its mark gone, because a rebuild declares the recipe born in its edited state. 20 recipes carry
+49 entries between them, and one recorded decision on any of them would have erased the lot.
+Only the touched note's entry and the inserted wait's entry move, read back from the live rows.
+
+⚠️ AND THE GATE RUNS BEFORE THE COMMIT, NOT AFTER IT. It was a post-mortem: the writes committed
+per recipe and the mark check ran at the end, so the abort printed a verdict on data that was
+already on disk and half the decision file could be applied with no record of where it stopped.
+Each recipe's transaction now proves itself and rolls back if it cannot.
+
+⚠️ AND A SECOND RUN IS A NO-OP, NOT AN IntegrityError. Both writes were bare INSERTs into tables
+carrying UNIQUE (note_id, ref_index) and UNIQUE (recipe_id, position), so re-running the pass on an
+applied database died mid-way with earlier recipes already committed, and the dry run showed
+nothing wrong beforehand. An entry already in place is detected in the planning phase and reported
+as a no-op, which is what makes the dry run a faithful preview of the real run.
 """
 import argparse
 import json
@@ -34,7 +52,7 @@ DECISIONS = (pathlib.Path(__file__).resolve().parent.parent
 def _note(s, sqlalchemy, entry):
     """The one note row an entry names, or an explanation of why it names none."""
     row = s.execute(sqlalchemy.text(
-        "SELECT id, text FROM recipe_notes WHERE recipe_id=:r AND position=:p"),
+        "SELECT id, text, step_id FROM recipe_notes WHERE recipe_id=:r AND position=:p"),
         {"r": entry["recipe_id"], "p": entry["note_position"]}).mappings().first()
     if row is None:
         return None, f"no note at position {entry['note_position']}"
@@ -44,32 +62,110 @@ def _note(s, sqlalchemy, entry):
     return row, None
 
 
+def _state(s, sqlalchemy, app, rid):
+    """What the gate is stated against: this recipe's annotation ENTRIES and whether it is
+    byte-equal to its baseline.
+
+    ⚠️ THE ENTRIES, NOT THEIR COUNT. One entry leaving while another joins holds the count still,
+    which is the kind of thing a pass should have to explain."""
+    cur = app.serialize_recipe_content(s, rid)
+    got = s.execute(sqlalchemy.text(
+        "SELECT content FROM recipe_snapshots WHERE recipe_id=:r AND reason='original'"),
+        {"r": rid}).scalar_one_or_none()
+    return {"byte_equal": got is not None and cur == got,
+            "marks": json.dumps(app._recipe_annotations(s, rid), sort_keys=True)}
+
+
+def _patch_note(doc, s, sqlalchemy, snapshot_serialize, note_id):
+    """Replace exactly the one note entry this pass touched, read back from the live row."""
+    row = s.execute(sqlalchemy.text(
+        "SELECT id, position, kind, text, step_id, ingredient_row_id "
+        "FROM recipe_notes WHERE id=:n"), {"n": note_id}).mappings().first()
+    refs = s.execute(sqlalchemy.text(
+        "SELECT ref_index, step_id FROM recipe_note_step_refs WHERE note_id=:n "
+        "ORDER BY ref_index"), {"n": note_id}).mappings().all()
+    entry = snapshot_serialize.snapshot_note_row(
+        dict(row) | {"refs": [dict(r) for r in refs]})
+    for i, e in enumerate(doc.get("notes") or ()):
+        if e.get("id") == note_id:
+            doc["notes"][i] = entry
+            return
+    # No entry to replace. The gate below is what reports it, because a baseline that does not
+    # describe the note being linked is a disagreement this pass must not paper over.
+
+
+def _patch_wait(doc, s, sqlalchemy, snapshot_serialize, wait_id):
+    """Add exactly the one wait entry this pass inserted, in the serializer's own order."""
+    row = s.execute(sqlalchemy.text(
+        "SELECT * FROM recipe_waits WHERE id=:w"), {"w": wait_id}).mappings().first()
+    doc.setdefault("waits", []).append(
+        {k: row[k] for k in snapshot_serialize.SNAPSHOT_WAIT_FIELDS})
+    doc["waits"].sort(key=lambda e: (e.get("position") or 0, e.get("id") or 0))
+
+
 def run(db, apply=False):
     import app
     import models
+    import notes as notes_rules
+    import snapshot_serialize
     import sqlalchemy
     app.DB = models.DB = pathlib.Path(db)
     plan = json.loads(DECISIONS.read_text())
 
-    todo, refused = [], []
+    todo, refused, done = [], [], []
     with app.orm_session() as s:
         for entry in plan["step_links"]:
             row, why = _note(s, sqlalchemy, entry)
-            (refused if row is None else todo).append(
-                (entry["recipe_id"], "link", entry, row, why))
+            if row is None:
+                refused.append((entry["recipe_id"], why))
+            elif row["step_id"] == entry["step_id"]:
+                done.append((entry["recipe_id"], "link", "already points at that step"))
+            else:
+                todo.append((entry["recipe_id"], "link", entry, row))
         for entry in plan["step_references"]:
             row, why = _note(s, sqlalchemy, entry)
-            (refused if row is None else todo).append(
-                (entry["recipe_id"], "ref", entry, row, why))
+            if row is None:
+                refused.append((entry["recipe_id"], why))
+                continue
+            got = s.execute(sqlalchemy.text(
+                "SELECT step_id FROM recipe_note_step_refs WHERE note_id=:n AND ref_index=:i"),
+                {"n": row["id"], "i": entry["ref_index"]}).mappings().first()
+            if got is None:
+                todo.append((entry["recipe_id"], "ref", entry, row))
+            elif got["step_id"] == entry["step_id"]:
+                done.append((entry["recipe_id"], "ref", "that mention already resolves there"))
+            else:
+                refused.append((entry["recipe_id"],
+                                f"mention {entry['ref_index']} already resolves to step id "
+                                f"{got['step_id']}, not {entry['step_id']}"))
         for entry in plan["waits"]:
-            todo.append((entry["recipe_id"], "wait", entry, None, None))
+            got = s.execute(sqlalchemy.text(
+                "SELECT id, position FROM recipe_waits WHERE recipe_id=:r AND label=:l"),
+                {"r": entry["recipe_id"], "l": entry["label"]}).mappings().first()
+            if got is not None:
+                done.append((entry["recipe_id"], "wait", "that wait is already on the recipe"))
+                continue
+            # ⚠️ THE RECORDED POSITION HAS TO BE FREE. recipe_waits carries
+            #    UNIQUE (recipe_id, position), so a slot taken by some other wait is an abort the
+            #    dry run should show, not an IntegrityError half way through the write.
+            taken = s.execute(sqlalchemy.text(
+                "SELECT label FROM recipe_waits WHERE recipe_id=:r AND position=:p"),
+                {"r": entry["recipe_id"], "p": entry["position"]}).scalar_one_or_none()
+            if taken is not None:
+                refused.append((entry["recipe_id"], f"position {entry['position']} is taken by "
+                                                    f"{taken!r}"))
+                continue
+            todo.append((entry["recipe_id"], "wait", entry, None))
 
     print(f"  decisions to apply        : {len(todo)}")
-    for rid, what, entry, row, _why in todo:
+    for rid, what, entry, _row in todo:
         detail = entry.get("text_fragment") or entry.get("label")
         print(f"      {what:5s} {rid:46s} {str(detail)[:44]}")
+    print(f"  already applied (no-op)   : {len(done)}")
+    for rid, what, why in done:
+        print(f"      {what:5s} {rid:46s} {why}")
     print(f"  refused (the note moved)  : {len(refused)}")
-    for rid, _w, _e, _r, why in refused:
+    for rid, why in refused:
         print(f"      {rid}: {why}")
     print(f"  flagged, left unlinked    : {len(plan['flagged_references'])}")
     for f in plan["flagged_references"]:
@@ -80,26 +176,33 @@ def run(db, apply=False):
     if not apply:
         print("  DRY RUN. Nothing written. Pass --apply to write.")
         return todo
+    if not todo:
+        print("  nothing to do. Every decision is already in place.")
+        return todo
 
     touched = sorted({rid for rid, *_ in todo})
     before = {}
     with app.orm_session() as s:
         for rid in touched:
-            before[rid] = len(app._recipe_annotations(s, rid))
+            before[rid] = _state(s, sqlalchemy, app, rid)
 
     for rid in touched:
         with app.orm_session() as s:
-            for _rid, what, entry, row, _why in [t for t in todo if t[0] == rid]:
+            stored = s.execute(sqlalchemy.text(
+                "SELECT content FROM recipe_snapshots WHERE recipe_id=:r AND reason='original'"),
+                {"r": rid}).scalar_one_or_none()
+            doc = json.loads(stored) if stored is not None else None
+            for _rid, what, entry, row in [t for t in todo if t[0] == rid]:
                 if what == "link":
                     s.execute(sqlalchemy.text(
                         "UPDATE recipe_notes SET step_id=:sid WHERE id=:nid"),
                         {"sid": entry["step_id"], "nid": row["id"]})
                 elif what == "ref":
                     # the mention must still be in the text, and at the ordinal recorded
-                    import notes as notes_rules
                     mentions = notes_rules.scan_step_mentions(row["text"])
                     m = next((x for x in mentions if x["ref_index"] == entry["ref_index"]), None)
                     if m is None:
+                        s.rollback()
                         sys.exit(f"ABORT on {rid}: no step mention at ref_index "
                                  f"{entry['ref_index']}")
                     s.execute(sqlalchemy.text(
@@ -108,36 +211,43 @@ def run(db, apply=False):
                         {"n": row["id"], "i": m["ref_index"], "m": m["match_text"],
                          "s": entry["step_id"]})
                 elif what == "wait":
-                    s.execute(sqlalchemy.text(
+                    wid = s.execute(sqlalchemy.text(
                         "INSERT INTO recipe_waits (recipe_id, position, kind, label, min_minutes, "
                         "max_minutes, ext_label, ext_min_minutes, ext_max_minutes, when_kind, "
                         "when_label, step_id) VALUES (:r, :p, :k, :l, :lo, :hi, :el, :elo, :ehi, "
-                        ":wk, :wl, :sid)"),
+                        ":wk, :wl, :sid) RETURNING id"),
                         {"r": entry["recipe_id"], "p": entry["position"], "k": entry["kind"],
                          "l": entry["label"], "lo": entry["min_minutes"],
                          "hi": entry["max_minutes"], "el": entry["ext_label"],
                          "elo": entry["ext_min_minutes"], "ehi": entry["ext_max_minutes"],
                          "wk": entry["when_kind"], "wl": entry["when_label"],
-                         "sid": entry["step_id"]})
-            # ⚠️ THE OTHER HALF, IN THE SAME TRANSACTION. The baseline is rewritten to the recipe's
-            #    content as it now stands, which is correct HERE and nowhere else: every change this
-            #    pass makes is a machine repair, so the recipe was always meant to read this way and
-            #    the cook has changed nothing. The abort below is what proves it.
-            s.execute(sqlalchemy.text(
-                "UPDATE recipe_snapshots SET content=:c WHERE recipe_id=:r AND reason='original'"),
-                {"c": app.serialize_recipe_content(s, rid), "r": rid})
+                         "sid": entry["step_id"]}).scalar_one()
+                # ⚠️ THE OTHER HALF, IN THE SAME TRANSACTION, AND ONLY THE ENTRY THAT MOVED.
+                if doc is not None:
+                    if what in ("link", "ref"):
+                        _patch_note(doc, s, sqlalchemy, snapshot_serialize, row["id"])
+                    else:
+                        _patch_wait(doc, s, sqlalchemy, snapshot_serialize, wid)
+            if doc is not None:
+                s.execute(sqlalchemy.text(
+                    "UPDATE recipe_snapshots SET content=:c WHERE recipe_id=:r "
+                    "AND reason='original'"),
+                    {"c": json.dumps(doc, sort_keys=True, ensure_ascii=False,
+                                     separators=(",", ":")), "r": rid})
+            # ⚠️ PROVE IT BEFORE COMMITTING, inside the same transaction, against the state read
+            #    before this run wrote anything.
+            now = _state(s, sqlalchemy, app, rid)
+            if now["marks"] != before[rid]["marks"]:
+                s.rollback()
+                sys.exit(f"ABORT on {rid}: the annotation set moved, so nothing was written. "
+                         f"before={before[rid]['marks'][:200]} after={now['marks'][:200]}")
+            if before[rid]["byte_equal"] and not now["byte_equal"]:
+                s.rollback()
+                sys.exit(f"ABORT on {rid}: it left the byte-equal set, so nothing was written.")
             s.commit()
 
-    bad = []
-    with app.orm_session() as s:
-        for rid in touched:
-            now = len(app._recipe_annotations(s, rid))
-            if now != before[rid]:
-                bad.append((rid, before[rid], now))
-    if bad:
-        sys.exit(f"ABORT: {len(bad)} recipe(s) changed their mark count: {bad}")
     print(f"  WROTE {len(todo)} decision(s) over {len(touched)} recipe(s) -> {db}")
-    print(f"  no recipe's mark count moved")
+    print(f"  no recipe's annotation set moved and none left the byte-equal set")
     return todo
 
 

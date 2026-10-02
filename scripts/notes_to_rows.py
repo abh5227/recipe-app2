@@ -94,11 +94,14 @@ def run(db, apply=False, record=False):
             got = s.execute(sqlalchemy.text(
                 "SELECT content FROM recipe_snapshots WHERE recipe_id=:r AND reason='original'"),
                 {"r": rid}).scalar_one_or_none()
+            # ⚠️ THE ENTRIES, NOT THEIR COUNT. One entry leaving while another joins holds the
+            #    count still, and that is exactly the kind of thing a pass should have to explain.
             before_state[rid] = {"byte_equal": got is not None and cur == got,
-                                 "marks": len(app._recipe_annotations(s, rid))}
+                                 "marks": json.dumps(app._recipe_annotations(s, rid),
+                                                     sort_keys=True)}
     print(f"  before this run           : {sum(1 for v in before_state.values() if v['byte_equal'])}"
           f" of {len(planned)} byte-equal, "
-          f"{sum(v['marks'] for v in before_state.values())} mark(s) between them")
+          f"{sum(len(json.loads(v['marks'])) for v in before_state.values())} mark(s) between them")
 
     import snapshot_serialize
     written = 0
@@ -130,6 +133,23 @@ def run(db, apply=False, record=False):
                     "UPDATE recipe_snapshots SET content=:c WHERE recipe_id=:r AND reason='original'"),
                     {"c": json.dumps(doc, sort_keys=True, ensure_ascii=False,
                                      separators=(",", ":")), "r": rid})
+            # ⚠️ PROVE THIS RECIPE BEFORE COMMITTING IT. The gate used to run after every recipe
+            #    had committed, which made it a post-mortem: a lockstep failure on recipe 40 left
+            #    39 recipes written, the baseline half moved, and an abort message that read as
+            #    though nothing had happened. Each recipe now proves itself inside its own
+            #    transaction and rolls back if it cannot.
+            cur_now = app.serialize_recipe_content(s, rid)
+            got_now = s.execute(sqlalchemy.text(
+                "SELECT content FROM recipe_snapshots WHERE recipe_id=:r AND reason='original'"),
+                {"r": rid}).scalar_one_or_none()
+            marks_now = json.dumps(app._recipe_annotations(s, rid), sort_keys=True)
+            if marks_now != before_state[rid]["marks"]:
+                s.rollback()
+                sys.exit(f"ABORT on {rid}: the annotation set moved, so nothing was written.")
+            if before_state[rid]["byte_equal"] and not (got_now is not None
+                                                        and cur_now == got_now):
+                s.rollback()
+                sys.exit(f"ABORT on {rid}: it left the byte-equal set, so nothing was written.")
             s.commit()
             written += len(paras)
 
@@ -151,9 +171,10 @@ def run(db, apply=False, record=False):
             equal_now = got is not None and cur == got
             if before_state[rid]["byte_equal"] and not equal_now:
                 lost.append(rid)
-            marks_now = len(app._recipe_annotations(s, rid))
+            marks_now = json.dumps(app._recipe_annotations(s, rid), sort_keys=True)
             if marks_now != before_state[rid]["marks"]:
-                changed.append((rid, before_state[rid]["marks"], marks_now))
+                changed.append((rid, len(json.loads(before_state[rid]["marks"])),
+                                len(json.loads(marks_now))))
     if lost:
         sys.exit(f"ABORT: {len(lost)} recipe(s) left the byte-equal set: {lost[:8]}")
     if changed:
