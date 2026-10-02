@@ -1,0 +1,183 @@
+{
+ "note": "Captured from planahead.conditional_totals, which is the only implementation. The Python suite asserts the figures and the JS suite asserts the markup the client builds from them, so the computation and the rendering cannot drift apart.",
+ "cases": [
+  {
+   "name": "an optional soak, named by its kind",
+   "recipe": {
+    "prep_time": "20 min",
+    "cook_time": "1 hr",
+    "total_time": null
+   },
+   "waits": [
+    {
+     "kind": "soaking",
+     "label": "8-10 hr",
+     "min_minutes": 480,
+     "max_minutes": 600,
+     "when_kind": "optional",
+     "when_label": null,
+     "ext_label": null
+    }
+   ],
+   "expected": [
+    {
+     "label": "9 hr 20 min+",
+     "when": "with the optional soak"
+    }
+   ]
+  },
+  {
+   "name": "an only_if rest, named by the author's own words",
+   "recipe": {
+    "prep_time": "25 min",
+    "cook_time": "50 min",
+    "total_time": null
+   },
+   "waits": [
+    {
+     "kind": "resting",
+     "label": "30 min",
+     "min_minutes": 30,
+     "max_minutes": 30,
+     "when_kind": "only_if",
+     "when_label": "the dough was refrigerated ahead",
+     "ext_label": null
+    }
+   ],
+   "expected": [
+    {
+     "label": "1 hr 45 min",
+     "when": "if the dough was refrigerated ahead"
+    }
+   ]
+  },
+  {
+   "name": "two conditionals, one line each (no-knead-bread's shape)",
+   "recipe": {
+    "prep_time": "15 min",
+    "cook_time": "55 min",
+    "total_time": null
+   },
+   "waits": [
+    {
+     "kind": "rising",
+     "label": "up to 3 days",
+     "min_minutes": 0,
+     "max_minutes": 4320,
+     "when_kind": "optional",
+     "when_label": null,
+     "ext_label": null
+    },
+    {
+     "kind": "resting",
+     "label": "45-60 min",
+     "min_minutes": 45,
+     "max_minutes": 60,
+     "when_kind": "only_if",
+     "when_label": "chilled",
+     "ext_label": null
+    }
+   ],
+   "expected": [
+    {
+     "label": "1 hr 55 min+",
+     "when": "if chilled"
+    }
+   ]
+  },
+  {
+   "name": "a conditional on top of a counted wait",
+   "recipe": {
+    "prep_time": "10 min",
+    "cook_time": "2 hr",
+    "total_time": null
+   },
+   "waits": [
+    {
+     "kind": "soaking",
+     "label": "overnight",
+     "min_minutes": 480,
+     "max_minutes": null,
+     "when_kind": "always",
+     "when_label": null,
+     "ext_label": null
+    },
+    {
+     "kind": "resting",
+     "label": "1 hr",
+     "min_minutes": 60,
+     "max_minutes": 60,
+     "when_kind": "optional",
+     "when_label": null,
+     "ext_label": null
+    }
+   ],
+   "expected": [
+    {
+     "label": "11 hr 10 min+",
+     "when": "with the optional rest"
+    }
+   ]
+  },
+  {
+   "name": "alongside is not a conditional path",
+   "recipe": {
+    "prep_time": "10 min",
+    "cook_time": "30 min",
+    "total_time": null
+   },
+   "waits": [
+    {
+     "kind": "rising",
+     "label": "1 hr",
+     "min_minutes": 60,
+     "max_minutes": 60,
+     "when_kind": "alongside",
+     "when_label": null,
+     "ext_label": null
+    }
+   ],
+   "expected": []
+  },
+  {
+   "name": "no prep or cook means no second total either",
+   "recipe": {
+    "prep_time": null,
+    "cook_time": "30 min",
+    "total_time": null
+   },
+   "waits": [
+    {
+     "kind": "soaking",
+     "label": "2 hr",
+     "min_minutes": 120,
+     "max_minutes": 120,
+     "when_kind": "optional",
+     "when_label": null,
+     "ext_label": null
+    }
+   ],
+   "expected": []
+  },
+  {
+   "name": "every wait unconditional, so there is nothing to add",
+   "recipe": {
+    "prep_time": "10 min",
+    "cook_time": "20 min",
+    "total_time": null
+   },
+   "waits": [
+    {
+     "kind": "rising",
+     "label": "1 hr",
+     "min_minutes": 60,
+     "max_minutes": 60,
+     "when_kind": "always",
+     "when_label": null,
+     "ext_label": null
+    }
+   ],
+   "expected": []
+  }
+ ]
+}

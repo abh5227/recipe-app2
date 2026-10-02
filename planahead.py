@@ -306,6 +306,94 @@ def recipe_total(recipe, waits):
     return _range_label(lo, hi), INCLUDES_WAITS_NOTE
 
 
+def conditional_totals(recipe, waits):
+    """The second Total, one line per conditional wait -> [{"label", "when"}].
+
+    ⚠️ ANDY'S RULE: THE MAIN TOTAL IS UNCHANGED AND THIS SITS UNDER IT. The Total answers "how long
+    does this take", and an optional soak is not time a cook has to set aside (see counts). But a
+    cook who IS going to soak the beans still has to know what that costs, and working it out from a
+    total and a bullet is arithmetic the page can do for them.
+
+    ⚠️ ONE LINE PER CONDITIONAL WAIT, NOT ONE LINE PER COMBINATION. Measured over the 300: 5 recipes
+    carry a conditional wait and exactly ONE carries two (no-knead-bread, an optional cold rise of
+    up to 3 days and a 45 to 60 minute rest only if chilled). Two lines there read as two choices a
+    cook makes one at a time, which is what they are, where a combined line would read as a third
+    figure for a path nobody described. Each line names its own condition, so a chain says so.
+
+    ⚠️ AND `alongside` IS NOT ONE OF THESE. A wait that runs alongside the cooking is not a longer
+    path through the recipe, it is the same path with something happening next to it.
+
+    Returns [] when there is no base to add to, which is the same silence recipe_total keeps."""
+    get = (lambda k: recipe.get(k)) if isinstance(recipe, dict) else (
+        lambda k: getattr(recipe, k, None))
+    conditional = [w for w in (waits or [])
+                   if _when(w) in ("optional", "only_if")]
+    if not conditional:
+        return []
+    # the figure these are added TO: the same base the main Total uses, so the two agree
+    plo, phi = clock_minutes(get("prep_time"))
+    clo, chi = clock_minutes(get("cook_time"))
+    if plo is None or clo is None:
+        return []
+    counted = [w for w in (waits or []) if counts(w)]
+    wlo, whi = total(counted)
+    base_lo = plo + clo + (wlo or 0)
+    base_hi = None if (whi is None and counted) else phi + chi + (whi or 0)
+
+    out = []
+    for w in conditional:
+        lo, hi = _minutes(w)
+        if lo is None:
+            continue
+        top = None if base_hi is None or hi is None else base_hi + hi
+        # ⚠️ A FLOOR OF ZERO HAS NO SECOND TOTAL, AND SAYING NOTHING BEATS SAYING EITHER ANSWER.
+        #    The main Total's convention is the shortest time plus a "+". A wait stored 0 to 4320
+        #    ("up to 3 days", no-knead-bread, the one case in the 300) has a floor that adds
+        #    nothing, so the floor form printed the SAME figure as the Total above it and answered
+        #    the question with the question. Reading it from the ceiling instead gives "73 hr
+        #    10 min", which is arithmetic rather than an answer, and fmt_minutes has no day form to
+        #    make it readable. The wait is still in the plan-ahead breakdown with its own words,
+        #    which is where "up to 3 days" reads properly.
+        if lo == 0:
+            continue
+        label = _range_label(base_lo + lo, top)
+        if label is None:
+            continue
+        out.append({"label": label, "when": _conditional_phrase(w)})
+    return out
+
+
+def _conditional_phrase(w):
+    """How a conditional line names its own condition.
+
+    ⚠️ THE AUTHOR'S WORDS WHERE THERE ARE ANY. only_if carries a when_label written for this exact
+    recipe ("the dough was refrigerated ahead"), and nothing a rule invents will beat it. An
+    optional wait has no condition to state, so it is named by what it IS."""
+    when = _when(w)
+    label = (w.get("when_label") or "").strip()
+    if when == "only_if":
+        return f"if {label}" if label else "on that path"
+    verb = (w.get("label") or "").strip()
+    if label:
+        return f"with {label}"
+    return f"with the optional {_kind_noun(w)}" if _kind_noun(w) else "with the optional step"
+
+
+def _kind_noun(w):
+    """The wait's kind as a noun a sentence can carry: "soak", "rise", "chill"."""
+    kind = (w.get("kind") or "").strip().lower()
+    return {"soaking": "soak", "rising": "rise", "chilling": "chill", "marinating": "marinade",
+            "resting": "rest", "freezing": "freeze", "brining": "brine"}.get(kind, "")
+
+
+def _when(w):
+    return (w.get("when_kind") or "always").strip() or "always"
+
+
+def _minutes(w):
+    return w.get("min_minutes"), w.get("max_minutes")
+
+
 def _stated_parts(stated):
     """An author's own total -> (figure, note), normalized the way every other stored time is.
 

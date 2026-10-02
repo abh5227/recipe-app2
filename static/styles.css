@@ -1930,6 +1930,17 @@ a:hover { color: var(--berry-lift); }
    and holds however many lines the text runs to. 5.3px is that figure for browsers without `lh`. */
 .meta-stack .meta-item { display: grid; grid-template-columns: 26px auto; align-items: start; justify-items: start; gap: 7px; }
 .meta-stack .meta-item > .meta-ico { margin-top: 5.3px; margin-top: calc((1lh - 15px) / 2); }
+
+/* The second Total: what the recipe costs if you take a conditional path. Smaller and quieter than
+   the Total it sits under, and indented to the same column as the figures beside it so it reads as
+   a footnote to that line rather than a new fact. One line per conditional wait. */
+.meta-stack .meta-item.meta-conditional {
+  grid-template-columns: 26px auto;
+  margin-top: -2px;
+  font-size: .88em;
+  color: var(--ink-soft);
+}
+.meta-stack .meta-item.meta-conditional .meta-val { font-weight: 600; color: var(--ink-soft); }
 .scaler-col .scale-control button {
   width: 42px; height: 42px; padding: 0; border-radius: 50%;
   border: 1px solid var(--border-scaler);  /* lighter than the B elements — the scaler is a quieter control */
