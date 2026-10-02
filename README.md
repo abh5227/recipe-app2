@@ -208,7 +208,7 @@ this Mac. See the open decision in `ROADMAP.md`.
 
 ## Migrations
 
-The schema is the `migrations/` folder, applied in filename order. There are 59 files. Add a new
+The schema is the `migrations/` folder, applied in filename order. There are 60 files. Add a new
 numbered file rather than editing an existing one. `migrate.py` records what it has applied in
 `schema_migrations` and only applies what is new, so re-running it is safe, and it changes the
 database in place rather than rebuilding it.

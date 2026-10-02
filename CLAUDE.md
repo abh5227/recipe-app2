@@ -379,6 +379,57 @@ How this project is run:
   derived. Diffing both would report one note edit twice, the second entry reading as the whole
   notes field replaced. It stays in the SNAPSHOT, because the column still round-trips, and it is
   simply not compared.
+- **A WRITE PATH REFUSES WHAT IT CANNOT READ, AND A LIST IT CANNOT READ IS NOT AN EMPTY LIST.**
+  `resolve_recipe_payload` checks `waits`, `storage` and `notes` before anything is written, both
+  the container and each entry. *Why:* `write_notes` ITERATES what it is given, so a dict iterated
+  to its KEYS and a list of numbers filtered to nothing. `notes: [1, 2, 3]` answered **200** and
+  left the recipe with 0 note rows and a nulled column, `notes: {"text": "x"}` did the same, and
+  `notes: 7` was a 500. The waits key had this check already, with a comment naming the exact
+  failure, and notes was left out of the loop. Live carries 177 notes over 95 recipes and the text
+  has no second home. ⚠️ **A BARE STRING STAYS LEGAL FOR `notes`**, because that is the previous
+  client's single textarea, split by the same rule the corpus move used.
+- **A COPY IS STATED OVER THE TABLE, NEVER OVER A LIST OF COLUMN NAMES.** `copy_recipe` builds both
+  row inserts from the table's own rows and names only `COPY_RESET_RECIPE_FIELDS`, the small set it
+  deliberately does NOT carry. *Why:* every hand-written list in that route has been short at least
+  once. `heading_level` was missing and a copy FLATTENED every subheading; the review then measured
+  five more on `recipe_ingredients` (`heading` from 052, and `catalog_id`, `link_confidence`,
+  `link_rule`, `link_matched` from 033) and one on `recipes` (`total_includes_waits`, 058). **2,851
+  of live's 3,572 ingredient rows carry a `catalog_id`**, so copying almost any real recipe dropped
+  its entire library linkage, silently, with a 201. Stating the RESET means a column added tomorrow
+  is carried by default, and `tests/test_copy_carries_everything.py` compares every column of every
+  content table rather than the ones someone remembered.
+  ⚠️ **AND `_copy_row_map` RANKS THE ROWS, it does not key on the position VALUE.** It claimed that
+  could not collide, which is false for two of the four tables it serves: `recipe_steps` and
+  `recipe_ingredients` carry no uniqueness on `(recipe_id, position)`. Two rows sharing one
+  collapsed the map and remapped a wait's `step_id` to NULL.
+- **A PASS PROVES ITSELF BEFORE IT COMMITS, AND A SECOND RUN IS A NO-OP.** Each recipe's gate runs
+  inside its own transaction and rolls back rather than reporting on data already written. *Why:*
+  the gates ran after every recipe had committed, so an abort was a post-mortem: on a 95-recipe
+  pass that is a half-migrated corpus and a restore from backup. And both of
+  `apply_note_decisions`' writes were bare INSERTs into tables carrying `UNIQUE (note_id,
+  ref_index)` and `UNIQUE (recipe_id, position)`, so re-running it died mid-way with earlier
+  recipes committed, after a dry run that had shown nothing wrong. An entry already in place is
+  detected in the PLANNING phase, which is what makes the dry run a faithful preview of the real
+  run.
+  ⚠️ **AND THE GATE COMPARES THE ENTRIES, NOT THEIR COUNT**, for the reason the short-circuit rule
+  gives: one entry leaving while another joins holds the count still.
+- **THE GUARD KNOWS ABOUT `$DATABASE_URL` TOO, BECAUSE THE PATH IS A LIE WHEN IT IS SET.** Every
+  pass rebinds `app.DB` and then reads through `app.orm_session()`, which prefers that variable
+  over the file it was handed, and the guard only ever inspected filesystem paths. Measured with
+  the two lines the passes use: `refuse_live` passed a copy under `/tmp`, the engine opened the
+  test Postgres, and the pass read 6 recipes where the copy holds 300. With `--apply` against
+  production that writes production while printing the copy's name. `refuse_live` now exits unless
+  the run says `--i-mean-live`.
+- **THE FIXTURE DATABASE IS PART OF THE BLAST RADIUS, AND REFERENCE DATA THE SCHEMA CREATES HAS TO
+  SURVIVE A RESET.** `pg_harness.reset_and_seed` TRUNCATEs every table in the metadata, and
+  `note_kinds` joined that metadata the moment `models.py` declared it. Nothing reseeds it, so
+  after one reset the Postgres fixture **could not store a single note**: the kind foreign key had
+  nothing to point at, every create carrying a note was a 500, and `write_notes` read its allowed
+  kinds from the empty table so the fallback was missing too. ⚠️ **KEEPING IT OUT OF THE TRUNCATE
+  IS NOT ENOUGH ON ITS OWN**, measured while testing that fix: one run of the old harness emptied
+  it and the database stayed broken afterwards, so `ensure_note_kinds` puts the rows back from the
+  one file that defines them. The gap that hid it: the Postgres leg runs two files and neither
+  wrote a note.
 - **A STEP NAMED IN A NOTE'S OWN WORDS IS A REFERENCE TO AN ID, NEVER A FROZEN NUMBER.** "proceed
   with step 9" has to keep meaning the right step after the steps move, so `recipe_note_step_refs`
   stores the step's ID and WHICH mention in the text it belongs to, and the number on the page is

@@ -1,12 +1,15 @@
 # The corpus passes, and the order they run in
 
-Four scripts carry the Round A repairs over all 300 recipes. They are not interchangeable and they
-are not independent. Each one reads the state the one before it left, so running them out of order
-produces a different corpus, and running one twice is not always a no-op.
+Nine scripts carry the repairs over all 300 recipes, four for Round A and five for the notes round
+below. They are not interchangeable and they are not independent. Each one reads the state the one
+before it left, so running them out of order produces a different corpus, and running one twice is
+not always a no-op.
 
 Every one of them takes the database as an argument and refuses live `recipes.db` without
-`--i-mean-live`. All four patch the `reason='original'` baseline in the same transaction as the
-live row, so a repair creates no "your changes" mark.
+`--i-mean-live`, and the guard also refuses a run whose `$DATABASE_URL` would send it somewhere
+other than the file it was handed. Each patches the `reason='original'` baseline in the same
+transaction as the live row, so a repair creates no "your changes" mark, and each proves its own
+gate BEFORE it commits so an abort leaves the recipe as it found it.
 
 ## The order
 

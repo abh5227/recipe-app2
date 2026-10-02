@@ -944,8 +944,54 @@ joining are `aloo-gobhi`, `asparagus-with-eggs-and-za-atar-halayone-w-bayd`, `ba
 entry at 49 over 20 recipes, integrity ok, 0 foreign key violations and no count moved.
 
 **NOT YET RUN ON LIVE.** Andy's ruling: it goes with the next round's go-live, with the usual backup
-and the usual before-against-after set comparison. 12 tests in `tests/test_realign_baseline.py`, and
-the two new cases are refused by the old id-only rule, which is what proves the widening does work.
+and the usual before-against-after set comparison. 13 tests in `tests/test_realign_baseline.py`, each
+stating one case the script may erase and one it must refuse. The old id-only script and its test
+file are deleted, so nothing in the suite compares the two, and the claim that it did has been
+removed rather than left standing.
+
+### The independent review of the notes round · ✅ FIXED AND RE-REHEARSED (held, not pushed)
+
+Four fresh subagents reviewed the nine unpushed commits, none of which had written the code, one
+each on correctness, rule consistency and data safety, migrations and security, and tests and
+leftovers. They worked on copies and never opened live. Everything below was reproduced before it
+was fixed, and each fix carries a test that fails without it.
+
+**The three that would have lost data:**
+
+- **A malformed `notes` payload deleted every note row and answered 200.** `notes: [1, 2, 3]`,
+  `notes: {"text": "x"}` and `notes: [None]` all filtered to nothing, and `notes: 7` was a 500. The
+  validator already refused exactly this for `waits` and `storage`.
+- **The importer wrote no note rows at all**, so every imported note was invisible from the day it
+  landed and the first ordinary save deleted the publisher's text. Three of the four reviewers found
+  this independently.
+- **`apply_note_decisions` rebuilt the baseline from current content**, which absorbs a real cook
+  edit and erases its mark. 20 recipes carry 49 entries between them. Both passes also ran their
+  gate AFTER committing, so an abort was a post-mortem, and a second run died on an IntegrityError
+  with earlier recipes already written.
+
+**The four that were wrong on screen:** the notes editor never repainted, so add, delete and the
+arrows did nothing visible and a move then wrote one note's text over another. The popover closed
+the moment focus entered it, so its link was unreachable by keyboard. An added or reworded step lost
+its note marker. A copy dropped `total_includes_waits` and five ingredient columns including
+`catalog_id`, which 2,851 of live's 3,572 ingredient rows carry.
+
+**Two that were latent and are now closed:** `$DATABASE_URL` silently overrode the `--db` every pass
+is given, and the Postgres fixture could not store a note at all because its reset truncated
+`note_kinds`.
+
+**Re-rehearsed on a fresh copy of live in the documented order, gate passed:** short-circuit 275 to
+280 with the same five joining and nothing leaving, the annotation set unchanged entry by entry at
+49 over 20, integrity ok, 0 foreign key violations, and only the five intended count moves
+(migrations 59 to 60, steps 2,466 to 2,477, waits 107 to 111, headings 243 to 254, level-2 headings
+106 to 117). Running `realign_baseline` first rather than last changes nothing in the result, proven
+by comparing all 9 content tables, and it does change the figures the passes report on the way
+through, which is why the order is written down.
+
+**Suites:** 2,378 Python passed with the one known Miracle Whip red, 266 JS, 64 on the Postgres leg.
+
+**Still open, for Andy:** a note edit mints an annotation entry that renders nowhere, because
+`annotation-index.js` branches on ingredients and steps only. Deciding what a note's "your changes"
+mark looks like is a design call, and the preview-first rule says it is not mine to make.
 
 ### Notes as rows, with step links · ✅ BUILT AND REHEARSED (held, not yet pushed or run on live)
 
