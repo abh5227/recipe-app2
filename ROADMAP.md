@@ -947,6 +947,37 @@ entry at 49 over 20 recipes, integrity ok, 0 foreign key violations and no count
 and the usual before-against-after set comparison. 12 tests in `tests/test_realign_baseline.py`, and
 the two new cases are refused by the old id-only rule, which is what proves the widening does work.
 
+### Notes as rows, with step links · ✅ BUILT AND REHEARSED (held, not yet pushed or run on live)
+
+A note is a row since migration 060: 177 of them over 95 recipes, each with its own id, kind, text,
+step link and (written by nothing yet) ingredient-line link. `recipes.notes` is a derived copy kept
+only so the previous deploy can serve during the window, and a later migration drops it.
+
+- **The rules are the ones that already shipped.** `notes.py` delegates the split to
+  `note-blocks.js::noteParagraphs`'s Python side and the kind to `import_cleanup.note_kind`, which
+  reads the `static/note-kinds.json` the client inlines. The importer and the corpus pass call the
+  same two functions.
+- **Rows update in place from day one**, by wording first and then by order, so an unchanged save
+  keeps every id and the recipe keeps its place in the byte-equal set. Proven through the real HTTP
+  save path, not only in tests.
+- **The marker is inline, at the end of the step's own sentence, in body colour.** Never in the
+  margin, where the "your changes" marks live. Two notes on one step get one marker.
+- **A "step N" in a note's own words is a reference to a step ID**, and the page always prints that
+  step's current number.
+
+⚠️ **THREE COPY DEFECTS WERE FOUND AND FIXED ON THE WAY, NONE OF THEM CAUSED BY THIS WORK.** Measured
+on a throwaway kitchen: a copy lost its waits, lost its storage, and flattened a level-2 heading to
+level 1. The route ran two `INSERT…SELECT` statements and nothing else, it predates waits (049) and
+heading levels (059), and no test covered it. Notes would have been the fourth and the worst,
+because they survived a copy only while they were a column. Every pointer is remapped now.
+
+**Rehearsed end to end on a fresh copy of live, gate passed:** short-circuit 275 to 280 (the five
+the realign moves), nothing left the set, the annotation set unchanged entry by entry at 49 over 20,
+`recipe_notes` 177 rows over 95 recipes, integrity ok, 0 foreign key violations, and only the five
+intended count changes.
+
+**NOT RUN ON LIVE.** The push and the go-live come after Andy's review.
+
 ### Round B — an amount written inside brackets belongs in the amount column
 
 **Measured over all 3,349 ingredient lines before this was written, which is what makes it small.**

@@ -36,6 +36,27 @@ chain against one database is now five ordinary command lines:
     python3.13 scripts/convert_step_headings.py "$DB" --apply
     python3.13 scripts/apply_label_rules.py "$DB" --apply
 
+### The notes round, which runs after all of the above
+
+    python3.13 migrate.py --db "$DB"                              060, the recipe_notes tables
+    python3.13 scripts/realign_baseline.py "$DB" --apply          first: it moves 5 recipes back
+                                                                  into the byte-equal set, so the
+                                                                  passes below start from 280
+    python3.13 scripts/notes_to_rows.py "$DB" --apply             177 paragraphs become rows
+    python3.13 scripts/apply_note_decisions.py "$DB" --apply      the links, the step references
+                                                                  and the waits Andy recorded
+    python3.13 scripts/strip_author_step_numbers.py "$DB" --apply the author's own numbering, and
+                                                                  the labels it was hiding
+
+⚠️ **`strip_author_step_numbers` RUNS AFTER `apply_note_decisions`, AND THE ORDER IS NOT A
+PREFERENCE.** A step reference stores a step ID, so renumbering cannot move it. But RESOLVING one
+reads the author's numbering out of the step text to find its target, and the number pass is what
+deletes that evidence. Run the other way round, aloo-potato-parathas' "step 2" would have nothing
+left to match against.
+
+⚠️ **`realign_baseline` RUNS FIRST**, because every pass after it gates on the byte-equal set and a
+set that is about to gain five recipes for an unrelated reason makes that gate unreadable.
+
 ## What may be written here, and by what
 
 ⚠️ **A DRY RUN NEVER WRITES INTO THIS FOLDER.** Five scripts used to write their report CSV here on
@@ -103,6 +124,7 @@ surveys below are cited nowhere and stay untracked, which is what the category i
 | `baseline-row-ids-2026-09-29.csv` | 178 | the baselines that gained step row ids | `backfill_baseline_row_ids.py` | yes |
 | `import-flags-archived-2026-09-30.csv` | 562 | the import review queue as archived | `archive_import_flags.py` | yes |
 | `note-separators-2026-09-27.csv` | 16 | how each recipe's notes were joined | `restore_notes.py` | yes |
+| `note-links-2026-10-01.json` | 10 | the note-to-step links, the step references and the waits Andy decided in the notes round | `apply_note_decisions.py` | yes |
 | `paprika-restore-live-rows.csv` | 300 | the Paprika restore, live rows | `restore_from_paprika.py` | yes |
 | `paprika-restore-snapshot-rows.csv` | 261 | the Paprika restore, baseline rows | `restore_from_paprika.py` | yes |
 | `relink-2026-09-25.csv` | 182 | the ingredient relink pass | `relink_pass.py` | yes |

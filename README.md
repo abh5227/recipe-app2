@@ -23,7 +23,7 @@ python3.13 -m pip install -r requirements.txt   # flask, flask-login, SQLAlchemy
                                                 #   psycopg, pillow, pillow-heif
 npm install                                     # Vite (the build) and TipTap (the step editor)
 npm run build                                   # builds the frontend into dist/
-python3.13 build_db.py                          # applies the 59 migrations, loads the seed data
+python3.13 build_db.py                          # applies the 60 migrations, loads the seed data
 python3.13 app.py                               # serves on http://localhost:8000
 ```
 

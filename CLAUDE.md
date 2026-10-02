@@ -362,6 +362,47 @@ How this project is run:
   collides the moment two rows swap. Survivors go to negative positions in one pass and take their
   final places in a second. `recipe_steps` has no such constraint, which is why `write_recipe_rows`
   can assign positions directly and this dance lives only here.
+- **A NOTE IS A ROW, AND recipes.notes IS A DERIVED COPY OF THOSE ROWS.** Migration 060 made
+  `recipe_notes` with a kind, a step link and an ingredient-line link. `notes.py` is the shared
+  brain the way `planahead.py` is for waits, and it restates nothing: `paragraphs` is the Python
+  side of `note-blocks.js::noteParagraphs` and `kind_of` delegates to `import_cleanup.note_kind`,
+  which reads the same `static/note-kinds.json` the client inlines.
+  ⚠️ **THE TEXT IS STORED VERBATIM, LABEL AND ALL, AND THE KIND SITS BESIDE IT.** Measured over the
+  177 corpus paragraphs: 27 lead with a label the kind table does not know (`Blind Bake`,
+  `Tomato Bouillon`, `Borlotti`) against 23 that lead with one it does. Stripping a label would
+  delete the only thing naming what the note is about, and storing the kind beside the words rather
+  than instead of them is what let the corpus move byte for byte.
+  ⚠️ **THE KIND IS A LOOKUP TABLE WITH A FOREIGN KEY, NOT A CHECK**, because SQLite cannot widen a
+  CHECK in place and a sixth kind would otherwise be a create-copy-drop-rename on the table holding
+  every note in the database.
+  ⚠️ **AND IT MARKS ONCE.** `notes` left `snapshot_diff.CONTENT_FIELDS` when the column became
+  derived. Diffing both would report one note edit twice, the second entry reading as the whole
+  notes field replaced. It stays in the SNAPSHOT, because the column still round-trips, and it is
+  simply not compared.
+- **A STEP NAMED IN A NOTE'S OWN WORDS IS A REFERENCE TO AN ID, NEVER A FROZEN NUMBER.** "proceed
+  with step 9" has to keep meaning the right step after the steps move, so `recipe_note_step_refs`
+  stores the step's ID and WHICH mention in the text it belongs to, and the number on the page is
+  resolved every time from the step's current position. A reference whose step became a heading
+  renders as plain text, which is the rule waits already follow: a wrong number is worse than no
+  link.
+  ⚠️ **THE NUMBER IN A NOTE IS THE AUTHOR'S, AND RESOLVING IT NEEDS THE AUTHOR'S LIST.** The app's
+  numbering has moved: the 2026-09-30 chain lifted 104 labels into headings, converted 21 steps and
+  moved 7 Note steps out of the method. the-best-new-york-style-bagel's "step 9" is the app's step
+  8, and the offset's cause is visible in the source card — the author's step 2 is the yeast Note
+  the importer moved into the notes. Resolve from the original and match by WORDING; where the
+  original is unavailable, FLAG, do not guess.
+- **THE AUTHOR'S OWN STEP NUMBERS COME OFF, AND ONLY WHERE THE WHOLE RECIPE IS NUMBERED.** The app
+  prints its own number in a circle, so a step still beginning "1." shows it twice, and a lead-in
+  label hiding behind one is invisible to the label rule. `import_cleanup.strip_author_numbers` is
+  all-or-nothing per recipe: a number comes off only where the steps carry a consecutive run from 1
+  agreeing with their own ordinals, because **the evidence that a leading number is the AUTHOR'S is
+  that the rest of the recipe is numbered too.**
+  ⚠️ **A BARE NUMBER NEEDS TWO PIECES OF EVIDENCE AT ONCE**, the ordinal and a capital after it.
+  Measured over the 300: that pair admits 7 steps, all of them the author's numbering, and refuses
+  the 3 real ones ("30 minutes before you start cooking…", "180 degrees…", "24 pieces…").
+  ⚠️ **AND AN ALL-CAPS LEAD-IN ENDING IN A COLON IS A TITLE WHATEVER ITS SHAPE.** The comma, the
+  connective and the word-cap refusals all read a label as prose, and prose is not written in
+  capitals with a colon after it. Measured: exactly 2 labels in the corpus take that door.
 - **LOCKSTEP: A MACHINE REPAIR MAKES NO MARK.** The page's "your changes" is
   `diff(reason='original' snapshot, current rows)`, so a pass that rewrites a row without rewriting
   that baseline is indistinguishable from the cook having hand-edited it. Every corpus pass patches
