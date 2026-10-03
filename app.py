@@ -33,7 +33,7 @@ from units import canon_unit_str   # the Python mirror of scaler.js canonicalize
 # their own raw sqlite3 connections (out of Stage 1 scope). Stage 2 swaps the engine to Postgres
 # (see docs/migration-plan.md).
 from models import (
-    Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep, NoteKind, RecipeNote, RecipeNoteStepRef, RecipeStorage, RecipeWait,
+    Ingredient, IngredientSeason, IngredientRegion, Region, Recipe, RecipeIngredient, RecipeStep, NoteKind, RecipeNote, RecipeNoteStepRef, RecipeNoteOriginal, RecipeStorage, RecipeWait,
     LibraryName,         # the id -> canonical lookup the library search reads (migration 029)
     # ⚠️ Rating (the `ratings` table) is INTENTIONALLY NOT IMPORTED. Migration 048 froze it: the
     # verdict lives on CookLog.rating now. Re-importing it here is how a stray read gets written.
@@ -1057,6 +1057,41 @@ def write_notes(s, rid, payload):
               .values(notes=notes_rules.derived_text(written) or None))
 
 
+def read_notes(s, rid, steps=None):
+    """A recipe's note rows, with their step references, resolved the way the page reads them.
+
+    ⚠️ ONE READER, THREE CALLERS. The GET route built this inline, and the per-note endpoints need
+    exactly the same shape or the row the client gets back from a PATCH would differ from the row it
+    gets on the next page load. Same arrangement notes_rules has for the split and the kind table.
+
+    `steps` is the recipe's step rows when the caller already has them (the GET route does), so the
+    number each reference resolves to is counted off the SAME list the page numbers. Left out, they
+    are read here.
+    """
+    rows = [dict(n) for n in s.execute(
+        select(RecipeNote.__table__).where(RecipeNote.__table__.c.recipe_id == rid)
+        .order_by(RecipeNote.__table__.c.position, RecipeNote.__table__.c.id)).mappings()]
+    for n in rows:
+        n["refs"] = []
+    if rows:
+        by_note = {}
+        for ref in s.execute(
+                select(RecipeNoteStepRef.__table__)
+                .where(RecipeNoteStepRef.__table__.c.note_id.in_([n["id"] for n in rows]))
+                .order_by(RecipeNoteStepRef.__table__.c.note_id,
+                          RecipeNoteStepRef.__table__.c.ref_index)).mappings():
+            by_note.setdefault(ref["note_id"], []).append(dict(ref))
+        for n in rows:
+            n["refs"] = by_note.get(n["id"], [])
+    if steps is None:
+        steps = list(s.execute(
+            select(RecipeStep.__table__.c.id, RecipeStep.__table__.c.is_heading)
+            .where(RecipeStep.__table__.c.recipe_id == rid)
+            .order_by(RecipeStep.__table__.c.position, RecipeStep.__table__.c.id)).mappings())
+    notes_rules.resolve(rows, steps)
+    return rows
+
+
 def _check_row_ids(clean, stored_ing, stored_step):
     """Return an error string, or None. Every row id the payload sends must name a row of THIS
     recipe, and must name it once.
@@ -1720,23 +1755,11 @@ def get_recipe(rid):
         planahead.resolve_steps(waits, steps)
         # ⚠️ NOTES ARE ROWS SINCE MIGRATION 060, and recipes.notes is a derived copy kept only so the
         #    previous deploy can still serve during the window. The page reads these.
-        note_rows = [dict(n) for n in s.execute(
-            select(RecipeNote.__table__).where(RecipeNote.recipe_id == rid)
-            .order_by(RecipeNote.position, RecipeNote.id)).mappings()]
-        if note_rows:
-            ref_rows = s.execute(
-                select(RecipeNoteStepRef.__table__)
-                .where(RecipeNoteStepRef.note_id.in_([n["id"] for n in note_rows]))
-                .order_by(RecipeNoteStepRef.note_id, RecipeNoteStepRef.ref_index)).mappings().all()
-            by_note = {}
-            for ref in ref_rows:
-                by_note.setdefault(ref["note_id"], []).append(dict(ref))
-            for n in note_rows:
-                n["refs"] = by_note.get(n["id"], [])
-        # ⚠️ THE NUMBER IS RESOLVED HERE AND NEVER STORED, exactly as it is for a wait. A note whose
-        #    step became a HEADING comes back with step_no None and renders without a link rather
-        #    than with a wrong number, and the same is true of every "step N" mention in its text.
-        notes_rules.resolve(note_rows, steps)
+        # ⚠️ THROUGH read_notes, WHICH THE PER-NOTE ENDPOINTS ALSO CALL. This was assembled inline
+        #    here, and a PATCH that returned a differently-shaped row from the one the next page load
+        #    produces is the drift the single-reader rule exists to stop. The number each reference
+        #    resolves to is counted off the step list the page numbers, so it is passed in.
+        note_rows = read_notes(s, rid, steps)
         note_kind_rows = [dict(k) for k in s.execute(
             select(NoteKind.__table__).order_by(NoteKind.position)).mappings()]
         # ⚠️ WHAT THE PAGE PRINTS FOR EACH WAIT IS DECIDED HERE, NOT IN JS. A stored "overnight" has
@@ -2151,9 +2174,361 @@ def copy_recipe(rid):
                 rv["note_id"] = new_note_id
                 rv["step_id"] = step_map.get(rv.get("step_id"))
                 s.execute(insert(RecipeNoteStepRef.__table__).values(**rv))
+        # ⚠️ AND THE AUTHOR'S ORIGINAL WORDS, WHICH A COPY HAD NO RECORD OF AT ALL. Measured on live
+        #    after the notes round went out: a copy of aloo-potato-parathas carried its note and the
+        #    note's step reference and wrote 0 rows into recipe_notes_original, so the copy was a
+        #    playground with no way back while the recipe it came from had one. recipe_notes_original
+        #    is written ONCE per recipe and updated by nothing, so a copy has to be given its own at
+        #    birth or never get one.
+        # ⚠️ FROM THE SOURCE'S ORIGINALS WHERE IT HAS THEM, AND FROM ITS CURRENT NOTES WHERE IT DOES
+        #    NOT. A recipe created in the app has note rows and no originals, because only
+        #    notes_to_rows and the importer write that table. Copying its current words is the
+        #    truthful answer there: they ARE the words it was born with.
+        src_orig = list(s.execute(
+            select(RecipeNoteOriginal.__table__)
+            .where(RecipeNoteOriginal.__table__.c.recipe_id == rid)
+            .order_by(RecipeNoteOriginal.__table__.c.position)).mappings())
+        if src_orig:
+            for o in src_orig:
+                vals = {k: v for k, v in dict(o).items() if k != "id"}
+                vals["recipe_id"] = new_id
+                s.execute(insert(RecipeNoteOriginal.__table__).values(**vals))
+        else:
+            for n in s.execute(select(RecipeNote.__table__)
+                               .where(RecipeNote.__table__.c.recipe_id == new_id)
+                               .order_by(RecipeNote.__table__.c.position)).mappings():
+                s.execute(insert(RecipeNoteOriginal.__table__).values(
+                    recipe_id=new_id, position=n["position"], kind=n["kind"],
+                    text=n["text"], recorded_at=now_utc()))
         snapshot_original(s, new_id)   # O-a: the copy's original = its copied content at birth (before editing)
         s.commit()
     return jsonify({"id": new_id}), 201
+
+
+# --- the per-note write path ---------------------------------------------------------------------
+# ⚠️ WHY THESE EXIST AT ALL, WHEN write_notes ALREADY WRITES NOTES. write_notes replaces a recipe's
+#    WHOLE list from a save payload, which is the right shape for a create and for the importer and
+#    the wrong shape for editing one note in reading view: it needs the other notes in the payload to
+#    leave them alone, so a client that holds a stale copy of the list would write that stale copy
+#    back. These name ONE row.
+#
+# ⚠️ AND THEY ARE THE REASON A NOTE COSTS NOTHING. A note is a playground (Andy's ruling): no
+#    annotation entry, no mark, and no recipe leaving the byte-equal set because somebody reworded a
+#    tip. That is structural rather than careful — recipe_notes is not in the snapshot blob and
+#    neither is the derived column, so there is no path from these routes to recipe_snapshots at all.
+#    tests/test_note_api.py states it as a measurement anyway, and proves the measurement can fail.
+#
+# ⚠️ LAST WRITE WINS, DELIBERATELY AND WITH NOTHING CLEVER. Two tabs editing one note is two PATCHes,
+#    and the second overwrites the first. There is no version column and no If-Match, because the
+#    alternative is a conflict dialog over a single paragraph of prose in a single-user app, and the
+#    losing text is still in the other tab's textarea. The ROWS are matched by id, so a collision
+#    costs the earlier wording and never the row, its links or its place in the list.
+
+NOTE_FIELDS = ("text", "kind", "step_id", "position")
+
+
+def _note_gate(s, rid):
+    """(recipe row, None) when this caller may write this recipe's notes, else (None, (body, code)).
+
+    ⚠️ THE SAME TWO GATES AS update_recipe, IN THE SAME ORDER, AND THE ORDER IS ABOUT THE MESSAGE.
+    A seed row is owner-NULL, so asking about ownership first would answer "not your recipe" about a
+    recipe nobody owns. Tier is a property of the recipe, ownership a property of the relationship.
+
+    ⚠️ IT IS THE SERVER'S ANSWER AND NOT THE BUTTON'S. The client hides "+ note" from a non-owner,
+    and a hidden button is not an access rule: every one of these routes asks this first.
+    """
+    row = s.execute(select(Recipe.__table__.c.id, Recipe.__table__.c.source,
+                           Recipe.__table__.c.owner)
+                    .where(Recipe.__table__.c.id == rid)).mappings().first()
+    if row is None:
+        return None, (jsonify({"error": "recipe not found"}), 404)
+    if row["source"] not in EDITABLE_SOURCES:
+        return None, (jsonify({"error": "this recipe is from seed.py and is read-only here — "
+                                        "edit it in seed.py"}), 403)
+    if row["owner"] != current_user.id:
+        return None, (jsonify({"error": "not your recipe"}), 403)
+    return row, None
+
+
+def _note_step_ids(s, rid):
+    """{step id: is_heading} for this recipe, the set a note's link may name."""
+    return {m["id"]: bool(m["is_heading"]) for m in s.execute(
+        select(RecipeStep.__table__.c.id, RecipeStep.__table__.c.is_heading)
+        .where(RecipeStep.__table__.c.recipe_id == rid)).mappings()}
+
+
+def _rescan_note_refs(s, note_id, text, step_ids, carried=None):
+    """Rewrite one note's step references from its words. Returns the rows written.
+
+    ⚠️ THE SAME RULE write_notes USES, AND FOR THE SAME REASON. A reference exists only while its
+    mention does: inserting a sentence before "step 9" keeps the link, deleting the words drops it.
+    Carried by (ref_index, match_text) so rewording the mention underneath an ordinal does not leave
+    the old target attached to the new words.
+
+    ⚠️ AND A MENTION WITH NO TARGET IS STILL A ROW. It stores step_id NULL, which is what lets the
+    text render as plain words rather than as a link, and what lets a later link/unlink name it.
+    """
+    rnr = RecipeNoteStepRef.__table__
+    carried = carried or {}
+    s.execute(delete(rnr).where(rnr.c.note_id == note_id))
+    written = []
+    for m in notes_rules.scan_step_mentions(text):
+        key = (m["ref_index"], m["match_text"])
+        target = carried.get(key)
+        if target is not None and (target not in step_ids or step_ids[target]):
+            target = None
+        row = {"ref_index": m["ref_index"], "match_text": m["match_text"], "step_id": target}
+        s.execute(insert(rnr).values(note_id=note_id, **row))
+        written.append(row)
+    return written
+
+
+def _auto_link_mentions(text, step_ids, numbers):
+    """{(ref_index, match_text): step id} for every "step N" naming a step that exists.
+
+    ⚠️ THIS IS THE "step N" AUTO-LINK, AND IT RESOLVES AGAINST THE NUMBERS THE PAGE PRINTS. A cook
+    typing "step 3" means the third step they can see, which is the third NON-HEADING row, so the
+    answer comes from notes_rules.step_numbers rather than from a position or a row id.
+
+    ⚠️ A NUMBER NAMING NO STEP IS LEFT UNLINKED RATHER THAN GUESSED. "step 40" on a nine-step recipe
+    stores the mention with a null target and prints as plain text, which is the rule a reference
+    whose step became a heading already follows: a wrong number is worse than no link.
+    """
+    by_number = {n: sid for sid, n in numbers.items() if n is not None}
+    out = {}
+    for m in notes_rules.scan_step_mentions(text):
+        sid = by_number.get(m["number"])
+        if sid is not None and sid in step_ids and not step_ids[sid]:
+            out[(m["ref_index"], m["match_text"])] = sid
+    return out
+
+
+def _sync_notes_column(s, rid):
+    """Rebuild recipes.notes from the rows, which is the only thing that writes it.
+
+    ⚠️ IT CANNOT MOVE THE SNAPSHOT, WHICH IS WHY THIS IS SAFE TO DO ON EVERY NOTE WRITE. The column
+    left SNAPSHOT_RECIPE_FIELDS when a note became a playground, so rewriting it reaches nothing the
+    byte-equal short-circuit compares. It stays written so the previous deploy can still serve a
+    recipe during a deploy window, and a later migration drops it.
+    """
+    rows = _stored_rows(s, RecipeNote.__table__, rid)
+    s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rid)
+              .values(notes=notes_rules.derived_text(rows) or None))
+
+
+def _notes_out(s, rid, note_id):
+    """(the one note, the whole list), both in exactly the shape the GET route serves them in.
+
+    One read, because every one of these routes returns both: the row that changed, and the list,
+    since a create or a move renumbers the others and the client repaints from the list rather than
+    guessing what the server did.
+    """
+    all_notes = read_notes(s, rid)
+    return next((n for n in all_notes if n["id"] == note_id), None), all_notes
+
+
+def _validated_note_fields(payload, step_ids, kinds, *, creating):
+    """The fields a payload may set, validated. Returns (values, error string)."""
+    vals = {}
+    if "text" in payload or creating:
+        text = payload.get("text")
+        if not isinstance(text, str) or not text.strip():
+            return None, "a note needs some text"
+        vals["text"] = text.strip()
+    if "kind" in payload:
+        kind = payload.get("kind")
+        if kind not in kinds:
+            return None, f"unknown note kind: {kind!r}"
+        vals["kind"] = kind
+    if "step_id" in payload:
+        sid = payload.get("step_id")
+        if sid is not None:
+            if not isinstance(sid, int) or sid not in step_ids:
+                return None, "that step is not in this recipe"
+            # ⚠️ A HEADING IS REFUSED RATHER THAN STORED INERT. notes_rules.resolve would render a
+            #    heading-linked note without a link, so storing it costs nothing on the page and
+            #    leaves a pointer that reads as a defect in every sweep over the table. The UI only
+            #    offers "+ note" on real steps, so this is the programmatic door.
+            if step_ids[sid]:
+                return None, "a note attaches to a step, not to a heading"
+        vals["step_id"] = sid
+    if "position" in payload:
+        pos = payload.get("position")
+        if not isinstance(pos, int) or pos < 0:
+            return None, "position must be a whole number"
+        vals["position"] = pos
+    return vals, None
+
+
+@app.route("/api/recipes/<rid>/notes", methods=["POST"])
+def create_note(rid):
+    """Add one note. Returns the row, in the GET route's shape, and the recipe's whole list.
+
+    The list comes back because a create can renumber positions, and the client repaints from it
+    rather than guessing what the server did.
+    """
+    payload = request.get_json(silent=True) or {}
+    with orm_session() as s:
+        _row, err = _note_gate(s, rid)
+        if err:
+            return err
+        step_ids = _note_step_ids(s, rid)
+        kinds = {m["kind"] for m in s.execute(select(NoteKind.__table__.c.kind)).mappings()}
+        vals, msg = _validated_note_fields(payload, step_ids, kinds, creating=True)
+        if msg:
+            return jsonify({"error": msg}), 400
+        stored = _stored_rows(s, RecipeNote.__table__, rid)
+        vals.setdefault("kind", notes_rules.DEFAULT_KIND)
+        vals.setdefault("step_id", None)
+        # ⚠️ THE DEFAULT PLACE IS THE END, and an explicit position is clamped into the list rather
+        #    than refused, because an off-by-one from a client that just deleted a row should not
+        #    cost the cook the note they typed.
+        pos = vals.pop("position", len(stored))
+        pos = max(0, min(pos, len(stored)))
+        plan = []
+        for i, m in enumerate(stored[:pos]):
+            plan.append((m, {"position": i}))
+        plan.append((None, dict(recipe_id=rid, position=pos, ingredient_row_id=None, **vals)))
+        for i, m in enumerate(stored[pos:], start=pos + 1):
+            plan.append((m, {"position": i}))
+        _apply_rows(s, RecipeNote.__table__, plan, [])
+        new_id = s.scalar(select(RecipeNote.__table__.c.id)
+                          .where(RecipeNote.__table__.c.recipe_id == rid,
+                                 RecipeNote.__table__.c.position == pos))
+        numbers = notes_rules.step_numbers(list(s.execute(
+            select(RecipeStep.__table__.c.id, RecipeStep.__table__.c.is_heading)
+            .where(RecipeStep.__table__.c.recipe_id == rid)
+            .order_by(RecipeStep.__table__.c.position, RecipeStep.__table__.c.id)).mappings()))
+        _rescan_note_refs(s, new_id, vals["text"], step_ids,
+                          _auto_link_mentions(vals["text"], step_ids, numbers))
+        _sync_notes_column(s, rid)
+        out, all_notes = _notes_out(s, rid, new_id)
+        s.commit()
+    return jsonify({"note": out, "notes": all_notes}), 201
+
+
+@app.route("/api/recipes/<rid>/notes/<int:note_id>", methods=["PATCH"])
+def update_note(rid, note_id):
+    """Change one note's text, kind, step link or place. Only the keys the payload names.
+
+    ⚠️ ONE ENDPOINT FOR ALL FOUR, rather than a route each for "change kind" and "link a step". They
+    are the same operation on the same row with the same gate, and a route per field means four
+    places to forget the reference rescan. `text` is the only one that rescans, because the
+    references come from the words.
+    """
+    payload = request.get_json(silent=True) or {}
+    with orm_session() as s:
+        _row, err = _note_gate(s, rid)
+        if err:
+            return err
+        rn = RecipeNote.__table__
+        stored = _stored_rows(s, rn, rid)
+        me = next((m for m in stored if m["id"] == note_id), None)
+        if me is None:
+            return jsonify({"error": "note not found"}), 404
+        step_ids = _note_step_ids(s, rid)
+        kinds = {m["kind"] for m in s.execute(select(NoteKind.__table__.c.kind)).mappings()}
+        vals, msg = _validated_note_fields(payload, step_ids, kinds, creating=False)
+        if msg:
+            return jsonify({"error": msg}), 400
+        if not vals:
+            return jsonify({"error": "nothing to change"}), 400
+        move_to = vals.pop("position", None)
+        if vals:
+            s.execute(update(rn).where(rn.c.id == note_id).values(**vals))
+        if move_to is not None and move_to != me["position"]:
+            others = [m for m in stored if m["id"] != note_id]
+            move_to = max(0, min(move_to, len(others)))
+            order = others[:move_to] + [me] + others[move_to:]
+            _apply_rows(s, rn, [(m, {"position": i}) for i, m in enumerate(order)], [])
+        if "text" in vals:
+            carried = {(r["ref_index"], r["match_text"]): r["step_id"] for r in s.execute(
+                select(RecipeNoteStepRef.__table__)
+                .where(RecipeNoteStepRef.__table__.c.note_id == note_id)).mappings()}
+            numbers = notes_rules.step_numbers(list(s.execute(
+                select(RecipeStep.__table__.c.id, RecipeStep.__table__.c.is_heading)
+                .where(RecipeStep.__table__.c.recipe_id == rid)
+                .order_by(RecipeStep.__table__.c.position, RecipeStep.__table__.c.id)).mappings()))
+            # ⚠️ A MENTION THE COOK HAS JUST TYPED IS AUTO-LINKED, AND ONE THEY ALREADY UNLINKED IS
+            #    NOT RE-LINKED. The carried value wins where the same words were there before, so
+            #    "remove link" survives the next keystroke; a mention with no history auto-links.
+            auto = _auto_link_mentions(vals["text"], step_ids, numbers)
+            # The carried value WINS, including a carried None. A mention whose words were there
+            # before keeps whatever it pointed at, so "remove link" survives the next keystroke,
+            # and a mention with no history takes the auto-link.
+            auto.update(carried)
+            _rescan_note_refs(s, note_id, vals["text"], step_ids, auto)
+        _sync_notes_column(s, rid)
+        out, all_notes = _notes_out(s, rid, note_id)
+        s.commit()
+    return jsonify({"note": out, "notes": all_notes}), 200
+
+
+@app.route("/api/recipes/<rid>/notes/<int:note_id>/refs/<int:ref_index>", methods=["PATCH"])
+def update_note_ref(rid, note_id, ref_index):
+    """Link or unlink ONE "step N" mention. `step_id` null is "remove link".
+
+    ⚠️ A SEPARATE ROUTE BECAUSE IT NAMES A MENTION, NOT THE NOTE. The note's text is unchanged, so
+    sending it through update_note would rescan the references and undo the very thing being asked
+    for.
+    """
+    payload = request.get_json(silent=True) or {}
+    with orm_session() as s:
+        _row, err = _note_gate(s, rid)
+        if err:
+            return err
+        rnr = RecipeNoteStepRef.__table__
+        me = s.execute(select(RecipeNote.__table__)
+                       .where(RecipeNote.__table__.c.id == note_id,
+                              RecipeNote.__table__.c.recipe_id == rid)).mappings().first()
+        if me is None:
+            return jsonify({"error": "note not found"}), 404
+        ref = s.execute(select(rnr).where(rnr.c.note_id == note_id,
+                                          rnr.c.ref_index == ref_index)).mappings().first()
+        if ref is None:
+            return jsonify({"error": "that note does not name a step there"}), 404
+        sid = payload.get("step_id")
+        step_ids = _note_step_ids(s, rid)
+        if sid is not None:
+            if not isinstance(sid, int) or sid not in step_ids:
+                return jsonify({"error": "that step is not in this recipe"}), 400
+            if step_ids[sid]:
+                return jsonify({"error": "a reference names a step, not a heading"}), 400
+        s.execute(update(rnr).where(rnr.c.note_id == note_id, rnr.c.ref_index == ref_index)
+                  .values(step_id=sid))
+        out, all_notes = _notes_out(s, rid, note_id)
+        s.commit()
+    return jsonify({"note": out, "notes": all_notes}), 200
+
+
+@app.route("/api/recipes/<rid>/notes/<int:note_id>", methods=["DELETE"])
+def delete_note(rid, note_id):
+    """Remove one note. Returns what it took, so the client can offer Undo.
+
+    ⚠️ THE UNDO IS A RE-CREATE AND IT IS HONEST ABOUT THAT. `restore` carries the words, the kind,
+    the place and the step link, so pressing Undo puts an equivalent note back at the same position.
+    It is a NEW row with a new id, because the old one is gone and pretending otherwise would mean
+    keeping deleted rows around. Nothing downstream holds a note id: the snapshot does not record
+    notes, so a new id costs the recipe nothing.
+    """
+    with orm_session() as s:
+        _row, err = _note_gate(s, rid)
+        if err:
+            return err
+        rn = RecipeNote.__table__
+        stored = _stored_rows(s, rn, rid)
+        me = next((m for m in stored if m["id"] == note_id), None)
+        if me is None:
+            return jsonify({"error": "note not found"}), 404
+        restore = {"text": me["text"], "kind": me["kind"], "position": me["position"],
+                   "step_id": me["step_id"]}
+        s.execute(delete(rn).where(rn.c.id == note_id))      # refs cascade
+        left = [m for m in stored if m["id"] != note_id]
+        _apply_rows(s, rn, [(m, {"position": i}) for i, m in enumerate(left)], [])
+        _sync_notes_column(s, rid)
+        all_notes = read_notes(s, rid)
+        s.commit()
+    return jsonify({"deleted": note_id, "restore": restore, "notes": all_notes}), 200
 
 
 @app.route("/api/test-recipes", methods=["DELETE"])
