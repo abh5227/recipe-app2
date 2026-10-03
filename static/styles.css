@@ -2618,3 +2618,143 @@ a.meta-step.note-step { font-size: .92em; color: var(--ink-soft); }
            padding: 2px 5px; }
 .ie-move:disabled { opacity: .3; cursor: default; }
 .ie-move:focus-visible { outline: 1px dotted currentColor; outline-offset: 2px; }
+
+/* ---------- the note component: one look, both views ---------- */
+/* ⚠️ ONE SET OF RULES, BECAUSE THERE IS ONE COMPONENT. The reading page, the step popover and Edit
+   mode's Notes block all render note-ui.js, so a note that looks right in one place looks right in
+   the other three. This replaced .ie-noterow, which styled a second editor that no longer exists. */
+.note-row { position: relative; margin: 0 0 10px; }
+.note-row:last-child { margin-bottom: 0; }
+.note-text { white-space: pre-wrap; }
+/* The whole paragraph is the click target for the owner, so the cursor has to say so. The keyboard
+   route is the labelled Edit button, not this. */
+.note-mine .note-text { cursor: text; border-radius: 3px; padding: 1px 3px; margin: -1px -3px; }
+.note-mine .note-text:hover { background: color-mix(in srgb, var(--card) 60%, var(--ochre) 8%); }
+
+/* ⚠️ THE TYPE TAG IS A LABEL ABOVE THE TEXT, NOT A PREFIX INSIDE IT. Two notes on one step are two
+   different kinds of thing as often as not, so each carries its own, and a stack of them reads as a
+   list of labelled things rather than one run-on block. */
+.note-tag, .note-tag-flat {
+  display: inline-block; margin: 0 0 2px;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--green);
+  background: none; border: 0; padding: 0; line-height: 1.3;
+}
+.note-tag { cursor: pointer; }
+.note-tag:hover { color: var(--green-lift); }
+.note-tag:focus-visible { outline: 1px dotted currentColor; outline-offset: 2px; border-radius: 2px; }
+.note-tag-caret { margin-left: 2px; font-size: 9px; }
+
+.note-kind-menu {
+  position: absolute; z-index: 40; margin-top: 2px;
+  background: var(--polaroid); border: 1px solid var(--border-defined);
+  border-radius: 6px; padding: 4px; min-width: 130px;
+  box-shadow: 0 6px 18px rgba(0,0,0,.14);
+  display: flex; flex-direction: column;
+}
+.note-kind-item {
+  text-align: left; background: none; border: 0; cursor: pointer;
+  padding: 6px 9px; border-radius: 4px; font: inherit; font-size: 14px; color: var(--ink);
+}
+.note-kind-item:hover { background: var(--fill-surface); }
+.note-kind-item.on { font-weight: 600; }
+.note-kind-item.on::after { content: " ✓"; color: var(--green); }
+
+/* The editing state. A textarea that sits exactly where the words were, so the page does not jump. */
+.note-editing .note-input {
+  display: block; width: 100%; box-sizing: border-box;
+  font: inherit; color: var(--ink);
+  background: var(--polaroid); border: 1px solid var(--border-defined);
+  border-radius: 5px; padding: 7px 9px; resize: vertical; min-height: 3.2em;
+}
+.note-editing .note-input:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.note-hint {
+  display: block; margin-top: 3px;
+  font-family: var(--font-sans); font-size: 11px; color: var(--ink-soft);
+}
+
+/* The link chips, editing only: one per linked mention, each one a "remove link" button. */
+.note-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+.note-chip {
+  font-family: var(--font-sans); font-size: 11px; color: var(--ink-soft);
+  background: var(--fill-surface); border: 1px solid var(--rule);
+  border-radius: 999px; padding: 2px 8px; cursor: pointer;
+}
+.note-chip:hover { border-color: var(--border-defined); color: var(--ink); }
+.note-chip-x { margin-left: 4px; font-size: 13px; line-height: 1; }
+
+/* ⚠️ THE ACTIONS REST AT OPACITY 0 AND ARE IN THE MARKUP ALWAYS, which is the rule the ⋯ clusters
+   already follow: a control revealed by being INSERTED moves the text as the pointer crosses it.
+   :focus-within covers the keyboard, so there is no second code path. */
+.note-actions {
+  display: inline-flex; gap: 8px; margin-left: 6px;
+  opacity: 0; transition: opacity .12s ease;
+}
+.note-row:hover .note-actions, .note-row:focus-within .note-actions { opacity: 1; }
+.note-act {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font-family: var(--font-sans); font-size: 11px; color: var(--ink-soft);
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px;
+}
+.note-act:hover { color: var(--ink); }
+
+/* ⚠️ THE ACTIONS STAY VISIBLE WHERE THERE IS NO HOVER. A phone never fires :hover, so a control that
+   only appears on hover does not exist there at all. */
+@media (hover: none) {
+  .note-actions { opacity: 1; }
+}
+
+/* "+ note" on a step. Rests invisible on a pointer device and appears on hover or keyboard focus;
+   on a touch screen it is simply always there, because there is no hover to reveal it with. */
+.step-add-note {
+  margin-left: .4em; padding: 0; border: 0; background: none; cursor: pointer;
+  font-family: var(--font-sans); font-size: 11px; color: var(--ink-soft);
+  opacity: 0; transition: opacity .12s ease; vertical-align: baseline;
+}
+.step-body:hover .step-add-note,
+li.step:focus-within .step-add-note,
+.step-add-note:focus-visible { opacity: 1; }
+.step-add-note:hover { color: var(--green); }
+.step-add-note:focus-visible { outline: 1px dotted currentColor; outline-offset: 2px; border-radius: 2px; }
+@media (hover: none) {
+  .step-add-note { opacity: 1; }
+}
+
+.notes-add, .ie-note-block .ie-add {
+  margin-top: 10px; padding: 0; border: 0; background: none; cursor: pointer;
+  font-family: var(--font-sans); font-size: 12px; color: var(--ink-soft);
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 2px;
+}
+.notes-add:hover { color: var(--green); }
+.notes-empty { margin: 0; font-style: italic; color: var(--ink-soft); }
+.ie-note-aside {
+  margin: 0 0 10px; font-family: var(--font-sans); font-size: 11px; color: var(--ink-soft);
+}
+.ie-notes-kind {
+  margin: 14px 0 6px; font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .1em; text-transform: uppercase; color: var(--green);
+}
+
+/* Saved / Deleted. role="status", so it is announced without the focus moving. */
+.note-toast {
+  display: inline-block; margin-left: 8px;
+  font-family: var(--font-sans); font-size: 11px; color: var(--ink-soft);
+}
+.note-toast-undo {
+  display: block; margin-top: 10px;
+  padding: 6px 10px; border-radius: 5px;
+  background: var(--fill-surface); border: 1px solid var(--rule);
+}
+.note-undo {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; color: var(--green); text-decoration: underline;
+}
+.note-undo:hover { color: var(--green-lift); }
+
+/* ⚠️ A PHONE EDITS IN THE FULL WIDTH OF THE SHEET. The popover is already a full-width block under
+   the step at this width, so the editor inside it inherits that and needs no second treatment
+   beyond keeping the box off the gutters. */
+@media (max-width: 560px) {
+  .note-editing .note-input { font-size: 16px; }   /* 16px stops iOS zooming the page on focus */
+  .note-kind-menu { min-width: 150px; }
+}

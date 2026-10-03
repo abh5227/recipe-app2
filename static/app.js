@@ -19,6 +19,8 @@ import { isToMake } from "./tomake.js";
 import { browseList, cardTags, monthYear } from "./browse.js";
 import { panelBlocks } from "./panel-blocks.js";
 import { noteBlocks, displayText } from "./note-blocks.js";
+import { noteRowHTML, newNoteBoxHTML, kindMenuHTML, notePatchBody, noteTextChanged,
+         undoToastHTML, addNoteButtonHTML } from "./note-ui.js";
 import { noteTextHTML, stepNoteIndex } from "./note-text.js";
 // ⚠️ THE KIND TABLE IS ONE FILE, IMPORTED, NOT A COPY KEPT IN STEP BY A TEST. Vite inlines
 // the JSON at build time and import_cleanup reads the SAME path for the data rule, so the
@@ -1040,18 +1042,26 @@ function renderStepRow(row, ann, notes) {
   //    nothing saying the link was still there. The row keeps its step_id either way, so this was
   //    the display dropping it. Live carries 49 annotation entries over 20 recipes.
   const marker = stepNoteMarkerHTML(notes, row.id);
-  if (ann && ann.added) return `<li class="step"><div class="step-body"><span class="step-add">${stepBodyHTML(row)}</span>${marker}</div></li>`;
+  // ⚠️ "+ note" IS IN THE MARKUP ALWAYS AND REVEALED BY CSS, for the reason the ⋯ clusters already
+  //    follow: a control that appears on hover by being INSERTED moves the text as the pointer
+  //    crosses it. It is a real button, so :focus-visible reveals it for a keyboard user with no
+  //    second code path, and on a phone the step's tap menu offers the same action.
+  // ⚠️ OWNER ONLY. is_mine gates the markup and every note route asks again.
+  const adder = (view && view.data && view.data.is_mine && !(view && view.editMode))
+    ? addNoteButtonHTML(row.id, esc) : "";
+  const box = noteNewBoxHTML(row.id);
+  if (ann && ann.added) return `<li class="step"><div class="step-body"><span class="step-add">${stepBodyHTML(row)}</span>${marker}${adder}</div>${box}</li>`;
   // ⚠️ A REWORDED STEP IS DELIBERATELY NOT SCALED, and this is the one gap left open. The word diff
   //    needs two raw strings, and only the CURRENT text has tagged spans, so scaling the pair means
   //    running the scaler over raw prose. Measured on the corpus's one reworded step, that turns
   //    "simmer for 4-6 minutes" into "8-12 minutes" at 2x. Doubling a cooking time is worse than
   //    leaving a quantity unscaled, so it waits for a tagger that can mark the baseline too.
-  if (ann && ann.mod) return `<li class="step"><div class="step-body">${wordDiffHTML(ann.mod.from, ann.mod.to)}${marker}</div></li>`;
+  if (ann && ann.mod) return `<li class="step"><div class="step-body">${wordDiffHTML(ann.mod.from, ann.mod.to)}${marker}${adder}</div>${box}</li>`;
   const html = stepBodyHTML(row);
   // .step-body wraps the step content inside li.step — the reserved attach point for future
   // per-step photos. The note marker lives INSIDE it, at the end of the step's own text, which is
   // what keeps it out of the margin where the "your changes" marks are.
-  return `<li class="step"><div class="step-body">${html}${marker}</div></li>`;
+  return `<li class="step"><div class="step-body">${html}${marker}${adder}</div>${box}</li>`;
 }
 
 // O-c-1: render the step list with its annotation layer. Own 0-based li.step counter (heading-EXCLUDED,
@@ -1091,17 +1101,67 @@ function jumpToStep(n) {
 // by nothing else: measured over the 177 corpus paragraphs, 2 do that and 0 say "the step above" or
 // "see step". Every match here becomes a link on the page, so a pattern that guessed at prose would
 // put links on phrases nobody meant as a reference.
+// ⚠️ THE SAME COMPONENT THE STEP POPOVER AND EDIT MODE USE (note-ui.js). This built its own <p> per
+// note and was read-only, so a cook could read a note here and edit the same note somewhere else
+// through different code. One renderer, one editor.
+// ⚠️ "+ note" IS OWNER-ONLY AND THE SERVER AGREES. is_mine decides whether it is drawn, and every
+// note route asks the same question again, because a hidden button is not an access rule.
 function notesSectionHTML(rows) {
   const blocks = noteBlocks(rows || [], NOTE_KINDS.kinds);
-  if (!blocks.length) return "";
+  const mine = !!(view && view.data && view.data.is_mine);
+  if (!blocks.length && !mine) return "";
+  const adder = mine
+    ? `<button type="button" class="notes-add" data-add-note="general"
+               aria-label="Add a note to this recipe">+ note</button>`
+    : "";
+  if (!blocks.length) {
+    // ⚠️ THE EMPTY STATE NAMES THE ABSENCE AND THE NEXT ACTION, and nothing else (CLAUDE.md).
+    return `<div class="notes"><h3 class="notes-kind">Notes</h3>
+      <p class="notes-empty">No notes yet.</p>${noteNewBoxHTML("general")}${adder}${noteUndoHTML()}</div>`;
+  }
   return `<div class="notes">${blocks.map((b) => `
     <h3 class="notes-kind">${esc(b.header)}</h3>
-    ${b.notes.map((n) => `<p class="notes-para">${noteTextHTML(n, esc)}${
+    ${b.notes.map((n) => noteRowHTML(n, NOTE_KINDS.kinds, esc, {
+      editable: mine,
+      place: "section",
+      editing: noteEditing(n.id, "section"),
+      draft: noteDraft(n.id),
+      saved: noteJustSaved(n.id),
+    }) + (
       // ⚠️ THE SAME SHAPE A WAIT'S LINK HAS, for the same reason: one pattern for "this belongs to
       //    step N" means a cook learns it once. It appears only when the server resolved a number,
       //    so a note attached to a heading reads without it rather than with a wrong one.
       n.step_no ? ` <a class="meta-step note-step" href="#" data-note-step="${n.step_no}">(step ${n.step_no})</a>` : ""
-    }</p>`).join("")}`).join("")}</div>`;
+    )).join("")}`).join("")}${noteNewBoxHTML("general")}${adder}${noteUndoHTML()}</div>`;
+}
+
+// --- the note component's session state ----------------------------------------------------------
+// ⚠️ WHICH NOTE IS OPEN IS VIEW STATE, NOT DRAFT STATE, and it lives here rather than in view.draft
+// because notes are edited in READING view too, where there is no draft at all. One place, read by
+// both renderers.
+const noteState = { editingId: null, editingPlace: null, drafts: new Map(), newOn: null,
+                    newText: "", savedId: null, kindMenuFor: null, undo: null };
+
+// ⚠️ (NOTE, PLACE), NOT JUST NOTE. A note linked to a step is drawn in the Notes section and in that
+// step's popover, so keying on the id alone opened a textarea in both and the one that blurred last
+// decided what was saved. Measured on the bagel: one click, three editors.
+function noteEditing(id, place) {
+  return noteState.editingId === id && noteState.editingPlace === place;
+}
+function noteDraft(id) { return noteState.drafts.has(id) ? noteState.drafts.get(id) : null; }
+function noteJustSaved(id) { return noteState.savedId === id; }
+
+// ⚠️ ONE UNDO AT A TIME, AT THE FOOT OF THE NOTES. A toast per deleted note would stack, and the
+// offer only covers the most recent delete.
+function noteUndoHTML() {
+  const u = noteState.undo;
+  return u ? undoToastHTML(u.what, u.token, esc) : "";
+}
+
+// The "+ note" box, drawn where it was opened and nowhere else. `where` is a step id or "general".
+function noteNewBoxHTML(where) {
+  if (String(noteState.newOn) !== String(where)) return "";
+  return newNoteBoxHTML(where, esc, { text: noteState.newText });
 }
 
 // {step id -> the notes attached to it}. Built once per render so a step row does not scan the list.
@@ -1118,9 +1178,22 @@ function stepNoteMarkerHTML(notes, stepId) {
   // ⚠️ NO WHITESPACE INSIDE THE BUTTON. .step-body is white-space: pre-wrap, so a newline and an
   //    indent in this template render as a gap between the step's full stop and the marker. Written
   //    on one line on purpose.
+  // ⚠️ role="dialog", NOT role="tooltip", NOW THAT IT HOLDS CONTROLS. A tooltip is a description and
+  //    is announced as one, so the Edit and Delete buttons and the type tag inside it were
+  //    unreachable in that role. The popover is still opened by hover and focus exactly as before.
+  // ⚠️ EACH NOTE CARRIES ITS OWN TYPE LABEL. Two notes on one step are two different kinds of thing
+  //    as often as not ("Tip" above "Storage"), and one shared header above a stack cannot say so.
+  // ⚠️ AND A REFERENCE TO THIS VERY STEP READS AS WORDS. See noteBodyHTML's selfStepId: a link that
+  //    scrolls the reader to where they already are is noise.
+  const mine = !!(view && view.data && view.data.is_mine);
   return ` <button type="button" class="step-note-marker" aria-expanded="false" aria-controls="${id}" aria-label="${esc(label)}" data-step-note="${stepId}"><span aria-hidden="true">&#9432;</span></button>` +
-    `<span class="step-note-pop" id="${id}" role="tooltip" hidden>` +
-    notes.map((n) => `<span class="step-note-line">${noteTextHTML(n, esc)}</span>`).join("") +
+    `<span class="step-note-pop" id="${id}" role="dialog" aria-label="${esc(label)}" hidden>` +
+    notes.map((n) => `<span class="step-note-line">` +
+      noteRowHTML(n, NOTE_KINDS.kinds, esc, {
+        editable: mine, selfStepId: stepId, place: `pop:${stepId}`,
+        editing: noteEditing(n.id, `pop:${stepId}`),
+        draft: noteDraft(n.id), saved: noteJustSaved(n.id),
+      }) + `</span>`).join("") +
     `</span>`;
 }
 
@@ -2598,29 +2671,10 @@ function handlePlanAheadAction(t) {
   if (wd) { d.waits.splice(+wd.dataset.waitDel, 1); view.dirty = true; repaint(); return true; }
   const sd = t.closest("[data-store-del]");
   if (sd) { d.storage.splice(+sd.dataset.storeDel, 1); view.dirty = true; repaint(); return true; }
-  if (t.closest("[data-note-add]")) {
-    (d.notes = d.notes || []).push({ text: "", kind: "notes", step_id: null,
-                                     ingredient_row_id: null, refs: [] });
-    view.dirty = true; repaint(); return true;
-  }
-  const nd = t.closest("[data-note-del]");
-  if (nd) { d.notes.splice(+nd.dataset.noteDel, 1); view.dirty = true; repaint(); return true; }
-  // ⚠️ MOVING A NOTE SWAPS THE OBJECTS, NOT THEIR TEXT. The row carries its id, its links and its
-  //    references, and moving the words alone would leave every one of those behind.
-  const nu = t.closest("[data-note-up]");
-  if (nu) {
-    const i = +nu.dataset.noteUp;
-    if (i > 0) { const a = d.notes; [a[i - 1], a[i]] = [a[i], a[i - 1]]; view.dirty = true; repaint(); }
-    return true;
-  }
-  const nw = t.closest("[data-note-down]");
-  if (nw) {
-    const i = +nw.dataset.noteDown;
-    if (d.notes && i < d.notes.length - 1) {
-      const a = d.notes; [a[i], a[i + 1]] = [a[i + 1], a[i]]; view.dirty = true; repaint();
-    }
-    return true;
-  }
+  // ⚠️ THE NOTE ACTIONS LEFT THIS FUNCTION ENTIRELY. They edited view.draft.notes and waited for
+  //    Save, which is the second editor this round removed. A note is written through its own
+  //    endpoint by the shared component (handleNoteAction), in Edit mode exactly as in reading view,
+  //    so there is nothing here to keep in step with it.
   return false;
 }
 
@@ -2671,7 +2725,6 @@ function handlePlanAheadInput(el) {
     return true;
   }
   if (el.dataset.noteText !== undefined) return set(d.notes, +el.dataset.noteText, "text");
-  if (el.dataset.noteKind !== undefined) return set(d.notes, +el.dataset.noteKind, "kind");
   if (el.dataset.noteStepPick !== undefined) {
     const i = +el.dataset.noteStepPick;
     if (d.notes && d.notes[i]) {
@@ -2693,28 +2746,36 @@ function handlePlanAheadInput(el) {
 // ⚠️ REORDERING IS BUTTONS, NOT DRAG. Up and down work from the keyboard with no pointer and no
 // drop target, which is the accessible default; drag can be added beside them later without
 // changing anything stored.
-function ieNotesHTML(d) {
-  const kinds = (d.note_kinds || NOTE_KINDS.kinds).map((k) => [k.kind, k.header]);
-  const rows = (d.notes || []).map((n, i) => `
-    <div class="ie-noterow">
-      <textarea class="ie ie-prose ie-note" data-note-text="${i}" rows="2"
-                placeholder="A note…">${esc(n.text || "")}</textarea>
-      <div class="ie-note-controls">
-        ${pickHTML(kinds, String(n.kind || "notes"), "note-kind", i)}
-        ${pickHTML(stepChoices(d), n.step_id == null ? "" : String(n.step_id), "note-step-pick", i)}
-        ${(n.refs || []).filter((r) => r.step_no).map((r) =>
-          `<span class="ie-note-tag" title="this note names step ${r.step_no} in its own words"
-                 >${esc(r.match_text)} &rarr; step ${r.step_no}</span>`).join("")}
-        <button type="button" class="ie-move" data-note-up="${i}" ${i === 0 ? "disabled" : ""}
-                aria-label="Move this note up">&uarr;</button>
-        <button type="button" class="ie-move" data-note-down="${i}"
-                ${i === (d.notes || []).length - 1 ? "disabled" : ""}
-                aria-label="Move this note down">&darr;</button>
-        <button type="button" class="ie-x" data-note-del="${i}" aria-label="Remove this note">×</button>
-      </div>
-    </div>`).join("");
-  return `<div class="ie-block ie-note-block"><span class="ie-vlabel">Notes</span>${rows}
-      <button type="button" class="ie-add" data-note-add>+ add a note</button></div>`;
+// ⚠️ EDIT MODE RENDERS THE SAME NOTE COMPONENT THE READING PAGE DOES, AND THAT REPLACED A SECOND
+//    EDITOR. This block had its own textarea per note, its own kind picker, its own step picker and
+//    its own up/down/× controls, and the reading page had none of them. Two renderings of one note
+//    where only one could be edited is two opinions about what a note is, and the brief's rule is
+//    that they must not be able to disagree. So there is one.
+//
+// ⚠️ AND A NOTE SAVES IMMEDIATELY HERE, SO Cancel DOES NOT REVERT IT. That is the honest consequence
+//    of notes being a playground: they take no part in the tracked edit that Save and Cancel exist
+//    for, they mint no annotation entry and they cost the recipe nothing. One rule for the cook in
+//    both views, which is "a note is saved when you finish typing it". `notes` left draftPayload
+//    entirely, and write_notes reads an absent key as "leave them alone".
+//
+// ⚠️ IT READS view.data, NOT THE DRAFT. The draft is a structuredClone taken when Edit mode opened,
+//    so a note written through its own endpoint afterwards is not in it. Reading the live rows is
+//    what keeps this block showing what the database actually holds.
+function ieNotesHTML(_d) {
+  const rows = (view.data.notes || []);
+  const blocks = noteBlocks(rows, NOTE_KINDS.kinds);
+  const body = blocks.length
+    ? blocks.map((b) => `<h4 class="ie-notes-kind">${esc(b.header)}</h4>` +
+        b.notes.map((n) => noteRowHTML(n, NOTE_KINDS.kinds, esc, {
+          editable: true, place: "ie", editing: noteEditing(n.id, "ie"),
+          draft: noteDraft(n.id), saved: noteJustSaved(n.id),
+        })).join("")).join("")
+    : `<p class="notes-empty">No notes yet.</p>`;
+  return `<div class="ie-block ie-note-block"><span class="ie-vlabel">Notes</span>
+      <p class="ie-note-aside">Notes save as you write them, so Cancel below does not undo them.</p>
+      ${body}${noteNewBoxHTML("general")}
+      <button type="button" class="ie-add" data-add-note="general">+ note</button>
+      ${noteUndoHTML()}</div>`;
 }
 // (Image path is intentionally NOT editable here — real photo upload is the next feature; the recipe's
 // existing image round-trips unchanged on save via draftPayload.)
@@ -3251,22 +3312,14 @@ function draftPayload() {
       ext_step_id: w.ext_step_id == null ? null : +w.ext_step_id })),
     storage: (view.draft.storage || []).filter((x) => t(x.label)).map((x) => ({
       where_kept: t(x.where_kept) || "fridge", applies_to: t(x.applies_to) || null, label: t(x.label) })),
-    // ⚠️ A NOTE WHOSE TEXT BOX IS EMPTY IS ONE THE USER LEFT WIP, like a blank ingredient. Clearing
-    //    a note's text is how the editor deletes it without reaching for the × .
-    // ⚠️ THE REFERENCES ARE ROUND-TRIPPED VERBATIM. The server re-scans the text on every save and
-    //    carries a stored link forward while its mention survives, so sending them back is what
-    //    keeps a link alive through an edit that merely moved the words around it.
-    notes: (view.draft.notes || []).filter((n) => t(n.text)).map((n) => ({
-      text: t(n.text), kind: t(n.kind) || "notes",
-      step_id: n.step_id == null ? null : +n.step_id,
-      ingredient_row_id: n.ingredient_row_id == null ? null : +n.ingredient_row_id,
-      // ⚠️ match_text TRAVELS WITH THE REFERENCE. The server pairs a sent reference to a mention by
-      //    the ordinal AND the words, because these are round-tripped verbatim: keyed on the
-      //    ordinal alone, rewording "proceed with step 3" to "step 1" came back still pointing at
-      //    step 3, and the page prints the referenced step's CURRENT number, so the sentence read
-      //    "step 3" however the cook typed it.
-      refs: (n.refs || []).map((x) => ({ ref_index: x.ref_index, match_text: x.match_text,
-                                         step_id: x.step_id == null ? null : +x.step_id })) })),
+    // ⚠️ `notes` IS DELIBERATELY NOT SENT, AND ITS ABSENCE IS THE FEATURE. A note is written through
+    //    its own endpoint the moment it is typed, in reading view and in Edit mode alike, so this
+    //    payload has no opinion about notes and write_notes reads an absent key as "leave them
+    //    alone". Sending them would make the recipe PUT a second note editor, racing the first: a
+    //    cook who added a note during an edit session would have it overwritten by the draft copy
+    //    taken before that note existed.
+    //    An explicit [] still clears the list, which is how an OLDER bundle empties it, and
+    //    test_an_explicit_empty_list_still_clears_them keeps that door working through the window.
   };
 }
 
@@ -4107,6 +4160,269 @@ document.addEventListener("focusin", (e) => {
   else if (!(e.target.closest && e.target.closest(".step-note-pop"))) closeAllStepNotes(null);
 });
 
+
+/* ---------- the note component's behaviour ---------- */
+// ⚠️ ONE SET OF HANDLERS FOR BOTH VIEWS. Reading view and Edit mode render the same component, so
+// they get the same behaviour from the same code. The only thing that differs is how the page is
+// repainted afterwards, and repaintNotes below is the one place that knows the difference.
+
+// ⚠️ A REPAINT IN EDIT MODE MUST NOT CALL paintRecipe. The per-step TipTap editors are mounted once
+// when Edit mode opens and a full repaint would orphan them (see the step-editor island invariant),
+// so Edit mode rewrites only its own notes host. Reading view has no such constraint and repaints
+// properly, which is what redraws a step's ⓘ when a note is added to it.
+function repaintNotes() {
+  if (view && view.editMode) {
+    const host = document.querySelector(".ie-notes");
+    if (host) host.innerHTML = ieNotesHTML(view.draft);
+  } else {
+    paintRecipe();
+  }
+  restoreNoteFocus();
+}
+
+// ⚠️ THE CARET COMES BACK, OR EVERY SAVE WOULD FEEL LIKE A DISMISSAL. A repaint replaces the
+// textarea, so the open editor is re-focused with the caret at the end of what was typed.
+function restoreNoteFocus() {
+  let el = null;
+  if (noteState.editingId != null) {
+    const row = document.querySelector(
+      `.note-row[data-note="${noteState.editingId}"][data-note-place="${noteState.editingPlace}"]`);
+    el = row && row.querySelector("[data-note-input]");
+  } else if (noteState.newOn != null) {
+    el = document.querySelector(`[data-new-note-input="${noteState.newOn}"]`);
+  }
+  if (!el) return;
+  el.focus();
+  el.selectionStart = el.selectionEnd = el.value.length;
+}
+
+const NOTE_TOAST_MS = 6000;
+
+function noteApi(path, opts) {
+  return fetch(`/api/recipes/${encodeURIComponent(view.slug)}${path}`, {
+    method: opts.method, credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
+  }).then(async (r) => {
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    return data;
+  });
+}
+
+// ⚠️ THE SERVER'S LIST WINS. Every note route answers with the recipe's whole notes list, because a
+// create or a move renumbers the others, and taking the server's answer rather than patching the
+// local copy is what keeps the page agreeing with the database after a collision.
+function adoptNotes(data) {
+  if (data && data.notes) view.data.notes = data.notes;
+  if (view.draft) view.draft.notes = view.data.notes;
+}
+
+function noteError(msg) {
+  const bar = document.querySelector(".inline-error");
+  if (bar) { bar.textContent = msg; bar.hidden = false; }
+  else console.error("note:", msg);     // reading view has no error bar; the console is the fallback
+}
+
+function closeNoteEditors() {
+  noteState.editingId = null;
+  noteState.editingPlace = null;
+  noteState.newOn = null;
+  noteState.newText = "";
+  noteState.kindMenuFor = null;
+  noteState.drafts.clear();
+}
+
+function flashSaved(id) {
+  noteState.savedId = id;
+  setTimeout(() => {
+    if (noteState.savedId === id) { noteState.savedId = null; repaintNotes(); }
+  }, 2000);
+}
+
+function saveOpenNote() {
+  const id = noteState.editingId;
+  if (id == null) return Promise.resolve();
+  const note = (view.data.notes || []).find((n) => n.id === id);
+  const draft = noteState.drafts.get(id);
+  // ⚠️ AN UNCHANGED SAVE SENDS NOTHING. Click-away fires on every blur, so a PATCH per blur would be
+  //    a write per glance.
+  if (!note || draft == null || !noteTextChanged(note, draft)) { closeNoteEditors(); repaintNotes(); return Promise.resolve(); }
+  if (!String(draft).trim()) {
+    // Clearing a note's text and clicking away is not a delete. Deleting is the Delete button, which
+    // offers an Undo; a silent delete from an empty box has nothing to undo.
+    closeNoteEditors(); repaintNotes(); return Promise.resolve();
+  }
+  closeNoteEditors();
+  return noteApi(`/notes/${id}`, { method: "PATCH", body: notePatchBody({ text: draft }) })
+    .then((data) => { adoptNotes(data); flashSaved(id); repaintNotes(); })
+    .catch((e) => { noteError(e.message); repaintNotes(); });
+}
+
+function saveNewNote() {
+  const where = noteState.newOn;
+  if (where == null) return Promise.resolve();
+  const text = String(noteState.newText || "").trim();
+  if (!text) { closeNoteEditors(); repaintNotes(); return Promise.resolve(); }
+  const body = { text };
+  // "general" is the Notes section's own adder: a note attached to no step. Anything else is a step id.
+  if (String(where) !== "general") body.step_id = +where;
+  closeNoteEditors();
+  return noteApi("/notes", { method: "POST", body })
+    .then((data) => { adoptNotes(data); if (data.note) flashSaved(data.note.id); repaintNotes(); })
+    .catch((e) => { noteError(e.message); repaintNotes(); });
+}
+
+function deleteNote(id) {
+  return noteApi(`/notes/${id}`, { method: "DELETE" })
+    .then((data) => {
+      adoptNotes(data);
+      // ⚠️ THE UNDO HOLDS WHAT THE SERVER HANDED BACK, not what the client thought the note said.
+      //    restore carries the words, the kind, the place and the step link, so Undo is a re-create
+      //    that lands in the same position.
+      noteState.undo = { token: `d${id}`, what: "Deleted", body: data.restore };
+      repaintNotes();
+      setTimeout(() => {
+        if (noteState.undo && noteState.undo.token === `d${id}`) {
+          noteState.undo = null; repaintNotes();
+        }
+      }, NOTE_TOAST_MS);
+    })
+    .catch((e) => noteError(e.message));
+}
+
+function undoNote(token) {
+  const u = noteState.undo;
+  if (!u || u.token !== token) return Promise.resolve();
+  noteState.undo = null;
+  return noteApi("/notes", { method: "POST", body: u.body })
+    .then((data) => { adoptNotes(data); repaintNotes(); })
+    .catch((e) => noteError(e.message));
+}
+
+function setNoteKind(id, kind) {
+  noteState.kindMenuFor = null;
+  return noteApi(`/notes/${id}`, { method: "PATCH", body: notePatchBody({ kind }) })
+    .then((data) => { adoptNotes(data); flashSaved(id); repaintNotes(); })
+    .catch((e) => { noteError(e.message); repaintNotes(); });
+}
+
+function unlinkNoteRef(id, refIndex) {
+  return noteApi(`/notes/${id}/refs/${refIndex}`, { method: "PATCH", body: { step_id: null } })
+    .then((data) => { adoptNotes(data); repaintNotes(); })
+    .catch((e) => noteError(e.message));
+}
+
+// The click dispatcher, in the same shape handleInlineEdit and handleRowMenuAction already have:
+// probe the attributes this concern owns, return true when one of them answered.
+function handleNoteAction(e) {
+  const t = e.target;
+  if (!t || !t.closest) return false;
+
+  const add = t.closest("[data-add-note]");
+  if (add) {
+    e.preventDefault();
+    const where = add.dataset.addNote;
+    saveOpenNote();
+    noteState.newOn = where;
+    noteState.newText = "";
+    repaintNotes();
+    return true;
+  }
+  const undo = t.closest("[data-note-undo]");
+  if (undo) { e.preventDefault(); undoNote(undo.dataset.noteUndo); return true; }
+
+  const del = t.closest("[data-note-del]");
+  if (del) { e.preventDefault(); deleteNote(+del.dataset.noteDel); return true; }
+
+  const setKind = t.closest("[data-note-set-kind]");
+  if (setKind) {
+    e.preventDefault();
+    setNoteKind(+setKind.dataset.noteSetKind, setKind.dataset.kind);
+    return true;
+  }
+  const kindBtn = t.closest("[data-note-kind]");
+  if (kindBtn) {
+    e.preventDefault();
+    const id = +kindBtn.dataset.noteKind;
+    noteState.kindMenuFor = noteState.kindMenuFor === id ? null : id;
+    repaintNotes();
+    openKindMenu();
+    return true;
+  }
+  const unlink = t.closest("[data-note-unlink]");
+  if (unlink) {
+    e.preventDefault();
+    unlinkNoteRef(+unlink.dataset.noteUnlink, +unlink.dataset.refIndex);
+    return true;
+  }
+  // A click INSIDE an open editor is not a click-away.
+  if (t.closest(".note-editing")) return false;
+
+  const edit = t.closest("[data-note-edit]");
+  if (edit) {
+    e.preventDefault();
+    const id = +edit.dataset.noteEdit;
+    const row = edit.closest(".note-row");
+    const place = (row && row.dataset.notePlace) || "section";
+    if (noteState.editingId === id && noteState.editingPlace === place) return true;
+    saveOpenNote();
+    noteState.editingId = id;
+    noteState.editingPlace = place;
+    const note = (view.data.notes || []).find((n) => n.id === id);
+    noteState.drafts.set(id, note ? note.text : "");
+    repaintNotes();
+    return true;
+  }
+  // ⚠️ CLICK-AWAY SAVES, which is the other half of "Enter saves". A click anywhere that is not the
+  //    open editor and not one of the controls above commits what was typed.
+  if (noteState.editingId != null) { saveOpenNote(); return false; }
+  if (noteState.newOn != null) { saveNewNote(); return false; }
+  return false;
+}
+
+// The kind menu is drawn next to its tag rather than in the markup, so one open menu exists at a
+// time and it cannot be left behind by a repaint.
+function openKindMenu() {
+  document.querySelectorAll(".note-kind-menu").forEach((m) => m.remove());
+  const id = noteState.kindMenuFor;
+  if (id == null) return;
+  const btn = document.querySelector(`[data-note-kind="${id}"]`);
+  const note = (view.data.notes || []).find((n) => n.id === id);
+  if (!btn || !note) return;
+  btn.setAttribute("aria-expanded", "true");
+  btn.insertAdjacentHTML("afterend", kindMenuHTML(note, NOTE_KINDS.kinds, esc));
+  const first = btn.parentNode.querySelector(".note-kind-item");
+  if (first) first.focus();
+}
+
+// Enter saves, Shift+Enter makes a line, Escape cancels. One handler for the open note and for the
+// new-note box, because they are the same keystrokes.
+document.addEventListener("keydown", (e) => {
+  const open = e.target && e.target.closest && e.target.closest("[data-note-input]");
+  const fresh = e.target && e.target.closest && e.target.closest("[data-new-note-input]");
+  if (!open && !fresh) return;
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    if (open) saveOpenNote(); else saveNewNote();
+    return;
+  }
+  if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();          // never also close the step popover this box may sit in
+    closeNoteEditors();
+    repaintNotes();
+  }
+});
+
+// Keystrokes go into the draft and NOT through a repaint, or the caret would jump on every letter.
+document.addEventListener("input", (e) => {
+  const open = e.target && e.target.closest && e.target.closest("[data-note-input]");
+  if (open) { noteState.drafts.set(+open.dataset.noteInput, open.value); return; }
+  const fresh = e.target && e.target.closest && e.target.closest("[data-new-note-input]");
+  if (fresh) noteState.newText = fresh.value;
+});
+
 /* ---------- events ---------- */
 // One click listener for the whole page (instead of attaching one to every button,
 // which is impossible here since the buttons are rebuilt constantly). When any click
@@ -4133,6 +4449,9 @@ document.addEventListener("click", (e) => {
   if (!e.target.closest(".step-note-pop")) closeAllStepNotes(null);
   if (view && view.editMode && handlePlanAheadAction(e.target)) { markDirty(); return; }
 
+  // The note component: add, edit, delete, undo, type. BEFORE handleInlineEdit, because the
+  // component is live in BOTH views and its attributes are disjoint from the editor's.
+  if (handleNoteAction(e)) return;
   // Inline recipe editor: enter / save / cancel (namespaced data-inline-edit-*). Handled first.
   if (handleInlineEdit(e)) return;
   // A stage 1: the editor's per-row ⋯ menu. After handleInlineEdit, not before — the ⋯ carries its own
