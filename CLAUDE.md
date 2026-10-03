@@ -454,13 +454,18 @@ How this project is run:
   what precedes the step before they lift, so `label_level(label, section_above=...)` cannot be
   asked a different question in two places.
   ⚠️ **IT APPLIES AT THE LIFT AND IS NOT SWEPT OVER EXISTING HEADINGS, AND THAT IS MEASURED RATHER
-  THAN LAZY.** A retroactive sweep over the 60 already-lifted labels would change 33 levels, and
-  several of those are plainly worse: acqua-pazza's 8 one-step captions become 8 sections,
-  french-fries' 5 one-word captions become 5 sections, and brioche-bread's "Shaping options" is
-  DEMOTED, which contradicts the alternatives rule it sits above. kfc-spicy-chicken-rice-bowl is the
-  case Andy flagged (seven subheadings under nothing, then "Assembly" as the only section) and a
-  sweep half-fixes it, promoting 5 of the 7. A case a rule cannot settle is a recorded decision, not
-  a wider rule.
+  THAN LAZY.** A sweep reads the level it has just written, so the first heading in a recipe always
+  has nothing above it and opens a section, and every later heading that does not name a component
+  becomes a subheading under that one. One pass over live's 243 headings changes **86 levels over 49
+  recipes, 17 promotions against 69 demotions**, and a second pass changes nothing, so that is the
+  rule's fixed point rather than a transient. The demotions are the damage. acqua-pazza loses both of
+  its real sections (`To serve:` and `Garlic crostini:`), brioche-bread's "Shaping options" is
+  DEMOTED against the alternatives rule it sits above, french-fries loses `Fry #1`, and
+  kfc-spicy-chicken-rice-bowl, the case Andy flagged, ends with `Marinade` as its only section and
+  `Assembly` demoted under it, which is worse than the seven subheadings under nothing it shows
+  today. ⚠️ **An earlier version of this paragraph said 33 levels, with 5 of KFC's 7 promoted.** It
+  was measured while `label_level` was answering SECTION for every label it was handed, which the
+  independent review then fixed. A case a rule cannot settle is a recorded decision, not a wider rule.
 - **THE AUTHOR'S NUMBERS NEED A RUN FROM 1, NOT AGREEMENT WITH THE ORDINALS.** "Only when the
   recipe's steps carry a consecutive 1..N sequence" is the rule, and demanding `number == ordinal` is
   stricter than that: an import that split one step into continuation lines pushes every later

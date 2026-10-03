@@ -1055,13 +1055,63 @@ usual lockstep, and a review CSV for the variant case. *Expected yield:* 3 lines
 - **The merged and split ingredient row sweep.** Lines the import joined or broke in the wrong
   place, which no rule has looked at yet.
 
-### Next round after go-live — notes, waits and storage edited inline
+### Next round after go-live, in order · NOT STARTED
 
-Today they are edited in a block under the method, styled unlike anything else on the page, while
-ingredients and steps are edited in place where they are read. The three row types all have their
-own tables now and all update in place by id, so the editor is the only part still working the old
-way. Styled like the ingredient and step editors, which means the reading view and the editing view
-stop being two different pages.
+Five pieces, decided after Andy's recheck of the notes round on :8002. Round B follows them as
+recorded above.
+
+**1. Notes, waits and storage edited inline.** Today they are edited in a block under the method,
+styled unlike anything else on the page, while ingredients and steps are edited in place where they
+are read. The three row types all have their own tables now and all update in place by id, so the
+editor is the only part still working the old way. Styled like the ingredient and step editors, which
+means the reading view and the editing view stop being two different pages.
+
+**2. Andy's heading rule applied to the recipes lifted before the rule existed.**
+⚠️ **MEASURED AGAINST LIVE 2026-10-02, AND THE SWEEP AS STATED MAKES 49 RECIPES WORSE.** A sweep
+reads the level it just wrote, so the first heading in a recipe has nothing above it and opens a
+section, and every later heading that does not name a component becomes a subheading under that one.
+One pass over live's 243 headings changes **86 levels over 49 recipes, 17 promotions and 69
+demotions**. A second pass changes nothing, so that is the rule's fixed point and not a transient.
+
+What it does to the four recipes worth looking at:
+
+| recipe | today | after the sweep |
+|---|---|---|
+| kfc-spicy-chicken-rice-bowl | 7 subheadings under nothing, then `Assembly` as the only section | `Marinade` becomes the only section and `Assembly` is DEMOTED under it |
+| acqua-pazza | 8 one-step captions, then `To serve:` and `Garlic crostini:` as sections | the first caption is promoted and both real sections are DEMOTED |
+| brioche-bread | `Shaping options` above `Option 1:` and `Option 2:` | `Shaping options` and `Baking` are both DEMOTED, against the alternatives rule |
+| french-fries | 5 one-word captions, then `Fry #1` | `Cut` is promoted and `Fry #1` is DEMOTED |
+
+An earlier figure in this file and in CLAUDE.md said 33 levels, with 5 of KFC's 7 promoted. Both were
+measured before the independent review fixed `label_level`, which until then answered SECTION for
+every label it was handed. The figures above replace them.
+
+*So the work is not the sweep.* It is a rule that can tell a one-step caption from a section title,
+which is a different question from the one `names_a_component` answers, plus **a recorded decision
+for KFC's `Fry the chicken` labels**. acqua-pazza and garlic-rice are previewed before anything is
+applied to them.
+
+**3. Lettered sub-steps come off like the author's numbers.** ⚠️ **ONE RECIPE, THREE STEPS.**
+karak-chai carries `a. Bring the pot to a boil so the chai foams up`, `b. Remove the pot from the
+stove` and `c. Once the pot has stopped boiling completely` at positions 8, 9 and 10, and no other
+recipe in the 300 has a lettered run at all. Its parent is already a heading (`Repeat this 3-5 times
+to make the texture velvety:` at position 7), so the parent-title half of the rule has nothing to do
+in this corpus and is written for the next import instead. The capitalization pass steps over a
+lettered marker rather than capitalizing it, which is what keeps the three reading correctly until
+the rule lands.
+
+**4. ⓘ visibility options, previewed.** The marker renders at 13 by 13 pixels in `rgb(110, 88, 66)`
+at 12.9px, inline at the end of the step's own sentence. Nothing is broken and Andy still could not
+see it, so the options are a size step, a weight step, and a background or underline treatment, built
+as a preview against the real step markup before anything changes.
+
+**5. The 112 ingredient-name casing decisions.** `reports/ingredient-name-case.csv` holds them, 103
+distinct names over 112 rows. **64 are title-cased**, where lowering the first word alone reads worse
+than leaving it (`Pinot Grigio, or other dry white wine`). **48 have no lowercase use anywhere in the
+corpus and no entry on the proper-noun list.** 10 of those 48 are `beans`' bullet lines
+(`• Adzuki beans: 1 hour`), a soaking table pasted into the ingredient list, which is a structure
+defect rather than a casing question. The figure was 191 before the review fixed the library lookup
+to read `catalog_id`, and that fix decided 79 of them from the library's own capitalization.
 
 ### A note can be restored to what the author wrote
 
