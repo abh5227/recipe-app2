@@ -19,6 +19,7 @@ import { isToMake } from "./tomake.js";
 import { browseList, cardTags, monthYear } from "./browse.js";
 import { panelBlocks } from "./panel-blocks.js";
 import { noteBlocks, displayText } from "./note-blocks.js";
+import { bracketedHTML } from "./brackets.js";
 import { noteRowHTML, newNoteBoxHTML, kindMenuHTML, notePatchBody, noteTextChanged,
          undoToastHTML, addNoteButtonHTML } from "./note-ui.js";
 import { noteTextHTML, stepNoteIndex } from "./note-text.js";
@@ -84,6 +85,24 @@ async function api(path) {
 }
 
 // [[key]] or [[key|label]] in step text -> clickable ingredient button
+// ⚠️ THE VARIANT IS READ OFF THE DOCUMENT, not baked in, so the preview switcher can flip it live
+//    and the default is the one the app ships with. No data is involved either way: the rule is
+//    display only and the stored text keeps its brackets exactly as the author wrote them.
+function bracketVariant() {
+  const v = document.documentElement.getAttribute("data-brackets");
+  return v === "off" || v === "A" || v === "B" ? v : "A";
+}
+
+// Quieter bracketed asides, over the SAME escaping and linkifying the caller already does.
+// ⚠️ STEPS AND INGREDIENT LINES ONLY. A heading is three words and dimming part of it reads as a
+//    rendering fault, and a note is already set in the quiet colour, so there is nothing to step
+//    back from.
+function brackets(text, render) {
+  const v = bracketVariant();
+  return v === "off" ? render(String(text == null ? "" : text))
+                     : bracketedHTML(text, render, { variant: v });
+}
+
 function linkify(text) {
   return esc(text).replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, key, label) => {
     key = key.trim();
@@ -838,9 +857,11 @@ function readNote(row) {
 function lineBodyHTML(row) {
   if (row.ingredient_id) {
     const label = row.label || row.raw_text || row.ingredient_id;
-    return `<button class="ingredient" data-item="${esc(row.ingredient_id)}">${esc(label)}</button>${readNote(row)}`;
+    // ⚠️ THE BRACKETS GO INSIDE THE LINK, not around it. The whole name is one button, so wrapping
+    //    the button would dim the link itself rather than the aside inside it.
+    return `<button class="ingredient" data-item="${esc(row.ingredient_id)}">${brackets(label, esc)}</button>${readNote(row)}`;
   }
-  return `${esc(row.label || row.raw_text || "")}${readNote(row)}`;
+  return `${brackets(row.label || row.raw_text || "", esc)}${readNote(row)}`;
 }
 
 // O-c-1 stage 3: place synthesized REMOVED rows at the BOTTOM of their original section — after the
@@ -1000,8 +1021,11 @@ function rerenderServings() {
 // cannot drift apart on which numbers move.
 function stepBodyHTML(row) {
   const spans = (row.spans && row.spans.length) ? row.spans : [{ t: "plain", text: row.text }];
+  // ⚠️ A "scale" SPAN IS NEVER DIMMED. It is a quantity the scaler rewrites, which is the one thing
+  //    on the line a cook is hunting for, and it carries its own .step-qty treatment already.
   return stepSpanTexts(spans, view.scale)
-    .map((s) => (s.t === "scale" ? `<span class="step-qty">${esc(s.text)}</span>` : linkify(s.text)))
+    .map((s) => (s.t === "scale" ? `<span class="step-qty">${esc(s.text)}</span>`
+                                 : brackets(s.text, linkify)))
     .join("");
 }
 
@@ -1426,10 +1450,13 @@ function scaleMetaBlock(r) {
       const isTotal = label === "Total";
       const { value, note } = isTotal ? { value: v, note: serverNote } : timeParts(v);
       const tail = note ? `<span class="meta-note"> (${esc(bindUnits(note))})</span>` : "";
-      return `${label}\u00a0<span class="meta-val">${esc(bindUnits(value))}</span>${tail}`;
+      // ⚠️ THE PART NAMES ITSELF, so "only the Total is bold" is a CSS question rather than a second
+      //    render path. Every variant emits the same three parts.
+      return `<span class="meta-part ${isTotal ? "is-total" : "is-part"}">`
+        + `${label}\u00a0<span class="meta-val">${esc(bindUnits(value))}</span>${tail}</span>`;
     })
     .join(`<span class="meta-sep"> · </span>`);
-  if (times) stack.push(`<span class="meta-item">${META_CLOCK}<span>${times}</span></span>`);
+  if (times) stack.push(`<span class="meta-item meta-times">${META_CLOCK}<span>${times}</span></span>`);
   // ⚠️ THE SECOND TOTAL SITS UNDER THE FIRST AND IS SMALLER. One line per conditional wait, each
   //    naming its own condition, so a cook who is going to take that path reads the figure instead
   //    of working it out from the Total and a bullet. The main Total is unchanged. The server
@@ -1520,7 +1547,13 @@ function scaleMetaBlock(r) {
     const rows = one ? [] : waits;
     const breakdown = rows.length
       ? `<ul class="meta-break${head ? "" : " bare"}">${rows.map(bullet).join("")}</ul>` : "";
-    stack.push(`<span class="meta-item wait">${META_HOURGLASS}<span>${head}${ext}${breakdown}</span></span>`);
+    // ⚠️ THE "Plan ahead" LABEL IS IN THE MARKUP FOR EVERY VARIANT AND REVEALED BY CSS. Emitting it
+    //    only in one variant would mean the variants differ in their DOM, and then a switcher is
+    //    comparing two renderers rather than two looks. Variant A hides it, which is the look that
+    //    ships today, so nothing moves until Andy picks.
+    stack.push(`<span class="meta-item wait">${META_HOURGLASS}<span>`
+      + `<span class="meta-planahead">Plan ahead</span>`
+      + `${head}${ext}${breakdown}</span></span>`);
   }
   // ⚠️ STORAGE IS NOT A WAIT. It reaches no total and no filter, and it says WHERE.
   const storage = (view.storage || []);

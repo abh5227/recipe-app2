@@ -2758,3 +2758,81 @@ li.step:focus-within .step-add-note,
   .note-editing .note-input { font-size: 16px; }   /* 16px stops iOS zooming the page on focus */
   .note-kind-menu { min-width: 150px; }
 }
+
+/* ---------- bracketed asides, quieter ---------- */
+/* ⚠️ DISPLAY ONLY. Nothing stored changes and the words are the same words: static/brackets.js splits
+   the raw text, the caller escapes and linkifies each piece, and only the wrapper is new.
+   ⚠️ --ink-soft, NOT A NEW LIGHTER COLOUR. The token is already documented at ~5.3:1 on --paper,
+   which is WCAG AA for body text, so the quiet style is readable by the measurement the palette
+   already carries rather than by a fresh guess. 0.94em is the smallest step that reads as "quieter"
+   without the line's baseline rhythm breaking.
+   ⚠️ STEPS AND INGREDIENT LINES ONLY. Headings are three words, and a note is already set in the
+   quiet colour, so neither has anything to step back from. */
+.step-body .brk,
+.ledger .brk,
+.lines .brk { font-size: 0.94em; color: var(--ink-soft); }
+/* Inside a library link the button already owns the colour, so only the size steps back — recolouring
+   there would fight the link treatment and make a linked aside look unlinked. */
+.ingredient .brk { font-size: 0.94em; color: inherit; opacity: .82; }
+
+/* ---------- time block: the variants the switcher offers ---------- */
+/* ⚠️ VARIANT A IS WHAT SHIPS TODAY AND IS THE DEFAULT, so an un-attributed page is unchanged. The
+   markup is identical in every variant (see the "Plan ahead" note in app.js) — these are looks, not
+   renderers, which is the only way a switcher compares what it claims to compare. */
+.meta-planahead { display: none; }
+
+/* B — only the Total is bold, the parts are quieter and spaced rather than dotted, and the
+   plan-ahead row is named and set apart. */
+html[data-timeblock="B"] .meta-part.is-part { color: var(--ink-soft); }
+html[data-timeblock="B"] .meta-part.is-part .meta-val { font-weight: 400; }
+html[data-timeblock="B"] .meta-part.is-total .meta-val { font-weight: 600; }
+html[data-timeblock="B"] .meta-sep { display: none; }
+html[data-timeblock="B"] .meta-part + .meta-part { margin-left: 1.35em; }
+html[data-timeblock="B"] .meta-planahead {
+  display: inline; margin-right: .45em;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--green);
+}
+html[data-timeblock="B"] .meta-item.wait { margin-top: 10px; }
+html[data-timeblock="B"] .meta-conditional { font-size: .92em; color: var(--ink-soft); }
+html[data-timeblock="B"] .meta-conditional .meta-val { font-weight: 400; }
+
+/* C — B, plus the plan-ahead label on its own line above the waits, and a single wait with no
+   bullet at all (the bullet is a list marker and one item is not a list). */
+html[data-timeblock="C"] .meta-part.is-part { color: var(--ink-soft); }
+html[data-timeblock="C"] .meta-part.is-part .meta-val { font-weight: 400; }
+html[data-timeblock="C"] .meta-part.is-total .meta-val { font-weight: 600; }
+html[data-timeblock="C"] .meta-sep { display: none; }
+html[data-timeblock="C"] .meta-part + .meta-part { margin-left: 1.35em; }
+html[data-timeblock="C"] .meta-planahead {
+  display: block; margin-bottom: 2px;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600;
+  letter-spacing: .08em; text-transform: uppercase; color: var(--green);
+}
+html[data-timeblock="C"] .meta-item.wait { margin-top: 14px; }
+html[data-timeblock="C"] .meta-conditional { font-size: .9em; color: var(--ink-soft); padding-left: 1.1em; }
+html[data-timeblock="C"] .meta-conditional .meta-val { font-weight: 400; }
+html[data-timeblock="C"] .meta-break { list-style: none; padding-left: 0; }
+html[data-timeblock="C"] .meta-break > li { padding-left: 0; }
+html[data-timeblock="C"] .meta-break > li::marker { content: ""; }
+
+/* ---------- the note marker: the variants the switcher offers ---------- */
+/* ⚠️ "current" IS THE DEFAULT AND IS WHAT SHIPS. Andy could not see it at 13px in --ink-soft, so the
+   two alternatives are louder in different ways: colour, or a word instead of a glyph. */
+html[data-marker="accent"] .step-note-marker { color: var(--hand); font-size: .95em; }
+html[data-marker="accent"] .step-note-marker:hover { color: var(--btn-fill); }
+
+/* The "note" tag: the glyph is replaced by a word, which is the one option that cannot be missed.
+   The glyph span is hidden rather than removed so the markup stays identical across variants. */
+html[data-marker="tag"] .step-note-marker > span { display: none; }
+html[data-marker="tag"] .step-note-marker::after {
+  content: "note";
+  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  letter-spacing: .07em; text-transform: uppercase;
+  color: var(--green); background: var(--fill-surface);
+  border: 1px solid var(--rule); border-radius: 3px;
+  padding: 1px 4px; margin-left: .1em; vertical-align: .08em;
+}
+html[data-marker="tag"] .step-note-marker:hover::after {
+  border-color: var(--border-defined); color: var(--green-lift);
+}
