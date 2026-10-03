@@ -2768,9 +2768,10 @@ li.step:focus-within .step-add-note,
    without the line's baseline rhythm breaking.
    ⚠️ STEPS AND INGREDIENT LINES ONLY. Headings are three words, and a note is already set in the
    quiet colour, so neither has anything to step back from. */
+/* ⚠️ .ingredient-list .iname IS THE REAL CONTAINER, and .ledger / .lines were a guess that matched
+   nothing. Caught by measuring the rendered page: the spans were there and kept --ink at 15px. */
 .step-body .brk,
-.ledger .brk,
-.lines .brk { font-size: 0.94em; color: var(--ink-soft); }
+.ingredient-list .iname .brk { font-size: 0.94em; color: var(--ink-soft); }
 /* Inside a library link the button already owns the colour, so only the size steps back — recolouring
    there would fight the link treatment and make a linked aside look unlinked. */
 .ingredient .brk { font-size: 0.94em; color: inherit; opacity: .82; }
