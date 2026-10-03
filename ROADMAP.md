@@ -1122,6 +1122,27 @@ way back is a per-recipe "restore the original notes", which reads that table an
 *Why it is not built now:* nobody has made a mess yet, and the shape of the control (one recipe, one
 kind, one note?) is a decision rather than a rule.
 
+⚠️ **RESTORING RE-APPLIES THE CURRENT RULES, OR IT UNDOES THE MACHINE'S WORK ALONG WITH THE COOK'S.**
+Andy's ruling, and the notes round is what makes it concrete. `recipe_notes_original` holds the
+author's words as they arrived, which on four recipes means the words BEFORE the capitalization pass
+touched them: baked-cauliflower's note begins "baking brought out a sweetness", cappuccino-muffins'
+begins "freeze for up to 3 months", and matar-paneer and tofu-basil-endive-leaves both begin "tip:".
+A restore that wrote the table back verbatim would put those four lowercase first letters back and
+the next corpus pass would fix them again, which is a loop with a person in it.
+
+So the restore is two steps, not one. Put back the recorded text, then run it through the rules the
+corpus currently holds (`import_cleanup.capitalize_first_visible`, `normalize_lookalikes`, and
+whatever has been added by then), exactly as `scripts/apply_capitalization.py` would. The author's
+wording comes back and the machine's repairs stay. *The rule underneath:* the original is a record of
+what the author WROTE, not of what the app should SHOW, and those have been different since the first
+machine repair.
+
+⚠️ **AND A COPY NOW HAS ONE.** `copy_recipe` records the copy's originals from the source's, falling
+back to the source's current notes where the source has none recorded. Measured on live before this
+shipped: a copy of aloo-potato-parathas carried its note and the note's step reference and wrote 0
+rows into that table, so the copy was a playground with no way back while the recipe it came from
+had one.
+
 ### Backlog #4 — a long parenthetical on an ingredient line is a note about that ingredient
 
 Migration 060 added `recipe_notes.ingredient_row_id`, written by nothing today, for exactly this.
