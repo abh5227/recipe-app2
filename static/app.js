@@ -19,9 +19,6 @@ import { isToMake } from "./tomake.js";
 import { browseList, cardTags, monthYear } from "./browse.js";
 import { panelBlocks } from "./panel-blocks.js";
 import { noteBlocks, displayText } from "./note-blocks.js";
-import { bracketedHTML } from "./brackets.js";
-import { planAheadMenuItems, planAheadRowAction, blankWait, blankStorage }
-  from "./plan-ahead-rows.js";
 import { noteRowHTML, newNoteBoxHTML, kindMenuHTML, notePatchBody, noteTextChanged,
          undoToastHTML, addNoteButtonHTML } from "./note-ui.js";
 import { noteTextHTML, stepNoteIndex } from "./note-text.js";
@@ -87,24 +84,6 @@ async function api(path) {
 }
 
 // [[key]] or [[key|label]] in step text -> clickable ingredient button
-// ⚠️ THE VARIANT IS READ OFF THE DOCUMENT, not baked in, so the preview switcher can flip it live
-//    and the default is the one the app ships with. No data is involved either way: the rule is
-//    display only and the stored text keeps its brackets exactly as the author wrote them.
-function bracketVariant() {
-  const v = document.documentElement.getAttribute("data-brackets");
-  return v === "off" || v === "A" || v === "B" ? v : "A";
-}
-
-// Quieter bracketed asides, over the SAME escaping and linkifying the caller already does.
-// ⚠️ STEPS AND INGREDIENT LINES ONLY. A heading is three words and dimming part of it reads as a
-//    rendering fault, and a note is already set in the quiet colour, so there is nothing to step
-//    back from.
-function brackets(text, render) {
-  const v = bracketVariant();
-  return v === "off" ? render(String(text == null ? "" : text))
-                     : bracketedHTML(text, render, { variant: v });
-}
-
 function linkify(text) {
   return esc(text).replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_, key, label) => {
     key = key.trim();
@@ -859,11 +838,9 @@ function readNote(row) {
 function lineBodyHTML(row) {
   if (row.ingredient_id) {
     const label = row.label || row.raw_text || row.ingredient_id;
-    // ⚠️ THE BRACKETS GO INSIDE THE LINK, not around it. The whole name is one button, so wrapping
-    //    the button would dim the link itself rather than the aside inside it.
-    return `<button class="ingredient" data-item="${esc(row.ingredient_id)}">${brackets(label, esc)}</button>${readNote(row)}`;
+    return `<button class="ingredient" data-item="${esc(row.ingredient_id)}">${esc(label)}</button>${readNote(row)}`;
   }
-  return `${brackets(row.label || row.raw_text || "", esc)}${readNote(row)}`;
+  return `${esc(row.label || row.raw_text || "")}${readNote(row)}`;
 }
 
 // O-c-1 stage 3: place synthesized REMOVED rows at the BOTTOM of their original section — after the
@@ -1023,11 +1000,8 @@ function rerenderServings() {
 // cannot drift apart on which numbers move.
 function stepBodyHTML(row) {
   const spans = (row.spans && row.spans.length) ? row.spans : [{ t: "plain", text: row.text }];
-  // ⚠️ A "scale" SPAN IS NEVER DIMMED. It is a quantity the scaler rewrites, which is the one thing
-  //    on the line a cook is hunting for, and it carries its own .step-qty treatment already.
   return stepSpanTexts(spans, view.scale)
-    .map((s) => (s.t === "scale" ? `<span class="step-qty">${esc(s.text)}</span>`
-                                 : brackets(s.text, linkify)))
+    .map((s) => (s.t === "scale" ? `<span class="step-qty">${esc(s.text)}</span>` : linkify(s.text)))
     .join("");
 }
 
@@ -1452,13 +1426,10 @@ function scaleMetaBlock(r) {
       const isTotal = label === "Total";
       const { value, note } = isTotal ? { value: v, note: serverNote } : timeParts(v);
       const tail = note ? `<span class="meta-note"> (${esc(bindUnits(note))})</span>` : "";
-      // ⚠️ THE PART NAMES ITSELF, so "only the Total is bold" is a CSS question rather than a second
-      //    render path. Every variant emits the same three parts.
-      return `<span class="meta-part ${isTotal ? "is-total" : "is-part"}">`
-        + `${label}\u00a0<span class="meta-val">${esc(bindUnits(value))}</span>${tail}</span>`;
+      return `${label}\u00a0<span class="meta-val">${esc(bindUnits(value))}</span>${tail}`;
     })
     .join(`<span class="meta-sep"> · </span>`);
-  if (times) stack.push(`<span class="meta-item meta-times">${META_CLOCK}<span>${times}</span></span>`);
+  if (times) stack.push(`<span class="meta-item">${META_CLOCK}<span>${times}</span></span>`);
   // ⚠️ THE SECOND TOTAL SITS UNDER THE FIRST AND IS SMALLER. One line per conditional wait, each
   //    naming its own condition, so a cook who is going to take that path reads the figure instead
   //    of working it out from the Total and a bullet. The main Total is unchanged. The server
@@ -1549,13 +1520,7 @@ function scaleMetaBlock(r) {
     const rows = one ? [] : waits;
     const breakdown = rows.length
       ? `<ul class="meta-break${head ? "" : " bare"}">${rows.map(bullet).join("")}</ul>` : "";
-    // ⚠️ THE "Plan ahead" LABEL IS IN THE MARKUP FOR EVERY VARIANT AND REVEALED BY CSS. Emitting it
-    //    only in one variant would mean the variants differ in their DOM, and then a switcher is
-    //    comparing two renderers rather than two looks. Variant A hides it, which is the look that
-    //    ships today, so nothing moves until Andy picks.
-    stack.push(`<span class="meta-item wait">${META_HOURGLASS}<span>`
-      + `<span class="meta-planahead">Plan ahead</span>`
-      + `${head}${ext}${breakdown}</span></span>`);
+    stack.push(`<span class="meta-item wait">${META_HOURGLASS}<span>${head}${ext}${breakdown}</span></span>`);
   }
   // ⚠️ STORAGE IS NOT A WAIT. It reaches no total and no filter, and it says WHERE.
   const storage = (view.storage || []);
@@ -2020,16 +1985,6 @@ function closeRowMenu() {
 // Labels no longer have to be short. The row menu widens to fit them (see .rtools .row-menu in
 // styles.css); the album's .photo-menu keeps its 140px.
 function rowMenuItemsHTML(kind, i) {
-  // ⚠️ A WAIT AND A STORAGE ROW HAVE NO HEADINGS AND NO CONVERSION, so their menu is the three
-  //    things they CAN do. Move up and Move down are the reorder: see waitRowTools for why they are
-  //    here rather than on a drag grip.
-  if (kind === "wait" || kind === "store") {
-    const arr = kind === "wait" ? (view.draft.waits || []) : (view.draft.storage || []);
-    return planAheadMenuItems(kind, i, arr.length).map((it) => it.sep
-      ? `<div class="sep"></div>`
-      : `<button type="button"${it.danger ? ` class="danger"` : ""} data-rm-act="${it.act}"`
-        + `${it.disabled ? " disabled" : ""}>${esc(it.label)}</button>`).join("");
-  }
   const inserts = `<button type="button" data-rm-act="add-row">${kind === "step" ? "Add step" : "Add ingredient"}</button>
     <button type="button" data-rm-act="add-heading">Add heading</button>
     <div class="sep"></div>`;
@@ -2092,23 +2047,6 @@ function handleRowMenuAction(e) {
   // insertIndexFor still implements both cases and its tests still cover both; only this CALLER
   // narrowed to "below" when the Add above item was removed. The "above" case stays because it is the
   // honest general statement of the rule, and re-adding a caller must not mean re-deriving it.
-  // ⚠️ THE WAIT AND STORAGE BRANCH COMES FIRST, because the shared add/insert arithmetic below reads
-  //    view.draft.steps or .ingredients and would have inserted an ingredient from a wait's menu.
-  // ⚠️ THE WAIT AND STORAGE BRANCH COMES FIRST, because the shared add/insert arithmetic below reads
-  //    view.draft.steps or .ingredients and would have inserted an ingredient from a wait's menu.
-  //    The array surgery itself is planAheadRowAction, which is pure and has its own tests: a swap
-  //    that writes the wrong index puts one wait's reviewed minutes onto another wait's words.
-  if (kind === "wait" || kind === "store") {
-    const key = kind === "wait" ? "waits" : "storage";
-    const next = planAheadRowAction(view.draft[key] || [], i, act,
-                                    kind === "wait" ? blankWait() : blankStorage());
-    if (next == null) return true;             // nothing happened: do not repaint, do not mark dirty
-    view.draft[key] = next;
-    view.dirty = true;
-    const host = document.querySelector(".ie-planahead");
-    if (host) host.innerHTML = waitsEditHTML(view.draft) + storageEditHTML(view.draft);
-    return true;
-  }
   if (act === "add-row" || act === "add-heading") {
     const arr = kind === "step" ? view.draft.steps : view.draft.ingredients;
     const at = insertIndexFor("below", i, arr.length);
@@ -2672,28 +2610,11 @@ function stepChoices(d, blank = "no step") {
   return out;
 }
 
-// ⚠️ THE SAME ROW AS AN INGREDIENT AND A STEP, AND THAT REPLACED A FORM BOX. These were .ie-wait-row
-//    inside an .ie-block with an .ie-vlabel down the side and a bare × on each row: the only two
-//    lists on the page that did not look like the page. They are .erow rows now, with the shared
-//    .rtools cluster and the same ⋯ menu the other two lists carry, so "how do I delete one of
-//    these" has one answer in the editor rather than three.
-// ⚠️ REORDER IS IN THE MENU, NOT ON A GRIP, and that is a measured difference rather than a
-//    shortcut. The grip is a native drag source wired to the two big lists' drop arithmetic
-//    (setDragPill, the ochre drop bar, the per-list index maths). A wait list is two or three rows,
-//    Move up and Move down reach the same states, and they work from the keyboard, which the drag
-//    explicitly does not (see ROADMAP, "Known limitations & tech debt").
-function waitRowTools(i, kind) {
-  return `<span class="divider" aria-hidden="true"></span><span class="rtools">
-    ${rowMoreHTML(i, kind)}
-  </span>`;
-}
-
 function waitsEditHTML(d) {
   // ⚠️ THE CONDITION BOX IS ALWAYS IN THE DOM and CSS hides it unless the picker says only_if. The
   //    alternative is repainting the block on a select change, which takes focus off the select the
   //    user just used.
-  const rows = (d.waits || []).map((w, i) => `<li class="erow wait-row ie-wait-row" data-when="${esc(w.when_kind || "always")}">
-      <span class="wait-fields">
+  const rows = (d.waits || []).map((w, i) => `<div class="ie-wait-row" data-when="${esc(w.when_kind || "always")}">
       ${pickHTML(WAIT_KINDS, w.kind || "other", "wait-kind", i)}
       <input class="ie ie-wait" data-wait-label="${i}" value="${esc(w.label || "")}" placeholder="1 hr rise" aria-label="Wait">
       <input class="ie ie-wait-ext" data-wait-ext="${i}" value="${esc(w.ext_label || "")}" placeholder="or overnight if time allows" aria-label="Extension">
@@ -2702,25 +2623,20 @@ function waitsEditHTML(d) {
       ${pickHTML(stepChoices(d), w.step_id == null ? "" : String(w.step_id), "wait-step-pick", i)}
       ${pickHTML(stepChoices(d, "alongside which step?"), w.alongside_step_id == null ? "" : String(w.alongside_step_id), "wait-aside-pick", i)}
       ${pickHTML(stepChoices(d, "the alternative's step?"), w.ext_step_id == null ? "" : String(w.ext_step_id), "wait-ext-pick", i)}
-      </span>
-      <span class="tail">${waitRowTools(i, "wait")}</span>
-    </li>`).join("");
-  return `<div class="ie-list-block"><h3 class="col-title">Plan ahead</h3>
-      <ul class="ingredient-list ie-wait-list">${rows}</ul>
+      <button type="button" class="ie-x" data-wait-del="${i}" aria-label="Remove this wait">×</button>
+    </div>`).join("");
+  return `<div class="ie-block"><span class="ie-vlabel">Plan ahead</span>${rows}
       <button type="button" class="ie-add" data-wait-add>+ add a wait</button></div>`;
 }
 
 function storageEditHTML(d) {
-  const rows = (d.storage || []).map((x, i) => `<li class="erow wait-row ie-wait-row">
-      <span class="wait-fields">
+  const rows = (d.storage || []).map((x, i) => `<div class="ie-wait-row">
       ${pickHTML(STORE_WHERE, x.where_kept || "fridge", "store-where", i)}
       <input class="ie ie-wait-ext" data-store-what="${i}" value="${esc(x.applies_to || "")}" placeholder="the dough" aria-label="Applies to">
       <input class="ie ie-wait" data-store-label="${i}" value="${esc(x.label || "")}" placeholder="up to 1 week" aria-label="Keeps for">
-      </span>
-      <span class="tail">${waitRowTools(i, "store")}</span>
-    </li>`).join("");
-  return `<div class="ie-list-block"><h3 class="col-title">Storage</h3>
-      <ul class="ingredient-list ie-wait-list">${rows}</ul>
+      <button type="button" class="ie-x" data-store-del="${i}" aria-label="Remove this">×</button>
+    </div>`).join("");
+  return `<div class="ie-block"><span class="ie-vlabel">Storage</span>${rows}
       <button type="button" class="ie-add" data-store-add>+ add storage</button></div>`;
 }
 
@@ -2743,19 +2659,18 @@ function handlePlanAheadAction(t) {
     const notesHost = document.querySelector(".ie-notes");
     if (notesHost) notesHost.innerHTML = ieNotesHTML(d);
   };
-  // ⚠️ THE SAME BLANK ROW THE ⋯ MENU INSERTS. These built their own object literals and the wait one
-  //    was already SHORT: it had no ext_step_id, so a wait added from this button could not carry
-  //    the alternative's step link at all until the row was saved and re-read. One definition, in
-  //    plan-ahead-rows.js, used by both doors.
   if (t.closest("[data-wait-add]")) {
-    (d.waits = d.waits || []).push(blankWait()); view.dirty = true; repaint(); return true;
+    (d.waits = d.waits || []).push({ kind: "other", label: "", ext_label: "", when_kind: "always",
+                                     when_label: "", step_id: null, alongside_step_id: null });
+    view.dirty = true; repaint(); return true;
   }
   if (t.closest("[data-store-add]")) {
-    (d.storage = d.storage || []).push(blankStorage()); view.dirty = true; repaint(); return true;
+    (d.storage = d.storage || []).push({ where_kept: "fridge", applies_to: "", label: "" }); view.dirty = true; repaint(); return true;
   }
-  // ⚠️ THE PER-ROW × HANDLERS ARE GONE WITH THE × ITSELF. Delete is a ⋯ menu item now, dispatched
-  //    through planAheadRowAction, and leaving these here would have left a second delete path that
-  //    nothing on the page could reach and no test could find.
+  const wd = t.closest("[data-wait-del]");
+  if (wd) { d.waits.splice(+wd.dataset.waitDel, 1); view.dirty = true; repaint(); return true; }
+  const sd = t.closest("[data-store-del]");
+  if (sd) { d.storage.splice(+sd.dataset.storeDel, 1); view.dirty = true; repaint(); return true; }
   // ⚠️ THE NOTE ACTIONS LEFT THIS FUNCTION ENTIRELY. They edited view.draft.notes and waited for
   //    Save, which is the second editor this round removed. A note is written through its own
   //    endpoint by the shared component (handleNoteAction), in Edit mode exactly as in reading view,
