@@ -33,18 +33,6 @@ export function kindOf(table, kind) {
   return (table || []).find((k) => k.kind === kind) || (table || [])[0];
 }
 
-// The "Note ▾" tag. A real button with a real menu, because it CHANGES the note rather than
-// describing it.
-export function kindTagHTML(note, table, esc, { editable = true } = {}) {
-  const k = kindOf(table, note.kind);
-  const text = esc(tagLabel(k));
-  if (!editable) return `<span class="note-tag note-tag-flat">${text}</span>`;
-  return `<button type="button" class="note-tag" data-note-kind="${note.id}"` +
-    ` aria-haspopup="true" aria-expanded="false"` +
-    ` aria-label="${esc(`Type: ${tagLabel(k)}. Change this note's type`)}">` +
-    `${text}<span class="note-tag-caret" aria-hidden="true">&#9662;</span></button>`;
-}
-
 export function kindMenuHTML(note, table, esc) {
   const items = (table || []).map((k) => {
     const on = k.kind === note.kind;
@@ -69,11 +57,16 @@ export function noteBodyHTML(note, table, esc, { selfStepId = null } = {}) {
   return noteTextHTML(shown, esc);
 }
 
-// One note, reading. `editable` is the OWNER's answer and it comes from the server's is_mine.
+// One note, READING. The look is live's: the words, and where the note is linked to a step, live's
+// own "(step N)" at the end of its own text. Nothing else, because the type is on the group heading
+// and the controls belong to the editor.
+// ⚠️ THE ONLY THING THE OWNER SEES AT REST IS A PENCIL, AND IT RESERVES ITS SPACE. It sits in the
+// markup always at opacity 0 and fades in on hover or keyboard focus, which is the rule the ⋯
+// clusters already follow: a control revealed by being INSERTED moves the text as the pointer
+// crosses it.
 // ⚠️ THE TEXT IS NOT GIVEN A role, AND THAT IS DELIBERATE. Clicking it starts editing, which is a
 // mouse affordance, and it holds step links so calling it a button would be a lie to a screen
-// reader. The keyboard route is the real "Edit this note" button beside it, which is in the tab
-// order and labelled.
+// reader. The keyboard route is the labelled pencil beside it, which is in the tab order.
 // ⚠️ A NOTE APPEARS IN MORE THAN ONE PLACE AT ONCE, AND ONLY ONE OF THEM MAY BE AN EDITOR. A note
 // linked to a step is drawn in the Notes section AND in that step's popover, and in Edit mode in its
 // own block. Scoping "editing" to the note id alone opened a live textarea in every one of them:
@@ -82,90 +75,121 @@ export function noteBodyHTML(note, table, esc, { selfStepId = null } = {}) {
 // opened an editor is the only place that gets one.
 export function noteRowHTML(note, table, esc, opts = {}) {
   const { editable = false, selfStepId = null, editing = false, draft = null,
-          showTag = true, saved = false, place = "" } = opts;
+          saved = false, place = "", where = "section", steps = null,
+          kindMenu = false, stepMenu = false } = opts;
+  if (editing) return noteEditHTML(note, table, esc, { draft, place, steps, kindMenu, stepMenu });
   const body = noteBodyHTML(note, table, esc, { selfStepId });
-  const tag = showTag ? kindTagHTML(note, table, esc, { editable }) : "";
-  if (editing) {
-    // ⚠️ THE LINK CHIPS ONLY EXIST WHILE EDITING, because that is the only time "remove link" is a
-    //    question. Reading, the same reference is just a link in the sentence.
-    return `<div class="note-row note-editing" data-note="${note.id}"` +
-      ` data-note-place="${esc(place)}">` +
-      tag + noteInputHTML(note.id, draft != null ? draft : note.text, esc) +
-      refChipsHTML(note, esc) +
-      `</div>`;
-  }
-  const controls = editable
-    ? `<span class="note-actions">` +
-        `<button type="button" class="note-act" data-note-edit="${note.id}"` +
-        ` aria-label="Edit this note">Edit</button>` +
-        `<button type="button" class="note-act" data-note-del="${note.id}"` +
-        ` aria-label="Delete this note">Delete</button></span>`
+  // ⚠️ THE SAME SHAPE A WAIT'S LINK HAS, for the same reason: one pattern for "this belongs to step
+  //    N" means a cook learns it once. It appears only where the server resolved a number, so a note
+  //    attached to a heading reads without it rather than with a wrong one. NOT inside the step's
+  //    own popover, where it would point at the step the reader is already standing on — the same
+  //    reasoning as the self-reference rule above.
+  const link = (where !== "pop" && note.step_no)
+    ? ` <a class="meta-step note-step" href="#" data-note-step="${note.step_no}">(step ${note.step_no})</a>`
     : "";
-  return `<div class="note-row${editable ? " note-mine" : ""}" data-note="${note.id}"` +
-    ` data-note-place="${esc(place)}">` +
-    tag +
-    `<div class="note-text"${editable ? ` data-note-edit="${note.id}"` : ""}>${body}</div>` +
-    controls + (saved ? savedToastHTML() : "") +
+  const pencil = editable
+    ? `<button type="button" class="note-pencil" data-note-edit="${note.id}" aria-label="Edit this note">&#9998;</button>`
+    : "";
+  const toast = saved ? savedToastHTML(note.id) : "";
+  // ⚠️ NO NEWLINES INSIDE THE PARAGRAPH. .notes-para is white-space: pre-wrap, so an indent in this
+  //    template renders as visible dead space before the pencil.
+  if (where === "pop") {
+    // ⚠️ EACH NOTE IN A POPOVER CARRIES ITS OWN TYPE LABEL. A popover has no group heading to carry
+    //    it, and two notes on one step are two different kinds of thing as often as not.
+    const type = `<span class="note-type">${esc(tagLabel(kindOf(table, note.kind)))}</span>`;
+    return `<span class="step-note-line" data-note="${note.id}" data-note-place="${esc(place)}">` +
+      `${type}<span class="note-words"${editable ? ` data-note-edit="${note.id}"` : ""}>${body}</span>${pencil}${toast}</span>`;
+  }
+  return `<p class="notes-para" data-note="${note.id}" data-note-place="${esc(place)}">` +
+    `<span class="note-words"${editable ? ` data-note-edit="${note.id}"` : ""}>${body}</span>${link}${pencil}${toast}</p>`;
+}
+
+// One note, EDITING: the note lifts onto a small panel and its controls sit in the panel's footer.
+// ⚠️ THE CONTROLS EXIST ONLY HERE. The type, the step link and the delete are questions you ask
+// about a note you are changing, so the reading page carries none of them and reads exactly as live.
+// ⚠️ THE FOOTER'S RULE BELONGS TO THE PANEL, NOT TO THE LIST. A line between notes would make the
+// Notes section read as a form, which is the thing this design exists to avoid.
+export function noteEditHTML(note, table, esc, { draft = null, place = "", steps = null,
+                                                 kindMenu = false, stepMenu = false } = {}) {
+  const kind = kindOf(table, note.kind);
+  const link = note.step_no
+    ? `<button type="button" class="note-tool" data-note-unlink-step="${note.id}"` +
+      ` aria-label="Linked to step ${note.step_no}. Remove the link">` +
+      `&middot; step ${note.step_no}<span class="note-x" aria-hidden="true">&times;</span></button>`
+    : `<button type="button" class="note-tool note-tool-off" data-note-link-menu="${note.id}"` +
+      ` aria-haspopup="true" aria-expanded="${stepMenu}" aria-label="Link this note to a step">` +
+      `link a step<span class="note-caret" aria-hidden="true">&#9662;</span></button>`;
+  return `<div class="note-edit" data-note="${note.id}" data-note-place="${esc(place)}">` +
+    noteInputHTML(note.id, draft != null ? draft : note.text, esc) +
+    `<div class="note-foot">` +
+      `<button type="button" class="note-tool" data-note-kind="${note.id}"` +
+      ` aria-haspopup="true" aria-expanded="${kindMenu}"` +
+      ` aria-label="${esc(`Type: ${tagLabel(kind)}. Change this note's type`)}">` +
+      `${esc(tagLabel(kind))}<span class="note-caret" aria-hidden="true">&#9662;</span></button>` +
+      link +
+      `<button type="button" class="note-tool note-tool-del" data-note-del="${note.id}"` +
+      ` aria-label="Delete this note">Delete</button>` +
+      `<span class="note-hint" aria-hidden="true">Enter saves &middot; Esc cancels</span>` +
+    `</div>` +
+    (kindMenu ? kindMenuHTML(note, table, esc) : "") +
+    (stepMenu && steps ? stepMenuHTML(note, steps, esc) : "") +
     `</div>`;
+}
+
+// The step picker, open only while "link a step" is. Headings are not offered: a note attached to a
+// heading resolves no number and would print without a link, which is a pointer the page cannot show.
+export function stepMenuHTML(note, steps, esc) {
+  const items = (steps || []).filter((s) => !s.is_heading).map((s, i) =>
+    `<button type="button" role="menuitem" class="note-kind-item" data-note-link-step="${note.id}"` +
+    ` data-step-id="${s.id}">step ${i + 1}` +
+    `<span class="note-menu-words"> &mdash; ${esc(String(s.text || "").slice(0, 40))}&hellip;</span>` +
+    `</button>`).join("");
+  return `<div class="note-kind-menu note-step-menu" role="menu" aria-label="Link a step">${items}</div>`;
 }
 
 // ⚠️ A TEXTAREA, NOT AN INPUT, BECAUSE Shift+Enter HAS TO MAKE A LINE. Enter saves and Shift+Enter
 // breaks the line, which is only possible in a control that can hold one.
-// ⚠️ ONE CHIP PER LINKED MENTION, NAMING THE WORDS AND THE STEP IT REACHED. A mention the server
-// could not resolve has no chip: there is no link to remove.
-export function refChipsHTML(note, esc) {
-  const linked = (note.refs || []).filter((r) => r.step_no);
-  if (!linked.length) return "";
-  // ⚠️ THE ARROW ONLY APPEARS WHEN THE NUMBER HAS MOVED. "step 1 → step 1" was what this printed
-  //    for every chip, which is three words to say nothing. The author's own words are what the cook
-  //    typed, so they lead; the resolved number follows only where it DIFFERS, which is the bagel's
-  //    "step 9 → step 8" and the whole reason a reference stores an id.
-  return `<span class="note-chips">` + linked.map((r) => {
-    const said = Number(String(r.match_text).match(/(\d+)/)?.[1]);
-    const moved = said !== r.step_no;
-    const face = moved ? `${esc(r.match_text)} &rarr; step ${r.step_no}` : esc(r.match_text);
-    const label = moved
-      ? `${r.match_text} links to step ${r.step_no}. Remove this link`
-      : `${r.match_text} is a link. Remove it`;
-    return `<button type="button" class="note-chip" data-note-unlink="${note.id}"` +
-      ` data-ref-index="${r.ref_index}" aria-label="${esc(label)}">` +
-      `${face}<span class="note-chip-x" aria-hidden="true">×</span></button>`;
-  }).join("") + `</span>`;
-}
-
 export function noteInputHTML(id, text, esc) {
   return `<textarea class="note-input" data-note-input="${id}" rows="2"` +
     ` aria-label="Note text. Enter saves, Shift and Enter makes a new line, Escape cancels"` +
-    ` placeholder="A note…">${esc(text || "")}</textarea>` +
-    `<span class="note-hint" aria-hidden="true">Enter saves · Shift+Enter new line · Esc cancels</span>`;
+    ` placeholder="A note…">${esc(text || "")}</textarea>`;
 }
 
-// The box that opens under a step for "+ note". id is the STEP's id, so the draft cannot collide
-// with an open note editor.
-export function newNoteBoxHTML(stepId, esc, { text = "" } = {}) {
-  return `<div class="note-row note-editing note-new" data-new-note="${stepId}">` +
-    `<span class="note-tag note-tag-flat">Note</span>` +
-    `<textarea class="note-input" data-new-note-input="${stepId}" rows="2"` +
-    ` aria-label="A new note on this step. Enter saves, Shift and Enter makes a new line,` +
-    ` Escape cancels" placeholder="A note on this step…">${esc(text || "")}</textarea>` +
-    `<span class="note-hint" aria-hidden="true">Enter saves · Shift+Enter new line · Esc cancels` +
-    `</span></div>`;
+// The box that opens for "+ note". `where` is a STEP's id, or "general" for the Notes section's own
+// adder, so the draft cannot collide with an open note editor.
+export function newNoteBoxHTML(where, esc, { text = "" } = {}) {
+  const onStep = String(where) !== "general";
+  return `<div class="note-edit note-new" data-new-note="${esc(String(where))}">` +
+    `<textarea class="note-input" data-new-note-input="${esc(String(where))}" rows="2"` +
+    ` aria-label="A new note. Enter saves, Shift and Enter makes a new line, Escape cancels"` +
+    ` placeholder="${onStep ? "A note on this step…" : "A note…"}">${esc(text || "")}</textarea>` +
+    `<div class="note-foot"><span class="note-hint" aria-hidden="true">` +
+    `Enter saves &middot; Esc cancels</span></div></div>`;
 }
 
+// ⚠️ IT HANGS OFF A ZERO-WIDTH ANCHOR, AND THAT IS NOT A DETAIL. An inline button at the end of a
+// step takes WIDTH even at opacity 0, and a step whose last line nearly fills the measure then wraps
+// one word onto a new line. Measured against the live commit on the same database: apple-pie's
+// method grew 24px — one line — on a recipe with no notes at all, which is a visible change to a
+// page this round promised not to touch. The anchor is zero-width inline, so the flow is live's
+// flow exactly, and the button is positioned out of it.
 export function addNoteButtonHTML(stepId, esc, label = "+ note") {
-  return `<button type="button" class="step-add-note" data-add-note="${stepId}"` +
-    ` aria-label="Add a note to this step">${esc(label)}</button>`;
+  return `<span class="step-add-slot"><button type="button" class="step-add-note"` +
+    ` data-add-note="${stepId}" aria-label="Add a note to this step">${esc(label)}</button></span>`;
 }
 
-export function savedToastHTML() {
-  return `<span class="note-toast" role="status">Saved</span>`;
+// ⚠️ THE SAVE OFFERS AN UNDO TOO, NOT JUST THE DELETE. A save that silently replaced the words with
+// no way back is the one edit a playground should not have.
+export function savedToastHTML(id) {
+  return `<span class="note-toast" role="status">Saved &middot; ` +
+    `<button type="button" class="note-undo" data-note-undo="s${id}">Undo</button></span>`;
 }
 
 // ⚠️ THE UNDO IS PART OF THE MESSAGE, NOT A SEPARATE CONTROL SOMEWHERE ELSE. role="status" so a
 // screen reader hears it without the focus moving, and the button is reachable straight after.
 export function undoToastHTML(what, token, esc) {
   return `<div class="note-toast note-toast-undo" role="status" data-note-toast="${esc(token)}">` +
-    `${esc(what)} · <button type="button" class="note-undo" data-note-undo="${esc(token)}">Undo` +
+    `${esc(what)} &middot; <button type="button" class="note-undo" data-note-undo="${esc(token)}">Undo` +
     `</button></div>`;
 }
 

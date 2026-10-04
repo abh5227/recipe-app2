@@ -6,9 +6,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { tagLabel, kindOf, kindTagHTML, kindMenuHTML, noteBodyHTML, noteRowHTML, noteInputHTML,
-         newNoteBoxHTML, addNoteButtonHTML, refChipsHTML, notePatchBody, noteTextChanged,
-         undoToastHTML } from "../../static/note-ui.js";
+import { tagLabel, kindOf, kindMenuHTML, noteBodyHTML, noteRowHTML, noteEditHTML, noteInputHTML,
+         stepMenuHTML, newNoteBoxHTML, addNoteButtonHTML, notePatchBody, noteTextChanged,
+         savedToastHTML, undoToastHTML } from "../../static/note-ui.js";
 
 const TABLE = JSON.parse(fs.readFileSync(
   path.join(import.meta.dirname, "../../static/note-kinds.json"), "utf8")).kinds;
@@ -34,15 +34,33 @@ test("an unknown kind falls back to the first one rather than rendering blank", 
   assert.equal(kindOf(TABLE, undefined).kind, "notes");
 });
 
-test("an owner's tag is a button and a stranger's is not", () => {
-  const mine = kindTagHTML(note({ kind: "tips" }), TABLE, esc, { editable: true });
-  const theirs = kindTagHTML(note({ kind: "tips" }), TABLE, esc, { editable: false });
-  assert.match(mine, /<button/, "the owner must be able to open the menu");
-  assert.match(mine, /data-note-kind="7"/);
-  assert.match(mine, /aria-haspopup="true"/);
-  assert.doesNotMatch(theirs, /<button/, "a stranger's tag is a label, not a control");
-  assert.match(theirs, /note-tag-flat/);
-  for (const html of [mine, theirs]) assert.match(html, />Tip/);
+test("reading, a note carries NO type control — the group heading says what it is", () => {
+  // ⚠️ THE ROUND 1 DESIGN PUT A "Tip ▾" ON EVERY NOTE AT REST AND ANDY TURNED IT DOWN. The Notes
+  //    section already prints a heading per kind, so a tag on each note says the same thing twice
+  //    and turns a read into a form. The type is a control only while the note is being edited.
+  const mine = noteRowHTML(note({ kind: "tips", text: "hello" }), TABLE, esc,
+                           { editable: true, place: "section", where: "section" });
+  for (const probe of [/data-note-kind/, /note-tag/, /aria-haspopup/, /data-note-del/]) {
+    assert.doesNotMatch(mine, probe, "no control on a note at rest but the pencil");
+  }
+  assert.match(mine, /<p class="notes-para"/, "live's own paragraph, unchanged");
+});
+
+test("a note in a POPOVER carries its type, because a popover has no heading to carry it", () => {
+  const html = noteRowHTML(note({ kind: "tips", text: "hello" }), TABLE, esc,
+                           { editable: true, place: "pop:30", where: "pop", selfStepId: 30 });
+  assert.match(html, /<span class="note-type">Tip<\/span>/);
+  assert.match(html, /step-note-line/);
+});
+
+test("the step link is live's \"(step N)\", and never inside the step's own popover", () => {
+  const n = note({ text: "hello", step_id: 30, step_no: 3 });
+  const section = noteRowHTML(n, TABLE, esc, { place: "section", where: "section" });
+  const pop = noteRowHTML(n, TABLE, esc, { place: "pop:30", where: "pop", selfStepId: 30 });
+  assert.match(section, /<a class="meta-step note-step" href="#" data-note-step="3">\(step 3\)<\/a>/);
+  // ⚠️ THE POPOVER IS ALREADY ON THAT STEP. A link to where the reader is standing is noise, which
+  //    is the same reasoning the self-reference rule above rests on.
+  assert.doesNotMatch(pop, /\(step 3\)/);
 });
 
 test("the type menu marks the current kind and offers all five", () => {
@@ -98,10 +116,10 @@ test("only the instance that was clicked becomes an editor", () => {
                                                editing: true, draft: "hello" });
   const pop = noteRowHTML(n, TABLE, esc, { editable: true, place: "pop:30",
                                            editing: false, selfStepId: 30 });
-  assert.match(section, /note-editing/);
+  assert.match(section, /note-edit/);
   assert.match(section, /data-note-place="section"/);
   assert.match(section, /data-note-input="7"/);
-  assert.doesNotMatch(pop, /note-editing/, "the popover copy stays reading");
+  assert.doesNotMatch(pop, /data-note-place="section"/, "the popover copy stays reading");
   assert.doesNotMatch(pop, /data-note-input/);
   assert.match(pop, /data-note-place="pop:30"/);
 });
@@ -109,19 +127,18 @@ test("only the instance that was clicked becomes an editor", () => {
 test("a stranger gets no editing affordances at all", () => {
   const n = note({ text: "hello" });
   const theirs = noteRowHTML(n, TABLE, esc, { editable: false, place: "section" });
-  for (const probe of [/data-note-edit/, /data-note-del/, /<button[^>]*note-tag"/]) {
+  for (const probe of [/data-note-edit/, /data-note-del/, /note-pencil/]) {
     assert.doesNotMatch(theirs, probe);
   }
   assert.match(theirs, /hello/, "but the words are still there to read");
-  assert.doesNotMatch(theirs, /note-mine/);
 });
 
-test("an owner's row carries Edit and Delete with real labels", () => {
+test("an owner's only mark at rest is a labelled pencil", () => {
   const html = noteRowHTML(note({ text: "hello" }), TABLE, esc,
-                           { editable: true, place: "section" });
-  assert.match(html, /data-note-edit="7"[^>]*aria-label="Edit this note"/);
-  assert.match(html, /data-note-del="7"[^>]*aria-label="Delete this note"/);
-  assert.match(html, /note-mine/);
+                           { editable: true, place: "section", where: "section" });
+  assert.match(html, /class="note-pencil" data-note-edit="7" aria-label="Edit this note"/);
+  // the words themselves are the mouse target; the pencil is the keyboard one
+  assert.match(html, /<span class="note-words" data-note-edit="7">/);
 });
 
 // --- the editing box ------------------------------------------------------------------------------
@@ -129,8 +146,9 @@ test("an owner's row carries Edit and Delete with real labels", () => {
 test("the editor is a textarea, because Shift and Enter has to make a line", () => {
   const html = noteInputHTML(7, "a note", esc);
   assert.match(html, /<textarea/);
-  assert.match(html, /Enter saves/);
   assert.match(html, /aria-label="[^"]*Escape cancels"/);
+  // the key hint lives in the footer now, beside the controls it belongs with
+  assert.match(noteEditHTML(note({ text: "a note" }), TABLE, esc, {}), /Enter saves &middot; Esc cancels/);
 });
 
 test("the editing box shows the draft, not the stored text", () => {
@@ -144,7 +162,7 @@ test("the new-note box is keyed on its step, so it cannot collide with an open e
   const html = newNoteBoxHTML(30, esc);
   assert.match(html, /data-new-note="30"/);
   assert.match(html, /data-new-note-input="30"/);
-  assert.match(html, /note-tag-flat">Note</, "a new note is a Note until it is told otherwise");
+  assert.doesNotMatch(html, /note-tag/, "a new note has no type control either — Note until told otherwise");
 });
 
 test("the step adder names the step it belongs to and says what it does", () => {
@@ -153,29 +171,53 @@ test("the step adder names the step it belongs to and says what it does", () => 
   assert.match(html, /aria-label="Add a note to this step"/);
 });
 
-// --- the link chips -------------------------------------------------------------------------------
+// --- the editor's footer -------------------------------------------------------------------------
 
-test("a chip shows the arrow only where the number has MOVED", () => {
-  const same = refChipsHTML(note({
-    refs: [{ ref_index: 0, match_text: "step 1", step_id: 10, step_no: 1 }] }), esc);
-  assert.match(same, /step 1<span/, "step 1 reaching step 1 says it once");
-  assert.doesNotMatch(same, /&rarr;/);
-
-  const moved = refChipsHTML(note({
-    refs: [{ ref_index: 0, match_text: "step 9", step_id: 88, step_no: 8 }] }), esc);
-  assert.match(moved, /step 9 &rarr; step 8/, "the bagel's case, and the reason an id is stored");
+test("the footer carries the type, the step link and the delete, and nothing else", () => {
+  const html = noteEditHTML(note({ kind: "tips", text: "x", step_id: 30, step_no: 3 }), TABLE, esc,
+                            { place: "section" });
+  assert.match(html, /data-note-kind="7"[^>]*>Tip/);
+  assert.match(html, /data-note-unlink-step="7"/);
+  assert.match(html, /&middot; step 3/, "the link control names the step it would remove");
+  assert.match(html, /data-note-del="7"[^>]*aria-label="Delete this note"/);
+  assert.equal((html.match(/class="note-tool/g) || []).length, 3, "three controls, no more");
 });
 
-test("an unresolved reference gets no chip, because there is no link to remove", () => {
-  assert.equal(refChipsHTML(note({
-    refs: [{ ref_index: 0, match_text: "step 40", step_id: null, step_no: null }] }), esc), "");
+test("a note linked to nothing offers the picker instead of an unlink", () => {
+  const html = noteEditHTML(note({ text: "x" }), TABLE, esc, { place: "section" });
+  assert.match(html, /data-note-link-menu="7"/);
+  assert.match(html, />link a step/);
+  assert.doesNotMatch(html, /data-note-unlink-step/);
 });
 
-test("a chip carries the note and the mention it would unlink", () => {
-  const html = refChipsHTML(note({
-    refs: [{ ref_index: 2, match_text: "step 4", step_id: 40, step_no: 4 }] }), esc);
-  assert.match(html, /data-note-unlink="7"/);
-  assert.match(html, /data-ref-index="2"/);
+test("the two menus are drawn WITH the editor, so closing it closes them", () => {
+  // ⚠️ THE ROUND 1 MENU WAS INSERTED NEXT TO ITS BUTTON BY JS, which a repaint could leave behind.
+  const shut = noteEditHTML(note({ text: "x" }), TABLE, esc, { place: "section" });
+  assert.doesNotMatch(shut, /note-kind-menu/);
+  const open = noteEditHTML(note({ text: "x" }), TABLE, esc, { place: "section", kindMenu: true });
+  assert.match(open, /note-kind-menu/);
+  assert.match(open, /aria-expanded="true"/);
+});
+
+test("the step picker offers steps and never a heading", () => {
+  // ⚠️ A NOTE ON A HEADING RESOLVES NO NUMBER, so the page would print it without a link. Offering
+  //    one would be offering a pointer the reader can never see.
+  const steps = [{ id: 1, text: "chop", is_heading: false },
+                 { id: 2, text: "To cook:", is_heading: true },
+                 { id: 3, text: "fry", is_heading: false }];
+  const html = stepMenuHTML(note({}), steps, esc);
+  assert.equal((html.match(/role="menuitem"/g) || []).length, 2);
+  assert.match(html, /data-step-id="1"[^>]*>step 1/);
+  assert.match(html, /data-step-id="3"[^>]*>step 2/, "the numbers skip the heading, as the page does");
+});
+
+test("a save offers an undo too, not just a delete", () => {
+  // ⚠️ A SAVE THAT SILENTLY REPLACED THE WORDS with no way back is the one edit a playground should
+  //    not have. The token tells the handler which kind of undo it is.
+  const html = savedToastHTML(7);
+  assert.match(html, /Saved &middot; /);
+  assert.match(html, /data-note-undo="s7"/);
+  assert.match(html, /role="status"/);
 });
 
 // --- what a save sends ----------------------------------------------------------------------------
