@@ -8,7 +8,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { tagLabel, kindOf, kindMenuHTML, noteBodyHTML, noteRowHTML, noteEditHTML, noteInputHTML,
          stepMenuHTML, newNoteBoxHTML, addNoteButtonHTML, notePatchBody, noteTextChanged,
-         savedToastHTML, undoToastHTML } from "../../static/note-ui.js";
+         noteEditText, savedToastHTML, undoToastHTML } from "../../static/note-ui.js";
+import { noteTextPlain, noteTextParts } from "../../static/note-text.js";
 
 const TABLE = JSON.parse(fs.readFileSync(
   path.join(import.meta.dirname, "../../static/note-kinds.json"), "utf8")).kinds;
@@ -267,4 +268,76 @@ test("a place name full of quotes cannot break out of the attribute", () => {
                            { editable: true, place: 'a" onclick="evil()' });
   assert.doesNotMatch(html, /onclick="evil/);
   assert.match(html, /&quot;/);
+});
+
+
+// --- the editor shows what you read ---------------------------------------------------------------
+
+const BAGEL = note({
+  id: 158, kind: "variations",
+  text: "SAME DAY VERSION: increase water to ~354 grams and then proceed with step 9.",
+  refs: [{ ref_index: 0, match_text: "step 9", step_id: 3788, step_no: 8 }],
+});
+
+test("the editor is seeded with the words the page shows, not the row", () => {
+  // ⚠️ THE CASE THAT STARTED THIS. The bagel's note reads "Increase water… proceed with step 8" and
+  //    used to open a box saying "SAME DAY VERSION: increase water… proceed with step 9", which is
+  //    a different sentence about a different step.
+  assert.equal(noteEditText(BAGEL, TABLE),
+               "Increase water to ~354 grams and then proceed with step 8.");
+});
+
+test("reading and the editor agree, word for word", () => {
+  const read = noteBodyHTML(BAGEL, TABLE, esc).replace(/<[^>]+>/g, "");
+  assert.equal(read, noteEditText(BAGEL, TABLE));
+});
+
+test("the capital arrives only because a label left", () => {
+  // The label carried the sentence's first letter, so stripping it leaves a lowercase opening.
+  assert.match(noteEditText(BAGEL, TABLE), /^Increase/);
+  const own = note({ text: "increase the water a little.", kind: "notes" });
+  assert.equal(noteEditText(own, TABLE), "increase the water a little.",
+               "an author's own lowercase opening is left alone");
+});
+
+test("a label the table does not know stays in the text", () => {
+  // "Form a Pie Shell:" names something and the kind table has never heard of it, so the words are
+  // the author's and the editor must not quietly delete them.
+  const pie = note({ kind: "notes", text: "Form a Pie Shell: To form the pie shell, take a disk." });
+  assert.equal(noteEditText(pie, TABLE), pie.text);
+});
+
+test("a label that disagrees with the row's kind stays too", () => {
+  // A cook who moved a "Tip:" into Storage changed the kind and not the words.
+  const moved = note({ kind: "storage", text: "Tip: freeze it flat." });
+  assert.equal(noteEditText(moved, TABLE), "Tip: freeze it flat.");
+});
+
+test("opening and closing with no edit is NOT a change", () => {
+  // ⚠️ THE GUARANTEE THE WHOLE ROUND RESTS ON. Comparing the draft with the STORED text would call
+  //    every glance a change and rewrite 177 rows one at a time.
+  assert.equal(noteTextChanged(BAGEL, noteEditText(BAGEL, TABLE), TABLE), false);
+  assert.equal(noteTextChanged(BAGEL, noteEditText(BAGEL, TABLE) + " more", TABLE), true);
+});
+
+test("a reference the server could not resolve keeps the author's number", () => {
+  const broken = note({ text: "see step 40 for this.",
+                        refs: [{ ref_index: 0, match_text: "step 40", step_id: null, step_no: null }] });
+  assert.equal(noteEditText(broken, TABLE), "see step 40 for this.");
+  assert.doesNotMatch(noteBodyHTML(broken, TABLE, esc), /note-stepref/);
+});
+
+test("two references each take their own current number", () => {
+  const two = note({
+    text: "This matters at step 3 and again at step 9.",
+    refs: [{ ref_index: 0, match_text: "step 3", step_id: 10, step_no: 3 },
+           { ref_index: 1, match_text: "step 9", step_id: 20, step_no: 8 }] });
+  assert.equal(noteTextPlain(two), "This matters at step 3 and again at step 8.");
+});
+
+test("the walk is one walk: the parts the link and the plain text come from", () => {
+  const parts = noteTextParts(BAGEL);
+  assert.deepEqual(parts.map((p) => p.t), ["text", "step", "text"]);
+  assert.equal(parts[1].step_no, 8);
+  assert.equal(parts[1].v, "step 9", "the author's words are still what was matched");
 });

@@ -196,6 +196,13 @@ body.browse-bg > #app { position: relative; z-index: 1; }   /* lift ONLY the pag
    name + controls) isn't pinched — the extra width goes to the name column. Reading stays 760px.
    (No max-width transition yet — feeling the raw toggle jump before deciding whether to ease it.) */
 .page.recipe-view.editing { max-width: calc(1000px + var(--hand-gutter)); }
+/* ⚠️ THE PAGE RESERVES THE BAR'S OWN HEIGHT, because .inline-save-bar is position: fixed and takes
+   no space in the flow. It sits at bottom: 22px and stands about 50px tall, so it owns the bottom
+   72px of the viewport, and the editing page's own padding is 40px at desktop and 20px at a phone
+   width. Measured at 390px before this: the last line of the Notes block sat 18px BELOW the top of
+   the bar on the live commit and 8px below it here, so the end of the page could not be read at
+   all. 72px for the bar plus 32px of air. */
+.page.recipe-view.editing { padding-bottom: 104px; }
 
 a { color: var(--berry); text-decoration: none; }
 a:hover { color: var(--berry-lift); }
@@ -2691,7 +2698,16 @@ a.meta-step.note-step { font-size: .92em; color: var(--ink-soft); }
   display: flex; flex-direction: column;
 }
 .note-step-menu { max-height: 240px; overflow-y: auto; }
+/* ⚠️ flex: 0 0 auto, OR A LONG MENU SQUASHES ITS OWN ROWS. .note-kind-menu is a column flex box and
+   .note-step-menu caps it at 240px. A flex item SHRINKS by default, so the bagel's 15 steps were
+   each squeezed from 34px to 15px to fit the cap, and with padding and overflow:hidden on the item
+   that cut the top half off every line. The menu never scrolled, because there was nothing left to
+   scroll. Measured on :8002: 15px rows before, 34px rows and a 524px scroll height after.
+   ⚠️ IT IS NOT A CLASS COLLISION. Nothing else in the stylesheet defines .note-kind-menu or
+   .note-kind-item (checked), unlike .note-row, which the ingredient editor already owned. This is
+   one class serving two menus, written for the five-item one. */
 .note-kind-item {
+  flex: 0 0 auto;
   text-align: left; background: none; border: 0; cursor: pointer; white-space: nowrap;
   padding: 6px 9px; border-radius: 4px; font: inherit; font-size: 14px; color: var(--ink);
   overflow: hidden; text-overflow: ellipsis;
@@ -2715,7 +2731,12 @@ a.meta-step.note-step { font-size: .92em; color: var(--ink-soft); }
   font-family: var(--font-sans); font-size: 11px; color: var(--ink-soft);
   opacity: 0; transition: opacity .12s ease;
 }
-.step-body:hover .step-add-note,
+/* ⚠️ THE REVEAL IS A CLASS, NOT :hover, BECAUSE :hover ENDS AT THE ELEMENT'S EDGE. "+ note" hangs
+   off a zero-width anchor past the end of the step's last line, so reaching it means leaving
+   .step-body, and the button vanished on the way. app.js holds `hover-hold` on the row for 300ms
+   after the pointer leaves the whole area (hover-hold.js), and re-entering cancels the hide.
+   :focus-within stays, because a keyboard user never leaves a gap. */
+li.step.hover-hold .step-add-note,
 li.step:focus-within .step-add-note,
 li.step.step-tapped .step-add-note,
 .step-add-note:focus-visible { opacity: 1; }

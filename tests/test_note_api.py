@@ -483,3 +483,79 @@ def test_a_copys_note_links_point_at_the_copys_own_steps(kitchen):
     note = _notes_of(kitchen.client, new_id)[0]
     assert note["step_id"] in own and note["step_id"] != sid
     assert note["refs"][0]["step_id"] in own
+
+
+# ---------------------------------------------------------------------------------------------
+# What a save writes, now that the editor shows the display text
+# ---------------------------------------------------------------------------------------------
+
+def test_saving_the_shown_text_keeps_the_link_on_the_same_step(kitchen):
+    """⚠️ THE NUMBER CHANGES AND THE TARGET MUST NOT.
+
+    The editor shows the step's CURRENT number, so a cook who edits a note saves "step 2" where the
+    row said "step 3". The reference has to come back pointing at the same row, or every edit of a
+    note that names a step quietly repoints it.
+    """
+    rid = _recipe(kitchen.client)
+    steps = _steps_of(kitchen.client, rid)
+    third = steps[2]["id"]
+    kitchen.client.post(f"/api/recipes/{rid}/notes", json={"text": "finish at step 3"})
+    note = _notes_of(kitchen.client, rid)[0]
+    assert [(r["match_text"], r["step_id"], r["step_no"]) for r in note["refs"]] \
+        == [("step 3", third, 3)]
+
+    # the first step goes, so the step that was 3 is now 2 and the page prints "step 2"
+    kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Beans", "ingredients": [{"raw_text": "1 cup beans"}],
+        "steps": [{"text": "Soak them overnight"}, {"text": "Simmer until tender"}]})
+    note = _notes_of(kitchen.client, rid)[0]
+    assert note["refs"][0]["step_no"] == 2, "the page resolves it to the new number"
+    assert note["text"] == "finish at step 3", "and the row still holds the author's words"
+
+    # the cook edits the note, and what the editor held was "finish at step 2"
+    kitchen.client.patch(f"/api/recipes/{rid}/notes/{note['id']}",
+                         json={"text": "finish at step 2, carefully"})
+    after = _notes_of(kitchen.client, rid)[0]
+    assert after["text"] == "finish at step 2, carefully"
+    assert [(r["match_text"], r["step_id"], r["step_no"]) for r in after["refs"]] \
+        == [("step 2", third, 2)], "the same row, named by its new number"
+
+
+def test_an_edit_never_touches_the_recorded_original(kitchen):
+    """recipe_notes_original is the way back, and a save is not allowed to move it."""
+    import models
+    from sqlalchemy import select
+    rid = _recipe(kitchen.client, notes="Tip: soak them first.")
+    note = _notes_of(kitchen.client, rid)[0]
+
+    import app as A
+
+    def recorded():
+        with A.orm_session() as s:
+            return [(m["position"], m["kind"], m["text"]) for m in s.execute(
+                select(models.RecipeNoteOriginal.__table__)
+                .where(models.RecipeNoteOriginal.__table__.c.recipe_id == rid)
+                .order_by(models.RecipeNoteOriginal.__table__.c.position)).mappings()]
+
+    before = recorded()
+    kitchen.client.patch(f"/api/recipes/{rid}/notes/{note['id']}",
+                         json={"text": "Soak them first, for an hour."})
+    kitchen.client.patch(f"/api/recipes/{rid}/notes/{note['id']}", json={"kind": "storage"})
+    assert recorded() == before, "the author's words as they arrived, untouched by either write"
+
+
+def test_a_patch_with_the_same_text_is_refused_rather_than_written(kitchen):
+    """⚠️ THE CLIENT DECIDES NOT TO SEND, AND THE SERVER AGREES IF IT DOES.
+
+    Click-away fires on every blur. The client compares the draft with what the field was seeded
+    with and sends nothing when they match; this is the second half of that rule, so a client that
+    sends anyway cannot rewrite a row with its own contents.
+    """
+    rid = _recipe(kitchen.client, notes="Soak them first.")
+    note = _notes_of(kitchen.client, rid)[0]
+    r = kitchen.client.patch(f"/api/recipes/{rid}/notes/{note['id']}",
+                             json={"text": note["text"]})
+    assert r.status_code == 200, "the same words are still a legal write"
+    after = _notes_of(kitchen.client, rid)[0]
+    assert after["text"] == note["text"]
+    assert after["id"] == note["id"], "and it is the same row, updated in place"

@@ -8,7 +8,7 @@
 // module stays dependency-free for the zero-dep JS suite, and the app keeps one escaping function
 // rather than a second copy of it. displayText comes from note-blocks.js, which is dependency-free
 // too, so the step popover and the Notes block strip a label by one rule and not two.
-import { displayText } from "./note-blocks.js";
+import { displayText, displayParts } from "./note-blocks.js";
 
 // ⚠️ A MIRROR OF notes.py::STEP_MENTION, AND NOT THE OBVIOUS SPELLING OF IT. Python's \b, \s and
 // \d are Unicode-aware on a str and JavaScript's are ASCII-only, so /\bsteps?\s+(\d+)\b/ and the
@@ -26,7 +26,10 @@ const STEP_MENTION = /(?<![\p{L}\p{N}_])steps?[\s\u0085\u001c-\u001f]+(\p{Nd}+)(
 // ⚠️ A REFERENCE WHOSE STEP BECAME A HEADING, OR WENT, RENDERS AS PLAIN TEXT. step_no comes back
 // null and the words stay exactly as written, which is the rule waits already follow: a wrong
 // number is worse than no link.
-export function noteTextHTML(note, esc) {
+// ⚠️ ONE SCAN, TWO RENDERERS. The page draws a reference as a link and the editor has to show the
+// same words in a plain field, and writing the walk twice is how the two drift. noteTextParts is the
+// walk; noteTextHTML and noteTextPlain only decide what a piece looks like.
+export function noteTextParts(note) {
   const refs = note.refs || [];
   const text = String(note.display != null ? note.display : (note.text || ""));
   // ⚠️ THE DISPLAY TEXT CAN BE SHORTER THAN THE STORED TEXT, so the ordinals have to be lined up.
@@ -37,7 +40,8 @@ export function noteTextHTML(note, esc) {
   const stored = String(note.text || "");
   const cut = (note.display != null && stored && stored !== text) ? stored.indexOf(text) : 0;
   const offset = cut > 0 ? (stored.slice(0, cut).match(STEP_MENTION) || []).length : 0;
-  let out = "", last = 0, i = 0;
+  const parts = [];
+  let last = 0, i = 0;
   STEP_MENTION.lastIndex = 0;
   for (let m = STEP_MENTION.exec(text); m; m = STEP_MENTION.exec(text)) {
     // ⚠️ BY ref_index, NEVER BY POSITION IN THE ARRAY. A reference the author left flagged, or one
@@ -47,15 +51,47 @@ export function noteTextHTML(note, esc) {
     //    that shape.
     const ref = refs.find((r) => r.ref_index === i + offset);
     i++;
-    out += esc(text.slice(last, m.index));
-    out += (ref && ref.step_no)
-      ? `<a class="note-stepref" href="#" data-note-step="${ref.step_no}">step ${ref.step_no}</a>`
-      : esc(m[0]);
+    if (m.index > last) parts.push({ t: "text", v: text.slice(last, m.index) });
+    parts.push({ t: "step", v: m[0], step_no: (ref && ref.step_no) ? ref.step_no : null,
+                 ref_index: i - 1 + offset });
     last = m.index + m[0].length;
   }
-  return out + esc(text.slice(last));
+  if (last < text.length) parts.push({ t: "text", v: text.slice(last) });
+  return capFirst(parts, note);
 }
 
+// ⚠️ THE CAPITAL IS DISPLAY ONLY, AND ONLY AFTER A STRIPPED LABEL. "SAME DAY VERSION: increase
+// water…" is a sentence whose first letter was carried by the label, so removing the label leaves
+// it lowercase. A note whose label was NOT stripped is the author's own opening and is left alone.
+// Nothing here is written back: the stored row keeps the author's words until the cook edits it.
+function capFirst(parts, note) {
+  if (!note.displayStripped || !parts.length || parts[0].t !== "text") return parts;
+  const v = parts[0].v.replace(/^(\s*)(\p{Ll})/u, (_, sp, ch) => sp + ch.toUpperCase());
+  return v === parts[0].v ? parts : [{ ...parts[0], v }, ...parts.slice(1)];
+}
+
+// A note's words, with each stored step reference turned into a link that always reads the step's
+// CURRENT number.
+// ⚠️ THE NUMBER ON SCREEN IS NOT THE NUMBER IN THE TEXT. The author wrote "step 9" against their own
+// numbering, and the steps have moved since. What is stored is the step's id, so the sentence keeps
+// meaning the same step and the figure is resolved every time the page draws.
+// ⚠️ A REFERENCE WHOSE STEP BECAME A HEADING, OR WENT, RENDERS AS PLAIN TEXT. step_no comes back
+// null and the words stay exactly as written, which is the rule waits already follow: a wrong
+// number is worse than no link.
+export function noteTextHTML(note, esc) {
+  return noteTextParts(note).map((p) => (p.t === "step" && p.step_no)
+    ? `<a class="note-stepref" href="#" data-note-step="${p.step_no}">step ${p.step_no}</a>`
+    : esc(p.v)).join("");
+}
+
+// The same words as a plain string, which is what the editor is seeded with: the label gone, the
+// first letter capitalized, and every resolved reference reading the number the page prints.
+// ⚠️ THIS IS WHAT A SAVE WRITES. "What you see is what is stored" only holds if the thing the cook
+// was shown is the thing the field contained.
+export function noteTextPlain(note) {
+  return noteTextParts(note).map((p) => (p.t === "step" && p.step_no)
+    ? `step ${p.step_no}` : p.v).join("");
+}
 
 export { STEP_MENTION };
 
@@ -82,7 +118,8 @@ export function stepNoteIndex(rows, table) {
     // ⚠️ THE SAME DISPLAY TEXT THE NOTES SECTION SHOWS. These are the raw rows, so without this the
     //    popover printed the label ("Variation: ...") that the section strips, and one note read
     //    two different ways on one page.
-    seen.push({ ...n, display: displayText(n, table) });
+    const d = displayParts(n, table);
+    seen.push({ ...n, display: d.text, displayStripped: d.stripped });
   };
   for (const n of rows || []) {
     add(n.step_id, n);

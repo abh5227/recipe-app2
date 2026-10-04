@@ -54,10 +54,17 @@ function classifyNote(para, table) {
 // ⚠️ THE LABEL IS STRIPPED ONLY WHEN IT AGREES WITH THE ROW'S KIND. A cook who moves a note reading
 // "Tip: ..." into Storage has changed the kind and not the words, and hiding the word "Tip" would
 // quietly edit the note to match a decision they can still undo.
-function displayText(row, table) {
+function displayParts(row, table) {
   const c = classifyNote(String(row.text || ""), table);
-  return c.kind === row.kind && c.text !== row.text ? c.text : String(row.text || "");
+  const stripped = c.kind === row.kind && c.text !== row.text;
+  return { text: stripped ? c.text : String(row.text || ""), stripped };
 }
+
+// ⚠️ ONE COPY OF THE LABEL RULE, READ BY THE PAGE AND BY THE EDITOR. The editor used to seed itself
+// from the STORED text, so a note read "Increase water…" and edited "SAME DAY VERSION: increase
+// water…", and the two disagreed about what the note said. Both go through displayParts now, and
+// `stripped` is what tells the renderer whether the first letter needs a capital.
+function displayText(row, table) { return displayParts(row, table).text; }
 
 // Note ROWS -> [{kind, header, notes: [row]}], in order of a kind's first appearance.
 // ⚠️ A KIND IS ONE BLOCK EVEN WHEN ITS ROWS ARE NOT ADJACENT. beans writes Note, Note, Tip and reads
@@ -72,7 +79,8 @@ export function noteBlocks(rows, table) {
       byKind.set(kind, { kind, header: headers.get(kind), notes: [] });
       order.push(kind);
     }
-    byKind.get(kind).notes.push({ ...row, display: displayText({ ...row, kind }, table) });
+    const d = displayParts({ ...row, kind }, table);
+    byKind.get(kind).notes.push({ ...row, display: d.text, displayStripped: d.stripped });
   }
   return order.map((k) => byKind.get(k)).filter((b) => b.notes.length);
 }
@@ -89,4 +97,4 @@ export function noteBlocksFromText(text, table) {
   }), table);
 }
 
-export { noteParagraphs, classifyNote, normLabel, displayText, LEAD };
+export { noteParagraphs, classifyNote, normLabel, displayText, displayParts, LEAD };

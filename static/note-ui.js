@@ -16,8 +16,8 @@
 //
 // `esc` is INJECTED, exactly as note-blocks.js takes the kind table and note-text.js takes esc: this
 // module stays dependency-free for the zero-dep JS suite, and the app keeps ONE escaping function.
-import { noteTextHTML } from "./note-text.js";
-import { displayText } from "./note-blocks.js";
+import { noteTextHTML, noteTextPlain } from "./note-text.js";
+import { displayText, displayParts } from "./note-blocks.js";
 
 // ⚠️ THE TAG LABEL IS DERIVED FROM THE KIND TABLE, NOT LISTED A SECOND TIME. A kind's `header` is
 // the plural a section is titled with ("Notes", "Tips") and the tag wants the singular the cook
@@ -49,7 +49,9 @@ export function kindMenuHTML(note, table, esc) {
 // mechanism a reference whose step became a heading already uses: no number, no link, text
 // unchanged.
 export function noteBodyHTML(note, table, esc, { selfStepId = null } = {}) {
-  const shown = { ...note, display: note.display != null ? note.display : displayText(note, table) };
+  const d = displayParts(note, table);
+  const shown = { ...note, display: note.display != null ? note.display : d.text,
+                  displayStripped: note.displayStripped != null ? note.displayStripped : d.stripped };
   if (selfStepId != null && (note.refs || []).some((r) => r.step_id === selfStepId)) {
     shown.refs = (note.refs || []).map((r) =>
       (r.step_id === selfStepId ? { ...r, step_no: null } : r));
@@ -120,7 +122,7 @@ export function noteEditHTML(note, table, esc, { draft = null, place = "", steps
       ` aria-haspopup="true" aria-expanded="${stepMenu}" aria-label="Link this note to a step">` +
       `link a step<span class="note-caret" aria-hidden="true">&#9662;</span></button>`;
   return `<div class="note-edit" data-note="${note.id}" data-note-place="${esc(place)}">` +
-    noteInputHTML(note.id, draft != null ? draft : note.text, esc) +
+    noteInputHTML(note.id, draft != null ? draft : noteEditText(note, table), esc) +
     `<div class="note-foot">` +
       `<button type="button" class="note-tool" data-note-kind="${note.id}"` +
       ` aria-haspopup="true" aria-expanded="${kindMenu}"` +
@@ -193,6 +195,16 @@ export function undoToastHTML(what, token, esc) {
     `</button></div>`;
 }
 
+// ⚠️ THE EDITOR IS SEEDED WITH WHAT THE PAGE SHOWS, NOT WITH WHAT THE ROW HOLDS. A cook reading
+// "Increase water to ~354 grams… proceed with step 8." used to open a box saying "SAME DAY VERSION:
+// increase water… proceed with step 9.", which is a different sentence about a different step. One
+// rule (displayParts) decides the label, one walk (noteTextParts) decides the numbers, and this is
+// the single place that turns them into the field's value.
+export function noteEditText(note, table) {
+  const d = displayParts(note, table);
+  return noteTextPlain({ ...note, display: d.text, displayStripped: d.stripped });
+}
+
 // What a save sends. One place, so the reading view and Edit mode cannot send different shapes.
 export function notePatchBody(fields) {
   const out = {};
@@ -207,6 +219,12 @@ export function notePatchBody(fields) {
 // cook changed their mind and retyped the same words, and a PATCH per blur would be a write per
 // glance. The server answers "nothing to change" with a 400, so deciding here keeps that out of the
 // log and off the wire.
-export function noteTextChanged(note, draft) {
-  return String(draft == null ? "" : draft).trim() !== String(note.text || "").trim();
+// ⚠️ AND IT COMPARES AGAINST WHAT THE FIELD WAS SEEDED WITH, NOT AGAINST THE STORED ROW. Now that
+// the editor shows the display text, comparing with the stored text would call every open-and-close
+// a change and rewrite the row on a glance: the label would be dropped and the step number frozen
+// on 177 notes, one at a time, without the cook typing anything. Opening and closing has to leave
+// the row byte-identical, which is what tests/test_note_api.py and the JS suite both state.
+export function noteTextChanged(note, draft, table) {
+  const was = table ? noteEditText(note, table) : String(note.text || "");
+  return String(draft == null ? "" : draft).trim() !== was.trim();
 }

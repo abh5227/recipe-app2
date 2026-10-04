@@ -19,9 +19,10 @@ import { isToMake } from "./tomake.js";
 import { browseList, cardTags, monthYear } from "./browse.js";
 import { panelBlocks } from "./panel-blocks.js";
 import { noteBlocks, displayText } from "./note-blocks.js";
-import { noteRowHTML, newNoteBoxHTML, notePatchBody, noteTextChanged,
+import { noteRowHTML, newNoteBoxHTML, notePatchBody, noteTextChanged, noteEditText,
          undoToastHTML, addNoteButtonHTML } from "./note-ui.js";
 import { noteTextHTML, stepNoteIndex } from "./note-text.js";
+import { makeHold, HOLD_MS } from "./hover-hold.js";
 // ⚠️ THE KIND TABLE IS ONE FILE, IMPORTED, NOT A COPY KEPT IN STEP BY A TEST. Vite inlines
 // the JSON at build time and import_cleanup reads the SAME path for the data rule, so the
 // display and the importer cannot disagree about what "Storing." means.
@@ -4143,7 +4144,12 @@ async function submitBackdate() {
 // standing on, so the browser fires pointerout at a node that no longer exists and the popover
 // flickers shut on its way open. Measured while building the :8003 preview. Only a change to a NOTE
 // repaints; opening, closing and pinning move attributes on the DOM that is already there.
-const POP_GRACE_MS = 260;
+// ⚠️ ONE HOLD FOR THE WHOLE STEP, NOT ONE PER CONTROL. The step's words, its "+ note", its tag and
+// its popover are one area as far as the pointer is concerned, and the gaps between them are where
+// the controls actually live: "+ note" hangs past the end of the last line and the popover sits
+// under the step. Leaving any one of them used to hide the very thing the cook was reaching for.
+// The timing rule is hover-hold.js, which is pure and tested at exact milliseconds.
+const hold = makeHold(HOLD_MS);
 let popOpen = null;        // the step id whose popover is showing
 let popPinned = null;      // ...and whether a click is holding it there
 let popTimer = null;
@@ -4155,11 +4161,36 @@ let popIgnoreFocus = false;
 
 function popFor(stepId) { return document.getElementById(`note-pop-${stepId}`); }
 
+// The step id an element belongs to, by any of the routes into the area: the step row itself, its
+// popover, or the new-note box that opens under it.
+function stepAreaOf(el) {
+  if (!el || !el.closest) return null;
+  const li = el.closest("li.step");
+  if (li) {
+    const probe = li.querySelector("[data-step-tap], .step-note-marker, [data-add-note]");
+    if (!probe) return null;
+    return probe.dataset.stepTap || probe.dataset.stepNote || probe.dataset.addNote || null;
+  }
+  const pop = el.closest(".step-note-pop");
+  if (pop) return pop.id.replace("note-pop-", "");
+  const box = el.closest("[data-new-note]");
+  if (box && box.dataset.newNote !== "general") return box.dataset.newNote;
+  return null;
+}
+
+// ⚠️ SHOWING AND HIDING MOVE CLASSES, THEY NEVER REPAINT. A repaint replaces the element the pointer
+// is standing on, so the browser fires pointerout at a node that no longer exists and the control
+// flickers shut on its way open. Measured while building the :8003 preview.
 function syncStepNotes() {
   // ⚠️ A POPOVER CAN GO AWAY UNDER AN OPEN ONE. Deleting a step's last note takes the tag and the
   //    popover with it, and a popOpen left pointing at a node that no longer exists would refuse
   //    every later hover on the grounds that it was already open.
   if (popOpen != null && !popFor(popOpen)) { popOpen = null; popPinned = null; }
+  const area = hold.held();
+  document.querySelectorAll("li.step").forEach((li) => {
+    const sid = stepAreaOf(li);
+    li.classList.toggle("hover-hold", sid != null && String(area) === String(sid));
+  });
   document.querySelectorAll(".step-note-pop").forEach((pop) => {
     const sid = pop.id.replace("note-pop-", "");
     const open = String(popOpen) === sid;
@@ -4170,9 +4201,27 @@ function syncStepNotes() {
   });
 }
 
+// The hold decides WHEN; this arms the clock that asks it.
+function armHold() {
+  clearTimeout(popTimer);
+  const due = hold.dueAt();
+  if (due == null) return;
+  popTimer = setTimeout(() => {
+    // ⚠️ A CONTROL BEING TYPED IN NEVER GOES AWAY ON A TIMER. The cook's pointer leaves the box the
+    //    moment they look at the keyboard.
+    if (noteState.newOn != null) { armHold(); return; }
+    if (noteState.editingId != null && String(noteState.editingPlace).startsWith("pop:")) {
+      armHold(); return;
+    }
+    hold.settle(Date.now());
+    if (hold.held() == null && popPinned == null) popOpen = null;
+    syncStepNotes();
+  }, Math.max(0, due - Date.now()) + 10);
+}
+
 function openStepNote(stepId) {
   clearTimeout(popTimer);
-  if (String(popOpen) === String(stepId)) return;
+  hold.enter(stepId, Date.now());
   popOpen = stepId;
   syncStepNotes();
 }
@@ -4182,35 +4231,34 @@ function closeStepNotes({ force = false } = {}) {
   if (!force && popPinned != null) return;
   popOpen = null;
   popPinned = null;
+  hold.clear();
   syncStepNotes();
 }
 
-// ⚠️ A POPOVER BEING TYPED IN NEVER CLOSES ON A TIMER. The cook's pointer leaves the box the moment
-// they look at the keyboard.
-function scheduleStepNoteClose() {
-  clearTimeout(popTimer);
-  popTimer = setTimeout(() => {
-    if (popPinned != null) return;
-    if (noteState.editingId != null && String(noteState.editingPlace) === `pop:${popOpen}`) return;
-    popOpen = null;
-    syncStepNotes();
-  }, POP_GRACE_MS);
-}
-
-function inPopRegion(el) {
-  return !!(el && el.closest && el.closest(".step-note-pop, .step-note-marker"));
-}
-
 document.addEventListener("pointerover", (e) => {
+  const area = stepAreaOf(e.target);
+  if (area == null) return;
+  clearTimeout(popTimer);
+  const was = hold.held();
+  hold.enter(area, Date.now());
+  // ⚠️ THE TAG OPENS THE POPOVER, THE STEP DOES NOT. A popover that opened on every step the pointer
+  //    crossed would be a page that rearranges itself as you read it. Hovering the step reveals
+  //    "+ note" and nothing more.
   const btn = e.target.closest && e.target.closest(".step-note-marker");
-  if (btn) { openStepNote(btn.dataset.stepNote); return; }
-  if (inPopRegion(e.target)) clearTimeout(popTimer);
+  if (btn) popOpen = btn.dataset.stepNote;
+  else if (popOpen != null && String(popOpen) !== String(area) && popPinned == null) popOpen = null;
+  if (was !== hold.held() || btn) syncStepNotes();
 });
 
 document.addEventListener("pointerout", (e) => {
-  if (!inPopRegion(e.target)) return;
-  if (inPopRegion(e.relatedTarget)) return;    // the pointer is travelling tag -> popover
-  scheduleStepNoteClose();
+  const from = stepAreaOf(e.target);
+  if (from == null) return;
+  // ⚠️ THE GAP IS NOT A DEPARTURE. relatedTarget is where the pointer is GOING, so a move from the
+  //    step's last word to its own "+ note", or down into its popover, is not a leave at all. This
+  //    is the whole bug: the control lives in the few pixels that belong to neither element.
+  if (stepAreaOf(e.relatedTarget) === from) return;
+  hold.leave(Date.now());
+  armHold();
 });
 
 document.addEventListener("keydown", (e) => {
@@ -4230,7 +4278,7 @@ document.addEventListener("focusin", (e) => {
   // ⚠️ NOT WHEN FOCUS LANDS INSIDE THE POPOVER. It holds a "step N" link and the editor's own
   //    controls, all focusable the moment it is shown, so tabbing off the marker closed the very
   //    thing focus had just entered.
-  if (!inPopRegion(e.target)) closeStepNotes();
+  if (stepAreaOf(e.target) == null) closeStepNotes();
 });
 
 /* ---------- the note component's behaviour ---------- */
@@ -4340,12 +4388,17 @@ function saveOpenNote() {
   const draft = noteState.drafts.get(id);
   // ⚠️ AN UNCHANGED SAVE SENDS NOTHING. Click-away fires on every blur, so a PATCH per blur would be
   //    a write per glance.
-  if (!note || draft == null || !noteTextChanged(note, draft)) { closeNoteEditors(); repaintNotes(); return Promise.resolve(); }
+  if (!note || draft == null || !noteTextChanged(note, draft, NOTE_KINDS.kinds)) {
+    closeNoteEditors(); repaintNotes(); return Promise.resolve();
+  }
   if (!String(draft).trim()) {
     // Clearing a note's text and clicking away is not a delete. Deleting is the Delete button, which
     // offers an Undo; a silent delete from an empty box has nothing to undo.
     closeNoteEditors(); repaintNotes(); return Promise.resolve();
   }
+  // ⚠️ THE UNDO PUTS BACK THE STORED ROW, NOT THE SHOWN TEXT. A save rewrites the row to what was
+  //    on screen (no label, the current number), so the only honest undo is the author's words as
+  //    they were a moment ago.
   const before = { text: note.text };
   closeNoteEditors();
   return noteApi(`/notes/${id}`, { method: "PATCH", body: notePatchBody({ text: draft }) })
@@ -4519,7 +4572,10 @@ function handleNoteAction(e) {
     noteState.editingId = id;
     noteState.editingPlace = place;
     const note = (view.data.notes || []).find((n) => n.id === id);
-    noteState.drafts.set(id, note ? note.text : "");
+    // ⚠️ THE DRAFT IS SEEDED FROM WHAT THE PAGE SHOWS, NOT FROM THE ROW. Seeding it from note.text
+    //    put the stripped label and the author's old step number straight back into the box, which
+    //    is the disagreement this round exists to end. noteEditText is the one rule both sides read.
+    noteState.drafts.set(id, note ? noteEditText(note, NOTE_KINDS.kinds) : "");
     repaintNotes();
     return true;
   }
