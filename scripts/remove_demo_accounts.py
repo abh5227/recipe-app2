@@ -60,11 +60,19 @@ DEMO_COOK_SOURCES = ("demo-seed", "demo-2b")
 # `demo-2b` and none rated, so this refusal is silent on live as it stands and fires the moment a
 # real cook is logged from one of these accounts. test@test.com is precisely the account somebody
 # logs a cook from while testing.
+#
+# ⚠️ A RATING OR A CAPTION OVERRIDES THE SOURCE, BECAUSE THE SOURCE IS NEVER REWRITTEN. `edit_cook`
+# writes rating, rated_at and caption onto an EXISTING row and leaves `source` alone, so a
+# demo-seeded cook that a person later rated through the UI is machine-made by its source and
+# somebody's own work by its content. Measured: a demo-seed row carrying rating 4.5 and a caption
+# was deleted with no refusal and exit 0, and the gate could not see it either, because
+# `cook_log 137 -> 133` reads the same whether or not a rating went with the rows.
 REAL_OWNERSHIP = (
     ("recipes", "owner", "recipes", None),
     ("recipe_snapshots", "user_id", "snapshots", None),
-    ("cook_log", "user_id", "logged cooks that are not demo rows",
-     "source IS NULL OR source NOT IN ('demo-seed', 'demo-2b')"),
+    ("cook_log", "user_id", "logged cooks that carry a person's own work",
+     "source IS NULL OR source NOT IN ('demo-seed', 'demo-2b') "
+     "OR rating IS NOT NULL OR caption IS NOT NULL"),
     ("ratings", "user_id", "rows in the frozen ratings table", None),
     ("recipe_queue", "user_id", "queue entries", None),
     ("cook_photos", "user_id", "cook photos", None),

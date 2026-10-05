@@ -289,3 +289,40 @@ def test_the_accounts_are_named_by_email_and_not_parameterized():
     src = (REPO / "scripts" / "remove_demo_accounts.py").read_text()
     assert "--email" not in src and "--user" not in src, \
         "the account list is settable from the command line now"
+
+
+@pytest.mark.parametrize("field,value", [("rating", 4.5), ("caption", "best batch yet, less salt")])
+def test_a_demo_cook_a_person_later_rated_or_captioned_refuses(tmp_path, field, value):
+    """⚠️ THE SOURCE IS NEVER REWRITTEN. edit_cook writes rating, rated_at and caption onto an
+    EXISTING row and leaves `source` alone, so a demo-seeded cook that somebody later rated through
+    the UI is machine-made by its source and a person's own work by its content. Measured before
+    the fix: a demo-seed row carrying rating 4.5 and a caption was deleted with no refusal and exit
+    0, and the gate could not see it either, because cook_log 137 to 133 reads the same whether or
+    not a rating went with the rows."""
+    path = _db(tmp_path)
+    c = sqlite3.connect(path)
+    c.execute("PRAGMA foreign_keys = ON")
+    c.execute(f"INSERT INTO cook_log (id, recipe_id, user_id, cooked_on, source, {field}) "
+              f"VALUES (902,'beans',2,'2026-09-02','demo-seed',?)", (value,))
+    c.commit()
+    c.close()
+    lines = []
+    assert rda.run(path, apply_it=True, out=lines.append) == 1, "it deleted a person's own work"
+    assert "REFUSING" in "\n".join(lines)
+    assert _count(path, "cook_log", "id = 902") == 1
+    assert _count(path, "users") == 4
+
+
+def test_a_plain_demo_cook_with_neither_still_passes(tmp_path):
+    """The exception has to stay wide enough to do the job it was added for."""
+    path = _db(tmp_path)
+    c = sqlite3.connect(path)
+    c.execute("PRAGMA foreign_keys = ON")
+    c.execute("INSERT INTO cook_log (id, recipe_id, user_id, cooked_on, source) "
+              "VALUES (903,'beans',2,'2026-09-02','demo-2b')")
+    c.commit()
+    c.close()
+    lines = []
+    assert rda.run(path, apply_it=True, out=lines.append) == 0
+    assert "REFUSING" not in "\n".join(lines)
+    assert _count(path, "users") == 1
