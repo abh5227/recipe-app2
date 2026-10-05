@@ -162,6 +162,8 @@ _READ_ONLY_BY_INSPECTION = {
     "gates/state.py":             "the before/after reading, opens mode=ro through its own open_ro",
     "gates/compare.py":           "compares two JSON readings; opens no database",
     "gates/tablediff.py":         "row-for-row comparison, opens both sides through state.open_ro",
+    "gates/rounds.py":            "the per-round gate; reads two JSON readings and, for the table "
+                                  "half, reaches a database only through gates/tablediff",
 }
 
 # scripts/ plus the gates subfolder. scripts/applied/ is deliberately NOT here: those 16 are spent

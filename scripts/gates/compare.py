@@ -45,6 +45,24 @@ def nothing_to_compare(reading, side):
     return out
 
 
+def integrity_problems(before, after):
+    """Whether the database is still sound, and still as sound as it was.
+
+    ⚠️ ONE RULE, ONE FUNCTION, BECAUSE IT WAS TWO. gates/rounds.py carried a byte-identical copy of
+    this block, four lines under a comment saying the refusals above were "compare.py's, not a
+    second copy". A comment claiming a rule is shared is not a shared rule, which is the project's
+    oldest standing lesson and the one this round repeated."""
+    out = []
+    for key in ("integrity_check", "foreign_key_violations"):
+        if before.get(key) != after.get(key):
+            out.append(f"{key}: {before.get(key)} -> {after.get(key)}")
+    if after.get("integrity_check") not in (None, "ok"):
+        out.append(f"integrity_check is not ok: {after.get('integrity_check')}")
+    if after.get("foreign_key_violations"):
+        out.append(f"{after['foreign_key_violations']} foreign-key violations after")
+    return out
+
+
 def differences(before, after):
     """Every way the two readings disagree, as a list of lines. Empty means identical."""
     out = nothing_to_compare(before, "before") + nothing_to_compare(after, "after")
@@ -69,13 +87,7 @@ def differences(before, after):
             for new in sorted(set(ea) - set(eb)):
                 out.append(f"  new  : {list(new)}")
 
-    for key in ("integrity_check", "foreign_key_violations"):
-        if before.get(key) != after.get(key):
-            out.append(f"{key}: {before.get(key)} -> {after.get(key)}")
-    if after.get("integrity_check") not in (None, "ok"):
-        out.append(f"integrity_check is not ok: {after.get('integrity_check')}")
-    if after.get("foreign_key_violations"):
-        out.append(f"{after['foreign_key_violations']} foreign-key violations after")
+    out += integrity_problems(before, after)
 
     cb, ca = before.get("counts") or {}, after.get("counts") or {}
     for key in sorted(set(cb) | set(ca)):

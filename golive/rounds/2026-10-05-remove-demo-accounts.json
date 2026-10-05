@@ -1,0 +1,17 @@
+{
+  "round": "2026-10-05-remove-demo-accounts",
+  "why": "Remove test@test.com, alex@demo.test and mira@demo.test and the demo social layer they carry, keeping andyhannah2014@gmail.com. No recipe, note, annotation, rating or photo is theirs, so none moves.",
+  "short_circuit": "unchanged",
+  "annotations": "unchanged",
+  "counts": {
+    "users": [4, 1],
+    "cook_log": [137, 133],
+    "comments": [5, 1],
+    "friendships": [3, 0],
+    "shared_posts": [10, 3],
+    "invites": [1, 0]
+  },
+  "tables": {
+    "except": ["users", "cook_log", "comments", "friendships", "shared_posts", "invites"]
+  }
+}

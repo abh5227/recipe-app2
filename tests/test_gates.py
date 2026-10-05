@@ -351,3 +351,308 @@ def test_every_gate_opens_through_the_one_read_only_helper():
             continue
         assert p.name == "state.py", f"{p.name} opens a database without going through open_ro"
         assert "mode=ro" in src
+
+
+# ---- rounds.py: the per-round declaration --------------------------------------------------------
+
+import rounds as grounds          # noqa: E402
+
+FULL = {"round": "probe", "why": "a test", "short_circuit": "unchanged",
+        "annotations": "unchanged", "counts": {}, "tables": "identical"}
+
+
+def _spec(tmp_path, **over):
+    spec = dict(FULL)
+    spec.update(over)
+    p = tmp_path / "round.json"
+    p.write_text(json.dumps(spec))
+    return p
+
+
+def test_a_missing_round_file_fails(tmp_path):
+    """⚠️ A GO-LIVE WITH NO DECLARATION IS NOT A GO-LIVE WITH AN EMPTY ONE."""
+    with pytest.raises(grounds.BadRound) as e:
+        grounds.load_round(tmp_path / "nothing-here.json")
+    assert "no round file" in str(e.value)
+
+
+@pytest.mark.parametrize("missing", grounds.REQUIRED)
+def test_every_key_is_required_so_silence_is_never_consent(tmp_path, missing):
+    """⚠️ AN OMISSION IS THE MOST LIKELY WAY A REAL MOVE GOES UNDECLARED, so an omission fails
+    rather than defaulting to "unchanged"."""
+    spec = {k: v for k, v in FULL.items() if k != missing}
+    p = tmp_path / "round.json"
+    p.write_text(json.dumps(spec))
+    with pytest.raises(grounds.BadRound) as e:
+        grounds.load_round(p)
+    assert missing in str(e.value)
+
+
+def test_a_round_file_that_is_not_json_fails(tmp_path):
+    p = tmp_path / "round.json"
+    p.write_text("{not json")
+    with pytest.raises(grounds.BadRound) as e:
+        grounds.load_round(p)
+    assert "not valid JSON" in str(e.value)
+
+
+@pytest.mark.parametrize("bad", [
+    {"short_circuit": "whatever"},
+    {"annotations": 7},
+    {"counts": []},
+    {"counts": {"users": 4}},
+    {"counts": {"users": [4]}},
+    {"tables": "mostly"},
+    {"tables": {"only": ["users"]}},
+])
+def test_a_malformed_declaration_fails_rather_than_being_guessed_at(tmp_path, bad):
+    spec = dict(FULL)
+    spec.update(bad)
+    p = tmp_path / "round.json"
+    p.write_text(json.dumps(spec))
+    with pytest.raises(grounds.BadRound):
+        grounds.load_round(p)
+
+
+def test_nothing_moves_declared_explicitly_passes_when_nothing_moved(tmp_path):
+    st = gstate.read_state(_corpus(tmp_path))
+    assert grounds.check(st, st, grounds.load_round(_spec(tmp_path))) == []
+
+
+def test_an_empty_reading_fails_the_round_gate_too(tmp_path):
+    """The refusal is compare.py's, called from here rather than copied."""
+    empty = gstate.read_state(_empty(tmp_path))
+    fails = grounds.check(empty, empty, grounds.load_round(_spec(tmp_path)))
+    assert any("nothing to compare" in f for f in fails)
+
+
+def test_a_count_that_moves_undeclared_fails(tmp_path):
+    before = gstate.read_state(_corpus(tmp_path))
+    after = json.loads(json.dumps(before))
+    after["counts"]["users"] = before["counts"]["users"] + 3
+    fails = grounds.check(before, after, grounds.load_round(_spec(tmp_path)))
+    assert any("did not declare it" in f and "users" in f for f in fails)
+
+
+def test_a_declared_count_move_that_happens_passes(tmp_path):
+    before = gstate.read_state(_corpus(tmp_path))
+    after = json.loads(json.dumps(before))
+    was = before["counts"]["users"]
+    after["counts"]["users"] = was - 1
+    spec = grounds.load_round(_spec(tmp_path, counts={"users": [was, was - 1]}))
+    assert grounds.check(before, after, spec) == []
+
+
+def test_a_declared_count_move_that_does_not_happen_fails(tmp_path):
+    """⚠️ BOTH DIRECTIONS. A round that declares a removal and removes nothing has not run."""
+    st = gstate.read_state(_corpus(tmp_path))
+    was = st["counts"]["users"]
+    spec = grounds.load_round(_spec(tmp_path, counts={"users": [was, was - 1]}))
+    fails = grounds.check(st, st, spec)
+    assert any("declared" in f and "users" in f for f in fails)
+
+
+def test_a_declared_count_the_reading_does_not_carry_fails(tmp_path):
+    st = gstate.read_state(_corpus(tmp_path))
+    spec = grounds.load_round(_spec(tmp_path, counts={"not_a_table": [1, 0]}))
+    fails = grounds.check(st, st, spec)
+    assert any("readings do not carry it" in f for f in fails)
+
+
+def test_an_undeclared_short_circuit_move_fails_and_a_declared_one_passes(tmp_path):
+    before = gstate.read_state(_corpus(tmp_path))
+    after = json.loads(json.dumps(before))
+    after["short_circuit"] = [r for r in before["short_circuit"] if r != "beans"]
+
+    fails = grounds.check(before, after, grounds.load_round(_spec(tmp_path)))
+    assert any("declared the short-circuit set unchanged" in f for f in fails)
+
+    spec = grounds.load_round(_spec(tmp_path, short_circuit={"left": ["beans"], "joined": []}))
+    assert grounds.check(before, after, spec) == []
+
+
+def test_an_undeclared_annotation_change_fails_and_a_declared_one_passes(tmp_path):
+    before = gstate.read_state(_corpus(tmp_path))
+    after = json.loads(json.dumps(before))
+    after["annotations"]["brownies"] = [["x", "y", "z", "", "", ""]]
+
+    fails = grounds.check(before, after, grounds.load_round(_spec(tmp_path)))
+    assert any("declared the annotations unchanged" in f for f in fails)
+
+    spec = grounds.load_round(_spec(tmp_path, annotations={"brownies": "changed"}))
+    assert grounds.check(before, after, spec) == []
+
+
+def test_an_undeclared_table_change_fails_and_a_declared_one_passes(tmp_path):
+    db = _corpus(tmp_path)
+    twin = tmp_path / "twin.db"
+    twin.write_bytes(db.read_bytes())
+    con = sqlite3.connect(twin)
+    con.execute("INSERT INTO note_kinds (kind, header, position) VALUES ('probe','Probe',99)")
+    con.commit()
+    con.close()
+
+    fails = grounds.check_tables(db, twin, grounds.load_round(_spec(tmp_path)))
+    assert any("note_kinds differs and the round did not declare it" in f for f in fails)
+
+    spec = grounds.load_round(_spec(tmp_path, tables={"except": ["note_kinds"]}))
+    assert grounds.check_tables(db, twin, spec) == []
+
+
+def test_a_table_declared_as_changing_that_is_identical_fails(tmp_path):
+    """⚠️ BOTH DIRECTIONS AGAIN. A declaration is a claim about what happened, not a permission
+    slip, so an unused exception means the round did not do what it said."""
+    db = _corpus(tmp_path)
+    twin = tmp_path / "twin.db"
+    twin.write_bytes(db.read_bytes())
+    spec = grounds.load_round(_spec(tmp_path, tables={"except": ["users"]}))
+    fails = grounds.check_tables(db, twin, spec)
+    assert any("declared as changing and is identical" in f for f in fails)
+
+
+def test_the_command_line_refuses_a_missing_round_file(tmp_path, capsys):
+    st = tmp_path / "s.json"
+    st.write_text(json.dumps(gstate.read_state(_corpus(tmp_path))))
+    code = grounds.main(["--round", str(tmp_path / "gone.json"),
+                         "--before", str(st), "--after", str(st)])
+    assert code == 2
+    assert "NOT USABLE" in capsys.readouterr().out
+
+
+def test_the_command_line_passes_a_clean_round(tmp_path, capsys):
+    db = _corpus(tmp_path)
+    twin = tmp_path / "twin.db"
+    twin.write_bytes(db.read_bytes())
+    st = tmp_path / "s.json"
+    st.write_text(json.dumps(gstate.read_state(db)))
+    code = grounds.main(["--round", str(_spec(tmp_path)), "--before", str(st), "--after", str(st),
+                         "--a-db", str(db), "--b-db", str(twin)])
+    assert code == 0
+    assert "EXACTLY WHAT IT DECLARED" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("tables", ["identical", {"except": ["users"]}])
+def test_no_round_passes_without_the_two_databases(tmp_path, capsys, tables):
+    """⚠️ THE STRONGEST CLAIM WAS THE ONE THAT WENT UNCHECKED. The table half ran only when both
+    databases were given, and their absence was complained about only when the round declared an
+    exception. So "tables": "identical", the claim that NO table differs, passed while comparing
+    nothing, and printed that the round did exactly what it declared."""
+    st = tmp_path / "s.json"
+    st.write_text(json.dumps(gstate.read_state(_corpus(tmp_path))))
+    code = grounds.main(["--round", str(_spec(tmp_path, tables=tables)),
+                         "--before", str(st), "--after", str(st)])
+    assert code == 1
+    assert "no databases were given" in capsys.readouterr().out
+
+
+def test_a_table_difference_invisible_to_the_readings_still_fails_the_round(tmp_path, capsys):
+    """⚠️ THE EXACT CASE THAT PASSED. Two databases agreeing on every key state.py records, and
+    differing in one users row. The readings cannot see it and the table half must."""
+    db = _corpus(tmp_path)
+    twin = tmp_path / "twin.db"
+    twin.write_bytes(db.read_bytes())
+    con = sqlite3.connect(twin)
+    con.execute("UPDATE users SET email = 'someone-else@test.invalid' WHERE id = 1")
+    con.commit()
+    con.close()
+
+    before, after = gstate.read_state(db), gstate.read_state(twin)
+    assert before["counts"] == after["counts"], "the fixture must be invisible to the counts"
+    assert before["short_circuit"] == after["short_circuit"]
+    assert gcompare.differences(before, after) == [], "and invisible to the plain comparator"
+
+    b, a = tmp_path / "b.json", tmp_path / "a.json"
+    b.write_text(json.dumps(before))
+    a.write_text(json.dumps(after))
+    code = grounds.main(["--round", str(_spec(tmp_path)), "--before", str(b), "--after", str(a),
+                         "--a-db", str(db), "--b-db", str(twin)])
+    assert code == 1, "the round gate passed a database difference"
+    assert "users differs and the round did not declare it" in capsys.readouterr().out
+
+
+def test_the_integrity_rule_lives_in_one_place():
+    """⚠️ A COMMENT CLAIMING A RULE IS SHARED IS NOT A SHARED RULE. rounds.py carried a
+    byte-identical copy of compare.py's integrity block, four lines under a comment saying the
+    refusals above were compare.py's and not a second copy."""
+    rounds_src = (REPO / "scripts" / "gates" / "rounds.py").read_text()
+    assert "integrity_check is not ok" not in rounds_src, "rounds.py restates the integrity rule"
+    assert "integrity_problems(" in rounds_src, "and it does not call the shared one"
+    assert "def integrity_problems" in (REPO / "scripts" / "gates" / "compare.py").read_text()
+
+
+# ---- the committed round files are usable --------------------------------------------------------
+
+def test_every_committed_round_file_loads():
+    """⚠️ A ROUND FILE THAT DOES NOT PARSE IS FOUND ON GO-LIVE NIGHT OTHERWISE. Stated over the
+    folder, so the next round's file is checked the moment it is committed."""
+    folder = REPO / "golive" / "rounds"
+    files = sorted(folder.glob("*.json"))
+    assert files, "no round files, so this test is checking nothing"
+    for p in files:
+        spec = grounds.load_round(p)
+        assert spec["round"] == p.stem, f"{p.name} names itself {spec['round']!r}"
+        assert spec["why"].strip(), f"{p.name} has an empty reason"
+
+
+def test_this_round_declares_the_account_removal():
+    """The round in flight. Named so the declaration and the work cannot drift apart silently."""
+    spec = grounds.load_round(REPO / "golive" / "rounds"
+                              / "2026-10-05-remove-demo-accounts.json")
+    assert spec["counts"]["users"] == [4, 1], "three accounts out of four"
+    assert spec["short_circuit"] == "unchanged", "no recipe leaves the byte-equal set"
+    assert spec["annotations"] == "unchanged", "and no annotation entry moves"
+    changed = set(spec["tables"]["except"])
+    assert "users" in changed
+    for t in ("recipes", "recipe_notes", "recipe_steps", "recipe_ingredients", "recipe_snapshots"):
+        assert t not in changed, f"{t} must not change in an account removal"
+
+
+def test_no_gate_hardcodes_its_own_expected_moves():
+    """⚠️ THE THING THIS REPLACED. A hardcoded expected-moves block inside the gate went stale and
+    printed ten failures that were all false, so nothing in scripts/gates/ may carry one.
+
+    ⚠️ IT LOOKS FOR AN ASSIGNMENT, NOT FOR THE WORD. rounds.py names INTENDED in its docstring to
+    say what it replaced and why, which is the record worth keeping. A first version of this test
+    grepped the word and failed on that explanation, which would have pushed the reason out of the
+    file to keep the test quiet."""
+    import ast as _ast
+    for p in sorted((REPO / "scripts" / "gates").glob("*.py")):
+        tree = _ast.parse(p.read_text())
+        for node in tree.body:                      # module level only: a local is not a declaration
+            targets = (node.targets if isinstance(node, _ast.Assign)
+                       else [node.target] if isinstance(node, _ast.AnnAssign) else [])
+            for t in targets:
+                name = getattr(t, "id", "")
+                assert "INTENDED" not in name.upper(), \
+                    f"{p.name} declares {name}, an expected-moves block inside the gate again"
+
+
+def test_a_column_mixing_null_and_text_does_not_break_the_comparison(tmp_path):
+    """⚠️ FOUND ON THE FIRST REAL DATABASE. The comparison sorted its rows, and Python 3 will not
+    order None against str, so a table with both in one column raised TypeError. Every fixture here
+    was uniform, so the suite was green and the tool died on recipes.author."""
+    db = tmp_path / "mixed.db"
+    con = _schema(db)
+    con.execute("INSERT INTO recipes (id, name, source, author) VALUES ('a','A','app','Someone')")
+    con.execute("INSERT INTO recipes (id, name, source, author) VALUES ('b','B','app',NULL)")
+    con.commit()
+    con.close()
+    twin = tmp_path / "twin.db"
+    twin.write_bytes(db.read_bytes())
+    assert gtablediff.differences(db, twin, report=lambda *a: None) == []
+
+
+def test_a_duplicate_row_appearing_is_caught(tmp_path):
+    """⚠️ A MULTISET, NOT A SET. recipe_steps carries no uniqueness on (recipe_id, position), so two
+    identical rows are a real state and collapsing them to one would hide a duplicate being added."""
+    db = _corpus(tmp_path)
+    twin = tmp_path / "twin.db"
+    twin.write_bytes(db.read_bytes())
+    con = sqlite3.connect(twin)
+    row = con.execute("SELECT recipe_id, position, is_heading, text, heading_level "
+                      "FROM recipe_steps LIMIT 1").fetchone()
+    con.execute("INSERT INTO recipe_steps (recipe_id, position, is_heading, text, heading_level) "
+                "VALUES (?,?,?,?,?)", row)
+    con.commit()
+    con.close()
+    assert "recipe_steps" in gtablediff.differences(db, twin, report=lambda *a: None)

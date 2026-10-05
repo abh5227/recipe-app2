@@ -1,6 +1,6 @@
 # The gates
 
-Three read-only tools for checking that a change did what it said and nothing else. They were
+Four read-only tools for checking that a change did what it said and nothing else. They were
 written for the corpus passes and the notes go-live, lived in a session scratchpad under `/private/tmp`
 through both, and are in the repo now so the next round can reach them from a fresh clone.
 
@@ -10,13 +10,17 @@ That is why they are on the read-only list in `tests/test_live_guards.py` rather
 `--i-mean-live`: reading live's state **is** the job, and a gate that needed a sentence typed out
 would not get run.
 
-## The three
+## The four
 
 | | what it answers |
 |---|---|
 | `state.py` | what one database's byte-equal set, annotation set and row counts are, right now |
 | `compare.py` | whether two `state.py` readings are identical, as SETS |
 | `tablediff.py` | which tables of two databases disagree, row for row, column for column |
+| `rounds.py` | whether a go-live did exactly what its round file declared, and nothing else |
+
+`rounds.py` is the one to use for a deploy or a data pass, because it checks against a declaration
+the round commits rather than against "identical". See [../../golive/rounds/README.md](../../golive/rounds/README.md).
 
 ## The usual run
 

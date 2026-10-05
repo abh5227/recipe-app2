@@ -59,6 +59,18 @@ COUNTS = {
     "recipe_note_step_refs": "SELECT COUNT(*) FROM recipe_note_step_refs",
     "snapshots_original": "SELECT COUNT(*) FROM recipe_snapshots WHERE reason = 'original'",
     "migrations": "SELECT COUNT(*) FROM schema_migrations",
+    # ⚠️ THE ACCOUNT LAYER IS COUNTED TOO, because a round can move it and the gate has to see
+    #    what it moved. All 13 foreign keys pointing at users are ON DELETE NO ACTION, so removing
+    #    an account that anything references is REFUSED rather than cascaded: these counts are how
+    #    a round declares which of those references it is clearing and proves it cleared no more.
+    "users": "SELECT COUNT(*) FROM users",
+    "cook_log": "SELECT COUNT(*) FROM cook_log",
+    "ratings": "SELECT COUNT(*) FROM ratings",
+    "comments": "SELECT COUNT(*) FROM comments",
+    "friendships": "SELECT COUNT(*) FROM friendships",
+    "shared_posts": "SELECT COUNT(*) FROM shared_posts",
+    "invites": "SELECT COUNT(*) FROM invites",
+    "cook_photos": "SELECT COUNT(*) FROM cook_photos",
 }
 
 # Which table each count needs, so a missing one is reported rather than raised.
@@ -70,6 +82,9 @@ _NEEDS = {
     "recipe_notes_recipes": "recipe_notes", "recipe_notes_original": "recipe_notes_original",
     "recipe_note_step_refs": "recipe_note_step_refs",
     "snapshots_original": "recipe_snapshots", "migrations": "schema_migrations",
+    "users": "users", "cook_log": "cook_log", "ratings": "ratings", "comments": "comments",
+    "friendships": "friendships", "shared_posts": "shared_posts", "invites": "invites",
+    "cook_photos": "cook_photos",
 }
 
 

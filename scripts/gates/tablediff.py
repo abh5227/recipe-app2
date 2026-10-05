@@ -23,6 +23,7 @@ the `position` column, which is part of the row.
 import argparse
 import pathlib
 import sys
+from collections import Counter
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from state import open_ro        # noqa: E402  the one read-only open
@@ -38,8 +39,20 @@ def columns(con, table):
 
 
 def rows_of(con, table, cols):
+    """The table's rows as a MULTISET of tuples.
+
+    ⚠️ NOT SORTED, AND THAT IS A BUG FIX RATHER THAN A STYLE CHOICE. The first version sorted the
+    rows to compare them, which raises TypeError the moment one column holds both NULL and text in
+    the same table: Python 3 will not order None against str. Every fixture here happened to be
+    uniform, so it passed its own tests and then died on the first real database, on
+    recipes.author. A multiset needs no ordering, answers the same question, and turns the
+    "only in a" scan from quadratic into a subtraction.
+
+    ⚠️ AND A MULTISET, NOT A SET, so two identical rows are not silently one. recipe_steps and
+    recipe_ingredients carry no uniqueness on (recipe_id, position), and a duplicate appearing or
+    disappearing is exactly the kind of thing this is for."""
     picked = ", ".join(f'"{c}"' for c in cols)
-    return sorted(tuple(r) for r in con.execute(f'SELECT {picked} FROM "{table}"'))
+    return Counter(tuple(r) for r in con.execute(f'SELECT {picked} FROM "{table}"'))
 
 
 def differences(a_db, b_db, report=print):
@@ -62,16 +75,18 @@ def differences(a_db, b_db, report=print):
                 continue
             ra, rb = rows_of(a, t, ca), rows_of(b, t, ca)
             if ra == rb:
-                report(f"  {t:28} identical ({len(ra)} rows, {len(ca)} columns)")
+                report(f"  {t:28} identical ({sum(ra.values())} rows, {len(ca)} columns)")
                 continue
             bad.append(t)
-            only_a = [r for r in ra if r not in rb]
-            only_b = [r for r in rb if r not in ra]
-            report(f"  {t:28} DIFFERS  a={len(ra)} b={len(rb)}  "
+            only_a = list((ra - rb).elements())
+            only_b = list((rb - ra).elements())
+            report(f"  {t:28} DIFFERS  a={sum(ra.values())} b={sum(rb.values())}  "
                    f"only_in_a={len(only_a)} only_in_b={len(only_b)}")
-            for r in only_a[:3]:
+            # sorted by repr, which is a total order over mixed types, purely so the printed
+            # sample is stable between runs. The comparison above never sorts.
+            for r in sorted(only_a, key=repr)[:3]:
                 report(f"      only in a: {str(r)[:150]}")
-            for r in only_b[:3]:
+            for r in sorted(only_b, key=repr)[:3]:
                 report(f"      only in b: {str(r)[:150]}")
         return bad
     finally:
