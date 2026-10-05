@@ -497,6 +497,59 @@ How this project is run:
   includes its rise and computing from prep plus cook would print two figures whose difference is not
   the wait. ⚠️ **AND A TRAILING "+" IS THE OPEN END**, which `clock_minutes` cannot see, so reading
   the label back has to preserve it or the line states a ceiling the recipe never had.
+- **A NOTE IS WRITTEN BY TWO DOORS, AND EVERY RULE THEY SHARE IS ONE FUNCTION.** The per-note
+  endpoints write the moment a cook stops typing on the recipe page. The recipe PUT carries the
+  whole list and is what Edit mode's Save sends. Four independent reviews of the notes round found
+  the same shape four times: a rule stated twice, with both comments claiming to follow the other.
+  `_note_step_target` answers "which step may this point at" for all three callers, and
+  `_note_ref_rows` answers "what are this note's references now" for both write paths.
+  ⚠️ **A STEP THAT IS GONE IS GONE, AND A HEADING IS KEPT WHERE IT WAS STORED AND REFUSED WHERE IT
+  IS NEW.** That distinction is what the three copies were groping at. Converting a step to a
+  heading has to be reversible, so a link that already named that row survives and simply stops
+  printing a number. Creating a link to a heading is a pointer nobody can follow. Before this, a
+  reference to a converted step was KEPT by the PUT and DESTROYED by the next text edit through the
+  other door, and the id lives nowhere else, so the conversion became irreversible in silence.
+  ⚠️ **A SENT NULL IS NOT AN ANSWER AND A STORED NULL IS.** The editor round-trips references
+  verbatim and builds a new mention with a null target, because a client cannot know a link the
+  server has never told it about. Reading that null as a decision is what made "step 2" link when
+  typed in reading view and stay plain when typed in Edit mode. A null the server STORED is a
+  decision, which is what lets a deliberate unlink survive a later save.
+  ⚠️ **AND ABSENT MEANS KEEP ON A ROW MATCHED BY ID.** `PUT notes:[{"id":1,"text":"…"}]` answered
+  200 and cleared the cook's chosen kind and their step link. The documented old-client path made it
+  worse: a bare string carries neither key, so one save from anything older than migration 060
+  cleared every kind and every step link on the recipe. `_kept` does this for the recipe's header
+  fields and `_kept_minutes` for a wait; notes had no equivalent.
+
+- **A HELD DRAFT IS A COPY, AND A COPY GOES STALE.** Edit mode clones `view.data` and every edit
+  changes the clone. Two things follow, both measured as defects rather than reasoned.
+  ⚠️ **NOTHING MAY CLONE THE LIST WHILE A WRITE IS IN THE AIR.** The click dispatcher runs the note
+  handler before the editor's, and its click-away branch fires a note write and returns false, so
+  one click on "✎ Edit" saved a note and then cloned synchronously, before the answer landed. The
+  draft held the note's OLD words and Save wrote them back over the new ones; a note ADDED that way
+  was deleted outright. Not a race, because nothing awaited anything. `noteApi` tracks every call
+  and `enterEditMode` waits.
+  ⚠️ **AND A FIELD THE SERVER RESOLVES IS STALE THE MOMENT THE DRAFT CHANGES.** A note's `step_no`
+  is the number the page prints, resolved by the server. A note added, relinked, or whose step was
+  deleted or made a heading this session carries a number that is wrong or absent, and the raw row
+  cannot say so. Any rule that reads it (`noteGroupKey`, `linkedStepId`) takes `steps` and resolves
+  for itself (`noteGroupsOf`), rather than trusting what it was handed.
+
+- **A DRAG INSIDE A GROUP PERMUTES THAT GROUP'S OWN SLOTS.** `noteBlocks` orders the type blocks by
+  where each kind FIRST APPEARS in the flat list, so splicing a row out and back in changes the
+  index of every row it passes and silently reorders the HEADINGS. Measured on
+  `[Notes#1, Tips#2, Notes#3]`: dropping note 1 back where it already sat reordered nothing inside
+  Notes and lifted the whole Tips section above it, with `position` renumbered so it stuck. Read off
+  the indices the group occupies, reorder the members among themselves, write them back into those
+  same indices. A non-member cannot move, and a gesture that reorders nothing is refused.
+
+- **A CONTROL IS DRAWN ONLY WHERE IT CAN DO SOMETHING.** A note alone in its drag group has no legal
+  drop target, so a grip on it promises a move that can only snap back. `noteDragMates` answers for
+  the whole list in one pass and the renderer asks it on every repaint, so an add, a delete, a
+  relink or a type change gives or takes the handle away as it happens. The ⋯ stays either way.
+  The same rule took the step picker's offer of a step the database has never seen: `addStep` puts
+  `id: null` in the draft, a link is a row id, and picking one wrote `NaN` and no link, with no
+  message. It is counted in the numbering and not offered.
+
 - **A STEP NAMED IN A NOTE'S OWN WORDS IS A REFERENCE TO AN ID, NEVER A FROZEN NUMBER.** "proceed
   with step 9" has to keep meaning the right step after the steps move, so `recipe_note_step_refs`
   stores the step's ID and WHICH mention in the text it belongs to, and the number on the page is

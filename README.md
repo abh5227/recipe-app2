@@ -23,7 +23,7 @@ python3.13 -m pip install -r requirements.txt   # flask, flask-login, SQLAlchemy
                                                 #   psycopg, pillow, pillow-heif
 npm install                                     # Vite (the build) and TipTap (the step editor)
 npm run build                                   # builds the frontend into dist/
-python3.13 build_db.py                          # applies the 60 migrations, loads the seed data
+python3.13 build_db.py                          # applies the 61 migrations, loads the seed data
 python3.13 app.py                               # serves on http://localhost:8000
 ```
 
@@ -350,6 +350,41 @@ same decision. Both files once said they shared the rules and had drifted, and t
 a heading reading `Wilt the [[spinach]]`, which the renderer escapes and never linkifies, so the
 brackets would have printed.
 
+## Notes, and the two places you edit them
+
+A note is a row (`recipe_notes`, migration 060), not a paragraph in a text box. Each one has words,
+a kind, and optionally a step it belongs to. `recipes.notes` is still written as a derived copy so a
+previous deploy can serve, and nothing reads it on the page.
+
+**On the recipe page** the Notes section groups what it has. A note attached to a step reads under
+STEP NOTES, in step order, opening `Step 4 · Tip: `; everything else reads under a heading named for
+its kind, from `static/note-kinds.json`. A group of two or more gets a bullet with a hanging indent.
+The headings are the method's own section-heading rule, shared as one CSS declaration rather than
+copied, so the two columns cannot drift. A step that has notes carries a small `note` marker at the
+end of its sentence, which opens them in place. Clicking a note's words opens it; it saves when you
+stop typing, with an Undo for six seconds.
+
+**In Edit mode** the same component draws the same arrangement, each note in a row that carries the
+step row's own drag handle and ⋯ menu, in the step row's own gutter. The menu is Add note above, Add
+note below, Delete. A drag moves a note only inside its own group, which for a note on a step means
+the notes on *that* step, and the handle is only drawn when there is somewhere legal to go. Nothing
+reaches the database until Save changes, and Cancel throws it all away, like every other field on
+that screen.
+
+**"Link a step"** is a short list of the method you can type into, grouped under the recipe's own
+section headings, with arrows and Enter, or "Pick on the page" to click the step itself. A step the
+database has not seen yet is counted in the numbering and never offered, because a link is a row id.
+
+**A step named in a note's words is a reference to an id, never a frozen number.** "proceed with
+step 9" keeps meaning the right step after the steps move: `recipe_note_step_refs` stores which
+mention and which step, and the number is resolved at render. A reference whose step became a
+heading holds its id and prints as plain text, so converting back restores the link.
+
+**Notes are a playground.** Editing, retyping, moving or deleting one mints no "your changes" mark
+and costs the recipe nothing, because note rows are out of `recipe_snapshots.content` entirely.
+`recipe_notes_original` (migration 061) keeps the author's words, written once and read by nothing
+on the page, so there is a way back.
+
 ## Fix by rule, not by row
 
 Every data or display correction is written as a rule that runs over every existing recipe, runs in
@@ -400,14 +435,18 @@ migrate.py          applies pending migrations. Takes --db. Needs --i-mean-live 
 backup.py           timestamped copy of recipes.db into backups/
 build_library.py    builds the ingredient library from join.db and sources.db
 
-migrations/         the SQLite schema, 59 numbered .sql files applied in order
-alembic/            the Postgres half of the schema, 45 revisions
-scripts/            16 maintenance and repair passes. Each takes its database as an argument,
+migrations/         the SQLite schema, 61 numbered .sql files applied in order
+alembic/            the Postgres half of the schema, 47 revisions
+scripts/            22 maintenance and repair passes. Each takes its database as an argument,
                     dry-runs by default, and refuses live without --i-mean-live
 scripts/applied/    17 spent one-time backfills. Kept for the record of what was done to the
                     data, and they refuse to run
 scripts/serve_live.py   serves :8000 from a pinned worktree against the real data
-static/             index.html, styles.css, app.js, and the self-hosted fonts
+static/             index.html, styles.css, app.js, the self-hosted fonts, and the pure
+                    modules app.js imports. note-blocks.js groups the notes, note-text.js renders
+                    one, note-ui.js draws it, note-draft.js holds Edit mode's unsaved changes and
+                    step-picker.js is the "link a step" list. note-kinds.json is the kind table,
+                    read by the client AND by import_cleanup
 tests/              the pytest suite, the zero-dependency JS suite, and the two guards
                     (dbguard.py, netguard.py)
 docs/               the decisions, the data-repair records, and the reference notes

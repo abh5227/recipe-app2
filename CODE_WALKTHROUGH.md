@@ -408,6 +408,52 @@ order the passes run in and why they are not independent.
 
 ---
 
+## Notes as rows, and the two write doors
+
+Migration 060 turned a recipe's notes from one text column into `recipe_notes`: words, a kind, an
+optional step link and an optional ingredient-line link. `recipes.notes` is still written as a
+derived copy so the previous deploy can serve, and `snapshot_diff` does not compare it.
+
+**The shared brain is `notes.py`**, the way `planahead.py` is for waits, and it restates nothing:
+`kind_of` delegates to `import_cleanup.note_kind`, which reads `static/note-kinds.json`, the same
+file Vite inlines for the client. One kind table, three readers.
+
+**The client's pure modules**, all dependency-free so the zero-dep JS suite can import them:
+
+| module | what it decides |
+|---|---|
+| `note-blocks.js` | the grouping. `noteSections` returns what belongs to a step (in step order) and everything else by kind. `linkedStepNo` / `linkedStepId` are the ONE definition of "linked" |
+| `note-text.js` | one note's words -> HTML, including the "step N" mentions |
+| `note-ui.js` | the component. One note, drawn the same in reading view, in a step's pop-up and in Edit mode |
+| `note-draft.js` | Edit mode's unsaved changes. Every function returns a NEW list, which is why Cancel can throw the session away |
+| `step-picker.js` | the "link a step" list: the rows, the filter and the cursor |
+
+**Two doors write a note, and that is the thing to hold in your head.** On the recipe page a note
+goes to its own endpoint (`POST`/`PATCH`/`DELETE` under `/api/recipes/<id>/notes`) the moment the
+cook stops typing, with an Undo. In Edit mode the same component writes into `view.draft` instead,
+and the recipe `PUT` carries `notes`, so Save and Cancel mean what they do for every other field.
+`app.js::noteHeld()` is the one place that asks which door is open; all six write paths branch on it.
+
+⚠️ **EVERY RULE THE TWO DOORS SHARE IS ONE FUNCTION, and the independent review of this round is why
+that sentence is here.** Four reviewers found the same shape four times: a rule stated twice, with
+both comments claiming to follow the other. `app.py::_note_step_target` answers "which step may this
+point at" for all three callers; `_note_ref_rows` answers "what are this note's references now" for
+both write paths. The measured cost of the old arrangement was a reference to a step that had become
+a heading, KEPT by one door and DESTROYED by the other, with the id living nowhere else.
+
+⚠️ **AND THE DRAFT IS A COPY, SO ITS RESOLVED FIELDS GO STALE.** A note's `step_no` is the number
+the page prints, filled in by the server. A note added, relinked, or whose step was deleted or made
+a heading this session carries a number that is wrong, and the row cannot say so. Anything reading
+it takes `steps` and resolves for itself (`note-draft.js::noteGroupsOf`). The same class, one layer
+up: `enterEditMode` must not clone the list while a note write is still in the air, or Save writes
+the pre-save words back over the post-save ones.
+
+**Reading order for this feature:** `migrations/060_recipe_notes.sql` → `notes.py` →
+`app.py::write_notes` and the note routes → `static/note-blocks.js` → `static/note-ui.js` →
+`static/note-draft.js`. The tests that state the contracts are `tests/test_notes_rows.py` (the
+rows), `tests/test_note_api.py` (the per-note door) and `tests/test_edit_mode_notes.py` (the PUT
+door, which is the dangerous one, because it carries the whole list).
+
 ## Critical pros & cons / future considerations
 
 Known tradeoffs and considerations before extending the app.

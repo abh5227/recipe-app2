@@ -155,5 +155,21 @@ surveys below are cited nowhere and stay untracked, which is what the category i
 | `extension-step-links-2026-09-30.csv` | 7 | survey: waits whose alternative points at another step | nothing | no |
 | `step-heading-level-1-candidates-2026-09-30.csv` | 15 | survey: lifted labels with 2+ steps and no section above | nothing | no |
 
+## Waiting in `reports/`, for the titles round
+
+Two review lists sit in gitignored `reports/` rather than here, because nothing opens either of them
+and Andy has not recorded a decision in either yet. **They move into this folder and get committed in
+the same change that makes a pass read them,** which is the titles round.
+
+| file | rows | what it holds | what will read it |
+|---|---|---|---|
+| `reports/note-titles-candidates.csv` | 27 | a note's leading label, the parked rule's verdict and reason, and a `suggested_kind` filled only where the title opens with a phrase the kind table already knows (1 of 27, `To Freeze the pie shell` -> storage) | the titles round |
+| `reports/emphasis-marks.csv` | 30 | every wrapping emphasis mark in the corpus (8 over 8 rows: 6 notes, 2 ingredient headings, 0 step headings, 0 steps) plus the 19 unpaired asterisks that are footnote markers and not emphasis | the titles round, which has the lockstep pass |
+
+⚠️ **THE EMPHASIS MARKS ARE TITLES IN MARKDOWN CLOTHING, which is what decides the rule.** All six
+note cases are a bold or italic line of their own followed by the body, and there is not one
+in-sentence emphasis in the 300. So the proposal is to STRIP rather than render italic, and to have
+the importer flag rather than strip wherever a mark is not a title line. Nothing is applied yet.
+
 ⚠️ **A survey becomes a decision the moment a pass reads it.** Commit it in the same change that
 makes the pass read it, or the next clone cannot run the pass.

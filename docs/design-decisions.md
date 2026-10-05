@@ -211,7 +211,7 @@ Defined or structured in R1, but **not rendered on real data** — each reserved
   *font* stays shared. See "O-c-1 — the annotation render" below.
 - **`--hand-gutter`** — the reserved right margin, wired into the recipe reading column's `max-width` at **0** in R1.
 - **The amount cell** — the ledger's `.amount-cell` (addressable `.qty` inside) is the R2 **strike target**: R2 strikes the printed value and sets the edited value beside it in the hand color.
-- **The step-body wrapper** — each method step's body is wrapped in **`.step-body`** inside `li.step`, the attach point for future per-step photos and R2 step-notes.
+- **The step-body wrapper** — each method step's body is wrapped in **`.step-body`** inside `li.step`, the attach point for future per-step photos and for step notes. ✅ **The step-note half has landed:** a step that has notes ends its sentence with a small `note` marker (`.step-note-marker`) that opens them in place, and the notes themselves read under a STEP NOTES group in the Notes section. See the notes section in CODE_WALKTHROUGH.md.
 - **The `--cook-count` wear signal** — the recipe root (`.page.recipe-view`) carries an inline **`--cook-count`** custom property (the recipe's cook count, kept live on cook/undo); unread in R1, so R2 can scale a wear/patina effect without re-plumbing the count.
 
 ### Staged R1 implementation plan (per-stage commits, suite green at each)

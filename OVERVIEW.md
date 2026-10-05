@@ -16,6 +16,12 @@ with live **quantity scaling**, **metric/imperial + volume→weight** conversion
 a **cook log**, and **per-person versions** of cookbook recipes (each person can tweak a quantity,
 remove a line, or add an ingredient without forking the original).
 
+A recipe's **notes are rows**, not a text box: each has words, a type, and sometimes the step it
+belongs to, so a note about step 4 reads under that step and shows a marker on it. They are a
+**playground**. Editing or deleting one leaves no "your changes" mark and costs the recipe nothing,
+because note rows are out of the snapshot the page diffs against, and the author's original words
+are kept where nothing compares them.
+
 ## Architecture
 
 The data flows one way and rebuilds safely:

@@ -949,6 +949,55 @@ stating one case the script may erase and one it must refuse. The old id-only sc
 file are deleted, so nothing in the suite compares the two, and the claim that it did has been
 removed rather than left standing.
 
+### The second independent review, over the whole round · ✅ FIXED (held, not pushed)
+
+Four more fresh subagents, after the editor work landed, each given ONE brief and none shown the
+others' findings: data safety, rules in one place, security and permissions, and tests and checks.
+Scope was every commit since the live one, as a single round. They worked on copies, never opened
+live and never touched the running servers. Eight MUST-FIX between them, every one reproduced before
+it was fixed and every one carrying a test that fails without the fix.
+
+**They were all the same shape, which is worth recording on its own.** The round added a SECOND note
+write path, and nothing forced the two doors to answer a question the same way. Four separate rules
+had grown two copies each, and in three of the four the copies already disagreed:
+
+- a reference to a step that had become a heading was KEPT by the recipe PUT and DESTROYED by the
+  next text edit through the per-note door. The step id lives nowhere else, so the conversion became
+  irreversible, with a 200 and no sign;
+- `PUT notes:[{"id":1,"text":"…"}]` cleared the cook's chosen kind AND their step link, because
+  absent was read as "clear it" on a row matched by id. The documented old-client path made it
+  worse: a bare string carries neither key, so one save from anything older than migration 060
+  cleared every kind and every step link on the recipe;
+- the "step N" auto-link ran on one door only, so the same words linked when typed in reading view
+  and stayed plain text when typed in Edit mode;
+- a note's own step link could be newly pointed at a heading through the PUT, which the per-note
+  door refuses outright with a 400.
+
+**And two from the client, both about a copy going stale:**
+
+- entering Edit mode cloned the note list while a note write fired by the same click was still in
+  the air, so Save wrote the pre-save words back over the post-save ones, and a note ADDED that way
+  was deleted outright. Not a race: nothing awaited anything;
+- the drag read `step_no` off a raw draft row, which is right until the session changes something.
+  A note added this session was refused a drop the page had just offered, and a note relinked this
+  session could be dropped into a group the page said was closed.
+
+**Plus one that rearranged the page for free:** `noteBlocks` orders the type blocks by where each
+kind first appears in the list, so dropping a note back where it already sat lifted a whole other
+section above it, with position renumbered so it stuck.
+
+**The security review found no MUST-FIX.** Authorization is fail-closed on every note endpoint,
+cross-recipe ids are refused on all five write surfaces, and all 23 escaping sinks were checked by
+driving the real renderers with a payload, and every one came back entity-encoded. Its findings were malformed
+payloads answering 500 instead of 400 (fixed) and two pre-existing items outside the round.
+
+**What the tests review changed about the tests themselves** is the part worth keeping: four checks
+could pass while comparing nothing, and four fixtures did not match the shape the real caller passes
+(numbers where the DOM passes strings, resolved rows where the caller passes raw, undecorated rows
+nowhere the page renders, and heading steps in a shape the server reads as an ordinary step, so four
+tests that meant to convert a step silently did not). A fresh clone was followed literally and
+reaches a green suite with nothing broken.
+
 ### The independent review of the notes round · ✅ FIXED AND RE-REHEARSED (held, not pushed)
 
 Four fresh subagents reviewed the nine unpushed commits, none of which had written the code, one
@@ -1060,11 +1109,16 @@ usual lockstep, and a review CSV for the variant case. *Expected yield:* 3 lines
 Five pieces, decided after Andy's recheck of the notes round on :8002. Round B follows them as
 recorded above.
 
-**1. Notes, waits and storage edited inline.** Today they are edited in a block under the method,
-styled unlike anything else on the page, while ingredients and steps are edited in place where they
-are read. The three row types all have their own tables now and all update in place by id, so the
-editor is the only part still working the old way. Styled like the ingredient and step editors, which
-means the reading view and the editing view stop being two different pages.
+**1. Notes, waits and storage edited inline.** ✅ **THE NOTES HALF IS DONE AND HELD.** A note is
+edited where it is read, by the same component in both views, and in Edit mode each one is a row
+carrying the step row's own grip and ⋯ menu in the step row's own gutter. The menu is Add note
+above, Add note below, Delete; a drag moves a note only inside its own group, and the grip is drawn
+only where there is somewhere legal to go. Note changes wait for Save changes and Cancel discards
+them, like every other field on that screen.
+
+**Waits and storage are still the old block**, styled unlike anything else on the page. They have
+their own tables and they update in place by id, so what is left is the editor. Doing them the way
+the notes were done is the remaining half of this item.
 
 **2. Andy's heading rule applied to the recipes lifted before the rule existed.**
 ⚠️ **MEASURED AGAINST LIVE 2026-10-02, AND THE SWEEP AS STATED MAKES 49 RECIPES WORSE.** A sweep
@@ -1100,10 +1154,11 @@ in this corpus and is written for the next import instead. The capitalization pa
 lettered marker rather than capitalizing it, which is what keeps the three reading correctly until
 the rule lands.
 
-**4. ⓘ visibility options, previewed.** The marker renders at 13 by 13 pixels in `rgb(110, 88, 66)`
-at 12.9px, inline at the end of the step's own sentence. Nothing is broken and Andy still could not
-see it, so the options are a size step, a weight step, and a background or underline treatment, built
-as a preview against the real step markup before anything changes.
+**4. The step note marker. ✅ DONE, and the glyph is gone.** It was a ⓘ at 13 by 13 pixels in
+`rgb(110, 88, 66)`, inline at the end of the step's sentence, and Andy could not see it. The answer
+was not a size step or a weight step: the marker reads the word `note` now (`.step-note-marker`),
+which is legible at any weight and says what it opens. Hover or focus holds it open, a tap pins it,
+and Escape or a click elsewhere closes it.
 
 **5. The 112 ingredient-name casing decisions.** `reports/ingredient-name-case.csv` holds them, 103
 distinct names over 112 rows. **64 are title-cased**, where lowering the first word alone reads worse
