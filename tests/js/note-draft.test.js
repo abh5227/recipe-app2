@@ -203,16 +203,21 @@ test("only a real row id is sent", () => {
 
 
 // --- the group a drag may move a note inside ------------------------------------------------------
-// ⚠️ EVERY ONE OF THESE READS resolveNoteSteps FIRST, because a group key is a question about the
-//    NUMBER a note reads under and the raw draft row carries only the id.
+// ⚠️ THESE PASS RAW DRAFT ROWS, WHICH IS WHAT app.js PASSES. They used to resolve first, and that
+//    hid a defect for a whole round: view.draft is a clone of what the server sent, so a note's
+//    step_no is right until the session changes something and then it is silently stale. The three
+//    functions take `steps` and resolve for themselves now, so a test that resolved first was
+//    testing a shape the caller never produces. `linked()` below deliberately leaves step_no null,
+//    which is exactly a note added or relinked this session.
 
 const linked = (id, stepId, kind = "notes") =>
   note({ id, step_id: stepId, kind, text: `note ${id}` });
 
 test("a linked note's group is its step, and an unlinked note's is its type", () => {
-  const rows = resolveNoteSteps([linked(1, 30), note({ id: 2, kind: "storage", text: "s" })], STEPS);
-  assert.equal(noteGroupKey(rows[0], TABLE), "step:2");
-  assert.equal(noteGroupKey(rows[1], TABLE), "kind:storage");
+  const rows = [linked(1, 30), note({ id: 2, kind: "storage", text: "s" })];
+  const resolved = resolveNoteSteps(rows, STEPS);
+  assert.equal(noteGroupKey(resolved[0], TABLE), "step:2");
+  assert.equal(noteGroupKey(resolved[1], TABLE), "kind:storage");
 });
 
 test("a kind the table does not list takes the first kind's group, as the display does", () => {
@@ -229,58 +234,106 @@ test("a note whose step has gone is grouped by its type, not by a step it cannot
   assert.equal(noteGroupKey(rows[0], TABLE), "kind:notes");
 });
 
+// --- the raw rows the caller actually holds -------------------------------------------------------
+// ⚠️ FOUR WAYS A DRAFT ROW'S step_no GOES STALE, each measured against the page's own answer. Every
+//    one of these was a live defect until the three functions started resolving for themselves.
+
+test("a note ADDED this session is in its step's group, though its raw row says otherwise", () => {
+  const stored = note({ id: 5, text: "stored", step_id: 20, step_no: 2 });
+  const raw = draftAdd([stored], { text: "added", stepId: 20 });
+  assert.equal(raw[1].step_no, null, "the raw row cannot know its number");
+  assert.equal(noteGroupKey(raw[1], TABLE), "kind:notes", "which is why the raw key is wrong");
+  // the page draws both under Step 2, so the drag it offers has to be accepted
+  assert.deepEqual([...noteDragMates(raw, [{ id: 10 }, { id: 20 }], TABLE)].sort(), ["-1", "5"]);
+  const out = draftReorder(raw, [{ id: 10 }, { id: 20 }], TABLE, raw[1].id, 5);
+  assert.ok(out, "a drop the page offered must not be refused");
+  assert.deepEqual(out.map((n) => n.id), [-1, 5]);
+});
+
+test("a note RELINKED this session is in its NEW step's group, not its old one", () => {
+  // ⚠️ THE DANGEROUS ONE. The raw row keeps the OLD number, so the raw key names a DIFFERENT step
+  //    that exists, and a drop the page says is closed was being accepted.
+  const steps = [{ id: 10 }, { id: 20 }];
+  const a = note({ id: 1, text: "a", step_id: 20, step_no: 2 });
+  const b = note({ id: 2, text: "b", step_id: 10, step_no: 1 });
+  assert.equal(noteGroupKey(a, TABLE), "step:2");
+  assert.equal(noteGroupKey(b, TABLE), "step:1");
+  assert.equal(draftReorder([a, b], steps, TABLE, 2, 1), null, "two steps, so no drop is legal");
+
+  const moved = draftSetStep([a, b], 1, 10);                 // note 1 joins note 2 on step 1
+  assert.equal(moved[0].step_no, 2, "the raw row still claims its OLD number");
+  assert.equal(noteGroupKey(moved[0], TABLE), "step:2", "which is a step that EXISTS and is wrong");
+  assert.deepEqual([...noteDragMates(moved, steps, TABLE)].sort(), ["1", "2"],
+    "the page draws both under Step 1, so both get a grip");
+  // dropping 2 above 1 is a real move, and it has to be accepted
+  assert.deepEqual(draftReorder(moved, steps, TABLE, 2, 1).map((n) => n.id), [2, 1]);
+  // and the reverse is the no-op, so it is refused rather than applied
+  assert.equal(draftReorder(moved, steps, TABLE, 1, 2), null);
+});
+
+test("a note whose step was DELETED this session reads under its type, and drags there", () => {
+  const steps = [{ id: 10 }];
+  const a = note({ id: 1, text: "a", step_id: 20, step_no: 2 });   // step 20 is gone
+  const b = note({ id: 2, kind: "notes", text: "b" });
+  assert.equal(noteGroupKey(a, TABLE), "step:2", "the raw row still claims the step");
+  assert.deepEqual([...noteDragMates([a, b], steps, TABLE)].sort(), ["1", "2"]);
+  assert.ok(draftReorder([a, b], steps, TABLE, 2, 1));
+});
+
+test("a note whose step became a HEADING this session is the same case", () => {
+  const steps = [{ id: 10, is_heading: false }, { id: 20, is_heading: true }];
+  const a = note({ id: 1, text: "a", step_id: 20, step_no: 2 });
+  const b = note({ id: 2, kind: "notes", text: "b" });
+  assert.deepEqual([...noteDragMates([a, b], steps, TABLE)].sort(), ["1", "2"]);
+});
+
 // --- reorder within a group ----------------------------------------------------------------------
 
 test("two notes on one step swap, and nothing else moves", () => {
-  const rows = resolveNoteSteps(
-    [linked(1, 30), linked(2, 30), note({ id: 3, kind: "storage", text: "s" })], STEPS);
-  const out = draftReorder(rows, TABLE, 2, 1);
+  const rows = [linked(1, 30), linked(2, 30), note({ id: 3, kind: "storage", text: "s" })];
+  const out = draftReorder(rows, STEPS, TABLE, 2, 1);
   assert.deepEqual(out.map((n) => n.id), [2, 1, 3]);
   assert.deepEqual(out.map((n) => n.position), [0, 1, 2]);
 });
 
 test("a drop into ANOTHER group is refused and changes nothing", () => {
-  const rows = resolveNoteSteps(
-    [linked(1, 30), note({ id: 2, kind: "storage", text: "s" })], STEPS);
-  assert.equal(draftReorder(rows, TABLE, 1, 2), null);
-  assert.equal(draftReorder(rows, TABLE, 2, 1), null);
+  const rows = [linked(1, 30), note({ id: 2, kind: "storage", text: "s" })];
+  assert.equal(draftReorder(rows, STEPS, TABLE, 1, 2), null);
+  assert.equal(draftReorder(rows, STEPS, TABLE, 2, 1), null);
 });
 
 test("a drop onto a note on a DIFFERENT step is refused, though both read under STEP NOTES", () => {
   // ⚠️ THE GROUP ON SCREEN IS ONE BLOCK AND THE RULE IS FINER THAN THAT. STEP NOTES is ordered by
   //    step number, so a note moved across steps would be sorted straight back.
-  const rows = resolveNoteSteps([linked(1, 30), linked(2, 40)], STEPS);
-  assert.equal(draftReorder(rows, TABLE, 1, 2), null);
+  const rows = [linked(1, 30), linked(2, 40)];
+  assert.equal(draftReorder(rows, STEPS, TABLE, 1, 2), null);
 });
 
 test("a drop onto itself is refused, so an idle drag writes nothing", () => {
-  const rows = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
-  assert.equal(draftReorder(rows, TABLE, 1, 1), null);
+  const rows = [linked(1, 30), linked(2, 30)];
+  assert.equal(draftReorder(rows, STEPS, TABLE, 1, 1), null);
 });
 
 test("a stale id is refused rather than appended", () => {
-  const rows = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
-  assert.equal(draftReorder(rows, TABLE, 99, 1), null);
-  assert.equal(draftReorder(rows, TABLE, 1, 99), null);
+  const rows = [linked(1, 30), linked(2, 30)];
+  assert.equal(draftReorder(rows, STEPS, TABLE, 99, 1), null);
+  assert.equal(draftReorder(rows, STEPS, TABLE, 1, 99), null);
 });
 
 test("beforeId null moves a note to the end of ITS OWN run, not to the end of the list", () => {
-  // The storage note sits after the two step notes in the flat list. Dropping note 1 past the last
-  // step note must land it between note 2 and the storage note.
-  const rows = resolveNoteSteps(
-    [linked(1, 30), linked(2, 30), note({ id: 3, kind: "storage", text: "s" })], STEPS);
-  const out = draftReorder(rows, TABLE, 1, null);
+  const rows = [linked(1, 30), linked(2, 30), note({ id: 3, kind: "storage", text: "s" })];
+  const out = draftReorder(rows, STEPS, TABLE, 1, null);
   assert.deepEqual(out.map((n) => n.id), [2, 1, 3]);
 });
 
 test("a note already last in its run is refused when dropped past the end", () => {
-  const rows = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
-  assert.equal(draftReorder(rows, TABLE, 2, null), null);
+  const rows = [linked(1, 30), linked(2, 30)];
+  assert.equal(draftReorder(rows, STEPS, TABLE, 2, null), null);
 });
 
 test("a reorder keeps every row's id, text, kind and link", () => {
-  const rows = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
-  const out = draftReorder(rows, TABLE, 2, 1);
+  const rows = [linked(1, 30), linked(2, 30)];
+  const out = draftReorder(rows, STEPS, TABLE, 2, 1);
   for (const id of [1, 2]) {
     const was = rows.find((n) => n.id === id), now = out.find((n) => n.id === id);
     assert.equal(now.text, was.text);
@@ -290,73 +343,128 @@ test("a reorder keeps every row's id, text, kind and link", () => {
 });
 
 test("the input list is never mutated", () => {
-  const rows = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
+  const rows = [linked(1, 30), linked(2, 30)];
   const before = JSON.stringify(rows);
-  draftReorder(rows, TABLE, 2, 1);
+  draftReorder(rows, STEPS, TABLE, 2, 1);
   assert.equal(JSON.stringify(rows), before);
 });
 
 test("what the reading view shows after a save is the order the reorder wrote", () => {
   // ⚠️ THE RULE THE WHOLE FEATURE RESTS ON. noteSections reads the list order within a group, and
   //    write_notes assigns position from the order it is given, so the two cannot disagree.
-  const rows = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
-  const out = draftReorder(rows, TABLE, 2, 1);
-  const { steps } = noteSections(out, TABLE);
+  const rows = [linked(1, 30), linked(2, 30)];
+  const out = draftReorder(rows, STEPS, TABLE, 2, 1);
+  const { steps } = noteSections(resolveNoteSteps(out, STEPS), TABLE);
   assert.deepEqual(steps.map((n) => n.id), [2, 1]);
+});
+
+// --- and the BLOCKS keep their order too ----------------------------------------------------------
+// ⚠️ noteBlocks ORDERS THE TYPE BLOCKS BY FIRST APPEARANCE IN THE FLAT LIST, so a reorder that
+//    splices a row past a non-member moves a HEADING. Measured on [Notes#1, Tips#2, Notes#3]:
+//    dropping note 1 back where it already sat reordered nothing inside Notes and lifted the whole
+//    Tips section above it. draftReorder permutes the group's own slots now, so a non-member cannot
+//    change index and a gesture that reorders nothing is refused.
+
+const BLOCKS = () => [note({ id: 1, kind: "notes", text: "a" }),
+                      note({ id: 2, kind: "tips", text: "b" }),
+                      note({ id: 3, kind: "notes", text: "c" })];
+const blocksOf = (rows) =>
+  noteSections(resolveNoteSteps(rows, STEPS), TABLE).blocks.map((b) => `${b.header}:${b.notes.map((n) => n.id)}`);
+
+test("a drag that moves nothing inside the group is refused, and the headings stay put", () => {
+  const rows = BLOCKS();
+  assert.deepEqual(blocksOf(rows), ["Notes:1,3", "Tips:2"]);
+  assert.equal(draftReorder(rows, STEPS, TABLE, 1, 3), null, "note 1 is already above note 3");
+});
+
+test("a real swap inside a non-contiguous group leaves every other block where it was", () => {
+  const rows = BLOCKS();
+  const out = draftReorder(rows, STEPS, TABLE, 3, 1);
+  assert.deepEqual(blocksOf(out), ["Notes:3,1", "Tips:2"]);
+  assert.equal(out[1].id, 2, "the Tips note never left index 1");
+});
+
+test("dropping at the end of a non-contiguous group does not move the other block either", () => {
+  const rows = BLOCKS();
+  const out = draftReorder(rows, STEPS, TABLE, 1, null);
+  assert.deepEqual(blocksOf(out), ["Notes:3,1", "Tips:2"]);
+  assert.equal(out[1].id, 2);
+});
+
+test("a non-member's index is untouched by any legal drag", () => {
+  const rows = [note({ id: 1, kind: "notes", text: "a" }), note({ id: 2, kind: "tips", text: "b" }),
+                note({ id: 3, kind: "notes", text: "c" }), note({ id: 4, kind: "tips", text: "d" }),
+                note({ id: 5, kind: "notes", text: "e" })];
+  for (const [a, b] of [[5, 1], [5, 3], [3, 1], [1, null], [4, 2], [2, null]]) {
+    const out = draftReorder(rows, STEPS, TABLE, a, b);
+    if (!out) continue;
+    const movedKind = rows.find((n) => n.id === a).kind;
+    rows.forEach((n, i) => {
+      if (n.kind !== movedKind) assert.equal(out[i].id, n.id, `${n.id} moved on drag ${a}->${b}`);
+    });
+  }
 });
 
 // --- add above / add below -----------------------------------------------------------------------
 
 test("a note added below copies its neighbour's type and step link", () => {
-  const rows = resolveNoteSteps([linked(1, 30, "storage")], STEPS);
-  const out = draftAddBeside(rows, TABLE, 1, "below");
+  const rows = [linked(1, 30, "storage")];
+  const out = draftAddBeside(rows, STEPS, TABLE, 1, "below");
   assert.equal(out.length, 2);
   assert.equal(out[1].kind, "storage");
   assert.equal(out[1].step_id, 30);
   assert.equal(out[1].text, "");
 });
 
+test("a note added beside one ADDED THIS SESSION still reaches the same step", () => {
+  // ⚠️ THE CASE THAT WAS BROKEN. linkedStepId asks whether the note's number resolves, and a raw
+  //    draft row added this session has none, so "Add note below" filed the new note under Notes.
+  const steps = [{ id: 10 }, { id: 20 }];
+  const raw = draftAdd([], { text: "first", stepId: 20 });
+  assert.equal(raw[0].step_no, null);
+  const out = draftAddBeside(raw, steps, TABLE, raw[0].id, "below");
+  assert.equal(out[1].step_id, 20, "the new note joins the step its neighbour reads under");
+});
+
 test("a note added above takes the neighbour's place in the list", () => {
-  const rows = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
-  const out = draftAddBeside(rows, TABLE, 2, "above");
+  const rows = [linked(1, 30), linked(2, 30)];
+  const out = draftAddBeside(rows, STEPS, TABLE, 2, "above");
   assert.deepEqual(out.map((n) => n.id), [1, nextDraftId(rows), 2]);
 });
 
 test("the added note lands in its neighbour's group, which is what 'stays in place' means", () => {
-  const rows = resolveNoteSteps(
-    [linked(1, 30), note({ id: 2, kind: "storage", text: "s" })], STEPS);
-  const out = draftAddBeside(rows, TABLE, 1, "below");
+  const rows = [linked(1, 30), note({ id: 2, kind: "storage", text: "s" })];
+  const out = draftAddBeside(rows, STEPS, TABLE, 1, "below");
   const added = out.find((n) => n.id < 0);
   assert.equal(noteGroupKey(resolveNoteSteps([added], STEPS)[0], TABLE),
-               noteGroupKey(rows[0], TABLE));
+               noteGroupKey(resolveNoteSteps(rows, STEPS)[0], TABLE));
 });
 
 test("a neighbour linked only by its WORDS still hands over the step, as an id", () => {
   // ⚠️ THE CASE THAT NEEDED linkedStepId. The neighbour reaches step 2 through "see step 2" in its
   //    text; the new note has no text, so the only way to put it there is its own link.
-  const rows = resolveNoteSteps(
-    [note({ id: 1, text: "see step 2", refs: [{ ref_index: 0, match_text: "step 2", step_id: 30 }] })],
-    STEPS);
-  assert.equal(rows[0].step_no, null, "the note itself carries no own link");
-  const out = draftAddBeside(rows, TABLE, 1, "below");
+  const rows = [note({ id: 1, text: "see step 2",
+                       refs: [{ ref_index: 0, match_text: "step 2", step_id: 30 }] })];
+  assert.equal(resolveNoteSteps(rows, STEPS)[0].step_no, null, "the note carries no own link");
+  const out = draftAddBeside(rows, STEPS, TABLE, 1, "below");
   assert.equal(out[1].step_id, 30);
 });
 
 test("a new note's id is negative, so the save gives it a new row", () => {
-  const rows = resolveNoteSteps([linked(1, 30)], STEPS);
-  const out = draftAddBeside(rows, TABLE, 1, "below");
+  const rows = [linked(1, 30)];
+  const out = draftAddBeside(rows, STEPS, TABLE, 1, "below");
   assert.ok(out[1].id < 0);
   assert.deepEqual(notesPayload(out).map((n) => n.id), [1], "a blank new note is not sent at all");
 });
 
 test("a stale id adds nothing", () => {
-  const rows = resolveNoteSteps([linked(1, 30)], STEPS);
-  assert.equal(draftAddBeside(rows, TABLE, 99, "below"), null);
+  const rows = [linked(1, 30)];
+  assert.equal(draftAddBeside(rows, STEPS, TABLE, 99, "below"), null);
 });
 
 test("every position is renumbered 0..n-1 after an add", () => {
-  const rows = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
-  const out = draftAddBeside(rows, TABLE, 1, "below");
+  const rows = [linked(1, 30), linked(2, 30)];
+  const out = draftAddBeside(rows, STEPS, TABLE, 1, "below");
   assert.deepEqual(out.map((n) => n.position), [0, 1, 2]);
 });
 
@@ -364,21 +472,20 @@ test("the ids may arrive as STRINGS, which is how the DOM hands them over", () =
   // ⚠️ THE DEFECT THIS PINS. app.js reads both ids off data-note-row, so they are strings, and
   //    reorderBefore's indexOf is an identity test against a list of numbers. A note dropped at
   //    the TOP of its group landed at the bottom of it, with no error anywhere.
-  const rows = resolveNoteSteps([linked(1, 30), linked(2, 30), linked(3, 30)], STEPS);
-  assert.deepEqual(draftReorder(rows, TABLE, "2", "1").map((n) => n.id), [2, 1, 3]);
-  assert.deepEqual(draftReorder(rows, TABLE, "1", null).map((n) => n.id), [2, 3, 1]);
-  assert.equal(draftReorder(rows, TABLE, "3", "3"), null);
+  const rows = [linked(1, 30), linked(2, 30), linked(3, 30)];
+  assert.deepEqual(draftReorder(rows, STEPS, TABLE, "2", "1").map((n) => n.id), [2, 1, 3]);
+  assert.deepEqual(draftReorder(rows, STEPS, TABLE, "1", null).map((n) => n.id), [2, 3, 1]);
+  assert.equal(draftReorder(rows, STEPS, TABLE, "3", "3"), null);
 });
 
 test("a string id is refused across groups just the same", () => {
-  const rows = resolveNoteSteps(
-    [linked(1, 30), note({ id: 2, kind: "storage", text: "s" })], STEPS);
-  assert.equal(draftReorder(rows, TABLE, "1", "2"), null);
+  const rows = [linked(1, 30), note({ id: 2, kind: "storage", text: "s" })];
+  assert.equal(draftReorder(rows, STEPS, TABLE, "1", "2"), null);
 });
 
 test("draftAddBeside takes a string id too", () => {
-  const rows = resolveNoteSteps([linked(1, 30, "storage")], STEPS);
-  const out = draftAddBeside(rows, TABLE, "1", "below");
+  const rows = [linked(1, 30, "storage")];
+  const out = draftAddBeside(rows, STEPS, TABLE, "1", "below");
   assert.equal(out.length, 2);
   assert.equal(out[1].step_id, 30);
 });
@@ -388,28 +495,25 @@ test("draftAddBeside takes a string id too", () => {
 //    no legal drop target, so a handle on it offers a move that can only snap back.
 
 test("a note alone in its group has no mate, and two together both do", () => {
-  const rows = resolveNoteSteps([linked(1, 30), note({ id: 2, kind: "storage", text: "s" })], STEPS);
-  assert.deepEqual([...noteDragMates(rows, TABLE)], []);
-  const pair = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
-  assert.deepEqual([...noteDragMates(pair, TABLE)].sort(), ["1", "2"]);
+  assert.deepEqual([...noteDragMates([linked(1, 30),
+                                      note({ id: 2, kind: "storage", text: "s" })], STEPS, TABLE)], []);
+  assert.deepEqual([...noteDragMates([linked(1, 30), linked(2, 30)], STEPS, TABLE)].sort(),
+                   ["1", "2"]);
 });
 
 test("two notes under STEP NOTES on DIFFERENT steps are each alone", () => {
   // They share one heading on screen and neither can move, which is the case the bagel shows.
-  const rows = resolveNoteSteps([linked(1, 30), linked(2, 40)], STEPS);
-  assert.deepEqual([...noteDragMates(rows, TABLE)], []);
+  assert.deepEqual([...noteDragMates([linked(1, 30), linked(2, 40)], STEPS, TABLE)], []);
 });
 
 test("a group of three gives all three a mate, and a lone fourth none", () => {
-  const rows = resolveNoteSteps(
-    [note({ id: 1, kind: "notes", text: "a" }), note({ id: 2, kind: "notes", text: "b" }),
-     note({ id: 3, kind: "notes", text: "c" }), note({ id: 4, kind: "storage", text: "d" })], STEPS);
-  assert.deepEqual([...noteDragMates(rows, TABLE)].sort(), ["1", "2", "3"]);
+  const rows = [note({ id: 1, kind: "notes", text: "a" }), note({ id: 2, kind: "notes", text: "b" }),
+                note({ id: 3, kind: "notes", text: "c" }), note({ id: 4, kind: "storage", text: "d" })];
+  assert.deepEqual([...noteDragMates(rows, STEPS, TABLE)].sort(), ["1", "2", "3"]);
 });
 
 test("the ids come back as STRINGS, which is what the renderer looks them up with", () => {
-  const rows = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
-  const mates = noteDragMates(rows, TABLE);
+  const mates = noteDragMates([linked(1, 30), linked(2, 30)], STEPS, TABLE);
   assert.ok(mates.has("1"), "a String id is found");
   assert.ok(!mates.has(1), "and a number is deliberately not, so a caller cannot mix the two");
 });
@@ -417,60 +521,54 @@ test("the ids come back as STRINGS, which is what the renderer looks them up wit
 test("adding a note beside a lone one gives BOTH a grip", () => {
   // ⚠️ THE LIVE HALF OF THE RULE. The renderer asks this again on every repaint, so an add, a
   //    delete, a relink or a type change gives or takes the handle away as it happens.
-  const rows = resolveNoteSteps([linked(1, 30)], STEPS);
-  assert.deepEqual([...noteDragMates(rows, TABLE)], [], "alone to begin with");
-  const after = resolveNoteSteps(draftAddBeside(rows, TABLE, 1, "below"), STEPS);
+  const rows = [linked(1, 30)];
+  assert.deepEqual([...noteDragMates(rows, STEPS, TABLE)], [], "alone to begin with");
+  const after = draftAddBeside(rows, STEPS, TABLE, 1, "below");
   assert.equal(after.length, 2);
-  assert.equal(noteDragMates(after, TABLE).size, 2, "the new note is in the same group");
+  assert.equal(noteDragMates(after, STEPS, TABLE).size, 2, "the new note is in the same group");
 });
 
 test("deleting one of a pair takes the other's grip away", () => {
-  const rows = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
-  assert.equal(noteDragMates(rows, TABLE).size, 2);
-  assert.deepEqual([...noteDragMates(draftDelete(rows, 2), TABLE)], []);
+  const rows = [linked(1, 30), linked(2, 30)];
+  assert.equal(noteDragMates(rows, STEPS, TABLE).size, 2);
+  assert.deepEqual([...noteDragMates(draftDelete(rows, 2), STEPS, TABLE)], []);
 });
 
 test("re-typing a note out of its group takes the grip from both", () => {
-  const rows = resolveNoteSteps(
-    [note({ id: 1, kind: "notes", text: "a" }), note({ id: 2, kind: "notes", text: "b" })], STEPS);
-  assert.equal(noteDragMates(rows, TABLE).size, 2);
-  const moved = resolveNoteSteps(draftSetKind(rows, 2, "storage"), STEPS);
-  assert.deepEqual([...noteDragMates(moved, TABLE)], []);
+  const rows = [note({ id: 1, kind: "notes", text: "a" }), note({ id: 2, kind: "notes", text: "b" })];
+  assert.equal(noteDragMates(rows, STEPS, TABLE).size, 2);
+  assert.deepEqual([...noteDragMates(draftSetKind(rows, 2, "storage"), STEPS, TABLE)], []);
 });
 
 test("re-linking a note to another step takes the grip from both", () => {
-  const rows = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
-  assert.equal(noteDragMates(rows, TABLE).size, 2);
-  const moved = resolveNoteSteps(draftSetStep(rows, 2, 40), STEPS);
-  assert.deepEqual([...noteDragMates(moved, TABLE)], []);
+  const rows = [linked(1, 30), linked(2, 30)];
+  assert.equal(noteDragMates(rows, STEPS, TABLE).size, 2);
+  assert.deepEqual([...noteDragMates(draftSetStep(rows, 2, 40), STEPS, TABLE)], []);
 });
 
 test("a note whose step has gone joins the type group, and can gain a mate there", () => {
-  const rows = resolveNoteSteps(
-    [linked(1, 30), note({ id: 2, kind: "notes", text: "b" })], STEPS);
-  assert.deepEqual([...noteDragMates(rows, TABLE)], [], "one is on a step, one is not");
-  const gone = resolveNoteSteps([linked(1, 30), note({ id: 2, kind: "notes", text: "b" })],
-                                [STEPS[0]]);
-  assert.deepEqual([...noteDragMates(gone, TABLE)].sort(), ["1", "2"],
+  const rows = [linked(1, 30), note({ id: 2, kind: "notes", text: "b" })];
+  assert.deepEqual([...noteDragMates(rows, STEPS, TABLE)], [], "one is on a step, one is not");
+  assert.deepEqual([...noteDragMates(rows, [STEPS[0]], TABLE)].sort(), ["1", "2"],
     "the link resolves to nothing, so both read under Notes");
 });
 
 test("an empty list answers with an empty set rather than throwing", () => {
-  assert.equal(noteDragMates([], TABLE).size, 0);
-  assert.equal(noteDragMates(null, TABLE).size, 0);
+  assert.equal(noteDragMates([], STEPS, TABLE).size, 0);
+  assert.equal(noteDragMates(null, STEPS, TABLE).size, 0);
 });
 
 test("every note with a mate can actually be moved, which is the rule's whole point", () => {
   // ⚠️ THE TWO HALVES ARE STATED TOGETHER ON PURPOSE. A grip is a promise that draftReorder will
   //    accept a drop, so the set and the operation are checked against each other rather than
   //    separately.
-  const rows = resolveNoteSteps(
-    [linked(1, 30), linked(2, 30), note({ id: 3, kind: "storage", text: "s" })], STEPS);
-  const mates = noteDragMates(rows, TABLE);
+  const rows = [linked(1, 30), linked(2, 30), note({ id: 3, kind: "storage", text: "s" }),
+                note({ id: 4, kind: "notes", text: "d" }), note({ id: 5, kind: "storage", text: "e" })];
+  const mates = noteDragMates(rows, STEPS, TABLE);
+  assert.ok(mates.size, "nothing to compare against");
   for (const r of rows) {
-    const others = rows.filter((x) => x.id !== r.id);
-    const legal = others.some((o) => draftReorder(rows, TABLE, r.id, o.id) !== null)
-      || draftReorder(rows, TABLE, r.id, null) !== null;
+    const legal = rows.some((o) => o.id !== r.id && draftReorder(rows, STEPS, TABLE, r.id, o.id) !== null)
+      || draftReorder(rows, STEPS, TABLE, r.id, null) !== null;
     assert.equal(mates.has(String(r.id)), legal,
       `note ${r.id}: grip ${mates.has(String(r.id))} but a legal drop is ${legal}`);
   }

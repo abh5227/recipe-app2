@@ -130,6 +130,11 @@ export function draftRestore(notes, row, at) {
 // ⚠️ AND THE KIND IS THE DECORATED ONE. noteBlocks maps a kind the table does not list onto the
 // first kind, so two notes with different stored kinds can read in one group. Keying on the stored
 // value would refuse a drop the page plainly offers.
+// ⚠️ IT TAKES A RESOLVED ROW, AND resolveNoteSteps IS THE ONLY THING THAT MAKES ONE. The key is
+// the step NUMBER a note reads under, and a draft row's step_no is whatever the server said when
+// Edit mode opened. The three callers below hand it rows they resolved themselves, which is why
+// they all take `steps`. Calling this with a raw draft row is the defect noteGroupsOf exists to
+// make impossible, so a new caller takes `steps` too rather than reaching past it.
 export function noteGroupKey(note, table) {
   const no = linkedStepNo(note);
   if (no != null) return `step:${no}`;
@@ -148,40 +153,70 @@ export function noteGroupKey(note, table) {
 // ⚠️ AND THE IDS COME BACK AS STRINGS. Every id in the editor reaches the DOM through a data-
 // attribute and comes back a string, which is exactly the mismatch that sent a dropped note to the
 // bottom of its group. Keying the set by String() means a caller cannot get that wrong here.
-export function noteDragMates(notes, table) {
+export function noteDragMates(notes, steps, table) {
   const list = notes || [];
+  const groups = noteGroupsOf(list, steps, table);
   const n = new Map();
   for (const row of list) {
-    const k = noteGroupKey(row, table);
+    const k = groups.get(String(row.id));
     n.set(k, (n.get(k) || 0) + 1);
   }
-  return new Set(list.filter((row) => n.get(noteGroupKey(row, table)) > 1)
+  return new Set(list.filter((row) => n.get(groups.get(String(row.id))) > 1)
                      .map((row) => String(row.id)));
+}
+
+// {String(id) -> group key}, resolved against THESE steps. One place answers "which group is this
+// note in", for every operation that needs to know.
+// ⚠️ THIS EXISTS BECAUSE THE DRAFT'S step_no GOES STALE AND NOTHING SAYS SO. view.draft is a clone
+// of what the server sent, so a note's step_no is right until the session changes something, and
+// then it is silently wrong in four ways, all of them measured:
+//   a note ADDED this session carries step_no null, so its raw key is its KIND while the page
+//     prints it under its step. A drag the page offers was refused.
+//   a note RELINKED this session keeps the OLD number, so its raw key is a DIFFERENT step from the
+//     one on screen. That is the dangerous one: a drop the page says is illegal was ACCEPTED.
+//   a note whose step was DELETED or turned into a HEADING this session still claims that step.
+// Every one of them is a question about the number, and the number is not in the row.
+function noteGroupsOf(notes, steps, table) {
+  return new Map(resolveNoteSteps(notes || [], steps || [])
+    .map((n) => [String(n.id), noteGroupKey(n, table)]));
 }
 
 // Move a note to sit immediately BEFORE `beforeId`, or to the END OF ITS OWN GROUP when that is
 // null. Returns a new list, or null for "refused, change nothing".
-// ⚠️ THE MOVE ITSELF IS reorderBefore, the same one the album and both editor lists use. What is
-// stated here is only which destinations are legal and what "the end" means for a group that is
-// not at the end of the list.
+//
+// ⚠️ IT PERMUTES THE GROUP'S OWN SLOTS AND MOVES NOTHING ELSE, which is the whole rule. A drag
+// inside one group must leave every other note exactly where it is, INCLUDING its index, because
+// noteBlocks orders the type blocks by where each kind FIRST APPEARS in this list. Splicing the
+// dragged row out and back in changes the indices of the rows it passes, and that silently reorders
+// the HEADINGS.
+// Measured on [Notes#1, Tips#2, Notes#3]: dropping note 1 back where it already sits moved nothing
+// inside Notes and lifted the whole Tips section above it, with position renumbered so it stuck.
+// The cook's gesture was a no-op and the page rearranged itself.
+// So: read off the indices this group occupies, reorder the MEMBERS among themselves, and write
+// them back into those same indices. A non-member cannot move, a group cannot change its first
+// index, and a gesture that reorders nothing is refused rather than applied.
+//
+// ⚠️ THE MOVE ITSELF IS STILL reorderBefore, the same one the album and both editor lists use. What
+// is stated here is which destinations are legal and which slots the answer is written into.
 // ⚠️ AND IT RENUMBERS position, because that is what the save sends and what the reading page reads
 // back. write_notes assigns positions from the order it is given, so the list order IS the order.
-export function draftReorder(notes, table, id, beforeId) {
+export function draftReorder(notes, steps, table, id, beforeId) {
   const list = notes || [];
+  // ⚠️ THE GROUPS ARE WORKED OUT AGAINST THE STEPS, NOT READ OFF THE ROWS. See noteGroupsOf. The
+  //    rows that come BACK are the raw ones, so the draft stays exactly the shape the save reads.
+  const groups = noteGroupsOf(list, steps, table);
   const from = list.findIndex((n) => sameId(n.id, id));
-  if (from < 0) return null;
-  const key = noteGroupKey(list[from], table);
-  let ref = beforeId == null ? null : beforeId;
-  if (ref == null) {
-    // the end of this note's own run: the first note AFTER the last of its mates, or the list's end
-    let last = -1;
-    list.forEach((n, i) => { if (noteGroupKey(n, table) === key) last = i; });
-    if (last < 0 || sameId(list[last].id, id)) return null;       // already last: nothing to do
-    ref = last + 1 < list.length ? list[last + 1].id : null;
-  } else {
-    const t = list.find((n) => sameId(n.id, ref));
-    if (!t || sameId(t.id, id)) return null;                       // onto itself, or a stale id
-    if (noteGroupKey(t, table) !== key) return null;               // another group: refused
+  if (from < 0) return null;                                   // a stale id
+  const key = groups.get(String(list[from].id));
+  const slots = [];
+  list.forEach((n, i) => { if (groups.get(String(n.id)) === key) slots.push(i); });
+  if (slots.length < 2) return null;                           // nowhere legal to go
+  const members = slots.map((i) => list[i]);
+  let ref = null;
+  if (beforeId != null) {
+    const t = members.findIndex((n) => sameId(n.id, beforeId));
+    if (t < 0) return null;                                    // another group, or a stale id
+    if (sameId(members[t].id, id)) return null;                // onto itself
     // ⚠️ THE ROW'S OWN id VALUE, NOT THE CALLER'S. reorderBefore compares ids with !== and
     //    indexOf, which are identity tests, and the caller reads this id off a data- attribute, so
     //    it arrives as the STRING "159" against a list of NUMBERS. indexOf then answered -1,
@@ -189,11 +224,14 @@ export function draftReorder(notes, table, id, beforeId) {
     //    group landed at the BOTTOM of it. Measured in the browser; the unit tests passed numbers
     //    and never saw it. sameId compares as strings on purpose; what goes on to reorderBefore
     //    has to be the value the list holds.
-    ref = t.id;
+    ref = members[t].id;
   }
-  const moved = reorderBefore(list.map((n) => n.id), list[from].id, ref);
-  const by = new Map(list.map((n) => [String(n.id), n]));
-  return moved.map((x, i) => ({ ...by.get(String(x)), position: i }));
+  const order = reorderBefore(members.map((n) => n.id), list[from].id, ref);
+  if (order.every((x, k) => sameId(x, members[k].id))) return null;   // nothing moved
+  const byId = new Map(members.map((n) => [String(n.id), n]));
+  const out = [...list];
+  slots.forEach((slot, k) => { out[slot] = byId.get(String(order[k])); });
+  return out.map((n, i) => ({ ...n, position: i }));
 }
 
 // A note added above or below another one. Returns a new list, or null for "refused".
@@ -205,13 +243,17 @@ export function draftReorder(notes, table, id, beforeId) {
 // same group is its own link. linkedStepId is the one place that rule is written down.
 // ⚠️ AND THE NEW ROW'S ID IS nextDraftId(notes), which a caller needs in order to open the editor
 // on it. Both read the same list, so both get the same answer; it is not returned twice.
-export function draftAddBeside(notes, table, id, pos) {
+export function draftAddBeside(notes, steps, table, id, pos) {
   const list = notes || [];
   const i = list.findIndex((n) => sameId(n.id, id));
   if (i < 0) return null;
   const at = insertIndexFor(pos, i, list.length);
   if (at == null) return null;
-  const mate = list[i];
+  // ⚠️ THE NEIGHBOUR IS READ RESOLVED, for noteGroupsOf's reason. linkedStepId asks whether the
+  //    note's number resolves, and a neighbour added or relinked this session answers that wrong
+  //    from the raw row: "Add note below" on a note just attached to step 2 filed the new one
+  //    under Notes, which is the exact failure linkedStepId was written to prevent.
+  const mate = resolveNoteSteps(list, steps)[i];
   const row = { id: nextDraftId(list), kind: mate.kind, text: "",
                 step_id: linkedStepId(mate), ingredient_row_id: null,
                 position: at, step_no: null, step_ok: true, refs: [] };

@@ -65,8 +65,26 @@ def test_a_non_owner_gets_403_from_every_note_endpoint(kitchen):
         ("patch", f"/api/recipes/{rid}/notes/{note['id']}", {"text": "theirs"}),
         ("patch", f"/api/recipes/{rid}/notes/{note['id']}", {"kind": "tips"}),
         ("patch", f"/api/recipes/{rid}/notes/{note['id']}", {"step_id": None}),
+        # ⚠️ THE REFERENCE ROUTE WAS NOT ON THIS LIST, and the companion test below claimed a sixth
+        #    route could not be added without covering it. The route already there was uncovered,
+        #    so the claim was false about the routes that existed, not only about future ones.
+        ("patch", f"/api/recipes/{rid}/notes/{note['id']}/refs/0", {"step_id": None}),
         ("delete", f"/api/recipes/{rid}/notes/{note['id']}", None),
     ]
+    # ⚠️ EVERY WRITE ROUTE IN THE URL MAP IS REACHED BY AT LEAST ONE CALL ABOVE, checked here rather
+    #    than asserted in prose. A path nobody calls is the shape this gap had.
+    import app as A
+    wanted = {str(r) for r in A.app.url_map.iter_rules()
+              if "/notes" in str(r) and r.methods & {"POST", "PATCH", "DELETE", "PUT"}}
+    assert wanted, "no note routes found, so nothing was gated"
+    reached = set()
+    for _verb, url, _b in calls:
+        for rule in wanted:
+            head = rule.split("<")[0]
+            if url.startswith(head.replace("<rid>", rid)) or head.replace("<rid>", rid) in url:
+                reached.add(rule)
+    missing = {r for r in wanted if r not in reached}
+    assert not missing, f"a note write route is reached by no call in this test: {sorted(missing)}"
     for verb, url, body in calls:
         resp = getattr(other, verb)(url, json=body) if body is not None else getattr(other, verb)(url)
         assert resp.status_code == 403, f"{verb.upper()} {url} answered {resp.status_code}"

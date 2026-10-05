@@ -37,6 +37,13 @@ export function pickerRows(steps, clean) {
       continue;
     }
     no += 1;
+    // ⚠️ A STEP THE DATABASE HAS NEVER SEEN IS COUNTED AND NOT OFFERED. addStep puts `id: null` in
+    //    the draft, and a link is a row id, so there is nothing to store: picking one sent
+    //    +"null" -> NaN, which resolveNoteSteps reads as no link at all. The cook chose a step
+    //    from a list and nothing happened, with no message. It still takes its NUMBER, because the
+    //    page is printing that number beside it and a list that skipped it would be the method
+    //    with a step missing.
+    if (s.id == null) continue;
     const words = text(s.text || "", false).trim().split(/\s+/).filter(Boolean);
     out.push({
       t: "step", id: s.id, no,

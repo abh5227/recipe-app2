@@ -119,7 +119,17 @@ def test_nothing_in_the_repo_calls_the_rule_yet():
         ["git", "grep", "-l", "-e", "note_title_verdict", "-e", "note_label_is_known",
          "--", "*.py"],
         cwd=BASE, capture_output=True, text=True).stdout.split())
-    # A SUBSET check, not an equality one: git grep reads TRACKED files, so a file still being
-    # written is simply absent and must not fail the run for the wrong reason.
+    # ⚠️ THE FILE THAT DEFINES IT MUST BE IN THE ANSWER, or this passes on an empty grep. A subset
+    #    check alone said nothing: rename the function, delete it, or mistype the pattern and the
+    #    result is the empty set, which is a subset of anything. That is the "a check with nothing
+    #    to compare must fail" rule, in the one test whose whole job is to compare.
     allowed = {"import_cleanup.py", "tests/test_note_title_rule.py"}
+    assert "import_cleanup.py" in out, f"the rule itself was not found: {sorted(out)}"
     assert out <= allowed, f"something new reads the title rule: {sorted(out - allowed)}"
+    # ⚠️ AND THE JS SIDE IS ASKED TOO. The pattern above reads *.py only, so a browser caller was
+    #    invisible to the very check that exists to say nothing calls this yet.
+    js = subprocess.run(
+        ["git", "grep", "-l", "-e", "note_title_verdict", "-e", "note_label_is_known",
+         "--", "*.js", "*.json"],
+        cwd=BASE, capture_output=True, text=True).stdout.split()
+    assert not js, f"the title rule reached the client: {js}"

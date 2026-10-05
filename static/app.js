@@ -1165,7 +1165,8 @@ function notesBodyHTML(rows, { editable, place }) {
   // ⚠️ WHICH NOTES CAN BE DRAGGED IS ASKED ONCE, FOR THE WHOLE LIST. The answer depends on the
   //    other notes, not on the note, so asking per row would be the same count computed N times and
   //    a second place for the rule to live.
-  const movable = place === "ie" ? noteDragMates(rows || [], NOTE_KINDS.kinds) : null;
+  const movable = place === "ie"
+    ? noteDragMates(rows || [], currentSteps(), NOTE_KINDS.kinds) : null;
   const one = (n, led) => {
     const html = noteOne(n, {
       editable, place, where: "section",
@@ -3371,6 +3372,7 @@ function noteDropRowEls(id) {
   const by = new Map(noteRows().map((n) => [String(n.id), n]));
   const me = by.get(String(id));
   if (!me) return [];
+  // noteRows() resolved these already, so noteGroupKey is being handed the rows the page drew.
   const key = noteGroupKey(me, NOTE_KINDS.kinds);
   return [...document.querySelectorAll(".ie-note-block .ie-noterow")]
     .filter((el) => {
@@ -3419,7 +3421,11 @@ function noteDrop(e) {
   const before = beforeIndexFromBar(rows[0].parentElement, rows);
   clearRowDragArtifacts();
   if (before === undefined) return;                        // no bar was painted: nothing to apply
-  const next = draftReorder(view.draft.notes, NOTE_KINDS.kinds, id,
+  // ⚠️ THE DRAFT'S RAW ROWS AND THE STEPS THEY ARE READ AGAINST, which is what draftReorder needs
+  //    to work out the same groups the page just drew. Handing it view.draft.notes alone made it
+  //    read a stale step_no: a note added this session was refused a drop the page offered, and a
+  //    note relinked this session could be dropped into a group the page said was closed.
+  const next = draftReorder(view.draft.notes, currentSteps(), NOTE_KINDS.kinds, id,
                             before == null ? null : rows[before].dataset.noteRow);
   if (next) holdNotes(next); else repaintNotes();          // refused: put the ghost row back
 }
@@ -3536,6 +3542,19 @@ function enterEditMode() {
   // BOTH gates, mirroring update_recipe: the tier must permit editing AND you must own it. The Edit
   // button is already is_mine-gated, so this is the belt-and-braces path (keyboard/programmatic entry).
   if (!view || !view.data.is_editable || !view.data.is_mine || view.editMode) return;
+  // ⚠️ THE CLONE WAITS FOR ANY NOTE WRITE THE SAME CLICK FIRED. See noteApi. Without this the draft
+  //    is a copy of the list as it was BEFORE the save that is still in the air, and "Save changes"
+  //    writes that stale list back over it.
+  if (noteWriteInFlight()) { noteSettled.then(enterEditMode); return; }
+  // ⚠️ AND THE NOTE STATE DOES NOT CROSS THE BOUNDARY. An open editor, a draft, a filter and above
+  //    all the six-second "Saved · Undo" and "Deleted · Undo" offers belong to the view they were
+  //    made in: the undo toast is drawn by Edit mode's block too, and its two shapes are not
+  //    interchangeable, so a reading-view delete undone inside Edit mode restored a blank row while
+  //    the real one was already gone from the database.
+  closeNoteEditors();
+  noteState.undo = null;
+  noteState.savedId = null;
+  noteState.savedBefore = null;
   view.draft = structuredClone(view.data);   // buffered copy — all edits mutate this, never view.data
   view.editMode = true;
   view.dirty = false;
@@ -4658,8 +4677,18 @@ function cancelPickOnPage(id) {
   repaintNotes();
 }
 
+// ⚠️ EVERY NOTE ENDPOINT CALL IS TRACKED, BECAUSE ENTERING EDIT MODE CLONES THE LIST. The
+//    dispatcher runs handleNoteAction before handleInlineEdit, and its click-away branch fires a
+//    write and returns false, so one click on "✎ Edit" saved a note and then cloned view.data
+//    synchronously, before the answer could land. The draft held the note's OLD words and the next
+//    "Save changes" wrote them back over the new ones, with a 200 and no sign anything was wrong.
+//    A note added that way was worse: the draft never gained it, so the save deleted its row.
+//    Measured as a certainty rather than a race, because nothing awaits anything in that path.
+let noteWrites = 0;
+let noteSettled = Promise.resolve();
+
 function noteApi(path, opts) {
-  return fetch(`/api/recipes/${encodeURIComponent(view.slug)}${path}`, {
+  const call = fetch(`/api/recipes/${encodeURIComponent(view.slug)}${path}`, {
     method: opts.method, credentials: "same-origin",
     headers: { "Content-Type": "application/json" },
     body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
@@ -4668,7 +4697,18 @@ function noteApi(path, opts) {
     if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
     return data;
   });
+  noteWrites += 1;
+  // ⚠️ THE CHAIN SWALLOWS THE FAILURE AND THE CALLER STILL SEES IT. noteSettled exists only to say
+  //    "nothing is in flight"; every caller keeps its own .catch, and a rejection here would
+  //    otherwise become an unhandled rejection as well as blocking the gate below for good.
+  noteSettled = noteSettled
+    .then(() => call.catch(() => {}))
+    .then(() => { noteWrites -= 1; });
+  return call;
 }
+
+// Whether a note write is still in the air. Edit mode may not clone the list while one is.
+function noteWriteInFlight() { return noteWrites > 0; }
 
 // ⚠️ THE SERVER'S LIST WINS. Every note route answers with the recipe's whole notes list, because a
 // create or a move renumbers the others, and taking the server's answer rather than patching the
@@ -4775,7 +4815,7 @@ function saveNewNote() {
 function addNoteBeside(id, pos) {
   if (!noteHeld()) return Promise.resolve();
   saveOpenNote();
-  const next = draftAddBeside(view.draft.notes, NOTE_KINDS.kinds, id, pos);
+  const next = draftAddBeside(view.draft.notes, currentSteps(), NOTE_KINDS.kinds, id, pos);
   if (!next) return Promise.resolve();
   const newId = nextDraftId(view.draft.notes);
   noteState.editingId = newId;
@@ -4825,6 +4865,12 @@ function undoNote(token) {
     const before = noteState.savedBefore;
     noteState.savedId = null; noteState.savedBefore = null;
     if (!before) { repaintNotes(); return Promise.resolve(); }
+    // ⚠️ THE ONE WRITE PATH THAT HAD NO HELD BRANCH, and the offer can be on screen in Edit mode
+    //    because enterEditMode used not to clear it. A PATCH from inside a held session writes
+    //    straight past Save and Cancel, which is the one thing Edit mode promises it cannot do.
+    if (noteHeld()) {
+      return holdNotes(draftSetText(view.draft.notes, id, String(before.text || "")));
+    }
     return noteApi(`/notes/${id}`, { method: "PATCH", body: notePatchBody(before) })
       .then((data) => { adoptNotes(data); repaintNotes(); })
       .catch((e) => { noteError(e.message); repaintNotes(); });
@@ -4832,7 +4878,15 @@ function undoNote(token) {
   const u = noteState.undo;
   if (!u || u.token !== token) return Promise.resolve();
   noteState.undo = null;
-  if (noteHeld()) return holdNotes(draftRestore(view.draft.notes, u.row, u.at));
+  // ⚠️ AND A HELD RESTORE NEEDS A HELD DELETE'S SHAPE. The two deletes record different things
+  //    (a reading-view one keeps the server's `restore` body, a held one keeps the row itself), so
+  //    an offer made in one view and taken in the other restored a `{...undefined}` ghost that the
+  //    save then dropped. enterEditMode clears the offer now; this refuses rather than guessing.
+  if (noteHeld()) {
+    if (!u.row) { repaintNotes(); return Promise.resolve(); }
+    return holdNotes(draftRestore(view.draft.notes, u.row, u.at));
+  }
+  if (!u.body) { repaintNotes(); return Promise.resolve(); }
   return noteApi("/notes", { method: "POST", body: u.body })
     .then((data) => { adoptNotes(data); repaintNotes(); })
     .catch((e) => noteError(e.message));

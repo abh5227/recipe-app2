@@ -8,11 +8,14 @@
 // opinion about what a note is. These functions are called from the reading page, from the step
 // popover and from Edit mode's Notes block, so there is nothing left to disagree.
 //
-// ⚠️ NOTES LEFT THE EDIT-MODE DRAFT ENTIRELY, which is what makes that safe. A note writes through
-// its own endpoint the moment the cook finishes typing it, in BOTH views, so Edit mode's Cancel does
-// not revert a note and does not need to: a note is a playground and takes no part in the tracked
-// edit that Save and Cancel exist for. draftPayload no longer sends `notes` at all, and write_notes
-// reads an absent key as "leave them alone".
+// ⚠️ A NOTE IS WRITTEN BY TWO DOORS, AND THIS COMPONENT IS DRAWN BY BOTH. On the recipe page a
+// note goes to its own endpoint the moment the cook stops typing, with an Undo. Inside Edit mode
+// the same component writes into view.draft instead (note-draft.js), and the recipe PUT carries
+// `notes` so Save and Cancel mean what they do for every other field on that screen. Which door is
+// open is one question asked in one place, app.js::noteHeld.
+// ⚠️ AN EARLIER VERSION OF THIS NOTE SAID NOTES HAD LEFT THE DRAFT ENTIRELY AND THAT draftPayload
+// no longer sent them. That was true for one commit and was reversed by the next, and it sat at the
+// top of the file a reader opens first.
 //
 // `esc` is INJECTED, exactly as note-blocks.js takes the kind table and note-text.js takes esc: this
 // module stays dependency-free for the zero-dep JS suite, and the app keeps ONE escaping function.

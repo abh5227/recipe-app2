@@ -61,6 +61,64 @@ def _seed_originals(kitchen, rid, rows):
         s.commit()
 
 
+def _step_payload(x, heading=None):
+    """One step, in the shape static/save-payload.js::stepToPayload actually sends.
+
+    ⚠️ A HEADING GOES BACK AS {id, heading, level}, NOT AS {id, text, is_heading}. This file built
+    the second shape, which app.py::_step_parts reads as an ordinary step, so every test here that
+    meant to convert a step to a heading silently did not and asserted against a method that had
+    not changed. Mirroring the real builder is the only way the fixture cannot drift from it.
+    """
+    want = bool(x["is_heading"]) if heading is None else heading
+    if want:
+        return {"id": x["id"], "heading": x["text"], "level": x.get("heading_level") or 1}
+    return {"id": x["id"], "text": x["text"]}
+
+
+def _as_heading(body, step_id, on=True):
+    """Flip one step of a draft payload to (or from) a heading, in the wire shape."""
+    for i, st in enumerate(body["steps"]):
+        if st["id"] == step_id:
+            body["steps"][i] = _step_payload(
+                {"id": step_id, "text": st.get("text") or st.get("heading") or "",
+                 "is_heading": on}, heading=on)
+    return body
+
+
+def _byte_equal(rid):
+    """Is this recipe still byte-equal to its stored baseline, which is the short-circuit set?
+
+    ⚠️ COMPARING ANNOTATIONS ALONE PROVED NOTHING ON A FRESH FIXTURE, because both sides were []
+    and [] == [] whatever the save did. _recipe_annotations returns [] for a recipe that is byte
+    equal AND for one that merely has no reportable difference, so the bytes have to be read.
+    """
+    import app as A
+    with A.orm_session() as s:
+        stored = s.execute(A.text(
+            "SELECT content FROM recipe_snapshots WHERE recipe_id = :r AND reason = 'original'"),
+            {"r": rid}).scalar()
+        assert stored, "no baseline was recorded, so there is nothing to compare"
+        return A.serialize_recipe_content(s, rid) == stored
+
+
+def test_the_byte_equal_check_can_fail(kitchen):
+    """⚠️ THE MUTATION PROOF. A gate that cannot fail is not a gate, and the per-note endpoints have
+    one of these already. A real STEP edit must take the recipe out of the set, or _byte_equal is
+    answering True for the wrong reason and every check above it is worthless."""
+    rid = _recipe(kitchen.client, notes="Note: one.")
+    assert kitchen.client.put(f"/api/recipes/{rid}",
+                              json=_draft(kitchen.client, rid)).status_code == 200
+    assert _byte_equal(rid), "the fixture did not start byte-equal, so nothing can be shown"
+
+    body = _draft(kitchen.client, rid)
+    body["steps"][0] = {"id": body["steps"][0]["id"], "text": "Rinse the beans very well indeed"}
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    assert not _byte_equal(rid), "a real step edit left the recipe byte-equal, so the check is blind"
+    import app as A
+    with A.orm_session() as s:
+        assert A._recipe_annotations(s, rid), "and it mints a mark, which a note never does"
+
+
 def _draft(client, rid, **over):
     """The payload Edit mode's draftPayload builds, with the recipe as it stands."""
     d = _full(client, rid)
@@ -68,8 +126,7 @@ def _draft(client, rid, **over):
     body = {
         "name": r["name"], "author": r.get("author") or "", "descr": r.get("descr") or "",
         "ingredients": [{"id": x["id"], "raw_text": x.get("raw_text") or ""} for x in d["ingredients"]],
-        "steps": [{"id": x["id"], "text": x["text"], "is_heading": bool(x["is_heading"])}
-                  for x in d["steps"]],
+        "steps": [_step_payload(x) for x in d["steps"]],
         "notes": [{"text": n["text"], "kind": n["kind"], "step_id": n["step_id"],
                    "ingredient_row_id": n["ingredient_row_id"],
                    "refs": [{"ref_index": f["ref_index"], "match_text": f["match_text"],
@@ -231,6 +288,7 @@ def test_a_held_session_mints_no_annotation_and_keeps_the_short_circuit(kitchen)
     with A.orm_session() as s:
         after_marks = A._recipe_annotations(s, rid)
     assert after_marks == before_marks, "a note edit, a type change and a delete, and no mark"
+    assert _byte_equal(rid), "and the recipe is still byte-equal to its baseline"
 
 
 # ---------------------------------------------------------------------------------------------
@@ -452,6 +510,7 @@ def test_a_reorder_mints_no_annotation_and_keeps_the_short_circuit(kitchen):
 
     with A.orm_session() as s:
         assert A._recipe_annotations(s, rid) == before_marks
+    assert _byte_equal(rid), "a drag does not cost the recipe its place in the set either"
 
 
 def test_saving_the_same_order_back_moves_nothing_at_all(kitchen):
@@ -522,3 +581,248 @@ def test_deleting_a_note_from_the_menu_takes_its_row_and_renumbers_the_rest(kitc
     assert [n["position"] for n in after] == [0, 1]
     assert before[1]["id"] not in {n["id"] for n in after}, "the deleted row is gone"
     assert [n["id"] for n in after] == [before[0]["id"], before[2]["id"]], "the survivors keep theirs"
+
+
+# ---------------------------------------------------------------------------------------------
+# One rule, both write doors. ⚠️ THE ROUND SHIPPED A SECOND NOTE WRITE PATH, and the recipe PUT and
+# the per-note endpoints each restated the step-link rule, the reference rule and the kind rule.
+# Three of the four restatements gave different answers, measured. _note_step_target and
+# _note_ref_rows are the one copy now, and every case below is one of the measured divergences.
+# ---------------------------------------------------------------------------------------------
+
+def _steps(client, rid):
+    return _full(client, rid)["steps"]
+
+
+def test_absent_keys_on_an_id_matched_note_mean_keep_not_clear(kitchen):
+    """⚠️ ABSENT IS NOT EMPTY, ONE LAYER DOWN. The rule is enforced at the `notes` key already. A
+    PUT naming a row by id and sending only its text cleared the cook's chosen type AND their step
+    link, answered 200, and said nothing."""
+    rid = _recipe(kitchen.client, notes="Tip: salt at the end.")
+    steps = _steps(kitchen.client, rid)
+    first = next(s for s in steps if not s["is_heading"])
+    before = _rows(kitchen.client, rid)
+    assert len(before) == 1, "nothing to compare against"
+
+    body = _draft(kitchen.client, rid)
+    body["notes"] = [{"id": before[0]["id"], "text": before[0]["text"], "kind": "storage",
+                      "step_id": first["id"], "ingredient_row_id": None, "refs": []}]
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    linked = _rows(kitchen.client, rid)[0]
+    assert (linked["kind"], linked["step_id"]) == ("storage", first["id"]), "set up the state first"
+
+    # now a save that names the row and sends only its words
+    body = _draft(kitchen.client, rid)
+    body["notes"] = [{"id": linked["id"], "text": linked["text"]}]
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    after = _rows(kitchen.client, rid)[0]
+    assert after["kind"] == "storage", "an absent kind did not clear the cook's choice"
+    assert after["step_id"] == first["id"], "and an absent step_id did not clear the link"
+    assert after["id"] == linked["id"]
+
+
+def test_the_old_string_shape_does_not_wipe_the_kinds_and_links(kitchen):
+    """The documented deploy-window path. write_notes' docstring calls the bare string safe in both
+    directions, and it was not: nothing older than migration 060 sends a kind or a step link, so one
+    save from it cleared every one on the recipe."""
+    rid = _recipe(kitchen.client, notes="Tip: one.\n\nStorage: two.")
+    steps = _steps(kitchen.client, rid)
+    first = next(s for s in steps if not s["is_heading"])
+    before = _rows(kitchen.client, rid)
+    assert len(before) == 2, "nothing to compare against"
+    body = _draft(kitchen.client, rid)
+    body["notes"] = [{"id": n["id"], "text": n["text"], "kind": n["kind"],
+                      "step_id": first["id"] if n is before[0] else None,
+                      "ingredient_row_id": None, "refs": []} for n in before]
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    staged = _rows(kitchen.client, rid)
+    assert staged[0]["step_id"] == first["id"] and staged[0]["kind"] == "tips", "set the state up"
+
+    # the previous client's single textarea, split by the same rule the corpus move used
+    body = _draft(kitchen.client, rid)
+    body["notes"] = "Tip: one.\n\nStorage: two."
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    after = _rows(kitchen.client, rid)
+    assert [n["kind"] for n in after] == [n["kind"] for n in staged], "the kinds survived"
+    assert [n["step_id"] for n in after] == [n["step_id"] for n in staged], "and the links did"
+
+
+def test_a_step_named_in_a_note_s_words_auto_links_through_the_PUT_too(kitchen):
+    """⚠️ THE SAME WORDS THROUGH THE TWO DOORS GAVE TWO ANSWERS. Typed in reading view, "step 2"
+    linked and put a marker on that step. Typed in Edit mode, it stayed plain text."""
+    rid = _recipe(kitchen.client)
+    steps = [s for s in _steps(kitchen.client, rid) if not s["is_heading"]]
+    assert len(steps) >= 2, "nothing to link to"
+
+    body = _draft(kitchen.client, rid)
+    # exactly what note-draft.js::notesPayload builds for a note typed this session
+    body["notes"] = [{"text": "then do what step 2 says", "kind": "notes", "step_id": None,
+                      "ingredient_row_id": None,
+                      "refs": [{"ref_index": 0, "match_text": "step 2", "step_id": None}]}]
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    note = _full(kitchen.client, rid)["notes"][0]
+    assert note["refs"], "the mention was not even recorded"
+    assert note["refs"][0]["step_id"] == steps[1]["id"], "the words name step 2, so they link to it"
+    assert note["refs"][0]["step_no"] == 2
+
+
+def test_an_unlinked_reference_stays_unlinked_through_a_later_save(kitchen):
+    """The other half of the auto-link: a stored NULL is an answer and it stops the search, which is
+    what lets a deliberate unlink survive. Otherwise the auto-link would undo it on the next save."""
+    rid = _recipe(kitchen.client)
+    steps = [s for s in _steps(kitchen.client, rid) if not s["is_heading"]]
+    r = kitchen.client.post(f"/api/recipes/{rid}/notes",
+                            json={"text": "then do what step 2 says"})
+    assert r.status_code == 201, r.get_json()
+    note = _full(kitchen.client, rid)["notes"][0]
+    assert note["refs"][0]["step_id"] == steps[1]["id"], "nothing to unlink"
+    assert kitchen.client.patch(
+        f"/api/recipes/{rid}/notes/{note['id']}/refs/0", json={"step_id": None}).status_code == 200
+    assert _full(kitchen.client, rid)["notes"][0]["refs"][0]["step_id"] is None
+
+    body = _draft(kitchen.client, rid)
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    assert _full(kitchen.client, rid)["notes"][0]["refs"][0]["step_id"] is None, \
+        "the save re-linked a reference the cook had unlinked"
+
+
+def test_a_reference_to_a_step_that_became_a_heading_survives_a_later_text_edit(kitchen):
+    """⚠️ MEASURED DATA LOSS, AND THE ID LIVES NOWHERE ELSE. write_notes kept such a reference and
+    _rescan_note_refs destroyed it, so editing one word of the note in reading view made the
+    conversion irreversible. Both read _note_step_target now."""
+    rid = _recipe(kitchen.client)
+    steps = [s for s in _steps(kitchen.client, rid) if not s["is_heading"]]
+    target = steps[1]["id"]
+    assert kitchen.client.post(f"/api/recipes/{rid}/notes",
+                               json={"text": "then do what step 2 says"}).status_code == 201
+    note = _full(kitchen.client, rid)["notes"][0]
+    assert note["refs"][0]["step_id"] == target, "nothing to preserve"
+
+    # turn that step into a heading through the PUT, which is where the conversion lives
+    body = _as_heading(_draft(kitchen.client, rid), target)
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    assert next(st for st in _steps(kitchen.client, rid)
+                if st["id"] == target)["is_heading"], "the conversion did not land"
+    held = _full(kitchen.client, rid)["notes"][0]
+    assert held["refs"][0]["step_id"] == target, "the PUT dropped it"
+    assert held["refs"][0]["step_no"] is None, "and it must not print a number"
+
+    # then change one word of the note through the OTHER door
+    assert kitchen.client.patch(f"/api/recipes/{rid}/notes/{note['id']}",
+                               json={"text": "then do just what step 2 says"}).status_code == 200
+    after = _full(kitchen.client, rid)["notes"][0]
+    assert after["refs"][0]["step_id"] == target, "a text edit destroyed the reference"
+
+    # and converting the heading back brings the link home, which is the whole point
+    body = _as_heading(_draft(kitchen.client, rid), target, on=False)
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    assert _full(kitchen.client, rid)["notes"][0]["refs"][0]["step_no"] == 2
+
+
+def test_a_reference_to_a_step_that_is_GONE_is_dropped(kitchen):
+    """The other side of the same rule: nothing can bring a deleted step's id back."""
+    rid = _recipe(kitchen.client)
+    steps = [s for s in _steps(kitchen.client, rid) if not s["is_heading"]]
+    assert kitchen.client.post(f"/api/recipes/{rid}/notes",
+                               json={"text": "then do what step 2 says"}).status_code == 201
+    assert _full(kitchen.client, rid)["notes"][0]["refs"][0]["step_id"] == steps[1]["id"]
+
+    body = _draft(kitchen.client, rid)
+    body["steps"] = [st for st in body["steps"] if st["id"] != steps[1]["id"]]
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    assert _full(kitchen.client, rid)["notes"][0]["refs"][0]["step_id"] is None
+
+
+def test_the_PUT_will_not_newly_link_a_note_to_a_heading(kitchen):
+    """The per-note door answers 400 for this and the PUT stored it, so the same value meant two
+    things depending on which door it came through."""
+    rid = _recipe(kitchen.client)
+    steps = [s for s in _steps(kitchen.client, rid) if not s["is_heading"]]
+    head = steps[1]["id"]
+    body = _as_heading(_draft(kitchen.client, rid), head)
+    body["notes"] = [{"text": "stuck on a heading", "kind": "notes", "step_id": head,
+                      "ingredient_row_id": None, "refs": []}]
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    assert _rows(kitchen.client, rid)[0]["step_id"] is None, "a new link to a heading was stored"
+    # and the per-note door still refuses it outright
+    r = kitchen.client.post(f"/api/recipes/{rid}/notes",
+                            json={"text": "also stuck", "step_id": head})
+    assert r.status_code == 400
+    assert "heading" in r.get_json()["error"]
+
+
+def test_a_note_already_linked_to_a_step_keeps_the_link_when_that_step_becomes_a_heading(kitchen):
+    """And the reversibility half, for the note's OWN link rather than for a reference."""
+    rid = _recipe(kitchen.client)
+    steps = [s for s in _steps(kitchen.client, rid) if not s["is_heading"]]
+    target = steps[1]["id"]
+    assert kitchen.client.post(f"/api/recipes/{rid}/notes",
+                               json={"text": "about that step", "step_id": target}).status_code == 201
+    body = _as_heading(_draft(kitchen.client, rid), target)
+    body["notes"] = _notes_payload(_full(kitchen.client, rid))
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    kept = _rows(kitchen.client, rid)[0]
+    assert kept["step_id"] == target, "the conversion has to be reversible"
+    assert _full(kitchen.client, rid)["notes"][0]["step_no"] is None, "and print no number"
+
+
+# ---------------------------------------------------------------------------------------------
+# A write path refuses what it cannot read. ⚠️ resolve_recipe_payload checked the notes CONTAINER
+# and each ENTRY and stopped there, so every scalar inside a note reached write_notes untyped.
+# ---------------------------------------------------------------------------------------------
+
+def test_a_malformed_field_inside_a_note_is_refused_rather_than_a_500(kitchen):
+    rid = _recipe(kitchen.client, notes="Note: keep me.")
+    before = _rows(kitchen.client, rid)
+    assert before, "nothing to protect"
+    bad = [
+        ({"text": 5}, "text"),
+        ({"text": "x", "step_id": [1]}, "step_id"),
+        ({"text": "x", "ingredient_row_id": "7"}, "ingredient_row_id"),
+        ({"text": "x", "kind": ["notes"]}, "kind"),
+        ({"text": "x", "refs": 7}, "refs"),
+        ({"text": "x", "refs": [3]}, "refs"),
+        ({"text": "x", "refs": [{"ref_index": "0", "match_text": "step 2"}]}, "ref_index"),
+        ({"text": "x", "refs": [{"ref_index": 0, "match_text": 9}]}, "words"),
+        ({"text": "x", "id": True}, "id"),
+        ({"text": "x", "step_id": True}, "step_id"),
+        ({"text": "x", "position": 1.5}, "position"),
+    ]
+    for note, why in bad:
+        body = _draft(kitchen.client, rid)
+        body["notes"] = [note]
+        r = kitchen.client.put(f"/api/recipes/{rid}", json=body)
+        assert r.status_code == 400, f"{note!r} answered {r.status_code}, not 400"
+        assert why in r.get_json()["error"] or "kind" in r.get_json()["error"], \
+            f"{note!r} -> {r.get_json()['error']!r}"
+    assert _rows(kitchen.client, rid) == before, "a refused save wrote nothing"
+    # ⚠️ AND A WELL-FORMED KIND THE TABLE DOES NOT LIST IS NOT REFUSED. recipe_notes.kind is a
+    #    foreign key, so a stale client's unknown kind falls back to the default rather than failing
+    #    an otherwise valid save. The per-note PATCH answers 400 for the same string, which is a
+    #    disagreement between the two doors and a decision rather than a defect.
+    body = _draft(kitchen.client, rid)
+    body["notes"] = [{"text": "from a stale client", "kind": "nonsense"}]
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    assert _rows(kitchen.client, rid)[0]["kind"] == "notes"
+
+
+def test_a_well_formed_note_payload_still_goes_through(kitchen):
+    """The guard above must not refuse what the real client sends. Nothing to compare means nothing
+    proved, so this asserts the shape notesPayload builds, field for field."""
+    rid = _recipe(kitchen.client, notes="Note: one.")
+    steps = [s for s in _steps(kitchen.client, rid) if not s["is_heading"]]
+    stored = _rows(kitchen.client, rid)[0]
+    body = _draft(kitchen.client, rid)
+    body["notes"] = [
+        {"id": stored["id"], "text": "then do what step 2 says", "kind": "tips",
+         "step_id": steps[0]["id"], "ingredient_row_id": None,
+         "refs": [{"ref_index": 0, "match_text": "step 2", "step_id": None}]},
+        {"text": "a new one", "kind": "storage", "step_id": None,
+         "ingredient_row_id": None, "refs": []},
+    ]
+    r = kitchen.client.put(f"/api/recipes/{rid}", json=body)
+    assert r.status_code == 200, r.get_json()
+    after = _rows(kitchen.client, rid)
+    assert [n["kind"] for n in after] == ["tips", "storage"]
+    assert after[0]["id"] == stored["id"]
+

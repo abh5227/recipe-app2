@@ -159,3 +159,29 @@ test("seven rows is a stated number, not a hope", () => {
   assert.equal(PICKER_ROWS, 7);
   assert.ok(PICKER_ROWS >= 6 && PICKER_ROWS <= 8, "the brief asks for about 6 to 8");
 });
+
+// --- a step the database has never seen -----------------------------------------------------------
+// ⚠️ THE DRAFT HOLDS `id: null` ROWS AND THE FIXTURES NEVER DID. addStep inserts one, currentSteps
+//    hands view.draft.steps straight to pickerRows, and a link is a row id, so picking an unsaved
+//    step sent +"null" -> NaN and quietly wrote no link. These pin the real draft shape.
+
+test("an unsaved step is counted but never offered", () => {
+  const rows = pickerRows([{ id: 10, text: "first" }, { id: null, text: "just added" },
+                           { id: 20, text: "third" }], (t) => t);
+  assert.deepEqual(rows.map((r) => r.id), [10, 20], "no null id reaches the list");
+  assert.deepEqual(rows.map((r) => r.no), [1, 3], "and the numbers still match the page");
+});
+
+test("the cursor cannot land on an unsaved step", () => {
+  // String(null) === String(null) made startCursor pick the unsaved row for an UNLINKED note.
+  const rows = pickerRows([{ id: null, text: "just added" }, { id: 20, text: "second" }], (t) => t);
+  assert.equal(startCursor(rows, null), 20, "an unlinked note starts on a real step");
+  assert.equal(startCursor(rows, undefined), 20);
+});
+
+test("a heading and an unsaved step are both printed-or-skipped, never selectable", () => {
+  const rows = pickerRows([{ id: 5, is_heading: true, text: "For the sauce" },
+                           { id: null, text: "just added" }, { id: 20, text: "stir" }], (t) => t);
+  assert.deepEqual(rows.map((r) => r.t), ["sect", "step"]);
+  assert.deepEqual(stepRowsOf(rows).map((r) => r.id), [20]);
+});

@@ -6,6 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { displayParts } from "../../static/note-blocks.js";
 import { tagLabel, kindOf, kindMenuHTML, noteBodyHTML, noteRowHTML, noteEditHTML, noteInputHTML,
          stepMenuHTML, newNoteBoxHTML, addNoteButtonHTML, notePatchBody, noteTextChanged,
          noteEditText, savedToastHTML, undoToastHTML, pickBarHTML,
@@ -21,7 +22,17 @@ const esc = (s) => String(s == null ? "" : s)
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
+// ⚠️ THE REAL CALLER PASSES A DECORATED ROW. app.js::noteOne feeds rows from noteSections, which
+//    runs note-blocks.js::decorate and sets `display` and `displayStripped`; noteBodyHTML branches
+//    on `display != null`, so a fixture without them took the OTHER branch and every test here
+//    exercised a shape the browser never produces. `decorated()` below is the browser's shape, and
+//    the bare `note()` stays for the handful of cases that are about the undecorated path.
 const note = (o) => ({ id: 7, kind: "notes", text: "", step_id: null, step_no: null, refs: [], ...o });
+const decorated = (o) => {
+  const row = note(o);
+  const d = displayParts(row, TABLE);
+  return { ...row, display: d.text, displayStripped: d.stripped };
+};
 
 // --- the type tag ---------------------------------------------------------------------------------
 
@@ -268,12 +279,17 @@ test("each menu hangs off its own control, not off the panel", () => {
   //    CLICKED. Both menus were siblings of the footer. They are inside it now, each in its own
   //    positioned span beside the button that opens it.
   const html = noteEditHTML(note({}), TABLE, esc, { stepMenu: true, pick: pickOf() });
-  const anchor = html.indexOf('<span class="note-anchor">', html.indexOf("data-note-link-menu"));
-  assert.ok(html.lastIndexOf('<span class="note-anchor">') < html.indexOf("note-step-menu"),
-    "the menu is inside an anchor span");
-  assert.ok(html.indexOf("note-step-menu") < html.indexOf("note-tool-del"),
-    "and that span sits where its own button sits, before Delete");
-  assert.ok(anchor !== -2);
+  // ⚠️ THE ANCHOR OPENS BEFORE ITS BUTTON, so it is searched BACKWARDS from the button. This read
+  //    forwards, found nothing, and the result was checked against -2 — a value indexOf cannot
+  //    return — so the assertion was true whether the span was there or not.
+  const btn = html.indexOf("data-note-link-menu");
+  const menu = html.indexOf("note-step-menu");
+  const anchor = html.lastIndexOf('<span class="note-anchor">', btn);
+  assert.ok(btn !== -1 && menu !== -1, "the button and its menu are both drawn");
+  assert.ok(anchor !== -1, "the link button sits inside an anchor span");
+  assert.ok(anchor < btn && btn < menu, "and the menu is inside that same span, after its button");
+  assert.ok(menu < html.indexOf("note-tool-del"),
+    "which puts it where its own button sits, before Delete");
 });
 
 test("a save offers an undo too, not just a delete", () => {
@@ -485,4 +501,41 @@ test("the pencil hangs off a zero-width anchor, so it never costs the note a lin
 test("the pencil's anchor comes after the toast, so it never sits on top of Undo", () => {
   const html = noteRowHTML(note({ text: "x" }), TABLE, esc, { editable: true, saved: true });
   assert.ok(html.indexOf("note-toast") < html.indexOf("note-pencil-slot"));
+});
+
+
+// --- the decorated row, which is the ONLY shape the page ever renders -----------------------------
+// ⚠️ noteBodyHTML BRANCHES ON `display != null`, so every test above that passes a bare note takes
+//    the branch the browser never takes. These pin the branch it does take, including the capital
+//    rule this round was built for.
+
+test("a decorated row renders its display text, not its stored text", () => {
+  const row = decorated({ kind: "tips", text: "Tip: rest it." });
+  assert.equal(row.display, "rest it.", "the label is stripped for display");
+  assert.ok(row.displayStripped);
+  const html = noteBodyHTML(row, TABLE, esc);
+  assert.ok(/Rest it\./.test(html), `a stripped label is capitalized at render: ${html}`);
+  assert.ok(!/Tip:/.test(html), "and the label itself is not printed twice");
+});
+
+test("a label the table does not know keeps its words and its own capital", () => {
+  const row = decorated({ kind: "notes", text: "Blind Bake: put the weights in." });
+  assert.equal(row.displayStripped, false, "nothing was stripped, so nothing is re-capitalized");
+  const html = noteBodyHTML(row, TABLE, esc);
+  assert.ok(/Blind Bake/.test(html), html);
+});
+
+test("losing displayStripped would lowercase every stripped note, which is why it is pinned", () => {
+  const row = decorated({ kind: "tips", text: "Tip: rest it." });
+  const lost = { ...row, displayStripped: false };
+  assert.ok(/Rest it\./.test(noteBodyHTML(row, TABLE, esc)));
+  assert.ok(/rest it\./.test(noteBodyHTML(lost, TABLE, esc)),
+    "the flag is what decides the capital, so dropping it is visible on the page");
+});
+
+test("the whole row renders from the decorated shape the way app.js passes it", () => {
+  const html = noteRowHTML(decorated({ id: 9, kind: "storage", text: "Storage: keep it cold." }),
+                           TABLE, esc, { editable: true, place: "ie" });
+  assert.ok(/Keep it cold\./.test(html), html);
+  assert.ok(/data-note="9"/.test(html));
 });

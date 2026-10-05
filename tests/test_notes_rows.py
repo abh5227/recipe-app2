@@ -28,7 +28,9 @@ def dish(kitchen):
     return rid
 
 
-def _save(kitchen, rid, d, **over):
+def _body(kitchen, rid, d, **over):
+    """The save payload, without sending it. Split out so a test can assert a REFUSAL, which _save
+    cannot: it asserts 200 for every caller that does not care."""
     body = {
         "name": d["recipe"]["name"],
         "ingredients": [{"id": x["id"], "quantity": x["quantity"] or "", "unit": x["unit"] or "",
@@ -36,7 +38,11 @@ def _save(kitchen, rid, d, **over):
         "steps": [{"id": s["id"], "text": s["text"]} for s in d["steps"]],
     }
     body.update(over)
-    r = kitchen.client.put(f"/api/recipes/{rid}", json=body)
+    return body
+
+
+def _save(kitchen, rid, d, **over):
+    r = kitchen.client.put(f"/api/recipes/{rid}", json=_body(kitchen, rid, d, **over))
     assert r.status_code == 200, r.get_json()
     return r
 
@@ -365,8 +371,17 @@ def test_rewording_the_mention_drops_the_link_the_editor_echoed(dish, kitchen):
             for r in d["notes"][0]["refs"]]
     _save(kitchen, dish, d, notes=[{"text": "For a softer crust, proceed with step 1.",
                                     "kind": "notes", "refs": echo}])
-    assert _refs(kitchen, dish) == [{"ref_index": 0, "match_text": "step 1", "step_id": None}], \
+    after = _refs(kitchen, dish)
+    assert after[0]["match_text"] == "step 1"
+    assert after[0]["step_id"] != third, \
         "the stale step id survived a reword of the words that named it"
+    # ⚠️ AND THE NEW WORDS NOW NAME A STEP, WHICH THEY DID NOT BEFORE. The "step N" auto-link used
+    #    to live on the per-note endpoints only, so the same words linked when typed in reading view
+    #    and stayed plain when typed in Edit mode. Both doors read _note_ref_rows now, so a reword
+    #    drops the old target AND resolves the new one. A wrong number is still worse than no link,
+    #    and this is neither: it is the number the sentence actually says.
+    assert after[0]["step_id"] == _get(kitchen, dish)["steps"][0]["id"], \
+        "the words say step 1, so the link is to step 1"
 
 
 def test_an_unchanged_save_keeps_a_reference_the_editor_echoes(dish, kitchen):
@@ -395,10 +410,16 @@ def test_a_payload_reference_with_no_words_cannot_retarget_a_mention(dish, kitch
     _save(kitchen, dish, d, notes=[{"text": "See step 2 first.", "kind": "notes",
                                     "refs": [{"ref_index": 0, "match_text": "step 2",
                                               "step_id": second}]}])
+    # ⚠️ A REFERENCE WITH NO WORDS IS NOW REFUSED OUTRIGHT, which is the same guarantee stated
+    #    more plainly: it used to be accepted and then ignored, and the save answered 200 having
+    #    quietly dropped part of what it was sent. A payload a write path cannot read is refused.
     d = _get(kitchen, dish)
-    _save(kitchen, dish, d, notes=[{"text": "See step 2 first.", "kind": "notes",
-                                    "refs": [{"ref_index": 0, "step_id": third}]}])
-    assert _refs(kitchen, dish)[0]["step_id"] == second
+    body = _body(kitchen, dish, d, notes=[{"text": "See step 2 first.", "kind": "notes",
+                                           "refs": [{"ref_index": 0, "step_id": third}]}])
+    r = kitchen.client.put(f"/api/recipes/{dish}", json=body)
+    assert r.status_code == 400, r.get_json()
+    assert "words" in r.get_json()["error"]
+    assert _refs(kitchen, dish)[0]["step_id"] == second, "and the stored link is untouched"
 
 
 def test_a_kind_the_table_does_not_know_lands_under_notes(dish, kitchen):

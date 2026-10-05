@@ -479,6 +479,21 @@ def resolve_recipe_payload(s, payload, standing_step_links=frozenset()):
         rows = payload.get(key)
         if isinstance(rows, list) and any(not isinstance(r, dict) for r in rows):
             return None, f"each entry in {key} must be an object"
+    # ⚠️ AND A FIELD INSIDE A NOTE IS THE SAME CLIENT BUG ONE LAYER DOWN. The two checks above stop
+    #    at the container and the entry, so every scalar inside a note reached write_notes untyped
+    #    and five shapes were a 500 on ordinary malformed input: `text: 5` raised on .strip(),
+    #    `step_id: [1]` and `kind: ["notes"]` raised on `in` against a set, `refs: 7` raised on
+    #    iteration. Nothing was lost, because the 500 rolls the whole PUT back, but a save path
+    #    REFUSES WHAT IT CANNOT READ rather than crashing on it.
+    # ⚠️ A bool IS AN int IN PYTHON, so True would quietly mean row 1. _check_row_ids guards exactly
+    #    this for ingredient and step ids, with a comment saying why; notes had no equivalent.
+    # ⚠️ AN UNKNOWN KIND IS REFUSED HERE RATHER THAN RESET SILENTLY. The PATCH door already answers
+    #    400 for one, and the save path turned it into DEFAULT_KIND, so the same value meant two
+    #    things depending on which door it came through. A kind the table does not list is a caller
+    #    that invented one.
+    note_err = _note_payload_error(payload.get("notes"), set(s.scalars(select(NoteKind.kind))))
+    if note_err:
+        return None, note_err
 
     known = set(s.scalars(select(Ingredient.id)))
 
@@ -1029,10 +1044,15 @@ def write_notes(s, rid, payload):
     pairs_n, doomed_n = _pair_notes(stored_n, incoming, in_n)
 
     # The ids this recipe actually has, read AFTER write_recipe_rows so they are the rows this save
-    # just wrote. Headings are in the step set for the reason write_plan_ahead gives: a conversion
-    # has to be reversible, and the id lives nowhere else.
-    step_ids = {m["id"] for m in s.execute(
-        select(RecipeStep.__table__.c.id).where(RecipeStep.__table__.c.recipe_id == rid)).mappings()}
+    # just wrote. Headings are in the set for the reason write_plan_ahead gives: a conversion has to
+    # be reversible, and the id lives nowhere else. Which of them a link may NAME is
+    # _note_step_target's question, not this read's, and _note_step_ids is the one reader.
+    step_ids = _note_step_ids(s, rid)
+    # ⚠️ THE NUMBERS THE PAGE PRINTS, for the "step N" auto-link. A cook typing "step 3" means the
+    #    third step they can see, which is the third non-heading row.
+    numbers = notes_rules.step_numbers([dict(m) for m in s.execute(
+        select(RecipeStep.__table__).where(RecipeStep.__table__.c.recipe_id == rid)
+        .order_by(RecipeStep.__table__.c.position, RecipeStep.__table__.c.id)).mappings()])
     ing_ids = {m["id"] for m in s.execute(
         select(RecipeIngredient.__table__.c.id)
         .where(RecipeIngredient.__table__.c.recipe_id == rid)).mappings()}
@@ -1050,11 +1070,22 @@ def write_notes(s, rid, payload):
         text_ = (n.get("text") or "").strip()
         pos += 1
         kept = pairs_n[i][0]
-        sid = n.get("step_id")
-        sid = sid if sid in step_ids else None
-        iid = n.get("ingredient_row_id")
+        # ⚠️ ABSENT MEANS KEEP ON A ROW MATCHED BY ID, which is what _kept does for the recipe's own
+        #    header fields and _kept_minutes does for a wait. A PUT naming a row by id and sending
+        #    only its text used to answer 200 and clear the cook's chosen type AND their step link,
+        #    and the documented old-client shape (a bare string, split into paragraphs) carried
+        #    neither key, so one save from anything older than migration 060 wiped every kind and
+        #    every step link on the recipe. Measured through the real route.
+        def _keep(key, default=None):
+            if key in n:
+                return n[key]
+            return kept[key] if kept is not None else default
+        sid = _note_step_target(_keep("step_id"), step_ids,
+                                kept["step_id"] if kept is not None else None)
+        iid = _keep("ingredient_row_id")
         iid = iid if iid in ing_ids else None
-        kind = n.get("kind") if n.get("kind") in kinds else notes_rules.DEFAULT_KIND
+        kind = _keep("kind", notes_rules.DEFAULT_KIND)
+        kind = kind if kind in kinds else notes_rules.DEFAULT_KIND
         plan.append((kept, dict(recipe_id=rid, position=pos, kind=kind, text=text_,
                                 step_id=sid, ingredient_row_id=iid)))
         # What this note's references should be after the save: one per "step N" in the text,
@@ -1070,13 +1101,13 @@ def write_notes(s, rid, payload):
         sent = {(r.get("ref_index"), r.get("match_text")): r.get("step_id")
                 for r in (n.get("refs") or ()) if isinstance(r, dict)}
         carried = stored_refs.get(kept["id"] if kept is not None else None, {})
-        refs = []
-        for m in notes_rules.scan_step_mentions(text_):
-            key = (m["ref_index"], m["match_text"])
-            target = sent[key] if key in sent else carried.get(key)
-            refs.append({"ref_index": m["ref_index"], "match_text": m["match_text"],
-                         "step_id": target if target in step_ids else None})
-        want_refs.append(refs)
+        # ⚠️ THE AUTO-LINK REACHES THIS DOOR TOO, AND IT DID NOT. create_note and update_note resolve
+        #    "step 2" to the step the page numbers 2; write_notes did not, so the same words typed
+        #    in Edit mode stayed plain and left no marker on that step while the same words typed in
+        #    reading view linked. One rule, two doors, two answers. _note_ref_rows holds the order.
+        want_refs.append(_note_ref_rows(
+            text_, step_ids, sent=sent, carried=carried,
+            auto=_auto_link_mentions(text_, step_ids, numbers)))
 
     _apply_rows(s, rn, plan, doomed_n)
 
@@ -1950,7 +1981,7 @@ def update_recipe(rid):
         # yields the truer message. It also keeps test_seed_recipe_is_read_only / test_gate_parity_*
         # testing the SEED gate rather than passing on an ownership 403 that happens to share a status.
         if row["source"] not in EDITABLE_SOURCES:
-            return jsonify({"error": "this recipe is from seed.py and is read-only here — edit it in seed.py"}), 403
+            return jsonify({"error": "this recipe is from seed.py and is read-only here, edit it in seed.py"}), 403
         if row["owner"] != current_user.id:                  # default-deny: only the owner may edit
             return jsonify({"error": "not your recipe"}), 403
         # The [[key]]s this recipe's steps already carry. An edit may keep them even if nothing in
@@ -2286,11 +2317,121 @@ def _note_gate(s, rid):
     if row is None:
         return None, (jsonify({"error": "recipe not found"}), 404)
     if row["source"] not in EDITABLE_SOURCES:
-        return None, (jsonify({"error": "this recipe is from seed.py and is read-only here — "
+        return None, (jsonify({"error": "this recipe is from seed.py and is read-only here, "
                                         "edit it in seed.py"}), 403)
     if row["owner"] != current_user.id:
         return None, (jsonify({"error": "not your recipe"}), 403)
     return row, None
+
+
+def _is_row_id(v):
+    """A row id a payload may name: a whole number, and NOT a bool.
+
+    ⚠️ bool IS AN int IN PYTHON, so `True in step_ids` is true whenever this recipe owns step id 1.
+    _check_row_ids guards this for ingredient and step ids already; the note path did not.
+    """
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _note_payload_error(rows, kinds):
+    """The first thing wrong inside a note entry, or None. Types only, no database reads.
+
+    ⚠️ IT IS THE FIELDS, NOT THE CONTAINER. resolve_recipe_payload already refuses a notes value
+    that is not a list or a string, and an entry that is not an object. This is the layer under
+    that, and it is the layer every 500 on a malformed note came from.
+    """
+    if not isinstance(rows, list):
+        return None                                      # absent, or the bare string shape
+    for n in rows:
+        if "text" in n and not isinstance(n["text"], str):
+            return "a note's text must be text"
+        if "id" in n and n["id"] is not None and not _is_row_id(n["id"]):
+            return "a note's id must be a whole number"
+        for key in ("step_id", "ingredient_row_id", "position"):
+            if n.get(key) is not None and not _is_row_id(n[key]):
+                return f"a note's {key} must be a whole number"
+        # ⚠️ THE TYPE IS REFUSED AND THE VALUE IS NOT, AND THE LINE BETWEEN THEM IS THE RULE. A kind
+        #    that is a list or a number is a payload nothing can read, and it was a 500. A kind that
+        #    is a STRING the table does not list is a stale client or a script, and write_notes has
+        #    always put that note under the default kind on purpose, because recipe_notes.kind is a
+        #    foreign key and the alternative is an IntegrityError on an otherwise valid save.
+        #    ⚠️ THE PER-NOTE PATCH ANSWERS 400 FOR THE SAME STRING, so the two doors still disagree
+        #    about an unknown kind. That is a decision for Andy, not a defect to close here.
+        if n.get("kind") is not None and not isinstance(n["kind"], str):
+            return f"a note's kind must be text, not {type(n['kind']).__name__}"
+        refs = n.get("refs")
+        if refs is not None and not isinstance(refs, list):
+            return "a note's refs must be a list"
+        for r in (refs or ()):
+            if not isinstance(r, dict):
+                return "each entry in a note's refs must be an object"
+            if not _is_row_id(r.get("ref_index")) or r["ref_index"] < 0:
+                return "a note reference needs a whole-number ref_index"
+            if not isinstance(r.get("match_text"), str):
+                return "a note reference needs the words it belongs to"
+            if r.get("step_id") is not None and not _is_row_id(r["step_id"]):
+                return "a note reference's step_id must be a whole number"
+    return None
+
+
+def _note_step_target(sid, step_ids, was=None):
+    """Which step id a note, or one of its references, may actually point at after a save.
+
+    `step_ids` is {step id: is_heading} for THIS recipe. `was` is the id already stored for this
+    exact thing, where there is one.
+
+    ⚠️ ONE RULE, THREE DOORS, AND IT USED TO BE THREE ANSWERS. write_notes (the recipe PUT),
+    _rescan_note_refs (the per-note PATCH) and _validated_note_fields each decided this for
+    themselves, and all three comments claimed to be following the same rule. Measured, they were
+    not: a reference to a step that had become a heading was KEPT by a PUT and DESTROYED by the
+    next text edit through the other door, and the id lives nowhere else, so converting the heading
+    back could never bring it back. One function now, and every door asks it.
+
+    ⚠️ A STEP THAT IS GONE IS GONE. Nothing can bring its id back, so the pointer is dropped rather
+    than stored dangling.
+
+    ⚠️ A HEADING IS KEPT WHERE IT WAS ALREADY STORED, AND REFUSED WHERE IT IS NEW, which is the
+    distinction the three copies were really groping at. Converting a step to a heading has to be
+    reversible (write_plan_ahead's reason: the id lives nowhere else), so a link that already named
+    that row survives the conversion and simply stops printing a number. Creating a link to a
+    heading is a pointer nobody can follow and no part of the UI offers it, so it is not stored.
+    """
+    if sid is None or sid not in step_ids:
+        return None
+    if step_ids[sid] and sid != was:
+        return None
+    return sid
+
+
+def _note_ref_rows(text, step_ids, sent=None, carried=None, auto=None):
+    """The reference rows a note's words should have after a save. ONE rule, both write doors.
+
+    ⚠️ A REFERENCE EXISTS ONLY WHILE ITS MENTION DOES, keyed on (ref_index, match_text), so
+    inserting a sentence before "step 9" keeps the link and rewording the mention drops it.
+
+    ⚠️ THE TARGET IS THE FIRST OF THREE THAT NAMES ONE, and the order is the rule:
+      what the payload sent for those exact words, where it names a step;
+      then what the stored row held for them, INCLUDING a stored null, which is an answer and
+        stops the search, because that is how an unlink survives a later text edit;
+      then what the words themselves resolve to, which is the "step N" auto-link.
+    ⚠️ A SENT NULL IS NOT AN ANSWER, and that is why the auto-link reaches the PUT at all. The
+    editor round-trips refs verbatim and builds a new mention with a null target, because a client
+    cannot know a link the server has never told it about. Reading that null as a decision is what
+    made the same words link in reading view and stay plain in Edit mode.
+    """
+    sent, carried, auto = sent or {}, carried or {}, auto or {}
+    rows = []
+    for m in notes_rules.scan_step_mentions(text):
+        key = (m["ref_index"], m["match_text"])
+        if sent.get(key) is not None:
+            target = sent[key]
+        elif key in carried:
+            target = carried[key]
+        else:
+            target = auto.get(key)
+        rows.append({"ref_index": m["ref_index"], "match_text": m["match_text"],
+                     "step_id": _note_step_target(target, step_ids, carried.get(key))})
+    return rows
 
 
 def _note_step_ids(s, rid):
@@ -2312,17 +2453,15 @@ def _rescan_note_refs(s, note_id, text, step_ids, carried=None):
     text render as plain words rather than as a link, and what lets a later link/unlink name it.
     """
     rnr = RecipeNoteStepRef.__table__
-    carried = carried or {}
     s.execute(delete(rnr).where(rnr.c.note_id == note_id))
-    written = []
-    for m in notes_rules.scan_step_mentions(text):
-        key = (m["ref_index"], m["match_text"])
-        target = carried.get(key)
-        if target is not None and (target not in step_ids or step_ids[target]):
-            target = None
-        row = {"ref_index": m["ref_index"], "match_text": m["match_text"], "step_id": target}
+    # ⚠️ THE TARGETS COME FROM _note_ref_rows, NOT FROM A SECOND COPY OF THE RULE HERE. This read
+    #    `target not in step_ids or step_ids[target]`, which NULLED a reference whose step had
+    #    become a heading while the PUT door kept it. Measured: auto-link a note to step 2, convert
+    #    step 2 to a heading through the PUT (the link is held, correctly), then change one word of
+    #    the note in reading view, and the link is gone for good.
+    written = _note_ref_rows(text, step_ids, carried=carried)
+    for row in written:
         s.execute(insert(rnr).values(note_id=note_id, **row))
-        written.append(row)
     return written
 
 
