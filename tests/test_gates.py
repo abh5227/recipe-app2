@@ -75,6 +75,7 @@ def _recipe(con, rid, steps=("Mix it", "Bake it"), baseline=True, drift=None):
 
 def _corpus(tmp_path, name="gate.db"):
     """Two byte-equal recipes and one that has drifted, which is a reading worth comparing."""
+    tmp_path.mkdir(parents=True, exist_ok=True)      # callers pass subdirectories for distinct DBs
     db = tmp_path / name
     con = _schema(db)
     _recipe(con, "beans")
@@ -520,12 +521,15 @@ def test_the_command_line_refuses_a_missing_round_file(tmp_path, capsys):
 
 
 def test_the_command_line_passes_a_clean_round(tmp_path, capsys):
+    """⚠️ A READING PER DATABASE. The readings now have to describe the databases passed in, so a
+    single reading reused for both sides is refused."""
     db = _corpus(tmp_path)
     twin = tmp_path / "twin.db"
     twin.write_bytes(db.read_bytes())
-    st = tmp_path / "s.json"
-    st.write_text(json.dumps(gstate.read_state(db)))
-    code = grounds.main(["--round", str(_spec(tmp_path)), "--before", str(st), "--after", str(st),
+    b, a = tmp_path / "b.json", tmp_path / "a.json"
+    b.write_text(json.dumps(gstate.read_state(db)))
+    a.write_text(json.dumps(gstate.read_state(twin)))
+    code = grounds.main(["--round", str(_spec(tmp_path)), "--before", str(b), "--after", str(a),
                          "--a-db", str(db), "--b-db", str(twin)])
     assert code == 0
     assert "EXACTLY WHAT IT DECLARED" in capsys.readouterr().out
@@ -792,3 +796,51 @@ def test_a_round_path_that_is_a_directory_is_refused_rather_than_raising(tmp_pat
     """load_round tested p.exists(), so a directory reached read_text() and raised IsADirectoryError."""
     with pytest.raises(grounds.BadRound):
         grounds.load_round(tmp_path)
+
+
+# ---- the databases have to be the ones the readings describe --------------------------------------
+
+def test_two_unrelated_databases_cannot_satisfy_the_table_half(tmp_path, capsys):
+    """⚠️ NOTHING TIED THEM TOGETHER. state.py records the path it read in every reading and no gate
+    looked at it, so readings taken from one database with --a-db and --b-db pointed at two
+    unrelated throwaways printed that the round did exactly what it declared, exit 0."""
+    real = _corpus(tmp_path / "real")
+    other_a = _corpus(tmp_path / "oa")
+    other_b = tmp_path / "ob.db"
+    other_b.write_bytes(other_a.read_bytes())
+    b, a = tmp_path / "b.json", tmp_path / "a.json"
+    b.write_text(json.dumps(gstate.read_state(real)))
+    a.write_text(json.dumps(gstate.read_state(real)))
+    code = grounds.main(["--round", str(_spec(tmp_path)), "--before", str(b), "--after", str(a),
+                         "--a-db", str(other_a), "--b-db", str(other_b)])
+    assert code == 1
+    out = capsys.readouterr().out
+    assert "the reading does not describe" in out
+
+
+def test_the_same_database_twice_is_refused(tmp_path, capsys):
+    """⚠️ WHAT AN OPERATOR TYPES WHEN THE BEFORE-COPY IS GONE. Comparing a database with itself
+    makes every table trivially identical, so the table half passes while checking nothing."""
+    db = _corpus(tmp_path)
+    st = tmp_path / "s.json"
+    st.write_text(json.dumps(gstate.read_state(db)))
+    code = grounds.main(["--round", str(_spec(tmp_path)), "--before", str(st), "--after", str(st),
+                         "--a-db", str(db), "--b-db", str(db)])
+    assert code == 1
+    assert "same database" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("which", ["--a-db", "--b-db"])
+def test_a_missing_database_is_named_rather_than_a_traceback(tmp_path, capsys, which):
+    """The courtesy --before and --after got, extended to the half that was left behind: a missing
+    --a-db printed a bare sqlite3.OperationalError."""
+    db = _corpus(tmp_path)
+    st = tmp_path / "s.json"
+    st.write_text(json.dumps(gstate.read_state(db)))
+    gone = tmp_path / "not-a-database.db"
+    code = grounds.main(["--round", str(_spec(tmp_path)), "--before", str(st), "--after", str(st),
+                         "--a-db", str(gone if which == "--a-db" else db),
+                         "--b-db", str(gone if which == "--b-db" else db)])
+    assert code == 2
+    out = capsys.readouterr().out
+    assert "NOT USABLE" in out and which in out and str(gone) in out

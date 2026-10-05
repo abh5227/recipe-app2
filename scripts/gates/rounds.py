@@ -166,6 +166,42 @@ def check(before, after, spec):
     return out
 
 
+def _same_file(a, b):
+    """Resolved path OR device and inode, the two-part test corpus_guard.is_live uses."""
+    pa, pb = pathlib.Path(a), pathlib.Path(b)
+    try:
+        if pa.resolve() == pb.resolve():
+            return True
+    except OSError:
+        pass
+    try:
+        sa, sb = pa.stat(), pb.stat()
+        return (sa.st_dev, sa.st_ino) == (sb.st_dev, sb.st_ino)
+    except OSError:
+        return False
+
+
+def databases_match_the_readings(before, after, a_db, b_db):
+    """The two databases are the two the readings were taken from, and they are not one database.
+
+    ⚠️ NOTHING TIED THEM TOGETHER, SO THE MANDATORY TABLE HALF COULD BE SATISFIED BY STRANGERS.
+    state.py records the path it read in every reading and no gate looked at it. Measured: readings
+    taken from live, with --a-db and --b-db pointed at two unrelated throwaways, printed that the
+    round did exactly what it declared, exit 0. And `--a-db x --b-db x`, which is what an operator
+    types when the before-copy is gone, compares a database with itself: every table is trivially
+    identical and the table half passes while checking nothing."""
+    out = []
+    if _same_file(a_db, b_db):
+        out.append(f"--a-db and --b-db are the same database ({a_db}), so every table is "
+                   f"trivially identical and the table half would check nothing")
+    for side, reading, given in (("before", before, a_db), ("after", after, b_db)):
+        was = reading.get("db")
+        if was and not _same_file(was, given):
+            out.append(f"the {side} reading was taken from {was} and --{side[0]}-db names {given}, "
+                       f"so the table half would compare a database the reading does not describe")
+    return out
+
+
 def check_tables(a_db, b_db, spec, report=lambda *a: None):
     """The row-for-row half, which needs the two databases rather than the two readings."""
     differ = set(gtablediff.differences(a_db, b_db, report=report))
@@ -220,6 +256,15 @@ def main(argv=None):
     #    agreeing on every reading key and differing in one users row passed, exit 0. `tables` is a
     #    required key, so the databases that answer it are required too.
     if a.a_db and a.b_db:
+        absent = [(f, pth) for f, pth in (("--a-db", a.a_db), ("--b-db", a.b_db))
+                  if not pathlib.Path(pth).is_file()]
+        if absent:
+            print("\nTHE DATABASES ARE NOT USABLE:")
+            for flag, pth in absent:
+                print(f"  no file at {pth} for {flag}")
+            print()
+            return 2
+        fails += databases_match_the_readings(before, after, a.a_db, a.b_db)
         fails += check_tables(a.a_db, a.b_db, spec)
     else:
         fails.append(f'the round declares tables {spec["tables"]!r} and no databases were given to '
