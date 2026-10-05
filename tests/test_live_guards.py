@@ -149,18 +149,34 @@ def test_the_guard_is_installed_from_conftest_at_import():
 # ---- H3: a new script cannot forget the guard ---------------------------------------------------
 
 _OPENS = re.compile(r"sqlite3\.connect\(|create_engine\(|orm_session\(|\bimport app\b")
+
+# Keyed by the path relative to scripts/, because the gates live in a subfolder. An entry is a
+# named exemption with a reason, and test_the_read_only_exemptions_really_are_read_only checks
+# that the reason is still true rather than trusting it.
 _READ_ONLY_BY_INSPECTION = {
     "cold_start_check.py":        "asserts a cold-started app served; opens no database",
     "plan_ahead_short_rests.py":  "report only, opens live with mode=ro",
     "plan_ahead_proposals_v3.py": "reads the v2 CSV and writes a CSV; opens no database",
     "serve_live.py":              "serves live through the app, which has its own gates",
     "corpus_guard.py":            "it IS the guard",
+    "gates/state.py":             "the before/after reading, opens mode=ro through its own open_ro",
+    "gates/compare.py":           "compares two JSON readings; opens no database",
+    "gates/tablediff.py":         "row-for-row comparison, opens both sides through state.open_ro",
 }
+
+# scripts/ plus the gates subfolder. scripts/applied/ is deliberately NOT here: those 16 are spent
+# backfills that refuse to run, and tests/test_corpus_passes.py holds them to their own rule.
+_SWEPT = ("*.py", "gates/*.py")
+
+
+def _rel(path):
+    return path.relative_to(REPO / "scripts").as_posix()
 
 
 def _sources():
     scripts = REPO / "scripts"
-    out = [p for p in sorted(scripts.glob("*.py")) if p.name not in _READ_ONLY_BY_INSPECTION]
+    found = [p for pattern in _SWEPT for p in sorted(scripts.glob(pattern))]
+    out = [p for p in found if _rel(p) not in _READ_ONLY_BY_INSPECTION]
     return out + [REPO / "migrate.py"]
 
 
@@ -176,6 +192,25 @@ def test_no_script_can_open_a_database_without_the_shared_guard():
             missing.append(p.name)
     assert missing == [], (
         "these can open a database and do not wire scripts/corpus_guard.py: " + ", ".join(missing))
+
+
+def test_the_sweep_reaches_the_gates_subfolder():
+    """⚠️ A SUBFOLDER IS INVISIBLE TO glob("*.py"), WHICH IS HOW A WHOLE PACKAGE AVOIDS A SWEEP.
+    scripts/gates/ holds three read-only tools, exempted by name with a reason each. The point of
+    this test is the NEXT file dropped in there: it is swept like anything in scripts/, so it has to
+    wire the guard or earn its own named exemption."""
+    import unittest.mock as mock
+
+    gates = sorted((REPO / "scripts" / "gates").glob("*.py"))
+    assert gates, "the gates folder is empty, so its exemptions describe nothing"
+    assert {_rel(g) for g in gates} <= set(_READ_ONLY_BY_INSPECTION), \
+        "a file in scripts/gates/ is neither exempted nor wiring the guard"
+    with mock.patch.dict(_READ_ONLY_BY_INSPECTION, clear=False):
+        for g in gates:
+            _READ_ONLY_BY_INSPECTION.pop(_rel(g))
+        swept = {_rel(x) for x in _sources() if x.parent.name == "gates"}
+    assert swept == {_rel(g) for g in gates}, "the sweep does not look inside scripts/gates/"
+    assert set(_READ_ONLY_BY_INSPECTION) >= {_rel(g) for g in gates}, "the dict was not restored"
 
 
 def test_every_guarded_script_imports_the_guard_rather_than_copying_it():
@@ -195,7 +230,9 @@ def test_the_read_only_exemptions_really_are_read_only():
     writes = re.compile(r"\b(INSERT\s+(INTO|OR)|UPDATE\s+\w+\s+SET|DELETE\s+FROM"
                         r"|CREATE\s+TABLE|DROP\s+TABLE|ALTER\s+TABLE)\b", re.IGNORECASE)
     for name in _READ_ONLY_BY_INSPECTION:
-        src = (REPO / "scripts" / name).read_text()
+        path = REPO / "scripts" / name
+        assert path.exists(), f"{name} is exempted and no longer exists"
+        src = path.read_text()
         body = "\n".join(l for l in src.splitlines() if not l.strip().startswith("#"))
         found = writes.findall(body)
         assert found == [], f"{name} is on the read-only list and contains {found}"
