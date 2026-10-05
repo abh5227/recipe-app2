@@ -670,7 +670,7 @@ async function renderHome() {
   // a flat zero: the button would never appear and the fix would look like a feature removal.
   const testCount = recipes.filter((r) => r.source === "test" && r.is_mine).length;
   const bulkTest = testCount
-    ? `<span id="test-bulk"><button class="btn danger-soft sm" data-delete-test>Delete ${testCount} test recipe${testCount > 1 ? "s" : ""}</button></span>`
+    ? `<span id="test-bulk" data-count="${testCount}"><button class="btn danger-soft sm" data-delete-test>Delete ${testCount} test recipe${testCount > 1 ? "s" : ""}</button></span>`
     : "";
 
   // Browse runs wider than the 920px .page default (see .page.home-view), so all five nav items sit
@@ -5220,8 +5220,12 @@ document.addEventListener("click", (e) => {
   // Bulk-delete all test recipes (home header) — inline two-step confirm, like the recipe delete.
   const bulk = document.getElementById("test-bulk");
   if (e.target.closest("[data-delete-test]")) {
-    bulk.innerHTML = `<span class="delete-confirm">Delete all test recipes?
-      <button class="btn ghost sm danger" data-delete-test-confirm>Delete all</button>
+    // ⚠️ "YOUR N", BECAUSE THE SERVER DELETES ONLY YOURS. The confirm said "all test recipes" and
+    // the button "Delete all", which described the endpoint before it was owner-scoped. The count
+    // comes from the same is_mine filter the button's own label uses.
+    bulk.innerHTML = `<span class="delete-confirm">Delete your ${bulk.dataset.count} test recipe${
+      bulk.dataset.count === "1" ? "" : "s"}?
+      <button class="btn ghost sm danger" data-delete-test-confirm>Delete</button>
       <button class="btn ghost sm" data-delete-test-cancel>Cancel</button></span>`;
     return;
   }

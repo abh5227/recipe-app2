@@ -203,6 +203,26 @@ An earlier version of the prune matched `recipes-*.db`, which also caught hand-n
 `recipes-preview-*.db` copies. Digits sort before letters, so a fresh backup sorted first and was the
 first thing deleted. That function destroyed its own output on every run.
 
+### The other files with no second copy
+
+`recipes.db` has `backup.py`. These do not, they are all git-ignored, and none can be regenerated to
+the same bytes. Nothing deletes them, and a cleanup that proposes to should read this list first.
+
+| file | why it cannot be remade |
+|---|---|
+| `My Recipes.paprikarecipes` (235 MB) | the Paprika export the 300 recipes were imported from. Nothing in the repo can produce it. |
+| `sources.db` (5.18 GB) | written by `fetch_sources.py` one source at a time. Remaking it means re-fetching every external source, and the result depends on what those sources say that day. |
+| `join-narrow-1.db` (894 MB) | the superseded `rule_version`, and the artifact the 200-bucket error rate and the English-gloss measurement were taken on. `build_library.py` quotes that figure ("20.8% wrong on the 200-bucket sample"). |
+
+⚠️ **`join-narrow-1.db` LOOKS DERIVED AND IS NOT REMAKEABLE, WHICH IS WHY IT HAS A ROW HERE.** It is
+built by `build_join.py` from `sources.db`, so "rebuild it in 40 seconds" reads as true and is not:
+its own `join_run` row records `sources_bytes` of 5,179,191,296 and today's `sources.db` is
+5,179,211,776, so the source moved and a rebuild produces a different artifact. The same is true of
+`join.db` (`rule_version` narrow-2) against any measurement taken on it. A derived file stops being
+derived the moment the thing it was derived from changes, and the only record of that is the
+`join_run` row inside it. It was proposed for deletion in the 2026-10-05 safety round on the grounds
+that no code opens it, which was true and was not the question.
+
 ⚠️ **There is no off-machine copy of the backups or the photos yet.** `static/images` exists only on
 this Mac. See the open decision in `ROADMAP.md`.
 

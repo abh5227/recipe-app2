@@ -26,8 +26,8 @@ The file's shape, with every key required:
     {
       "round":          "2026-10-05-remove-demo-accounts",
       "why":            "one sentence, for whoever reads this in a year",
-      "short_circuit":  "unchanged" | {"joined": [...], "left": [...]},
-      "annotations":    "unchanged" | {"<recipe>": "changed", ...},
+      "short_circuit":  "unchanged" | "none" | {"joined": [...], "left": [...]},
+      "annotations":    "unchanged" | "none" | {"<recipe>": "changed", ...},
       "counts":         {"users": [4, 1]},        # every count NOT named here must not move
       "tables":         "identical" | {"except": ["users", ...]}
     }
@@ -56,7 +56,7 @@ class BadRound(Exception):
 def load_round(path):
     """The round's declaration. A missing or incomplete file raises rather than defaulting."""
     p = pathlib.Path(path)
-    if not p.exists():
+    if not p.is_file():
         raise BadRound(f"no round file at {p}\n"
                        f"  A go-live declares what it moves. There is no default, because the one "
                        f"thing a gate must never do is pass for lack of a question.")
@@ -72,10 +72,14 @@ def load_round(path):
             f"{p} leaves out {', '.join(missing)}\n"
             f"  Every key is required, so silence is never consent. If this round moves none of "
             f'them, say so: "short_circuit": "unchanged", "tables": "identical", "counts": {{}}.')
-    if spec["short_circuit"] != "unchanged" and not isinstance(spec["short_circuit"], dict):
-        raise BadRound('"short_circuit" must be "unchanged" or {"joined": [...], "left": [...]}')
-    if spec["annotations"] != "unchanged" and not isinstance(spec["annotations"], dict):
-        raise BadRound('"annotations" must be "unchanged" or an object keyed by recipe id')
+    if spec["short_circuit"] not in ("unchanged", "none") \
+            and not isinstance(spec["short_circuit"], dict):
+        raise BadRound('"short_circuit" must be "unchanged", "none" (declaring it legitimately '
+                       'empty on both sides) or {"joined": [...], "left": [...]}')
+    if spec["annotations"] not in ("unchanged", "none") \
+            and not isinstance(spec["annotations"], dict):
+        raise BadRound('"annotations" must be "unchanged", "none" (declaring there are legitimately '
+                       'no entries on either side) or an object keyed by recipe id')
     if not isinstance(spec["counts"], dict):
         raise BadRound('"counts" must be an object of {name: [from, to]}')
     for name, move in spec["counts"].items():
@@ -90,14 +94,32 @@ def load_round(path):
 def check(before, after, spec):
     """Every way this run disagrees with what the round declared, as a list of lines."""
     out = []
-    # The empty-reading refusals come first, and they are compare.py's, not a second copy.
-    out += gcompare.nothing_to_compare(before, "before")
-    out += gcompare.nothing_to_compare(after, "after")
+    # ⚠️ TWO DIFFERENT FAILURES THAT LOOK THE SAME IN THE JSON. "No reading happened" is never a
+    #    pass and can never be declared: a reading taken against the wrong path agrees with
+    #    anything. A GENUINE zero is a real state, and a corpus freshly loaded from an import has
+    #    300 byte-equal recipes and 0 annotation entries, which is correct and is the shape of a
+    #    first go-live. So the hard half always fails, and an empty SET fails unless this round
+    #    said "none" for it. Both halves are compare.py's, not a second copy.
+    for reading, side in ((before, "before"), (after, "after")):
+        out += gcompare.no_reading_at_all(reading, side)
+        for key, line in gcompare.genuinely_empty(reading, side):
+            if spec[key] != "none":
+                out.append(line + f' (if that is real, the round must declare "{key}": "none")')
+
+    # A round that declares a set empty and finds it populated has not described this run either.
+    for key, _ in gcompare.EMPTIABLE:
+        if spec[key] == "none":
+            for reading, side in ((before, "before"), (after, "after")):
+                if reading.get(key):
+                    out.append(f'the round declared "{key}": "none" and the {side} reading carries '
+                               f'{len(reading[key])}')
 
     sb = set(before.get("short_circuit") or ())
     sa = set(after.get("short_circuit") or ())
     joined, left = sorted(sa - sb), sorted(sb - sa)
-    if spec["short_circuit"] == "unchanged":
+    if spec["short_circuit"] == "none":
+        pass                                    # declared empty, and the emptiness was checked above
+    elif spec["short_circuit"] == "unchanged":
         if joined or left:
             out.append(f"the round declared the short-circuit set unchanged, and "
                        f"{len(left)} left, {len(joined)} joined")
@@ -117,7 +139,9 @@ def check(before, after, spec):
     aa = after.get("annotations") or {}
     moved = sorted(r for r in set(ab) | set(aa)
                    if [tuple(x) for x in ab.get(r, ())] != [tuple(x) for x in aa.get(r, ())])
-    if spec["annotations"] == "unchanged":
+    if spec["annotations"] == "none":
+        pass                                    # declared empty, and the emptiness was checked above
+    elif spec["annotations"] == "unchanged":
         if moved:
             out.append(f"the round declared the annotations unchanged, and these moved: {moved}")
     else:
@@ -167,7 +191,22 @@ def main(argv=None):
     except BadRound as e:
         print(f"\nTHE ROUND FILE IS NOT USABLE:\n  {e}\n")
         return 2
-    before, after = gcompare.load(a.before), gcompare.load(a.after)
+    # ⚠️ THE SAME COURTESY THE ROUND FILE GETS. A missing --round printed a written paragraph and a
+    #    missing --before or --after printed a bare FileNotFoundError traceback, which is a worse
+    #    answer to the same mistake. Both are now named with the path that was not there.
+    missing = [(flag, path) for flag, path in (("--before", a.before), ("--after", a.after))
+               if not pathlib.Path(path).is_file()]
+    if missing:
+        print("\nTHE READINGS ARE NOT USABLE:")
+        for flag, path in missing:
+            print(f"  no file at {path} for {flag}")
+        print("  Take a reading with gates/state.py --db <database> --out <file.json> first.\n")
+        return 2
+    try:
+        before, after = gcompare.load(a.before), gcompare.load(a.after)
+    except json.JSONDecodeError as e:
+        print(f"\nTHE READINGS ARE NOT USABLE:\n  not valid JSON: {e}\n")
+        return 2
     print(f"round : {spec['round']}")
     print(f"why   : {spec['why']}")
     print(f"declared: short_circuit={spec['short_circuit']!r} annotations={spec['annotations']!r} "

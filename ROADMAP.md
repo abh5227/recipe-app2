@@ -1058,6 +1058,34 @@ no-visible-change tidy-up.
   step in its words, 2 notes mention a step and neither carries its own link, so the count of notes
   with their own link AND a mention of a different step is **0**.
 
+### What the safety round left for next round · NEXT ROUND
+
+Two findings from the safety round's independent review, both listed rather than fixed because
+neither is reachable on today's data and both want a decision rather than a patch.
+
+1. **`delete_ingredient` has no owner clause while its sibling read does.** `get_ingredient` folds
+   ownership into the lookup, `owner IS NULL OR owner = current_user.id`, so a personal row is never
+   fetched by anyone else. `DELETE /api/ingredients/<iid>` checks the tier and the link count and
+   never mentions `owner`, so one account could delete another's personal, unlinked row by id.
+   Inert and measured rather than assumed: `ingredients` holds 0 rows on live, and the only create
+   path leaves `owner` NULL on purpose until the Panel's stage 3. **That stage is the moment this
+   bites**, so it belongs in the same commit as the first personal row rather than before it.
+
+2. **The `$DATABASE_URL` guard is nailed to the import door only.** `tests/urlguard.py` runs once at
+   conftest import, and `app.orm_session()` re-reads the environment on every call, so a test that
+   sets the variable mid-run reaches a database the guard never saw.
+   `tests/test_live_guards.py` already does `monkeypatch.setenv("DATABASE_URL", …)`, so the pattern
+   is in the suite. `tests/dbguard.py` chose the patch-the-function shape for exactly this reason
+   and the analogue here is an autouse fixture that re-runs the check. Low priority on purpose: the
+   harm this exists to stop is a variable inherited from a shell, a direnv file or a parent process,
+   and the import-time check covers all three.
+
+**And one thing that is a decision, not debt.** The round proposed deleting `join-narrow-1.db` on the
+grounds that no code opens it. True, and not the question: it is the artifact two recorded
+measurements were taken on, and it cannot be rebuilt, because `sources.db` has moved since. Andy's
+call is to keep it, and the files with no second copy are now listed in
+[README.md](README.md#the-other-files-with-no-second-copy) so the next cleanup reads them first.
+
 ### The independent review of the notes round · ✅ FIXED AND RE-REHEARSED (held, not pushed)
 
 Four fresh subagents reviewed the nine unpushed commits, none of which had written the code, one

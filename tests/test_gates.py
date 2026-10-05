@@ -656,3 +656,139 @@ def test_a_duplicate_row_appearing_is_caught(tmp_path):
     con.commit()
     con.close()
     assert "recipe_steps" in gtablediff.differences(db, twin, report=lambda *a: None)
+
+
+# ---- the refined empty rule: no reading ever passes, a declared zero does -------------------------
+
+def _no_recipes(tmp_path):
+    """A reading from a database with the tables and no rows. This is "nothing was read"."""
+    return gstate.read_state(_empty(tmp_path, "norows.db"))
+
+
+def _fresh_import(tmp_path):
+    """⚠️ A REAL AND HEALTHY STATE, AND THE ONE THE OLD RULE REFUSED. Every recipe byte-equal to
+    its baseline and nobody has edited anything, which is a corpus freshly loaded from an import and
+    the exact shape of a first go-live."""
+    db = tmp_path / "fresh.db"
+    con = _schema(db)
+    _recipe(con, "beans")
+    _recipe(con, "biscuits")
+    con.close()
+    st = gstate.read_state(db)
+    assert st["counts"]["recipes"] == 2 and st["short_circuit"] and st["annotations"] == {}
+    return st
+
+
+def test_a_reading_with_no_recipes_fails_whatever_the_round_declares(tmp_path):
+    """⚠️ NEVER DECLARABLE. A reading taken against the wrong path agrees with anything, and two of
+    them are byte-identical."""
+    none = _no_recipes(tmp_path)
+    for spec in (_spec(tmp_path), _spec(tmp_path, short_circuit="none", annotations="none")):
+        fails = grounds.check(none, none, grounds.load_round(spec))
+        assert any("0 recipes" in f for f in fails), \
+            "a round declared its way past a reading that found nothing"
+
+
+def test_a_reading_with_none_of_the_tables_fails(tmp_path):
+    """The other way a reading describes nothing: pointed at a database from before the migrations."""
+    faked = {"short_circuit": [], "annotations": {},
+             "counts": {k: None for k in ("recipes", "steps", "users")},
+             "integrity_check": "ok", "foreign_key_violations": 0}
+    fails = grounds.check(faked, faked,
+                          grounds.load_round(_spec(tmp_path, short_circuit="none",
+                                                   annotations="none")))
+    assert any("every count is absent" in f for f in fails)
+
+
+def test_a_reading_with_no_counts_at_all_fails(tmp_path):
+    faked = {"short_circuit": ["beans"], "annotations": {}, "counts": {},
+             "integrity_check": "ok", "foreign_key_violations": 0}
+    fails = grounds.check(faked, faked, grounds.load_round(_spec(tmp_path, annotations="none")))
+    assert any("no counts at all" in f for f in fails)
+
+
+def test_a_genuine_zero_is_refused_when_the_round_does_not_declare_it(tmp_path):
+    """⚠️ DIRECTION ONE. 0 annotations is still refused by default, because an empty set is how a
+    reading taken against the wrong thing looks."""
+    st = _fresh_import(tmp_path)
+    fails = grounds.check(st, st, grounds.load_round(_spec(tmp_path)))
+    assert any("NO annotation entries" in f for f in fails)
+    assert any('must declare "annotations": "none"' in f for f in fails), \
+        "the refusal does not say how to declare it"
+
+
+def test_a_genuine_zero_passes_once_the_round_declares_it(tmp_path):
+    """⚠️ DIRECTION TWO. A fresh import is a correct state, and a round that says so may proceed."""
+    st = _fresh_import(tmp_path)
+    assert grounds.check(st, st, grounds.load_round(_spec(tmp_path, annotations="none"))) == []
+
+
+def test_declaring_a_set_empty_when_it_is_populated_fails(tmp_path):
+    """A declaration is a claim about what is there, so it fails in both directions."""
+    st = gstate.read_state(_corpus(tmp_path))
+    assert st["annotations"], "the fixture must carry annotations for this to mean anything"
+    fails = grounds.check(st, st, grounds.load_round(_spec(tmp_path, annotations="none")))
+    assert any('declared "annotations": "none"' in f and "carries" in f for f in fails)
+
+
+def test_an_empty_short_circuit_set_follows_the_same_two_rules(tmp_path):
+    """Both emptiable sets behave the same way, so the rule is one rule."""
+    st = gstate.read_state(_corpus(tmp_path))
+    st["short_circuit"] = []                         # every recipe has drifted: real, and unusual
+    fails = grounds.check(st, st, grounds.load_round(_spec(tmp_path)))
+    assert any("short-circuit set is EMPTY" in f for f in fails)
+    assert grounds.check(st, st, grounds.load_round(
+        _spec(tmp_path, short_circuit="none"))) == []
+
+
+def test_the_plain_comparator_still_refuses_every_empty_reading(tmp_path):
+    """⚠️ compare.py HAS NO DECLARATION TO READ, so it keeps the strict rule. Relaxing the round
+    gate must not relax the identity gate, which is what a spot-check with no round file uses."""
+    st = _fresh_import(tmp_path)
+    fails = gcompare.differences(st, st)
+    assert any("NO annotation entries" in f for f in fails)
+    none = _no_recipes(tmp_path)
+    assert any("0 recipes" in f for f in gcompare.differences(none, none))
+
+
+def test_this_round_does_not_declare_either_set_empty():
+    """Live carries 280 byte-equal recipes and 49 annotation entries, so a "none" here would be
+    wrong and would hide a real loss."""
+    spec = grounds.load_round(REPO / "golive" / "rounds"
+                              / "2026-10-05-remove-demo-accounts.json")
+    assert spec["short_circuit"] != "none" and spec["annotations"] != "none"
+
+
+# ---- a missing reading is named, not a traceback -------------------------------------------------
+
+@pytest.mark.parametrize("which", ["--before", "--after"])
+def test_a_missing_reading_is_named_rather_than_a_traceback(tmp_path, capsys, which):
+    """⚠️ THE SAME COURTESY THE ROUND FILE GETS. A missing --round printed a written paragraph and a
+    missing --before printed a bare FileNotFoundError, which is a worse answer to the same
+    mistake."""
+    st = tmp_path / "s.json"
+    st.write_text(json.dumps(gstate.read_state(_corpus(tmp_path))))
+    gone = tmp_path / "not-here.json"
+    args = ["--round", str(_spec(tmp_path)),
+            "--before", str(gone if which == "--before" else st),
+            "--after", str(gone if which == "--after" else st)]
+    assert grounds.main(args) == 2
+    out = capsys.readouterr().out
+    assert "NOT USABLE" in out and str(gone) in out and which in out
+    assert "state.py" in out, "it does not say how to make one"
+
+
+def test_a_reading_that_is_not_json_is_named_rather_than_a_traceback(tmp_path, capsys):
+    bad = tmp_path / "bad.json"
+    bad.write_text("{not json")
+    st = tmp_path / "s.json"
+    st.write_text(json.dumps(gstate.read_state(_corpus(tmp_path))))
+    assert grounds.main(["--round", str(_spec(tmp_path)), "--before", str(bad),
+                         "--after", str(st)]) == 2
+    assert "not valid JSON" in capsys.readouterr().out
+
+
+def test_a_round_path_that_is_a_directory_is_refused_rather_than_raising(tmp_path):
+    """load_round tested p.exists(), so a directory reached read_text() and raised IsADirectoryError."""
+    with pytest.raises(grounds.BadRound):
+        grounds.load_round(tmp_path)

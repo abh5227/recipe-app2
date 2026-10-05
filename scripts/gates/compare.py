@@ -23,10 +23,11 @@ import json
 import pathlib
 import sys
 
-# What a reading must contain before it is worth comparing, with the reason stated per key.
-_NOT_EMPTY = (
-    ("short_circuit", "the short-circuit set is EMPTY, so there is nothing to compare"),
-    ("annotations", "there are NO annotation entries, so there is nothing to compare"),
+# The two sets a reading can be legitimately empty about. A round may declare either one "none";
+# nothing else may.
+EMPTIABLE = (
+    ("short_circuit", "the short-circuit set is EMPTY"),
+    ("annotations", "there are NO annotation entries"),
 )
 
 
@@ -34,15 +35,45 @@ def load(path):
     return json.loads(pathlib.Path(path).read_text())
 
 
-def nothing_to_compare(reading, side):
-    """The refusals that come BEFORE any comparison. A gate with an empty side is not a pass."""
+def no_reading_at_all(reading, side):
+    """⚠️ NO READING HAPPENED, WHICH IS NEVER A PASS AND IS NEVER DECLARABLE.
+
+    This is the failure the whole mechanism exists to stop: a reading taken against the wrong path,
+    or against a database whose tables are not there yet, agrees with anything, and two of them are
+    byte-identical. It is separate from a GENUINE zero (see genuinely_empty) because the two look
+    the same in the JSON and mean opposite things. 0 recipes means the reader found nothing. 0
+    annotations can mean nobody has edited a recipe, which is a real and healthy state on a fresh
+    import."""
     out = []
-    for key, why in _NOT_EMPTY:
-        if not reading.get(key):
-            out.append(f"{side}: {why}")
-    if not (reading.get("counts") or {}).get("recipes"):
+    counts = reading.get("counts") or {}
+    if not counts:
+        out.append(f"{side}: the reading carries no counts at all, so nothing was read")
+    elif all(v is None for v in counts.values()):
+        out.append(f"{side}: every count is absent, so the database had none of the tables")
+    if not counts.get("recipes"):
         out.append(f"{side}: 0 recipes, so this reading describes nothing")
     return out
+
+
+def genuinely_empty(reading, side):
+    """The sets this reading is empty about, as (key, line) pairs.
+
+    ⚠️ EMPTY IS NOT THE SAME AS WRONG, AND IT USED TO BE TREATED AS WRONG. Requiring a non-empty
+    annotation set conflates "the reading is empty" with "nobody has edited anything". A corpus
+    freshly loaded from an import has 300 byte-equal recipes and 0 annotation entries, which is
+    correct, healthy, and exactly the shape of a first go-live. So an empty set is refused by
+    default and a ROUND may declare it with "none", which is a sentence somebody had to write."""
+    return [(key, f"{side}: {why}, so there is nothing to compare")
+            for key, why in EMPTIABLE if not reading.get(key)]
+
+
+def nothing_to_compare(reading, side):
+    """The refusals that come BEFORE any comparison, with nothing declared.
+
+    This is the strict form, and it is what compare.py's own identity gate uses: with no round file
+    there is no declaration, so an empty set cannot have been meant. gates/rounds.py calls the two
+    halves above separately, because a round CAN say it meant one."""
+    return no_reading_at_all(reading, side) + [line for _, line in genuinely_empty(reading, side)]
 
 
 def integrity_problems(before, after):
