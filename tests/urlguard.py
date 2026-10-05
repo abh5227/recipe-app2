@@ -48,6 +48,30 @@ class Unparseable(Exception):
     """The URL is not one SQLAlchemy can read, so nothing here can reason about it."""
 
 
+# Query keywords that REDIRECT the connection somewhere other than the URL's own path. The psycopg
+# dialect does `opts.update(url.query)` after mapping database -> dbname, so any libpq keyword here
+# wins over everything in front of the "?".
+_REDIRECTING_QUERY = ("dbname", "database", "host", "hostaddr", "port", "user", "password",
+                      "service", "passfile")
+
+
+def _effective_database(parsed):
+    """What the DIALECT will actually connect to, query string included.
+
+    ⚠️ make_url().database IS NOT WHAT GETS OPENED, AND BELIEVING IT WAS IS THIS FILE'S SECOND
+    VERSION OF THE SAME MISTAKE. The first version split the URL by hand. The second asked
+    make_url and called that "the one parser that opens the connection", which is still false:
+    `_PGDialect_common_psycopg.create_connect_args` runs `opts.update(url.query)` after mapping
+    database to dbname, so a query string overrides the path.
+    `postgresql+psycopg://postgres:pw@db.prod.internal:5432/test?dbname=recipes_production` reads
+    as the database "test", passes the whole-word test rule, and opens recipes_production. With the
+    declaration set that is a pytest run whose fixture harness TRUNCATEs every table in production.
+    The dialect's own create_connect_args is the answer, because it IS the thing that opens it."""
+    dialect = parsed.get_dialect()()                 # the class only, nothing connects
+    _args, opts = dialect.create_connect_args(parsed)
+    return opts.get("dbname") or opts.get("database") or parsed.database
+
+
 def _parse(url):
     """The URL as SQLAlchemy reads it.
 
@@ -118,13 +142,35 @@ def check(url, declared, live_db=None):
         if str(name).startswith("file:"):
             return (f"${ENV_URL} wraps a file: URI ({shown}).\n"
                     f"  Give a plain path, so the live-identity test can resolve it.")
-        if live_db is not None and _same_file(name, live_db):
+        if live_db is None:
+            # ⚠️ FAILS CLOSED, THE WAY corpus_guard DOES. Without live's location this cannot tell
+            #    a copy from the real file, and guessing in the permissive direction is how the
+            #    one file that matters gets opened.
+            return (f"${ENV_URL} names a SQLite file ({shown}) and this check was given no live "
+                    f"database to compare it against, so it cannot tell a copy from the real one.")
+        if _same_file(name, live_db):
             return (f"${ENV_URL} names the LIVE database ({shown}).\n"
                     f"  That is the one file the suite must never open for writing, whatever it is "
                     f"spelled as. 300 recipes and every rating and cook live there.")
         return None
 
     if backend in ("postgresql", "postgres"):
+        # ⚠️ REFUSED BEFORE THE NAME IS EVEN READ. A redirecting keyword means the URL in front of
+        #    the "?" describes nothing, so there is no name worth testing. Stated as a list rather
+        #    than inferred, so a reader can audit it against libpq.
+        redirecting = sorted(k for k in (parsed.query or {}) if k.lower() in _REDIRECTING_QUERY)
+        if redirecting:
+            return (f"${ENV_URL} carries {', '.join(redirecting)} in its query string ({shown}).\n"
+                    f"  The Postgres dialect merges the query OVER the URL's own path, so what gets "
+                    f"opened is not what the URL appears to say. Put the database in the path and "
+                    f"nothing in the query.")
+        try:
+            name = _effective_database(parsed)
+        except Exception as e:                       # an uninstallable driver, a dialect that errors
+            return (f"${ENV_URL} is a Postgres URL this environment cannot resolve ({shown}): "
+                    f"{type(e).__name__}: {e}\n"
+                    f"  If the dialect cannot say which database it would open, nothing here can "
+                    f"tell whether it is safe.")
         if not name:
             return (f"${ENV_URL} names no database ({shown}).\n"
                     f"  A Postgres URL with no database part connects to the server's default, "
@@ -144,23 +190,40 @@ def check(url, declared, live_db=None):
 
 def _same_file(path, live):
     """Live by resolved path AND by device/inode, which is how corpus_guard.is_live does it: a path
-    string says nothing about which file it opens, and a hard link IS the file under another name."""
-    p, l = pathlib.Path(path), pathlib.Path(live)
+    string says nothing about which file it opens, and a hard link IS the file under another name.
+
+    ⚠️ A PATH THE FILESYSTEM REFUSES TO LOOK AT IS TREATED AS LIVE. An embedded NUL raised
+    ValueError out of lstat, which is a traceback where every other refusal here is a paragraph.
+    Unanswerable means refused, not allowed."""
+    try:
+        p, l = pathlib.Path(path), pathlib.Path(live)
+    except (ValueError, TypeError):
+        return True
     try:
         if p.resolve() == l.resolve():
             return True
-    except OSError:
-        pass
+    except (OSError, ValueError):
+        return True                                  # unanswerable: refuse
     try:
         a, b = p.stat(), l.stat()
         return (a.st_dev, a.st_ino) == (b.st_dev, b.st_ino)
-    except OSError:
+    except (OSError, ValueError):
         return False
+
+
+# What counts as NOT a declaration, so RECIPE_APP_TEST_DATABASE=0 does not read as yes.
+_FALSEY = {"", "0", "false", "no", "off", "none"}
+
+
+def declared_in(env):
+    """⚠️ bool() ON THE RAW STRING MADE "0" A YES. Any non-empty value declared a test database,
+    so =0, =false and =no all turned the guard off while reading as though they turned it on."""
+    return str(env.get(ENV_DECLARE, "")).strip().lower() not in _FALSEY
 
 
 def install(live_db=None, env=None):
     """Check this run's environment and raise Refused when it may not proceed."""
     env = os.environ if env is None else env
-    reason = check(env.get(ENV_URL), bool(env.get(ENV_DECLARE)), live_db=live_db)
+    reason = check(env.get(ENV_URL), declared_in(env), live_db=live_db)
     if reason is not None:
         raise Refused("\n\nthe test suite refuses to start:\n  " + reason + "\n")

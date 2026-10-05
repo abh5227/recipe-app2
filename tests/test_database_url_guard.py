@@ -82,13 +82,21 @@ def test_the_live_path_is_refused_through_a_hard_link(tmp_path):
 @pytest.mark.parametrize("url", [
     "postgresql+psycopg://user:secret@prod.example.com:5432/recipes",
     "postgresql://postgres@localhost/production",
-    "postgres://u@h/chefs_choice",
+    "postgresql://u@h/chefs_choice",
 ])
 def test_a_postgres_database_whose_name_does_not_say_test_is_refused(url):
     """The fixture harness TRUNCATEs every table in the metadata to reset itself, so a wrong name
     here empties whatever it reaches."""
     reason = urlguard.check(url, declared=True, live_db=LIVE)
     assert reason is not None and "does not say it is a test database" in reason
+
+
+def test_the_retired_postgres_scheme_is_refused_as_unresolvable():
+    """SQLAlchemy 2.x dropped the `postgres` alias, so it cannot open this either. Refusing for
+    "the dialect cannot say" rather than for the name is the right answer, and it is still a
+    refusal, which is the part that matters."""
+    reason = urlguard.check("postgres://u@h/chefs_choice", declared=True, live_db=LIVE)
+    assert reason is not None and "cannot resolve" in reason
 
 
 @pytest.mark.parametrize("url", [
@@ -281,3 +289,61 @@ def test_an_in_memory_sqlite_url_is_allowed():
 def test_a_url_sqlalchemy_cannot_read_is_refused_rather_than_guessed_at():
     reason = urlguard.check("::::not a url at all", declared=True, live_db=LIVE)
     assert reason is not None and "cannot read" in reason
+
+
+# ---- the query string, which decides what actually gets opened -----------------------------------
+
+@pytest.mark.parametrize("q", ["dbname=recipes_production", "database=recipes", "host=prod.internal",
+                               "hostaddr=10.0.0.1", "port=5433", "user=root", "password=hunter2",
+                               "service=production", "passfile=/etc/pgpass"])
+def test_a_redirecting_query_parameter_is_refused(q):
+    """⚠️ make_url().database IS NOT WHAT GETS OPENED. The psycopg dialect runs
+    opts.update(url.query) after mapping database to dbname, so any libpq keyword in the query wins
+    over the path.
+    postgresql+psycopg://postgres:pw@db.prod.internal:5432/test?dbname=recipes_production reads as
+    the database "test", passes the whole-word rule, and opens recipes_production. With the
+    declaration set that is a pytest run whose harness TRUNCATEs every table in production."""
+    reason = urlguard.check(f"postgresql+psycopg://postgres:pw@db.prod.internal:5432/test?{q}",
+                            declared=True, live_db=LIVE)
+    assert reason is not None, f"a query of {q!r} redirected the connection and was allowed"
+    assert "query string" in reason
+
+
+def test_the_dialect_decides_the_database_name_not_the_path():
+    """The guard asks the thing that opens the connection. Checked against the dialect directly, so
+    the test fails if SQLAlchemy ever stops merging the query."""
+    from sqlalchemy.engine import make_url
+    u = make_url("postgresql+psycopg://postgres:pw@h:5432/test?dbname=recipes_production")
+    _args, opts = u.get_dialect()().create_connect_args(u)
+    assert opts["dbname"] == "recipes_production", \
+        "the dialect no longer merges the query, so this guard's reason has changed"
+    assert u.database == "test", "and the path still says something else"
+
+
+def test_a_harmless_query_parameter_is_still_allowed():
+    """The refusal is a named list, not every query string, so a timeout does not break CI."""
+    assert urlguard.check("postgresql://p@localhost/recipe_test?connect_timeout=5",
+                          declared=True, live_db=LIVE) is None
+
+
+@pytest.mark.parametrize("value,declared", [("1", True), ("true", True), ("yes", True),
+                                            ("0", False), ("false", False), ("no", False),
+                                            ("off", False), ("", False), ("  ", False)])
+def test_a_declaration_has_to_read_as_yes(value, declared):
+    """⚠️ bool() ON THE RAW STRING MADE "0" A YES, so RECIPE_APP_TEST_DATABASE=0 turned the guard
+    off while reading as though it turned it on."""
+    assert urlguard.declared_in({urlguard.ENV_DECLARE: value}) is declared
+
+
+def test_a_sqlite_url_with_no_live_path_to_compare_fails_closed():
+    """⚠️ THE INVERSE OF corpus_guard'S RULE. Without live's location this cannot tell a copy from
+    the real file, and guessing permissively is how the one file that matters gets opened."""
+    reason = urlguard.check("sqlite:///tmp/whatever.db", declared=True, live_db=None)
+    assert reason is not None and "no live database to compare" in reason
+
+
+def test_a_path_the_filesystem_refuses_to_look_at_is_treated_as_live():
+    """An embedded NUL raised ValueError out of lstat, a traceback where every other refusal is a
+    paragraph. Unanswerable means refused."""
+    reason = urlguard.check("sqlite:///tmp/bad\x00name.db", declared=True, live_db=LIVE)
+    assert reason is not None
