@@ -25,7 +25,7 @@ import { noteRowHTML, newNoteBoxHTML, notePatchBody, noteTextChanged, noteEditTe
 import { pickerRows, filterRows, startCursor, moveCursor, stepRowsOf } from "./step-picker.js";
 import { resolveNoteSteps, draftSetText, draftSetKind, draftSetStep, draftAdd, draftDelete,
          draftRestore, notesPayload, draftReorder, draftAddBeside,
-         nextDraftId, noteGroupKey } from "./note-draft.js";
+         nextDraftId, noteGroupKey, noteDragMates } from "./note-draft.js";
 import { noteTextHTML, stepNoteIndex } from "./note-text.js";
 import { makeHold, HOLD_MS } from "./hover-hold.js";
 // ⚠️ THE KIND TABLE IS ONE FILE, IMPORTED, NOT A COPY KEPT IN STEP BY A TEST. Vite inlines
@@ -1162,6 +1162,10 @@ function notesBodyHTML(rows, { editable, place }) {
   // ⚠️ AND AN OPEN NOTE CARRIES NO CLUSTER. The panel already holds the type, the step link and
   //    the delete, so a second delete beside it would be two answers to one question, and there is
   //    nothing to drag while a note is being typed.
+  // ⚠️ WHICH NOTES CAN BE DRAGGED IS ASKED ONCE, FOR THE WHOLE LIST. The answer depends on the
+  //    other notes, not on the note, so asking per row would be the same count computed N times and
+  //    a second place for the rule to live.
+  const movable = place === "ie" ? noteDragMates(rows || [], NOTE_KINDS.kinds) : null;
   const one = (n, led) => {
     const html = noteOne(n, {
       editable, place, where: "section",
@@ -1170,7 +1174,7 @@ function notesBodyHTML(rows, { editable, place }) {
     if (place !== "ie") return html;
     const open = noteEditing(n.id, place);
     return `<div class="ie-noterow${open ? " open" : ""}" data-note-row="${n.id}">` +
-      `${html}${open ? "" : noteRowToolsHTML(n.id)}</div>`;
+      `${html}${open ? "" : noteRowToolsHTML(n.id, movable.has(String(n.id)))}</div>`;
   };
   const group = (header, notes, led) =>
     `<h3 class="notes-kind">${esc(header)}</h3>` +
@@ -1188,10 +1192,18 @@ function notesBodyHTML(rows, { editable, place }) {
 //    negative one, which is no list index at all), so handleRowMenuAction reads the value as an id
 //    when the kind is "note" and as an index otherwise. The attribute is shared; its meaning is
 //    branched in exactly one place.
-function noteRowToolsHTML(id) {
+// ⚠️ THE GRIP IS DRAWN ONLY WHERE IT CAN DO SOMETHING. A note alone in its drag group has no legal
+//    drop target, so a handle on it offers a move that always snaps back. noteDragMates decides,
+//    read from the draft on every repaint, so an add, a delete, a relink or a type change gives or
+//    takes the handle away as it happens. The ⋯ stays either way: adding and deleting are still
+//    there for a lone note. STEPS ARE UNCHANGED — a step list is one group, so a step always has
+//    somewhere to go and its grip is unconditional.
+function noteRowToolsHTML(id, canDrag) {
+  const grip = canDrag
+    ? `<span class="rbtn grip" draggable="true" title="Drag to reorder" aria-hidden="true">${ING_GRIP}</span>`
+    : "";
   return `<span class="rtools">
-    <span class="rbtn grip" draggable="true" title="Drag to reorder" aria-hidden="true">${ING_GRIP}</span>
-    ${rowMoreHTML(id, "note")}
+    ${grip}${rowMoreHTML(id, "note")}
   </span>`;
 }
 

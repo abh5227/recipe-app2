@@ -138,6 +138,27 @@ export function noteGroupKey(note, table) {
   return `kind:${known || !kinds.length ? note.kind : kinds[0].kind}`;
 }
 
+// The notes that have somewhere to go: ids whose drag group holds at least one OTHER note.
+// ⚠️ A HANDLE THAT CANNOT MOVE ANYTHING IS A PROMISE THE ROW CANNOT KEEP. A note alone in its
+// group — the only one on its step, or the only one of its type — has no legal drop target at all,
+// so dragging it can only ever snap back. The grip is drawn from this answer and the ⋯ menu is not,
+// because adding and deleting are still available to a lone note.
+// ⚠️ IT IS ASKED OF THE WHOLE LIST, NOT OF ONE NOTE, so one pass over the draft answers for every
+// row and the renderer cannot ask it a different way per group.
+// ⚠️ AND THE IDS COME BACK AS STRINGS. Every id in the editor reaches the DOM through a data-
+// attribute and comes back a string, which is exactly the mismatch that sent a dropped note to the
+// bottom of its group. Keying the set by String() means a caller cannot get that wrong here.
+export function noteDragMates(notes, table) {
+  const list = notes || [];
+  const n = new Map();
+  for (const row of list) {
+    const k = noteGroupKey(row, table);
+    n.set(k, (n.get(k) || 0) + 1);
+  }
+  return new Set(list.filter((row) => n.get(noteGroupKey(row, table)) > 1)
+                     .map((row) => String(row.id)));
+}
+
 // Move a note to sit immediately BEFORE `beforeId`, or to the END OF ITS OWN GROUP when that is
 // null. Returns a new list, or null for "refused, change nothing".
 // ⚠️ THE MOVE ITSELF IS reorderBefore, the same one the album and both editor lists use. What is

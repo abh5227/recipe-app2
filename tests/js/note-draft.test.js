@@ -5,8 +5,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { noteStepNumbers, resolveNoteSteps, scanMentions, carryRefs, nextDraftId,
          draftSetText, draftSetKind, draftSetStep, draftAdd, draftDelete, draftRestore,
-         notesPayload, noteGroupKey, draftReorder,
-         draftAddBeside } from "../../static/note-draft.js";
+         notesPayload, noteGroupKey, draftReorder, draftAddBeside,
+         noteDragMates } from "../../static/note-draft.js";
 import { noteSections } from "../../static/note-blocks.js";
 import { readFileSync } from "node:fs";
 
@@ -381,4 +381,97 @@ test("draftAddBeside takes a string id too", () => {
   const out = draftAddBeside(rows, TABLE, "1", "below");
   assert.equal(out.length, 2);
   assert.equal(out[1].step_id, 30);
+});
+
+// --- which notes get a grip ----------------------------------------------------------------------
+// ⚠️ THE QUESTION IS ABOUT THE OTHER NOTES, NOT ABOUT THIS ONE. A note alone in its drag group has
+//    no legal drop target, so a handle on it offers a move that can only snap back.
+
+test("a note alone in its group has no mate, and two together both do", () => {
+  const rows = resolveNoteSteps([linked(1, 30), note({ id: 2, kind: "storage", text: "s" })], STEPS);
+  assert.deepEqual([...noteDragMates(rows, TABLE)], []);
+  const pair = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
+  assert.deepEqual([...noteDragMates(pair, TABLE)].sort(), ["1", "2"]);
+});
+
+test("two notes under STEP NOTES on DIFFERENT steps are each alone", () => {
+  // They share one heading on screen and neither can move, which is the case the bagel shows.
+  const rows = resolveNoteSteps([linked(1, 30), linked(2, 40)], STEPS);
+  assert.deepEqual([...noteDragMates(rows, TABLE)], []);
+});
+
+test("a group of three gives all three a mate, and a lone fourth none", () => {
+  const rows = resolveNoteSteps(
+    [note({ id: 1, kind: "notes", text: "a" }), note({ id: 2, kind: "notes", text: "b" }),
+     note({ id: 3, kind: "notes", text: "c" }), note({ id: 4, kind: "storage", text: "d" })], STEPS);
+  assert.deepEqual([...noteDragMates(rows, TABLE)].sort(), ["1", "2", "3"]);
+});
+
+test("the ids come back as STRINGS, which is what the renderer looks them up with", () => {
+  const rows = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
+  const mates = noteDragMates(rows, TABLE);
+  assert.ok(mates.has("1"), "a String id is found");
+  assert.ok(!mates.has(1), "and a number is deliberately not, so a caller cannot mix the two");
+});
+
+test("adding a note beside a lone one gives BOTH a grip", () => {
+  // ⚠️ THE LIVE HALF OF THE RULE. The renderer asks this again on every repaint, so an add, a
+  //    delete, a relink or a type change gives or takes the handle away as it happens.
+  const rows = resolveNoteSteps([linked(1, 30)], STEPS);
+  assert.deepEqual([...noteDragMates(rows, TABLE)], [], "alone to begin with");
+  const after = resolveNoteSteps(draftAddBeside(rows, TABLE, 1, "below"), STEPS);
+  assert.equal(after.length, 2);
+  assert.equal(noteDragMates(after, TABLE).size, 2, "the new note is in the same group");
+});
+
+test("deleting one of a pair takes the other's grip away", () => {
+  const rows = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
+  assert.equal(noteDragMates(rows, TABLE).size, 2);
+  assert.deepEqual([...noteDragMates(draftDelete(rows, 2), TABLE)], []);
+});
+
+test("re-typing a note out of its group takes the grip from both", () => {
+  const rows = resolveNoteSteps(
+    [note({ id: 1, kind: "notes", text: "a" }), note({ id: 2, kind: "notes", text: "b" })], STEPS);
+  assert.equal(noteDragMates(rows, TABLE).size, 2);
+  const moved = resolveNoteSteps(draftSetKind(rows, 2, "storage"), STEPS);
+  assert.deepEqual([...noteDragMates(moved, TABLE)], []);
+});
+
+test("re-linking a note to another step takes the grip from both", () => {
+  const rows = resolveNoteSteps([linked(1, 30), linked(2, 30)], STEPS);
+  assert.equal(noteDragMates(rows, TABLE).size, 2);
+  const moved = resolveNoteSteps(draftSetStep(rows, 2, 40), STEPS);
+  assert.deepEqual([...noteDragMates(moved, TABLE)], []);
+});
+
+test("a note whose step has gone joins the type group, and can gain a mate there", () => {
+  const rows = resolveNoteSteps(
+    [linked(1, 30), note({ id: 2, kind: "notes", text: "b" })], STEPS);
+  assert.deepEqual([...noteDragMates(rows, TABLE)], [], "one is on a step, one is not");
+  const gone = resolveNoteSteps([linked(1, 30), note({ id: 2, kind: "notes", text: "b" })],
+                                [STEPS[0]]);
+  assert.deepEqual([...noteDragMates(gone, TABLE)].sort(), ["1", "2"],
+    "the link resolves to nothing, so both read under Notes");
+});
+
+test("an empty list answers with an empty set rather than throwing", () => {
+  assert.equal(noteDragMates([], TABLE).size, 0);
+  assert.equal(noteDragMates(null, TABLE).size, 0);
+});
+
+test("every note with a mate can actually be moved, which is the rule's whole point", () => {
+  // ⚠️ THE TWO HALVES ARE STATED TOGETHER ON PURPOSE. A grip is a promise that draftReorder will
+  //    accept a drop, so the set and the operation are checked against each other rather than
+  //    separately.
+  const rows = resolveNoteSteps(
+    [linked(1, 30), linked(2, 30), note({ id: 3, kind: "storage", text: "s" })], STEPS);
+  const mates = noteDragMates(rows, TABLE);
+  for (const r of rows) {
+    const others = rows.filter((x) => x.id !== r.id);
+    const legal = others.some((o) => draftReorder(rows, TABLE, r.id, o.id) !== null)
+      || draftReorder(rows, TABLE, r.id, null) !== null;
+    assert.equal(mates.has(String(r.id)), legal,
+      `note ${r.id}: grip ${mates.has(String(r.id))} but a legal drop is ${legal}`);
+  }
 });
