@@ -953,6 +953,46 @@ def _copy_row_map(s, table, old_rid, new_rid):
     return dict(zip(ranked(old_rid), ranked(new_rid)))
 
 
+def _pair_notes(stored, incoming, in_n):
+    """Pair each incoming note with the stored row it IS, or None when it is new.
+
+    ⚠️ BY ID WHEN THE PAYLOAD CARRIES IDS, AND THAT IS WHAT MAKES A DELETION A DELETION. Matching
+    by wording and then by ORDER cannot tell "delete A, add B" from "reword A": both arrive as one
+    list of the same length, so the added note took the deleted one's row. It cost a note nothing
+    (recipe_notes is outside the snapshot blob and recipe_notes_original keys on (recipe_id,
+    position), not on a row id), and it was still the server guessing at an answer the client knew.
+    Edit mode holds the cook's own rows, so it sends their ids and the guess is gone.
+
+    ⚠️ ONE ID IS CLAIMED ONCE, AND AN UNKNOWN ONE IS SIMPLY NEW. A repeated id, an id belonging
+    to another recipe and an id that no longer exists all land in the same safe place: a new row.
+    The pool is built from THIS recipe's stored rows, so a payload cannot reach another recipe's
+    notes by naming one.
+
+    ⚠️ AND THE FALLBACK IS KEPT FOR A PAYLOAD WITH NO IDS AT ALL. The previous bundle sends one
+    string, split into rows that never had ids, and an older client sends a list without them. For
+    those, wording-then-order is still the right rule and is still what keeps an unchanged save from
+    moving a single row.
+
+    Returns the same (pairs, leftovers) shape _match_rows does."""
+    def real(nid):
+        return isinstance(nid, int) and not isinstance(nid, bool) and nid > 0
+
+    if not any(real(n.get("id")) for n in incoming):
+        return _match_rows(stored, in_n, False, field="text")
+
+    pool = {m["id"]: m for m in stored}
+    claimed, pairs = set(), []
+    for i, n in enumerate(incoming):
+        nid = n.get("id")
+        row = pool[nid] if (real(nid) and nid in pool and nid not in claimed) else None
+        if row is not None:
+            claimed.add(nid)
+        # matched_by_wording means "the stored wording still describes this row", which notes do not
+        # read today. It is answered honestly rather than left as a stand-in for "matched".
+        pairs.append((row, row is not None and _label_key(row["text"]) == _label_key(in_n[i][0])))
+    return pairs, [m for m in stored if m["id"] not in claimed]
+
+
 def write_notes(s, rid, payload):
     """Write a recipe's NOTE rows from a validated payload, in place, and rebuild the derived column.
 
@@ -960,11 +1000,11 @@ def write_notes(s, rid, payload):
     `notes` leaves the rows exactly as they are. An explicit [] clears them, which is how the editor
     empties the list.
 
-    ⚠️ THE ROWS ARE MATCHED AND UPDATED IN PLACE FROM DAY ONE. _match_rows pairs incoming to stored
-    BY WORDING FIRST, each stored row used once, then by ORDER over what is left. An unchanged save
-    therefore writes the same rows back with the same ids, the snapshot bytes do not move, and the
-    recipe keeps its place in the byte-equal short-circuit. Waits got this late and it cost
-    brioche-bread its place in the set; notes start with it.
+    ⚠️ THE ROWS ARE MATCHED AND UPDATED IN PLACE FROM DAY ONE. _pair_notes pairs incoming to
+    stored BY ID where the payload carries ids, and by wording then by order where it does not. An
+    unchanged save therefore writes the same rows back with the same ids either way, the snapshot
+    bytes do not move, and the recipe keeps its place in the byte-equal short-circuit. Waits got
+    this late and it cost brioche-bread its place in the set. Notes started with it.
 
     ⚠️ A STEP MENTIONED IN THE TEXT IS RE-SCANNED ON EVERY SAVE, and a reference survives only while
     its mention does. Carrying by (ref_index, match_text) means inserting a sentence before "step 9"
@@ -983,7 +1023,10 @@ def write_notes(s, rid, payload):
     incoming = [n for n in (sent or ())
                 if isinstance(n, dict) and (n.get("text") or "").strip()]
     in_n = [((n.get("text") or "").strip(), None) for n in incoming]
-    pairs_n, doomed_n = _match_rows(_stored_rows(s, rn, rid), in_n, False, field="text")
+    # ONE read of the stored rows, shared by the pairing, the reference carry and the write, so the
+    # three cannot disagree about which rows this save is working on.
+    stored_n = _stored_rows(s, rn, rid)
+    pairs_n, doomed_n = _pair_notes(stored_n, incoming, in_n)
 
     # The ids this recipe actually has, read AFTER write_recipe_rows so they are the rows this save
     # just wrote. Headings are in the step set for the reason write_plan_ahead gives: a conversion
@@ -998,7 +1041,7 @@ def write_notes(s, rid, payload):
     # The references each stored row carries, so a kept row can carry them forward.
     stored_refs = {}
     for ref in s.execute(select(rnr).where(rnr.c.note_id.in_(
-            [m["id"] for m in _stored_rows(s, rn, rid)] or [0]))).mappings():
+            [m["id"] for m in stored_n] or [0]))).mappings():
         stored_refs.setdefault(ref["note_id"], {})[(ref["ref_index"], ref["match_text"])] = ref["step_id"]
 
     plan, want_refs = [], []

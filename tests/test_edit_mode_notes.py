@@ -18,8 +18,8 @@ sys.path.insert(0, str(BASE))
 import harness   # noqa: E402,F401  (the shared `kitchen` fixture lives in conftest.py)
 
 
-def _recipe(client, notes=None):
-    body = {"name": "Beans", "ingredients": [{"raw_text": "1 cup beans"}],
+def _recipe(client, notes=None, name="Beans"):
+    body = {"name": name, "ingredients": [{"raw_text": "1 cup beans"}],
             "steps": [{"text": "Rinse the beans"},
                       {"text": "Soak them overnight"},
                       {"text": "Simmer until tender"}]}
@@ -179,10 +179,14 @@ def test_a_held_session_writes_exactly_what_it_changed(kitchen):
 
     body = _draft(kitchen.client, rid)
     body["notes"] = [
-        {"text": "Note: keep.", "kind": "notes", "step_id": None, "ingredient_row_id": None, "refs": []},
-        {"text": "Note: edited.", "kind": "notes", "step_id": None, "ingredient_row_id": None, "refs": []},
-        {"text": "Tip: retype me.", "kind": "storage", "step_id": None, "ingredient_row_id": None, "refs": []},
-        {"text": "a brand new one", "kind": "notes", "step_id": None, "ingredient_row_id": None, "refs": []},
+        {"id": keep["id"], "text": "Note: keep.", "kind": "notes", "step_id": None,
+         "ingredient_row_id": None, "refs": []},
+        {"id": edit["id"], "text": "Note: edited.", "kind": "notes", "step_id": None,
+         "ingredient_row_id": None, "refs": []},
+        {"id": retype["id"], "text": "Tip: retype me.", "kind": "storage", "step_id": None,
+         "ingredient_row_id": None, "refs": []},
+        {"text": "a brand new one", "kind": "notes", "step_id": None,
+         "ingredient_row_id": None, "refs": []},
     ]
     assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
 
@@ -195,13 +199,11 @@ def test_a_held_session_writes_exactly_what_it_changed(kitchen):
     assert by_text["Tip: retype me."]["kind"] == "storage"
     assert by_text["Note: edited."]["id"] == edit["id"], "a reword is an EDIT, not a delete plus an add"
     assert "Note: delete me." not in by_text
-    # ⚠️ AND THE SERVER CANNOT TELL "DELETE ONE, ADD ONE" FROM "REWORD ONE", because a PUT carries a
-    #    LIST and both produce the same list. _match_rows pairs by wording first and then by ORDER
-    #    over what is left, so the added note takes the deleted one's row. That is the stated rule
-    #    and it costs a note nothing: recipe_notes is not in the snapshot blob, and
-    #    recipe_notes_original is keyed on (recipe_id, position) rather than on a row id.
-    assert len(after) == 4
-    assert len({n["id"] for n in after}) == 4, "four rows, whichever ids they landed on"
+    # ⚠️ THE DELETED NOTE'S ROW IS GONE AND THE NEW ONE IS NEW. The payload names the row each
+    #    note came from, so the server no longer guesses which of the two happened.
+    deleted = next(n for n in before if n["text"] == "Note: delete me.")
+    assert deleted["id"] not in {n["id"] for n in after}
+    assert by_text["a brand new one"]["id"] not in {n["id"] for n in before}
 
     assert _originals(kitchen, rid) == originals, "the author's words are not a save's business"
 
@@ -229,3 +231,131 @@ def test_a_held_session_mints_no_annotation_and_keeps_the_short_circuit(kitchen)
     with A.orm_session() as s:
         after_marks = A._recipe_annotations(s, rid)
     assert after_marks == before_marks, "a note edit, a type change and a delete, and no mark"
+
+
+# ---------------------------------------------------------------------------------------------
+# Pairing by id. ⚠️ THE QUESTION IS "WHICH ROW IS THIS", AND ONLY THE CLIENT KNOWS THE ANSWER.
+# Wording-then-order reads "delete A, add B" and "reword A" as the same list, so the added note
+# took the deleted one's row. Edit mode holds the cook's own rows and now names them.
+# ---------------------------------------------------------------------------------------------
+
+def test_deleting_one_note_and_adding_another_in_one_save_is_a_delete_and_an_add(kitchen):
+    rid = _recipe(kitchen.client, notes="Note: A, which goes.\n\nNote: C, which stays.")
+    before = _rows(kitchen.client, rid)
+    assert len(before) == 2, "nothing to compare against"
+    gone = next(n for n in before if n["text"].startswith("Note: A"))
+    stays = next(n for n in before if n["text"].startswith("Note: C"))
+
+    body = _draft(kitchen.client, rid)
+    body["notes"] = [
+        {"id": stays["id"], "text": "Note: C, which stays.", "kind": "notes", "step_id": None,
+         "ingredient_row_id": None, "refs": []},
+        {"text": "Note: B, which is new.", "kind": "notes", "step_id": None,
+         "ingredient_row_id": None, "refs": []},        # no id, so it is new
+    ]
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+
+    after = _rows(kitchen.client, rid)
+    assert [n["text"] for n in after] == ["Note: C, which stays.", "Note: B, which is new."]
+    assert gone["id"] not in {n["id"] for n in after}, "A's row is deleted, not reused"
+    assert after[0]["id"] == stays["id"], "C is untouched"
+    assert after[1]["id"] not in {n["id"] for n in before}, "B is a new row"
+
+
+def test_rewording_a_note_keeps_its_row_and_its_id(kitchen):
+    rid = _recipe(kitchen.client, notes="Note: C, before.\n\nNote: another one.")
+    before = _rows(kitchen.client, rid)
+    assert len(before) == 2, "nothing to compare against"
+    c = before[0]
+
+    body = _draft(kitchen.client, rid)
+    body["notes"][0]["text"] = "Note: C, completely rewritten."
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+
+    after = _rows(kitchen.client, rid)
+    assert len(after) == 2
+    assert after[0]["id"] == c["id"], "a reword is an edit of the row that was sitting there"
+    assert after[0]["text"] == "Note: C, completely rewritten."
+    assert after[1]["id"] == before[1]["id"], "and its neighbor is untouched"
+
+
+def test_a_payload_with_no_ids_at_all_still_falls_back_to_wording_then_order(kitchen):
+    """The previous bundle sends a bare string and an older client sends a list with no ids. For
+    those, wording-then-order is still the rule, and an unchanged save still moves no row."""
+    rid = _recipe(kitchen.client, notes="Note: one.\n\nTip: two.")
+    before = _rows(kitchen.client, rid)
+    assert before, "nothing to compare against"
+
+    assert kitchen.client.put(
+        f"/api/recipes/{rid}", json=_draft(kitchen.client, rid, note_ids=False)).status_code == 200
+    assert _rows(kitchen.client, rid) == before, "an id-less unchanged save moves nothing"
+
+    # and the bare-string shape, which never had ids to send
+    assert kitchen.client.put(f"/api/recipes/{rid}",
+                              json=_draft(kitchen.client, rid,
+                                          notes="Note: one.\n\nTip: two.")).status_code == 200
+    assert _rows(kitchen.client, rid) == before
+
+
+def test_an_id_this_recipe_does_not_own_is_treated_as_a_new_note(kitchen):
+    """⚠️ THE POOL IS THIS RECIPE'S ROWS, so a payload cannot reach another recipe's notes by naming
+    one. An id from elsewhere, a deleted id and a repeated id all land in the same safe place."""
+    mine = _recipe(kitchen.client, notes="Note: mine.")
+    theirs = _recipe(kitchen.client, notes="Note: theirs.", name="Someone Else's Lentils")
+    their_row = _rows(kitchen.client, theirs)[0]
+    my_row = _rows(kitchen.client, mine)[0]
+    assert their_row["id"] != my_row["id"], "nothing to compare against"
+
+    body = _draft(kitchen.client, mine)
+    body["notes"] = [
+        {"id": my_row["id"], "text": "Note: mine.", "kind": "notes", "step_id": None,
+         "ingredient_row_id": None, "refs": []},
+        {"id": their_row["id"], "text": "Note: borrowed.", "kind": "notes", "step_id": None,
+         "ingredient_row_id": None, "refs": []},
+        {"id": 999999, "text": "Note: nobody's.", "kind": "notes", "step_id": None,
+         "ingredient_row_id": None, "refs": []},
+    ]
+    assert kitchen.client.put(f"/api/recipes/{mine}", json=body).status_code == 200
+
+    after = _rows(kitchen.client, mine)
+    assert [n["text"] for n in after] == ["Note: mine.", "Note: borrowed.", "Note: nobody's."]
+    assert after[0]["id"] == my_row["id"]
+    assert after[1]["id"] != their_row["id"], "the other recipe's row was not claimed"
+    assert _rows(kitchen.client, theirs) == [their_row], "and it is still sitting where it was"
+
+
+def test_one_id_is_claimed_once(kitchen):
+    """A payload naming the same row twice gets one update and one new row, never two updates."""
+    rid = _recipe(kitchen.client, notes="Note: one.")
+    row = _rows(kitchen.client, rid)[0]
+    body = _draft(kitchen.client, rid)
+    body["notes"] = [
+        {"id": row["id"], "text": "first", "kind": "notes", "step_id": None,
+         "ingredient_row_id": None, "refs": []},
+        {"id": row["id"], "text": "second", "kind": "notes", "step_id": None,
+         "ingredient_row_id": None, "refs": []},
+    ]
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    after = _rows(kitchen.client, rid)
+    assert [n["text"] for n in after] == ["first", "second"]
+    assert after[0]["id"] == row["id"]
+    assert after[1]["id"] != row["id"]
+
+
+def test_a_note_keeps_its_step_reference_across_an_id_matched_save(kitchen):
+    """⚠️ THE REFERENCE CARRY READS THE MATCHED ROW, so changing how rows are matched could have
+    dropped a link on every save. It is keyed on (ref_index, match_text) either way."""
+    rid = _recipe(kitchen.client)
+    steps = _full(kitchen.client, rid)["steps"]
+    kitchen.client.post(f"/api/recipes/{rid}/notes", json={"text": "then do step 3 again"})
+    n = _full(kitchen.client, rid)["notes"][0]
+    assert n["refs"] and n["refs"][0]["step_id"] == steps[2]["id"], "nothing to compare against"
+
+    body = _draft(kitchen.client, rid)
+    body["notes"][0]["text"] = "Rest it, then do step 3 again"      # a word added before the mention
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+
+    after = _full(kitchen.client, rid)["notes"][0]
+    assert after["id"] == n["id"]
+    assert after["refs"][0]["step_id"] == steps[2]["id"], "the link survived the reword"
+    assert after["refs"][0]["step_no"] == 3

@@ -121,10 +121,16 @@ export function draftRestore(notes, row, at) {
 // endpoints could not have written.
 // ⚠️ A ROW WITH NO WORDS IS DROPPED RATHER THAN SENT, matching every other list in draftPayload: a
 // blank box is one the cook left half-written, and write_notes filters it out again anyway.
+// ⚠️ THE ROW IT CAME FROM IS NAMED, AND A NEW ONE NAMES NOTHING. Without an id the server pairs
+// incoming notes to stored ones by wording and then by ORDER, which cannot tell "delete A, add B"
+// from "reword A": both arrive as one list of the same length. Sending the id makes the cook's own
+// answer the one that decides. A draft id is negative and is never sent, so a note written this
+// session has no id and the server gives it a new row.
 export function notesPayload(notes) {
   return (notes || [])
     .filter((n) => String(n.text || "").trim())
     .map((n) => ({
+      ...(Number.isInteger(+n.id) && +n.id > 0 ? { id: +n.id } : {}),
       text: String(n.text).trim(),
       kind: n.kind,
       step_id: n.step_id == null ? null : +n.step_id,

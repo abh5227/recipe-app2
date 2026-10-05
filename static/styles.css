@@ -2636,7 +2636,7 @@ a.meta-step.note-step { font-size: .92em; color: var(--ink-soft); }
   content: "\2022"; color: var(--ink-soft); display: inline-block; width: 1.1em; text-indent: 0;
 }
 
-/* The STEP NOTES lead: "Step 4 · Tip — ", the step's CURRENT number and the note's type, in the
+/* The STEP NOTES lead: "Step 4 · Tip: ", the step's CURRENT number and the note's type, in the
    same mono the group headings use one size down. It is INLINE with the note's first words on
    purpose: a lead on its own line is the floating "(step 1)" line that round 1 was rejected for. */
 .note-lead {

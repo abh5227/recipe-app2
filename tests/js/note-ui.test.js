@@ -415,7 +415,8 @@ test("the lead opens the note with a linked step number and the type", () => {
     { lead: { no: 2, type: "Tip" } });
   assert.match(html, /<span class="note-lead">/);
   assert.match(html, /data-note-step="2">Step 2<\/a>/, "the number is a link, like other step links");
-  assert.match(html, /&middot; Tip &mdash; /);
+  assert.match(html, /&middot; Tip: /);
+  assert.doesNotMatch(html, /&mdash;/, "a colon introduces what follows, and the house style has no em dashes");
   assert.ok(html.indexOf('class="note-lead"') < html.indexOf('class="note-words"'),
     "the lead is inline before the words, never on its own line");
 });

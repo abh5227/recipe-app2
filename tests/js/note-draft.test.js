@@ -170,3 +170,27 @@ test("an empty list is sent as an empty list, because that is how the editor cle
   assert.deepEqual(notesPayload([]), []);
   assert.deepEqual(notesPayload(null), []);
 });
+
+// --- the id names the row the note came from ------------------------------------------------
+
+test("the payload names the row each note came from", () => {
+  // ⚠️ WITHOUT IT THE SERVER PAIRS BY WORDING AND THEN BY ORDER, which reads "delete A, add B" and
+  //    "reword A" as the same list of the same length.
+  const out = notesPayload([note({ id: 12, text: "kept" })]);
+  assert.equal(out[0].id, 12);
+});
+
+test("a note written this session has no id, so the server gives it a new row", () => {
+  const out = notesPayload(draftAdd([note({ id: 12, text: "kept" })], { text: "brand new" }));
+  assert.equal(out[0].id, 12);
+  assert.ok(!("id" in out[1]), "a negative draft id never leaves the client");
+});
+
+test("only a real row id is sent", () => {
+  for (const bad of [null, undefined, 0, -1, "", "abc", NaN, false]) {
+    const out = notesPayload([{ ...note({ text: "x" }), id: bad }]);
+    assert.ok(!("id" in out[0]), `id ${JSON.stringify(bad)} should not be sent`);
+  }
+  assert.equal(notesPayload([{ ...note({ text: "x" }), id: "12" }])[0].id, 12,
+    "a numeric string is still a row id");
+});

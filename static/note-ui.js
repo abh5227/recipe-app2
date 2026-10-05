@@ -96,10 +96,12 @@ export function noteRowHTML(note, table, esc, opts = {}) {
   //    NOTES opens with the step it belongs to and its type, so repeating "(step N)" at the end
   //    would print the same pointer twice in one sentence. The number is the step's CURRENT one and
   //    it is a link, the same promise the reference inside a note's words already makes.
+  //    ⚠️ THE SEPARATOR IS A COLON, NOT A DASH. "Step 4 · Tip: " reads as a label introducing
+  //    what follows, which is what it is, and the house style has no em dashes in it.
   const leadHTML = lead
     ? `<span class="note-lead">` +
       `<a class="meta-step note-lead-step" href="#" data-note-step="${lead.no}">Step ${lead.no}</a>` +
-      ` &middot; ${esc(lead.type)} &mdash; </span>`
+      ` &middot; ${esc(lead.type)}: </span>`
     : "";
   // ⚠️ IT HANGS OFF A ZERO-WIDTH ANCHOR, FOR THE REASON "+ note" DOES. An invisible inline button
   //    still takes WIDTH, so a note whose last line nearly fills the measure wrapped one line
