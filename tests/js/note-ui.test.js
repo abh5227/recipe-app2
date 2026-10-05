@@ -8,7 +8,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { tagLabel, kindOf, kindMenuHTML, noteBodyHTML, noteRowHTML, noteEditHTML, noteInputHTML,
          stepMenuHTML, newNoteBoxHTML, addNoteButtonHTML, notePatchBody, noteTextChanged,
-         noteEditText, savedToastHTML, undoToastHTML } from "../../static/note-ui.js";
+         noteEditText, savedToastHTML, undoToastHTML, pickBarHTML,
+         noteStepChanged } from "../../static/note-ui.js";
+import { pickerRows } from "../../static/step-picker.js";
 import { noteTextPlain, noteTextParts } from "../../static/note-text.js";
 
 const TABLE = JSON.parse(fs.readFileSync(
@@ -175,13 +177,19 @@ test("the step adder names the step it belongs to and says what it does", () => 
 // --- the editor's footer -------------------------------------------------------------------------
 
 test("the footer carries the type, the step link and the delete, and nothing else", () => {
-  const html = noteEditHTML(note({ kind: "tips", text: "x", step_id: 30, step_no: 3 }), TABLE, esc,
-                            { place: "section" });
-  assert.match(html, /data-note-kind="7"[^>]*>Tip/);
-  assert.match(html, /data-note-unlink-step="7"/);
-  assert.match(html, /&middot; step 3/, "the link control names the step it would remove");
-  assert.match(html, /data-note-del="7"[^>]*aria-label="Delete this note"/);
-  assert.equal((html.match(/class="note-tool/g) || []).length, 3, "three controls, no more");
+  // ⚠️ THREE CONTROLS UNLINKED, FOUR LINKED, and the fourth is the × that takes the link off. The
+  //    step itself reopens the picker, which is a different job, so it is a different button. Any
+  //    fifth thing here is a control that crept back onto a note at rest.
+  const linked = noteEditHTML(note({ kind: "tips", text: "x", step_id: 30, step_no: 3 }), TABLE, esc,
+                              { place: "section" });
+  assert.match(linked, /data-note-kind="7"[^>]*>Tip/);
+  assert.match(linked, /data-note-unlink-step="7"/);
+  assert.match(linked, /&middot; step 3/, "the link control names the step it points at");
+  assert.match(linked, /data-note-del="7"[^>]*aria-label="Delete this note"/);
+  assert.equal((linked.match(/class="note-tool/g) || []).length, 4);
+
+  const loose = noteEditHTML(note({ kind: "tips", text: "x" }), TABLE, esc, { place: "section" });
+  assert.equal((loose.match(/class="note-tool/g) || []).length, 3);
 });
 
 test("a note linked to nothing offers the picker instead of an unlink", () => {
@@ -200,16 +208,72 @@ test("the two menus are drawn WITH the editor, so closing it closes them", () =>
   assert.match(open, /aria-expanded="true"/);
 });
 
+const STEPS = [{ id: 1, text: "chop the onion finely", is_heading: false },
+               { id: 2, text: "To cook:", is_heading: true },
+               { id: 3, text: "fry until golden", is_heading: false }];
+const pickOf = (o = {}) => ({ rows: pickerRows(STEPS), query: "", cursor: null, ...o });
+
 test("the step picker offers steps and never a heading", () => {
   // ⚠️ A NOTE ON A HEADING RESOLVES NO NUMBER, so the page would print it without a link. Offering
-  //    one would be offering a pointer the reader can never see.
-  const steps = [{ id: 1, text: "chop", is_heading: false },
-                 { id: 2, text: "To cook:", is_heading: true },
-                 { id: 3, text: "fry", is_heading: false }];
-  const html = stepMenuHTML(note({}), steps, esc);
-  assert.equal((html.match(/role="menuitem"/g) || []).length, 2);
-  assert.match(html, /data-step-id="1"[^>]*>step 1/);
-  assert.match(html, /data-step-id="3"[^>]*>step 2/, "the numbers skip the heading, as the page does");
+  //    one would be offering a pointer the reader can never see. The heading is still PRINTED, as
+  //    the grouping, which is why it is a div and not a button.
+  const html = stepMenuHTML(note({}), pickOf(), esc);
+  assert.equal((html.match(/role="option"/g) || []).length, 2);
+  assert.match(html, /data-step-id="1"/);
+  assert.match(html, /data-step-id="3"/);
+  assert.doesNotMatch(html, /data-step-id="2"/, "the heading is not selectable");
+  assert.match(html, /<div class="pk-sect" role="presentation">To cook:<\/div>/,
+    "and it is printed, because the recipe's own sections are the grouping");
+});
+
+test("the numbers skip the heading, exactly as the page does", () => {
+  const html = stepMenuHTML(note({}), pickOf(), esc);
+  assert.match(html, /data-step-id="1"[^]*?>step 1</);
+  assert.match(html, /data-step-id="3"[^]*?>step 2</);
+});
+
+test("the current link is marked, and the cursor separately", () => {
+  const html = stepMenuHTML(note({ step_id: 3 }), pickOf({ cursor: 1 }), esc);
+  assert.match(html, /class="pk-row on"[^>]*data-step-id="3"/, "the link it already has");
+  assert.match(html, /class="pk-row at"[^>]*data-step-id="1"/, "where the arrows are");
+  assert.match(html, /aria-activedescendant="pk-7-1"/, "and a screen reader is told which");
+});
+
+test("the filter box round-trips what was typed, escaped", () => {
+  const html = stepMenuHTML(note({}), pickOf({ query: '"x" & <y>' }), esc);
+  assert.match(html, /value="&quot;x&quot; &amp; &lt;y&gt;"/);
+});
+
+test("an empty result says so rather than showing an empty box", () => {
+  const html = stepMenuHTML(note({}), pickOf({ rows: [], query: "zzz" }), esc);
+  assert.match(html, /class="pk-none"/);
+  assert.match(html, /zzz/);
+});
+
+test("the way out of the list is at the foot of it", () => {
+  assert.match(stepMenuHTML(note({}), pickOf(), esc),
+    /class="pk-onpage" data-note-pick-page="7">Pick on the page/);
+});
+
+test("the pick bar says the gesture the device actually has", () => {
+  assert.match(pickBarHTML(7, esc, { phone: true }), /Tap a step to link it/);
+  assert.doesNotMatch(pickBarHTML(7, esc, { phone: true }), /Esc/, "a phone has no Escape key");
+  assert.match(pickBarHTML(7, esc, {}), /Click the step this note belongs to/);
+  assert.match(pickBarHTML(7, esc, {}), /Cancel \(Esc\)/);
+  assert.match(pickBarHTML(7, esc, {}), /data-note-pick-cancel="7"/);
+});
+
+test("each menu hangs off its own control, not off the panel", () => {
+  // ⚠️ A 7-ROW LIST ANCHORED TO THE PANEL'S LEFT EDGE IS NOT ANCHORED TO ANYTHING THE COOK
+  //    CLICKED. Both menus were siblings of the footer. They are inside it now, each in its own
+  //    positioned span beside the button that opens it.
+  const html = noteEditHTML(note({}), TABLE, esc, { stepMenu: true, pick: pickOf() });
+  const anchor = html.indexOf('<span class="note-anchor">', html.indexOf("data-note-link-menu"));
+  assert.ok(html.lastIndexOf('<span class="note-anchor">') < html.indexOf("note-step-menu"),
+    "the menu is inside an anchor span");
+  assert.ok(html.indexOf("note-step-menu") < html.indexOf("note-tool-del"),
+    "and that span sits where its own button sits, before Delete");
+  assert.ok(anchor !== -2);
 });
 
 test("a save offers an undo too, not just a delete", () => {
@@ -373,4 +437,36 @@ test("a popover note never takes a lead, because the popover IS the step", () =>
     { where: "pop", place: "pop:4" });
   assert.doesNotMatch(html, /note-lead/);
   assert.doesNotMatch(html, /\(step 2\)/);
+});
+
+test("the picker's rows reach the editor through noteRowHTML, not only noteEditHTML", () => {
+  // ⚠️ THE OPTS BAG IS FORWARDED BY NAME, so a new opt is invisible until it is named in BOTH
+  //    places. `pick` was destructured by noteEditHTML and never passed to it, and the list
+  //    rendered "Nothing matches" on a recipe with fifteen steps in it.
+  const html = noteRowHTML(note({}), TABLE, esc,
+    { editing: true, stepMenu: true, pick: pickOf() });
+  assert.match(html, /class="pk-row"/);
+  assert.doesNotMatch(html, /pk-none/);
+});
+
+test("picking the step a note is already on is not a change", () => {
+  // ⚠️ THE PICKER OPENS WITH THE CURRENT LINK UNDER THE CURSOR, so Enter straight away is the
+  //    easiest key to press. The server answers 200 for a step_id equal to the stored one, because
+  //    its "nothing to change" refusal is stated over the TEXT, so the client decides this one.
+  assert.equal(noteStepChanged(note({ step_id: 4 }), 4), false);
+  assert.equal(noteStepChanged(note({ step_id: 4 }), "4"), false, "a dataset value is a string");
+  assert.equal(noteStepChanged(note({ step_id: 4 }), 5), true);
+  assert.equal(noteStepChanged(note({ step_id: 4 }), null), true, "unlinking is a change");
+  assert.equal(noteStepChanged(note({ step_id: null }), null), false);
+  assert.equal(noteStepChanged(note({ step_id: null }), 5), true);
+});
+
+test("a linked note can still open the list, and the × is its own control", () => {
+  // ⚠️ THE WHOLE CHIP USED TO BE THE UNLINK, so changing which step a note belonged to meant
+  //    removing the link first, and the list's "current link highlighted" row could never be seen.
+  const html = noteEditHTML(note({ step_id: 4, step_no: 3 }), TABLE, esc, {});
+  assert.match(html, /data-note-link-menu="7"[^>]*>&middot; step 3</, "the step opens the picker");
+  assert.match(html, /data-note-unlink-step="7"/, "and the × is a separate button");
+  assert.match(html, /aria-label="Remove the link to step 3"/);
+  assert.match(html, /aria-label="Linked to step 3\. Pick a different step"/);
 });

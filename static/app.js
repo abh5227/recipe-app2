@@ -20,7 +20,9 @@ import { browseList, cardTags, monthYear } from "./browse.js";
 import { panelBlocks } from "./panel-blocks.js";
 import { noteSections, displayText, STEP_NOTES_HEADER } from "./note-blocks.js";
 import { noteRowHTML, newNoteBoxHTML, notePatchBody, noteTextChanged, noteEditText,
-         undoToastHTML, addNoteButtonHTML, tagLabel, kindOf } from "./note-ui.js";
+         undoToastHTML, addNoteButtonHTML, tagLabel, kindOf, pickBarHTML,
+         noteStepChanged } from "./note-ui.js";
+import { pickerRows, filterRows, startCursor, moveCursor, stepRowsOf } from "./step-picker.js";
 import { noteTextHTML, stepNoteIndex } from "./note-text.js";
 import { makeHold, HOLD_MS } from "./hover-hold.js";
 // ⚠️ THE KIND TABLE IS ONE FILE, IMPORTED, NOT A COPY KEPT IN STEP BY A TEST. Vite inlines
@@ -1170,10 +1172,37 @@ function noteOne(n, opts) {
     editing: noteEditing(n.id, opts.place),
     draft: noteDraft(n.id),
     saved: noteJustSaved(n.id),
-    steps: (view.data && view.data.steps) || [],
+    steps: currentSteps(),
     kindMenu: noteState.kindMenuFor === n.id,
     stepMenu: noteState.stepMenuFor === n.id,
+    pick: noteState.stepMenuFor === n.id ? pickState(n) : null,
   });
+}
+
+// ⚠️ THE STEPS THE PICKER OFFERS ARE THE ONES ON SCREEN. In Edit mode that is the draft, which
+// may already hold a step added this session and no longer hold one deleted in it. Offering
+// view.data would list a step the cook has just removed and refuse one they have just written.
+function currentSteps() {
+  const d = (view && view.editMode && view.draft) ? view.draft : (view && view.data);
+  return (d && d.steps) || [];
+}
+
+// The picker's rows for one note: the method, filtered by what has been typed, with the cursor on
+// the current link unless the filter has hidden it.
+function pickState(note) {
+  const rows = filterRows(pickerRows(currentSteps(), stepPickText), noteState.pickQuery);
+  const steps = stepRowsOf(rows);
+  const cursor = steps.some((r) => String(r.id) === String(noteState.pickCursor))
+    ? noteState.pickCursor
+    : startCursor(rows, note.step_id);
+  return { rows, query: noteState.pickQuery, cursor };
+}
+
+// The cleaner step-picker.js is handed. A heading loses its trailing colon the way the method's own
+// heading does (stepHeadingTitle) and a step loses its [[key|label]] markup the way the method's own
+// text does (showLinksAsWords), so a row in the list reads as the step reads on the page.
+function stepPickText(text, isHeading) {
+  return isHeading ? stepHeadingTitle(text) : showLinksAsWords(text);
 }
 
 // --- the note component's session state ----------------------------------------------------------
@@ -1182,7 +1211,10 @@ function noteOne(n, opts) {
 // both renderers.
 const noteState = { editingId: null, editingPlace: null, drafts: new Map(), newOn: null,
                     newText: "", savedId: null, savedBefore: null, kindMenuFor: null,
-                    stepMenuFor: null, undo: null, tapStep: null };
+                    stepMenuFor: null, undo: null, tapStep: null,
+                    // the picker: what has been typed, where the arrows are, and which note is
+                    // waiting for a step to be clicked on the page
+                    pickQuery: "", pickCursor: null, pickingFor: null };
 
 // ⚠️ (NOTE, PLACE), NOT JUST NOTE. A note linked to a step is drawn in the Notes section and in that
 // step's popover, so keying on the id alone opened a textarea in both and the one that blurred last
@@ -4319,6 +4351,7 @@ function repaintNotes() {
   } else {
     paintRecipe();
   }
+  syncPickTargets();
   // ⚠️ THE POPOVER'S OPEN STATE LIVES IN JS AND THE PAGE WAS JUST REBUILT. Without this, editing a
   //    note inside a popover closed the popover on the first keystroke that repainted it.
   syncStepNotes();
@@ -4340,6 +4373,20 @@ function growNoteInput(el) {
 // textarea, so the open editor is re-focused with the caret at the end of what was typed.
 function restoreNoteFocus() {
   let el = null;
+  // ⚠️ THE FILTER BOX FIRST, BECAUSE IT IS THE ONE HOLDING THE CARET. Every keystroke in it
+  //    repaints the list, and restoring the note's textarea instead would move the caret out of
+  //    the field on the first letter typed.
+  if (noteState.stepMenuFor != null) {
+    const find = document.querySelector(`[data-note-pick-find="${noteState.stepMenuFor}"]`);
+    if (find) {
+      find.focus();
+      find.selectionStart = find.selectionEnd = find.value.length;
+      const at = document.querySelector(`[data-note-pick-find="${noteState.stepMenuFor}"]`)
+        .closest(".note-step-menu").querySelector(".pk-row.at");
+      if (at) at.scrollIntoView({ block: "nearest" });
+      return;
+    }
+  }
   if (noteState.editingId != null) {
     const row = document.querySelector(
       `.note-edit[data-note="${noteState.editingId}"][data-note-place="${noteState.editingPlace}"]`);
@@ -4354,6 +4401,43 @@ function restoreNoteFocus() {
 }
 
 const NOTE_TOAST_MS = 6000;
+
+// ⚠️ 560px IS THE STYLESHEET'S PHONE BREAKPOINT AND IT IS READ, NOT RESTATED. .step-num-tap, the
+// bottom sheet and this all turn at the same width, so a second number here would be a third
+// opinion about what a phone is. matchMedia reads the same query the CSS does.
+const PHONE_Q = "(max-width: 560px)";
+function isPhone() {
+  return typeof matchMedia === "function" && matchMedia(PHONE_Q).matches;
+}
+
+// ⚠️ THE STEP ROWS ARE MARKED BY WALKING THE DOM, NOT BY RE-RENDERING THEM. Edit mode mounts a
+// TipTap editor into every step and paintRecipe cannot run without orphaning all of them, so
+// "Pick on the page" would have worked in reading view only if it needed a repaint. #steps-list
+// li.step is 1:1 with the ordinary steps in order, which is the mapping jumpToStep already relies
+// on, so the id comes from the data rather than from an attribute the markup does not carry.
+function syncPickTargets() {
+  const on = noteState.pickingFor != null;
+  document.body.classList.toggle("note-picking", on);
+  const rows = document.querySelectorAll("#steps-list li.step");
+  const ids = currentSteps().filter((x) => !x.is_heading).map((x) => x.id);
+  rows.forEach((li, i) => {
+    if (on && ids[i] != null) li.dataset.notePickStep = ids[i];
+    else delete li.dataset.notePickStep;
+  });
+  let bar = document.querySelector(".note-pick-bar");
+  if (!on) { if (bar) bar.remove(); return; }
+  const html = pickBarHTML(noteState.pickingFor, esc, { phone: isPhone() });
+  if (bar) bar.outerHTML = html;
+  else document.body.insertAdjacentHTML("beforeend", html);
+}
+
+// Escape, or Cancel. On a pointer it goes back to the list, which is where the cook came from. On a
+// phone the sheet was closed to make room for the method, so it goes all the way out.
+function cancelPickOnPage(id) {
+  noteState.pickingFor = null;
+  noteState.stepMenuFor = isPhone() ? null : id;
+  repaintNotes();
+}
 
 function noteApi(path, opts) {
   return fetch(`/api/recipes/${encodeURIComponent(view.slug)}${path}`, {
@@ -4389,6 +4473,16 @@ function closeNoteEditors() {
   noteState.kindMenuFor = null;
   noteState.stepMenuFor = null;
   noteState.drafts.clear();
+  closePicker();
+}
+
+// ⚠️ CLOSING THE PICKER CHANGES NOTHING ABOUT THE NOTE, which is the whole of what Escape
+// promises. The query and the cursor are view state and the link is only written by a click or by
+// Enter, so there is nothing here to undo.
+function closePicker() {
+  noteState.pickQuery = "";
+  noteState.pickCursor = null;
+  noteState.pickingFor = null;
 }
 
 // ⚠️ THE SAVE IS UNDOABLE, SO THE TOAST HAS TO CARRY WHAT IT WOULD PUT BACK. `before` is the patch
@@ -4495,6 +4589,9 @@ function setNoteKind(id, kind) {
 function setNoteStep(id, stepId) {
   noteState.stepMenuFor = null;
   const was = (view.data.notes || []).find((n) => n.id === id);
+  // Picking the step it is already on is not a change, so it is not a write. The picker opens with
+  // the current link under the cursor, which makes this the easiest key to press.
+  if (was && !noteStepChanged(was, stepId)) { closePicker(); repaintNotes(); return Promise.resolve(); }
   const before = was ? { step_id: was.step_id == null ? null : was.step_id } : null;
   return noteApi(`/notes/${id}`, { method: "PATCH", body: notePatchBody({ step_id: stepId }) })
     .then((data) => { adoptNotes(data); flashSaved(id, before); repaintNotes(); })
@@ -4512,6 +4609,20 @@ function unlinkNoteRef(id, refIndex) {
 function handleNoteAction(e) {
   const t = e.target;
   if (!t || !t.closest) return false;
+
+  // ⚠️ FIRST, BECAUSE A STEP ROW IS NOT INSIDE THE EDITOR. While "Pick on the page" is waiting,
+  //    a click on a step is the answer to a question, and every later branch here would read it as
+  //    a click-away and commit the open note instead.
+  if (noteState.pickingFor != null) {
+    const target = t.closest("[data-note-pick-step]");
+    if (target) {
+      e.preventDefault();
+      const id = noteState.pickingFor;
+      noteState.pickingFor = null;
+      setNoteStep(id, +target.dataset.notePickStep);
+      return true;
+    }
+  }
 
   const add = t.closest("[data-add-note]");
   if (add) {
@@ -4550,7 +4661,29 @@ function handleNoteAction(e) {
     const id = +linkMenu.dataset.noteLinkMenu;
     noteState.stepMenuFor = noteState.stepMenuFor === id ? null : id;
     noteState.kindMenuFor = null;
+    closePicker();                       // a fresh open starts with an empty filter
     repaintNotes();
+    return true;
+  }
+  // "Pick on the page": the list goes, the method becomes the picker, and the note stays open
+  // underneath so the click lands on the right one.
+  const pickPage = t.closest("[data-note-pick-page]");
+  if (pickPage) {
+    e.preventDefault();
+    noteState.pickingFor = +pickPage.dataset.notePickPage;
+    noteState.stepMenuFor = null;
+    noteState.pickQuery = "";
+    noteState.pickCursor = null;
+    repaintNotes();
+    return true;
+  }
+  // ⚠️ CANCEL GOES BACK TO THE LIST ON A POINTER, AND ALL THE WAY OUT ON A PHONE. The sheet was
+  //    closed to make room for the method there, so reopening it on cancel would put the cook back
+  //    in front of the thing they just left.
+  const pickCancel = t.closest("[data-note-pick-cancel]");
+  if (pickCancel) {
+    e.preventDefault();
+    cancelPickOnPage(+pickCancel.dataset.notePickCancel);
     return true;
   }
   const linkStep = t.closest("[data-note-link-step]");
@@ -4617,6 +4750,50 @@ function handleNoteAction(e) {
 // behind. Both menus belong to the open editor and are drawn with it, so closing the editor closes
 // them by construction.
 
+// The picker's keyboard, which runs BEFORE the note's own because the caret is in the filter box and
+// the box sits inside the note editor. Up and down move the cursor, Enter links what it is on, and
+// Escape closes the list and changes nothing.
+// ⚠️ ESCAPE HERE IS NOT THE NOTE'S ESCAPE. The note's cancels the edit and throws the draft
+// away. The picker's closes one control and leaves the note exactly as it was, which is why it
+// stops the event rather than falling through.
+document.addEventListener("keydown", (e) => {
+  const find = e.target && e.target.closest && e.target.closest("[data-note-pick-find]");
+  if (!find) return;
+  const id = +find.dataset.notePickFind;
+  const note = (view.data.notes || []).find((n) => n.id === id);
+  if (!note) return;
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    e.preventDefault();
+    const { rows, cursor } = pickState(note);
+    noteState.pickCursor = moveCursor(rows, cursor, e.key === "ArrowDown" ? 1 : -1);
+    repaintNotes();
+    return;
+  }
+  if (e.key === "Enter") {
+    e.preventDefault();
+    e.stopPropagation();                   // never also save the note underneath
+    const { cursor } = pickState(note);
+    if (cursor != null) { noteState.stepMenuFor = null; setNoteStep(id, +cursor); }
+    return;
+  }
+  if (e.key === "Escape") {
+    e.preventDefault();
+    e.stopPropagation();
+    noteState.stepMenuFor = null;
+    closePicker();
+    repaintNotes();
+  }
+}, true);
+
+// Escape while the method IS the picker. It belongs on the document because nothing inside the
+// picker holds the focus then: the panel has stepped aside and the page is the control.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Escape" || noteState.pickingFor == null) return;
+  e.preventDefault();
+  e.stopPropagation();
+  cancelPickOnPage(noteState.pickingFor);
+}, true);
+
 // Enter saves, Shift+Enter makes a line, Escape cancels. One handler for the open note and for the
 // new-note box, because they are the same keystrokes.
 document.addEventListener("keydown", (e) => {
@@ -4641,7 +4818,12 @@ document.addEventListener("input", (e) => {
   const open = e.target && e.target.closest && e.target.closest("[data-note-input]");
   if (open) { noteState.drafts.set(+open.dataset.noteInput, open.value); growNoteInput(open); return; }
   const fresh = e.target && e.target.closest && e.target.closest("[data-new-note-input]");
-  if (fresh) { noteState.newText = fresh.value; growNoteInput(fresh); }
+  if (fresh) { noteState.newText = fresh.value; growNoteInput(fresh); return; }
+  // ⚠️ THE FILTER IS THE ONE FIELD THAT DOES REPAINT ON EVERY LETTER, because the list IS its
+  //    output. restoreNoteFocus puts the caret back in it, which is why that function asks about
+  //    the picker before it asks about the note.
+  const find = e.target && e.target.closest && e.target.closest("[data-note-pick-find]");
+  if (find) { noteState.pickQuery = find.value; noteState.pickCursor = null; repaintNotes(); }
 });
 
 /* ---------- events ---------- */

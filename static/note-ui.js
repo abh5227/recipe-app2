@@ -17,6 +17,7 @@
 // `esc` is INJECTED, exactly as note-blocks.js takes the kind table and note-text.js takes esc: this
 // module stays dependency-free for the zero-dep JS suite, and the app keeps ONE escaping function.
 import { noteTextHTML, noteTextPlain } from "./note-text.js";
+import { PICKER_ROWS } from "./step-picker.js";
 import { displayText, displayParts } from "./note-blocks.js";
 
 // ⚠️ THE TAG LABEL IS DERIVED FROM THE KIND TABLE, NOT LISTED A SECOND TIME. A kind's `header` is
@@ -78,8 +79,10 @@ export function noteBodyHTML(note, table, esc, { selfStepId = null } = {}) {
 export function noteRowHTML(note, table, esc, opts = {}) {
   const { editable = false, selfStepId = null, editing = false, draft = null,
           saved = false, place = "", where = "section", steps = null,
-          kindMenu = false, stepMenu = false, lead = null } = opts;
-  if (editing) return noteEditHTML(note, table, esc, { draft, place, steps, kindMenu, stepMenu });
+          kindMenu = false, stepMenu = false, lead = null, pick = null } = opts;
+  if (editing) {
+    return noteEditHTML(note, table, esc, { draft, place, steps, kindMenu, stepMenu, pick });
+  }
   const body = noteBodyHTML(note, table, esc, { selfStepId });
   // ⚠️ THE SAME SHAPE A WAIT'S LINK HAS, for the same reason: one pattern for "this belongs to step
   //    N" means a cook learns it once. It appears only where the server resolved a number, so a note
@@ -121,41 +124,93 @@ export function noteRowHTML(note, table, esc, opts = {}) {
 // ⚠️ THE FOOTER'S RULE BELONGS TO THE PANEL, NOT TO THE LIST. A line between notes would make the
 // Notes section read as a form, which is the thing this design exists to avoid.
 export function noteEditHTML(note, table, esc, { draft = null, place = "", steps = null,
-                                                 kindMenu = false, stepMenu = false } = {}) {
+                                                 kindMenu = false, stepMenu = false,
+                                                 pick = null } = {}) {
   const kind = kindOf(table, note.kind);
+  // ⚠️ A LINKED NOTE CAN STILL OPEN THE LIST, AND THAT IS TWO CONTROLS RATHER THAN ONE. The whole
+  //    chip used to be the unlink, so changing which step a note belonged to meant removing the
+  //    link and adding it again, and the list's "current link highlighted" row could never be seen.
+  //    The step opens the picker, the × takes the link off, and they are separate buttons because
+  //    they do opposite things.
   const link = note.step_no
-    ? `<button type="button" class="note-tool" data-note-unlink-step="${note.id}"` +
-      ` aria-label="Linked to step ${note.step_no}. Remove the link">` +
-      `&middot; step ${note.step_no}<span class="note-x" aria-hidden="true">&times;</span></button>`
+    ? `<button type="button" class="note-tool" data-note-link-menu="${note.id}"` +
+      ` aria-haspopup="true" aria-expanded="${stepMenu}"` +
+      ` aria-label="Linked to step ${note.step_no}. Pick a different step">` +
+      `&middot; step ${note.step_no}</button>` +
+      `<button type="button" class="note-tool note-unlink" data-note-unlink-step="${note.id}"` +
+      ` aria-label="Remove the link to step ${note.step_no}">` +
+      `<span class="note-x" aria-hidden="true">&times;</span></button>`
     : `<button type="button" class="note-tool note-tool-off" data-note-link-menu="${note.id}"` +
       ` aria-haspopup="true" aria-expanded="${stepMenu}" aria-label="Link this note to a step">` +
       `link a step<span class="note-caret" aria-hidden="true">&#9662;</span></button>`;
+  // ⚠️ EACH MENU HANGS OFF ITS OWN BUTTON, NOT OFF THE PANEL. Both were siblings of the footer,
+  //    which anchored a 7-row step list to the panel's left edge rather than to the control that
+  //    opened it. .note-anchor is the positioned parent and costs no layout.
   return `<div class="note-edit" data-note="${note.id}" data-note-place="${esc(place)}">` +
     noteInputHTML(note.id, draft != null ? draft : noteEditText(note, table), esc) +
     `<div class="note-foot">` +
+      `<span class="note-anchor">` +
       `<button type="button" class="note-tool" data-note-kind="${note.id}"` +
       ` aria-haspopup="true" aria-expanded="${kindMenu}"` +
       ` aria-label="${esc(`Type: ${tagLabel(kind)}. Change this note's type`)}">` +
       `${esc(tagLabel(kind))}<span class="note-caret" aria-hidden="true">&#9662;</span></button>` +
-      link +
+      (kindMenu ? kindMenuHTML(note, table, esc) : "") + `</span>` +
+      `<span class="note-anchor">` + link +
+      (stepMenu ? stepMenuHTML(note, pick, esc) : "") + `</span>` +
       `<button type="button" class="note-tool note-tool-del" data-note-del="${note.id}"` +
       ` aria-label="Delete this note">Delete</button>` +
       `<span class="note-hint" aria-hidden="true">Enter saves &middot; Esc cancels</span>` +
-    `</div>` +
-    (kindMenu ? kindMenuHTML(note, table, esc) : "") +
-    (stepMenu && steps ? stepMenuHTML(note, steps, esc) : "") +
-    `</div>`;
+    `</div></div>`;
 }
 
-// The step picker, open only while "link a step" is. Headings are not offered: a note attached to a
-// heading resolves no number and would print without a link, which is a pointer the page cannot show.
-export function stepMenuHTML(note, steps, esc) {
-  const items = (steps || []).filter((s) => !s.is_heading).map((s, i) =>
-    `<button type="button" role="menuitem" class="note-kind-item" data-note-link-step="${note.id}"` +
-    ` data-step-id="${s.id}">step ${i + 1}` +
-    `<span class="note-menu-words"> &mdash; ${esc(String(s.text || "").slice(0, 40))}&hellip;</span>` +
-    `</button>`).join("");
-  return `<div class="note-kind-menu note-step-menu" role="menu" aria-label="Link a step">${items}</div>`;
+// The step picker, open only while "link a step" is. Headings are PRINTED and never offered: a note
+// attached to a heading resolves no number and would print without a link, which is a pointer the
+// page cannot show. They are the grouping because they are the only grouping a cook already knows.
+// ⚠️ THE ROWS ARE HANDED IN, ALREADY FILTERED. step-picker.js decides what the list holds and
+// where the cursor is, and this decides what a row looks like. The two were one function, and the
+// filter inside it was unreachable from a test.
+// ⚠️ A COMBOBOX, NOT A MENU. The field is typed into and the list is what the typing narrows,
+// so the field owns the focus and names the active row through aria-activedescendant. role="menu"
+// moves focus to the item, which would take the caret out of the box on the first arrow key.
+export function stepMenuHTML(note, pick, esc) {
+  const { rows = [], query = "", cursor = null } = pick || {};
+  const listId = `pk-list-${note.id}`;
+  const body = rows.map((r) => (r.t === "sect"
+    ? `<div class="pk-sect" role="presentation">${esc(r.text)}</div>`
+    : `<button type="button" role="option" id="pk-${note.id}-${r.id}"` +
+      ` class="pk-row${String(note.step_id) === String(r.id) ? " on" : ""}` +
+      `${String(cursor) === String(r.id) ? " at" : ""}"` +
+      ` aria-selected="${String(cursor) === String(r.id)}"` +
+      ` data-note-link-step="${note.id}" data-step-id="${r.id}">` +
+      `<span class="pk-n">step ${r.no}</span>` +
+      `<span class="pk-w">${esc(r.words)}${r.more ? "&hellip;" : ""}</span></button>`)).join("");
+  const none = rows.length ? ""
+    : `<p class="pk-none">Nothing matches “${esc(query)}”.</p>`;
+  return `<div class="note-kind-menu note-step-menu" role="dialog" aria-label="Link a step">` +
+    `<span class="pk-grip" aria-hidden="true"></span>` +
+    `<input class="pk-find" data-note-pick-find="${note.id}" value="${esc(query)}"` +
+    ` placeholder="a number, or a word from the step" aria-label="Find a step"` +
+    ` role="combobox" aria-expanded="true" aria-controls="${listId}" aria-autocomplete="list"` +
+    (cursor != null ? ` aria-activedescendant="pk-${note.id}-${cursor}"` : "") + `>` +
+    // ⚠️ HOW MANY ROWS FIT IS ONE NUMBER, AND IT LIVES IN THE MODULE THAT MEANS IT. The height
+    //    is computed from PICKER_ROWS rather than written again in the stylesheet, so "about seven
+    //    rows, then scroll" cannot become two different answers.
+    `<div class="pk-list" id="${listId}" role="listbox" aria-label="Steps"` +
+    ` style="--pk-rows:${PICKER_ROWS}">${body}${none}</div>` +
+    // ⚠️ THE WAY OUT OF THE LIST, AT THE FOOT OF IT. Every row here is a summary, and the one
+    //    design where a cook reads the WHOLE step before choosing it is the page itself.
+    `<button type="button" class="pk-onpage" data-note-pick-page="${note.id}">` +
+    `Pick on the page</button></div>`;
+}
+
+// The bar that stands in for the panel while the method is the picker. Phone and desktop say
+// different things because the gesture is different, and the Cancel is a real button either way:
+// Escape is not discoverable and a phone has no Escape at all.
+export function pickBarHTML(noteId, esc, { phone = false } = {}) {
+  return `<div class="note-pick-bar" role="status">` +
+    `<span>${phone ? "Tap a step to link it" : "Click the step this note belongs to"}</span>` +
+    `<button type="button" class="note-pick-cancel" data-note-pick-cancel="${noteId}">` +
+    `Cancel${phone ? "" : " (Esc)"}</button></div>`;
 }
 
 // ⚠️ A TEXTAREA, NOT AN INPUT, BECAUSE Shift+Enter HAS TO MAKE A LINE. Enter saves and Shift+Enter
@@ -236,4 +291,14 @@ export function notePatchBody(fields) {
 export function noteTextChanged(note, draft, table) {
   const was = table ? noteEditText(note, table) : String(note.text || "");
   return String(draft == null ? "" : draft).trim() !== was.trim();
+}
+
+// ⚠️ AND NEITHER DOES PICKING THE STEP IT IS ALREADY ON. The picker opens with the current link
+// highlighted, so pressing Enter straight away is the obvious thing to do and used to be a write:
+// the server answers 200 for a step_id equal to the stored one, because that refusal is stated over
+// the TEXT. Deciding here keeps the shapes together and keeps a glance off the wire.
+export function noteStepChanged(note, stepId) {
+  const was = (note && note.step_id) == null ? null : +note.step_id;
+  const now = stepId == null ? null : +stepId;
+  return was !== now;
 }

@@ -2711,6 +2711,10 @@ a.note-lead-step { color: inherit; }
 .note-tool-del { color: var(--ink-soft); }
 .note-tool-del:hover { color: var(--hand); }
 .note-caret, .note-x { margin-left: .25em; font-size: .9em; }
+/* The × sits against the step it removes, so the two read as one control with two jobs. */
+.note-unlink { margin-left: -10px; color: var(--ink-soft); }
+.note-unlink:hover { color: var(--hand); }
+.note-unlink .note-x { margin-left: 0; font-size: 1em; }
 .note-hint {
   margin-left: auto;
   font-family: var(--font-sans); font-size: 11px;
@@ -2719,13 +2723,102 @@ a.note-lead-step { color: inherit; }
 
 /* The two menus the footer opens. Drawn WITH the editor, so closing the editor closes them. */
 .note-kind-menu {
-  position: absolute; z-index: 40; margin-top: 4px;
+  /* ⚠️ IT DROPS BELOW ITS ANCHOR, WHICH TAKES A top. With only a margin it sat at its STATIC
+     position, which inside an inline-flex anchor is beside the button rather than under it, so the
+     open list covered the words "link a step" it had just been opened from. */
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 40;
   background: var(--polaroid); border: 1px solid var(--border-defined);
   border-radius: 6px; padding: 4px; min-width: 130px; max-width: min(92vw, 420px);
   box-shadow: 0 6px 18px rgba(0,0,0,.14);
   display: flex; flex-direction: column;
 }
-.note-step-menu { max-height: 240px; overflow-y: auto; }
+/* ---------- "link a step": the short list ---------- */
+/* ⚠️ ANCHORED TO THE CONTROL THAT OPENED IT. .note-anchor is an inline span around one button and
+   its menu, so the list hangs under "link a step" rather than under the panel's left edge. */
+.note-anchor { position: relative; display: inline-flex; }
+.note-step-menu {
+  min-width: 260px; max-width: min(92vw, 420px); padding: 6px; gap: 6px;
+}
+.pk-grip { display: none; }
+.pk-find {
+  font-family: var(--font-sans); font-size: 13px; color: var(--ink); background: var(--paper);
+  border: 0; border-radius: 6px; padding: 6px 8px; box-shadow: 0 0 0 1px var(--paper-edge);
+  flex: 0 0 auto;
+}
+.pk-find:focus { outline: none; box-shadow: 0 0 0 1px var(--border-defined); }
+/* ⚠️ THE HEIGHT IS SEVEN ROWS, COMPUTED FROM THE ONE PLACE THAT SAYS SEVEN. --pk-rows is written
+   onto the element by stepMenuHTML out of step-picker.js's PICKER_ROWS. The old menu had a flat
+   240px cap and no minimum on its items, so fifteen steps were squeezed to 15px rows with their
+   tops cut off and the list never scrolled, because there was nothing left to scroll. */
+.pk-list {
+  --pk-row-h: 31px;
+  max-height: calc(var(--pk-rows, 7) * var(--pk-row-h));
+  overflow-y: auto; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0;
+}
+.pk-sect {
+  flex: 0 0 auto; padding: 7px 7px 3px;
+  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .09em;
+  text-transform: uppercase; color: var(--green);
+}
+.pk-row {
+  flex: 0 0 auto; display: flex; align-items: baseline; gap: 8px; width: 100%;
+  text-align: left; background: none; border: 0; cursor: pointer;
+  padding: 5px 7px; border-radius: 4px; font: inherit; font-size: 13px; color: var(--ink);
+}
+.pk-n { flex: 0 0 auto; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pk-w { flex: 1 1 auto; color: var(--ink-soft); font-size: 12px;
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pk-row:hover { background: var(--fill-surface); }
+/* The cursor is where the arrow keys are. The tick is what the note is already linked to. Two
+   different facts, so two different marks. */
+.pk-row.at { background: var(--fill-surface); box-shadow: inset 0 0 0 1px var(--border-defined); }
+.pk-row.on .pk-n::after { content: " \2713"; color: var(--green); }
+.pk-none { margin: 6px 7px; font-family: var(--font-sans); font-size: 12px; color: var(--ink-soft); }
+.pk-onpage {
+  flex: 0 0 auto; text-align: left; background: none; border: 0; cursor: pointer;
+  border-top: 1px solid var(--paper-edge); margin-top: 2px; padding: 7px 7px 3px;
+  font-family: var(--font-sans); font-size: 12px; color: var(--green);
+}
+.pk-onpage:hover { color: var(--green-lift); text-decoration: underline; }
+.pk-onpage:focus-visible, .pk-row:focus-visible, .pk-find:focus-visible {
+  outline: 1px dotted currentColor; outline-offset: -2px;
+}
+
+/* ---------- "pick on the page": the method becomes the picker ---------- */
+/* ⚠️ THE PANEL STEPS ASIDE RATHER THAN CLOSING. The note stays open underneath, because the click
+   that follows has to land on a note that is still being edited. */
+body.note-picking .note-edit { opacity: .35; pointer-events: none; }
+body.note-picking #steps-list li.step[data-note-pick-step] {
+  cursor: pointer; border-radius: 7px;
+  box-shadow: 0 0 0 1px transparent; transition: box-shadow .12s ease, background .12s ease;
+}
+body.note-picking #steps-list li.step[data-note-pick-step]:hover {
+  background: color-mix(in srgb, var(--green) 7%, transparent);
+  box-shadow: 0 0 0 1px var(--border-defined);
+}
+/* ⚠️ THE STEP EDITORS GO INERT WHILE PICKING. In Edit mode every step row holds a TipTap editor,
+   and a click meant to choose a step would otherwise put a caret in it. */
+body.note-picking #steps-list .step-editor-host { pointer-events: none; }
+/* ⚠️ AND SO DO THE STEP'S OWN NOTE CONTROLS. While the method is a picker, every step is one
+   target, so a "+ note" revealed by the pointer and a tag that opens a popover are two more things
+   to hover on a page that is asking one question. They stay in the markup and stop reacting. */
+body.note-picking #steps-list .step-add-slot,
+body.note-picking #steps-list .step-note-marker,
+body.note-picking #steps-list .step-note-pop { pointer-events: none; opacity: 0; }
+.note-pick-bar {
+  position: fixed; left: 50%; transform: translateX(-50%); bottom: 22px; z-index: 70;
+  display: flex; gap: 12px; align-items: center;
+  font-family: var(--font-sans); font-size: 13px; color: var(--ink);
+  background: var(--card); border: 1px solid var(--border-defined); border-radius: 12px;
+  padding: 9px 14px; box-shadow: 0 10px 26px -12px rgba(40,35,30,.45);
+}
+/* Clear of the Save/Cancel bar, which owns the same corner while Edit mode is open. */
+.detail-card.editing ~ .note-pick-bar, body:has(.inline-save-bar) .note-pick-bar { bottom: 84px; }
+.note-pick-cancel {
+  font: inherit; font-size: 12.5px; color: var(--green); background: none; border: 0;
+  padding: 0; cursor: pointer;
+}
+.note-pick-cancel:hover { color: var(--green-lift); text-decoration: underline; }
 /* ⚠️ flex: 0 0 auto, OR A LONG MENU SQUASHES ITS OWN ROWS. .note-kind-menu is a column flex box and
    .note-step-menu caps it at 240px. A flex item SHRINKS by default, so the bagel's 15 steps were
    each squeezed from 34px to 15px to fit the cap, and with padding and overflow:hidden on the item
@@ -2785,6 +2878,24 @@ li.step.step-tapped .step-add-note,
   li.step.step-tapped .step-add-note { opacity: 1; }
   .note-input { font-size: 16px; }                     /* 16px stops iOS zooming the page on focus */
   .note-kind-menu { min-width: 150px; }
+  /* ⚠️ THE STEP LIST IS A BOTTOM SHEET ON A PHONE, because a menu hung off a control halfway up
+     a 390px screen has nowhere to put seven rows. It comes off the anchor entirely and takes the
+     bottom of the window, which is where a thumb already is. */
+  .note-step-menu {
+    position: fixed; left: 0; right: 0; bottom: 0; top: auto;   /* top: auto undoes the drop-below */
+    min-width: 0; max-width: none; margin: 0; z-index: 80;
+    border-radius: 14px 14px 0 0; border-left: 0; border-right: 0; border-bottom: 0;
+    padding: 6px 14px calc(14px + env(safe-area-inset-bottom, 0px));
+    box-shadow: 0 -10px 30px -12px rgba(40,35,30,.5);
+  }
+  .pk-grip {
+    display: block; flex: 0 0 auto; width: 34px; height: 4px; margin: 4px auto 6px;
+    border-radius: 2px; background: var(--paper-edge);
+  }
+  .pk-find { font-size: 16px; }                        /* 16px stops iOS zooming the page on focus */
+  .pk-list { --pk-row-h: 38px; }
+  .pk-row { padding: 9px 7px; font-size: 14px; }
+  .note-pick-bar { left: 12px; right: 12px; transform: none; justify-content: space-between; }
 }
 
 /* A recipe with no notes shows the owner one quiet way in and nothing else — no card, no heading,

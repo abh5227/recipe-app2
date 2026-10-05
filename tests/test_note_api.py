@@ -559,3 +559,54 @@ def test_a_patch_with_the_same_text_is_refused_rather_than_written(kitchen):
     after = _notes_of(kitchen.client, rid)[0]
     assert after["text"] == note["text"]
     assert after["id"] == note["id"], "and it is the same row, updated in place"
+
+
+def test_the_picker_writes_the_link_the_page_then_prints(kitchen):
+    """Picking a step in the editor is one PATCH, and the number comes back resolved.
+
+    ⚠️ THE NUMBER IS THE SERVER'S ANSWER, NOT THE CLIENT'S. The picker shows "step 2" because the
+    client counted the method, and the page prints "Step 2" because notes_rules.resolve counted it
+    again on the way out. The two have to agree, so the write is checked against what the read
+    returns rather than against what was sent.
+    """
+    rid = _recipe(kitchen.client)
+    steps = _steps_of(kitchen.client, rid)
+    n = kitchen.client.post(f"/api/recipes/{rid}/notes", json={"text": "watch it"}).get_json()["note"]
+    assert n["step_id"] is None and n["step_no"] is None
+
+    target = steps[1]
+    out = kitchen.client.patch(f"/api/recipes/{rid}/notes/{n['id']}",
+                               json={"step_id": target["id"]}).get_json()
+    assert out["note"]["step_id"] == target["id"]
+    assert out["note"]["step_no"] == 2, "the second ordinary step, as the picker offered it"
+    assert out["note"]["step_ok"] is True
+
+    # and the recipe read agrees, which is what the Notes section draws from
+    again = kitchen.client.get(f"/api/recipes/{rid}").get_json()
+    row = next(x for x in again["notes"] if x["id"] == n["id"])
+    assert (row["step_id"], row["step_no"]) == (target["id"], 2)
+
+
+def test_opening_the_picker_and_leaving_writes_nothing(kitchen):
+    """Escape has to leave the row byte-identical, and this is the server half of that.
+
+    The picker's whole state (the typed filter, the cursor) is client-side, so the only way it could
+    reach the database is a PATCH. A PATCH naming no change is refused, which means a stray one
+    cannot quietly rewrite the row either.
+    """
+    rid = _recipe(kitchen.client)
+    sid = _steps_of(kitchen.client, rid)[0]["id"]
+    n = kitchen.client.post(f"/api/recipes/{rid}/notes",
+                            json={"text": "x", "step_id": sid}).get_json()["note"]
+    before = kitchen.client.get(f"/api/recipes/{rid}").get_json()["notes"]
+    assert before, "nothing to compare against"
+
+    # a PATCH naming nothing is refused outright
+    assert kitchen.client.patch(f"/api/recipes/{rid}/notes/{n['id']}", json={}).status_code == 400
+    # ⚠️ AND ONE NAMING THE LINK IT ALREADY HAS IS ANSWERED 200, which is why the client refuses to
+    #    send it (note-ui.js::noteStepChanged). The row is unmoved either way, and this pins that:
+    #    the refusal is about keeping a glance off the wire, never about protecting the row.
+    assert kitchen.client.patch(f"/api/recipes/{rid}/notes/{n['id']}",
+                                json={"step_id": sid}).status_code == 200
+
+    assert kitchen.client.get(f"/api/recipes/{rid}").get_json()["notes"] == before
