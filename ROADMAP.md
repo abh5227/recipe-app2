@@ -998,6 +998,66 @@ nowhere the page renders, and heading steps in a shape the server reads as an or
 tests that meant to convert a step silently did not). A fresh clone was followed literally and
 reaches a green suite with nothing broken.
 
+### What the second review left for next round · NEXT ROUND
+
+Six findings were listed rather than fixed, either because the fix would change something Andy chose
+or because the item sits outside the round. They are in order, and the first one is the only one that
+can make a whole CI leg lie about what it ran.
+
+1. **`$DATABASE_URL` defeats the test suite's redirect. This one goes first.** `tests/conftest.py`
+   installs the live guard on a filesystem path and `make_kitchen` rebinds the module-global `DB`,
+   and `orm_session()` reads past both the moment that variable is set. The corpus passes learned
+   this already, which is why `refuse_live` exits unless the run says `--i-mean-live`, and the test
+   harness never did. The fix has to be checked against the dual-dialect CI job, where the variable
+   is set on purpose. A first attempt during this round would have turned the Postgres leg into a
+   second SQLite run while still reporting green, so it was reverted and listed instead.
+
+2. **Delete then Undo re-links a mention the cook had deliberately unlinked.** The per-note `DELETE`
+   returns a restore payload carrying the note's text, kind, position and own step link, and the
+   re-create runs that text through the auto-linker again. A stored null is a decision everywhere
+   else in the notes code, and the restore path is the one place that forgets it. The reference rows
+   are not in the payload at all, so the fix is to carry them.
+
+3. **`unlinkNoteRef` has no callers.** It sits at `static/app.js:4921` and the surface it talked to
+   is gone, so the function is dead rather than merely unused. Deleting it is small, and it waits
+   only because nothing else in this round touched that code.
+
+4. **A recipe created in the app carries no `recipe_notes_original`.** Only
+   `scripts/notes_to_rows.py` and `import_write.commit_plan` write that table, so all 300 corpus
+   recipes and every imported one have a way back and a recipe written in the app does not.
+   `copy_recipe` already works around it by copying the source's current words where it finds no
+   originals, which is the truthful answer for a copy and not a fix for the gap underneath. The
+   playground rule wants that record for every recipe, not only for the ones that arrived through
+   one of two doors.
+
+5. **`corpus_guard.is_live` does not parse a `file:` URI.** It compares a resolved path and the
+   device and inode, and `file:recipes.db?mode=ro` is neither of those, so it resolves as a literal
+   filename and matches nothing. Harmless on today's callers, since the only URI form in the repo is
+   the catalog tests' read-only open. This is about what a future writer could hand it.
+
+6. **`DELETE /api/test-recipes` has no owner filter.** Checked read-only before the go-live push. It
+   is login-gated by the fail-closed default, its WHERE names `source='test'` so it can never reach
+   an app or seed recipe, and live holds 0 test rows against 300 app rows. It is the one deliberate
+   cross-owner write recorded in [docs/SECURITY.md](docs/SECURITY.md), and it stays as it is until
+   the multi-user rescoping gives the test tier an owner.
+
+**LATER, and not scheduled against anything.** `.note-lead`, `.note-type` and `.pk-sect` carry their
+own hardcoded sizes where a shared variable would do. Moving them onto shared variables is a
+no-visible-change tidy-up.
+
+**Two findings were decided rather than deferred, so they are not on the list above.**
+
+- **An unknown note kind is tolerated by the recipe PUT and refused by the per-note PATCH, and that
+  stays.** The PUT falls back to the default kind, because a stale client or a script should not cost
+  a note its row over one word, and the PATCH answers 400, because a cook picking a kind from a menu
+  can only send one the table knows. The two doors are answering different questions, a bulk save
+  against a single deliberate edit.
+- **The two definitions of "linked" both stay.** A note's tag shows on every step it touches, and
+  STEP NOTES lists the note once, under its own link first. Measured on live, the two definitions
+  have no case where they disagree. 4 notes carry their own step link and not one of them mentions a
+  step in its words, 2 notes mention a step and neither carries its own link, so the count of notes
+  with their own link AND a mention of a different step is **0**.
+
 ### The independent review of the notes round · ✅ FIXED AND RE-REHEARSED (held, not pushed)
 
 Four fresh subagents reviewed the nine unpushed commits, none of which had written the code, one
