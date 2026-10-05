@@ -93,6 +93,12 @@
   --fs-section-label: 13px;   /* the uppercase section label, ingredient column and method column */
   --fs-step-sub:      12px;   /* a label lifted off one step, bold and normal case */
 
+  /* ⚠️ 62px IS A DECIDED VALUE AND IT IS NOW ONE VALUE FOR TWO ROW TYPES. The whole derivation is
+     recorded above .steps li.step-edit (four measured cluster widths, 62px chosen against all of
+     them). An Edit-mode note row carries the SAME grip + ⋯ cluster, so it reads the same token
+     rather than restating the number, and re-cutting the gutter moves both rows at once. */
+  --rtools-gutter: 62px;   /* the hover cluster's gutter: a step row and an Edit-mode note row */
+
   --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:48px; --s8:72px;
 
   --page-measure: 760px;   /* recipe content column */
@@ -570,8 +576,11 @@ a:hover { color: var(--berry-lift); }
    (Ingredient cells get their own truncate-at-rest / expand-on-focus rule in the Stage 2 block below.) */
 .detail-card.editing .ie-num:focus { padding: 2px 6px; margin: 0 -2px;
   box-shadow: 0 0 0 1px var(--paper-edge), 0 4px 10px -6px rgba(40,35,30,.25); }
-.ie-noterow { display: flex; align-items: baseline; gap: 8px; margin: 0 0 10px; }
-.ie-noterow .ie-note { flex: 1; }
+/* (The second note editor's .ie-noterow flex row and its .ie-note child are GONE. That editor was
+   replaced by the shared note component; the class name is live again for the Edit-mode note ROW
+   and means something else, so the old rules were not dead, they were wrong — they laid the note
+   and its cluster out side by side and added 10px under every note. See .ie-noterow near the
+   .ie-note-block block below, which is the whole of its look now. .ie-note is rendered nowhere.) */
 .ie-note-block { margin-top: 20px; }   /* the note sits at the bottom (after steps), like reading */
 .stats.locked { opacity: 0.45; pointer-events: none; }   /* cook/rate disabled while editing */
 
@@ -687,7 +696,8 @@ a:hover { color: var(--berry-lift); }
    you move toward the menu itself. Set on the ROW (not the cluster) so the ingredient row's .divider
    is held up with it and the cluster doesn't lose its left edge. */
 .erow.menu-open .divider, .erow.menu-open .rtools,
-.steps li.step-edit.menu-open > .rtools { opacity: 1; }
+.steps li.step-edit.menu-open > .rtools,
+.ie-noterow.menu-open > .rtools { opacity: 1; }
 
 /* ---------- C1: the ingredient reorder drag ---------- */
 /* The album's two drag treatments (styles.css ~1085/1092), reused on the other axis. The origin dim is
@@ -715,9 +725,11 @@ a:hover { color: var(--berry-lift); }
    rule (.reorder-strip .album-photo.ghost-origin, ~line 1205) and is deliberately NOT changed here.
    If the photo strip should ever match, that rule is the one to edit — this selector will not do it. */
 .ingredient-list.edit li.erow.ghost-origin,
-#steps-list li.step-edit.ghost-origin { outline: 2px dashed var(--ochre); outline-offset: -2px; }
+#steps-list li.step-edit.ghost-origin,
+.ie-note-block .ie-noterow.ghost-origin { outline: 2px dashed var(--ochre); outline-offset: -2px; }
 .ingredient-list.edit li.erow.ghost-origin > *,
-#steps-list li.step-edit.ghost-origin > * { opacity: 0.35; }
+#steps-list li.step-edit.ghost-origin > *,
+.ie-note-block .ie-noterow.ghost-origin > * { opacity: 0.35; }
 /* The drop-insertion bar, INVERTED from the album's vertical bar for a vertical list: its 4px becomes
    a height, align-self/min-height are gone (it spans the list width instead of the strip height), and
    the end-caps move from top/bottom to left/right. Colour, radius and the ochre glow ring are verbatim.
@@ -742,19 +754,28 @@ a:hover { color: var(--berry-lift); }
    NOT apply to the ingredient list: #steps-list is an <ol>, so an extra <li> could renumber the steps.
    It does not, because the number comes from counter-increment on li.step specifically (not on li),
    the same reason li.step-removed stays unnumbered — the bar is neither. */
+/* ⚠️ THE NOTES SECTION'S BAR IS A <div>, NOT AN <li>, because the Notes groups are divs. One rule
+   paints all three; only the element differs, which is paintDropBar's `tag`. The -22px side bleed
+   suits a list whose rows run the full column; the notes block is inside a narrower card in reading
+   view and inside the step column in Edit mode, so its bar is bled by its own amount below. */
 .ingredient-list.edit li.drop-bar,
-#steps-list li.drop-bar {
+#steps-list li.drop-bar,
+.ie-note-block .drop-bar {
   display: block; height: 4px; margin: -2px -22px; padding: 0; border-bottom: none; position: relative;
   background: var(--ochre); border-radius: 3px;
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ochre) 22%, transparent);
 }
+.ie-note-block .drop-bar { margin: -2px 0; }
 .ingredient-list.edit li.drop-bar::before, .ingredient-list.edit li.drop-bar::after,
-#steps-list li.drop-bar::before, #steps-list li.drop-bar::after {
+#steps-list li.drop-bar::before, #steps-list li.drop-bar::after,
+.ie-note-block .drop-bar::before, .ie-note-block .drop-bar::after {
   content: ""; position: absolute; top: 50%; transform: translateY(-50%);
   width: 11px; height: 11px; border-radius: 50%; background: var(--ochre);
 }
-.ingredient-list.edit li.drop-bar::before, #steps-list li.drop-bar::before { left: -6px; }
-.ingredient-list.edit li.drop-bar::after, #steps-list li.drop-bar::after { right: -6px; }
+.ingredient-list.edit li.drop-bar::before, #steps-list li.drop-bar::before,
+.ie-note-block .drop-bar::before { left: -6px; }
+.ingredient-list.edit li.drop-bar::after, #steps-list li.drop-bar::after,
+.ie-note-block .drop-bar::after { right: -6px; }
 
 /* ---------- The drag image: a pill, set explicitly (see app.js setDragPill) ---------- */
 /* The off-viewport host. It must be LAID OUT to be usable as a drag image, so it is positioned away
@@ -1359,7 +1380,7 @@ a:hover { color: var(--berry-lift); }
 
    Cost of the widening, measured on the real page: the step text box goes 746px -> 720px (-26px).
    No step in the sample re-wrapped — rendered row heights are identical at 36px and 62px. */
-.steps li.step-edit { position: relative; padding-right: 62px; }
+.steps li.step-edit { position: relative; padding-right: var(--rtools-gutter); }
 .steps li.step-edit > .rtools { position: absolute; top: 0; right: 0; }
 .steps li.step-edit:hover > .rtools, .steps li.step-edit:focus-within > .rtools { opacity: 1; }
 /* a heading row is only ~25px tall against a 24px control, so the button's bottom sat 1.2px off the
@@ -2602,18 +2623,11 @@ a.note-stepref:hover { color: var(--berry); text-decoration-style: solid; }
 a.note-stepref:focus-visible { color: var(--berry); outline: 1px dotted currentColor; outline-offset: 2px; }
 a.meta-step.note-step { font-size: .92em; color: var(--ink-soft); }
 
-/* ---------- notes as rows: the editor ---------- */
-.ie-note-block .ie-noterow { display: block; margin-bottom: 10px; }
-.ie-note-controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 4px; }
-.ie-note-tag {
-  font-size: .8em; padding: 1px 6px; border-radius: 10px;
-  background: color-mix(in srgb, var(--paper, #fbf7ee) 60%, #000 6%);
-  color: var(--ink-soft);
-}
-.ie-move { border: 0; background: none; cursor: pointer; font: inherit; color: var(--ink-soft);
-           padding: 2px 5px; }
-.ie-move:disabled { opacity: .3; cursor: default; }
-.ie-move:focus-visible { outline: 1px dotted currentColor; outline-offset: 2px; }
+/* (The second note editor's own controls lived here: .ie-note-controls, .ie-note-tag and the
+   .ie-move up/down pair. None of those classes is rendered any more — the shared note component
+   replaced that editor, its type and link live in the note's panel, and up/down became the grip
+   and the ⋯ menu the step rows use. Removed rather than left to rot, because the next class name
+   to be reused might collide the way .ie-noterow just did.) */
 
 /* ---------- the note component: one look, three places ---------- */
 /* ⚠️ ONE SET OF RULES, BECAUSE THERE IS ONE COMPONENT. The reading page, the step popover and Edit
@@ -2939,6 +2953,18 @@ li.step.step-tapped .step-add-note,
 /* The box is the note's own edge, so the group's bullet hangs OUTSIDE it rather than inside. */
 .ie-note-block .notes-group.marked .notes-para { padding-left: 1.35em; text-indent: -1.1em; }
 .ie-note-block .step-adders { margin-top: 12px; }
+/* ⚠️ THE NOTE ROW IS THE STEP ROW'S GEOMETRY: the same gutter token, the same cluster absolutely
+   placed in it, the same reveal on hover and focus. The cluster sits OUTSIDE the note's dashed box
+   exactly as a step's sits outside its editor box, so the two rows read as one kind of row.
+   ⚠️ AND AN OPEN NOTE GIVES THE GUTTER BACK. The panel carries its own controls, so the row has no
+   cluster then and a reserved 62px would be dead space beside the editor. */
+.ie-noterow { position: relative; padding-right: var(--rtools-gutter); }
+.ie-noterow.open { padding-right: 0; }
+.ie-noterow > .rtools { position: absolute; top: 0; right: 0; }
+.ie-noterow:hover > .rtools, .ie-noterow:focus-within > .rtools { opacity: 1; }
+/* The 8px below a note belongs BETWEEN notes, and the wrapper is what is last in the group now, so
+   :last-child has to be asked of the wrapper rather than of the paragraph inside it. */
+.ie-noterow:last-child > .notes-para { margin-bottom: 0; }
 
 /* ---------- saved / deleted, each with its undo ---------- */
 /* role="status", so it is announced without the focus moving. */

@@ -24,7 +24,8 @@ import { noteRowHTML, newNoteBoxHTML, notePatchBody, noteTextChanged, noteEditTe
          noteStepChanged } from "./note-ui.js";
 import { pickerRows, filterRows, startCursor, moveCursor, stepRowsOf } from "./step-picker.js";
 import { resolveNoteSteps, draftSetText, draftSetKind, draftSetStep, draftAdd, draftDelete,
-         draftRestore, notesPayload } from "./note-draft.js";
+         draftRestore, notesPayload, draftReorder, draftAddBeside,
+         nextDraftId, noteGroupKey } from "./note-draft.js";
 import { noteTextHTML, stepNoteIndex } from "./note-text.js";
 import { makeHold, HOLD_MS } from "./hover-hold.js";
 // ⚠️ THE KIND TABLE IS ONE FILE, IMPORTED, NOT A COPY KEPT IN STEP BY A TEST. Vite inlines
@@ -1155,15 +1156,43 @@ function notesSectionHTML(rows) {
 // rather than under the bullet.
 function notesBodyHTML(rows, { editable, place }) {
   const { steps, blocks } = noteSections(rows || [], NOTE_KINDS.kinds);
+  // ⚠️ EDIT MODE WRAPS EACH NOTE IN A ROW AND THE READING PAGE DOES NOT. The wrapper is what cuts
+  //    the gutter the grip and the ⋯ sit in, which is the step row's own geometry; the reading
+  //    page has no cluster, so its markup stays exactly as it was.
+  // ⚠️ AND AN OPEN NOTE CARRIES NO CLUSTER. The panel already holds the type, the step link and
+  //    the delete, so a second delete beside it would be two answers to one question, and there is
+  //    nothing to drag while a note is being typed.
+  const one = (n, led) => {
+    const html = noteOne(n, {
+      editable, place, where: "section",
+      lead: led ? { no: n.stepLinkNo, type: tagLabel(kindOf(NOTE_KINDS.kinds, n.kind)) } : null,
+    });
+    if (place !== "ie") return html;
+    const open = noteEditing(n.id, place);
+    return `<div class="ie-noterow${open ? " open" : ""}" data-note-row="${n.id}">` +
+      `${html}${open ? "" : noteRowToolsHTML(n.id)}</div>`;
+  };
   const group = (header, notes, led) =>
     `<h3 class="notes-kind">${esc(header)}</h3>` +
     `<div class="notes-group${notes.length >= 2 ? " marked" : ""}">` +
-    notes.map((n) => noteOne(n, {
-      editable, place, where: "section",
-      lead: led ? { no: n.stepLinkNo, type: tagLabel(kindOf(NOTE_KINDS.kinds, n.kind)) } : null,
-    })).join("") + `</div>`;
+    notes.map((n) => one(n, led)).join("") + `</div>`;
   return (steps.length ? group(STEP_NOTES_HEADER, steps, true) : "") +
     blocks.map((b) => group(b.header, b.notes, false)).join("");
+}
+
+// A note row's hover cluster. THE STEP ROW'S OWN, not a copy: the same .rtools, the same draggable
+// .rbtn.grip carrying ING_GRIP, and the same ⋯ from rowMoreHTML, so the two rows share one control
+// vocabulary, one stylesheet and one menu component.
+// ⚠️ data-i CARRIES THE NOTE'S ID, NOT AN INDEX, which is the ONE thing that differs from the other
+//    two callers. Every path to a note in this file is by id (and a note added this session has a
+//    negative one, which is no list index at all), so handleRowMenuAction reads the value as an id
+//    when the kind is "note" and as an index otherwise. The attribute is shared; its meaning is
+//    branched in exactly one place.
+function noteRowToolsHTML(id) {
+  return `<span class="rtools">
+    <span class="rbtn grip" draggable="true" title="Drag to reorder" aria-hidden="true">${ING_GRIP}</span>
+    ${rowMoreHTML(id, "note")}
+  </span>`;
 }
 
 // One call site for every place a note is drawn, so the four opts that decide what it looks like are
@@ -2063,10 +2092,14 @@ function handleAlbumPhotoAction(e) {
    click ⋯, closePhotoMenu() removes the menu, the toggle then re-opens it, and the menu can never be
    dismissed by its own trigger. Two classes, two closers, two pre-branches; mutual exclusion comes
    from openRowMenu() calling BOTH closers, and from the row pre-branch firing on any photo-⋮ click. */
+// ⚠️ ONE SELECTOR FOR THE THREE ROW TYPES THAT CARRY A ⋯ MENU, named once. It was spelled out at
+// three call sites, and a note row added to two of them is a menu that opens and cannot be closed.
+const ROW_MENU_ROW = ".erow, li.step-edit, .ie-noterow";
+
 function closeRowMenu() {
   const m = app.querySelector(".row-menu");
   if (!m) return;
-  const row = m.closest(".erow, li.step-edit");
+  const row = m.closest(ROW_MENU_ROW);
   if (row) {
     row.classList.remove("menu-open");
     const trig = row.querySelector("[data-row-menu]");
@@ -2093,6 +2126,7 @@ function closeRowMenu() {
 // Labels no longer have to be short. The row menu widens to fit them (see .rtools .row-menu in
 // styles.css); the album's .photo-menu keeps its 140px.
 function rowMenuItemsHTML(kind, i) {
+  if (kind === "note") return noteMenuItemsHTML();
   const inserts = `<button type="button" data-rm-act="add-row">${kind === "step" ? "Add step" : "Add ingredient"}</button>
     <button type="button" data-rm-act="add-heading">Add heading</button>
     <div class="sep"></div>`;
@@ -2113,10 +2147,27 @@ function rowMenuItemsHTML(kind, i) {
   const toHeading = !(row && row.is_heading);
   return `${inserts}<button type="button" data-rm-act="toggle">${toHeading ? "Convert to heading" : "Convert to ingredient"}</button>`;
 }
+
+// A NOTE's items. Same component, same .sep, same .danger delete, and `i` is the note's ID (see
+// noteRowToolsHTML).
+// ⚠️ THE STEP-ONLY ITEMS ARE ABSENT BECAUSE THEY NAME THINGS A NOTE IS NOT. Convert to heading and
+// Make section / subheading are questions about the METHOD's shape; a note's type and its step link
+// are asked in the note's own panel, where they already are, so they are not repeated here.
+// ⚠️ AND THIS ONE HAS BOTH DIRECTIONS, WHERE THE STEP MENU HAS ONLY "below". The step menu dropped
+// its Add above on the grounds that drag-reorder makes the top of the list reachable. That reason
+// does not carry: a note may only be dragged among the notes of its OWN group (draftReorder), so
+// the first note of a group has nowhere to be dragged from and "above" is the only way to reach the
+// top of it. The step menu is unchanged either way.
+// ⚠️ THERE ARE NO Move up / Move down ITEMS TO MIRROR. The step menu has none, so neither has this.
+function noteMenuItemsHTML() {
+  return `<button type="button" data-rm-act="add-above">Add note above</button>
+    <button type="button" data-rm-act="add-below">Add note below</button>
+    <div class="sep"></div><button type="button" class="danger" data-rm-act="delete">Delete</button>`;
+}
 function openRowMenu(trigger, i, kind) {
   closePhotoMenu();                                        // single-open ACROSS both families
   closeRowMenu();
-  const row = trigger.closest(".erow, li.step-edit");
+  const row = trigger.closest(ROW_MENU_ROW);
   const cluster = trigger.closest(".rtools");
   row.classList.add("menu-open");                          // the cluster rests at opacity:0 — see styles.css
   trigger.setAttribute("aria-expanded", "true");
@@ -2135,18 +2186,42 @@ function openRowMenu(trigger, i, kind) {
 // handleAlbumPhotoAction's items; the re-render that follows would take the menu with it anyway, but
 // relying on that would leave the menu orphaned the moment an action stops re-rendering.
 function handleRowMenuAction(e) {
-  const row = e.target.closest(".erow, li.step-edit");
+  const row = e.target.closest(ROW_MENU_ROW);
   if (!row) return false;
   const host = e.target.closest("[data-row-menu], .row-menu");
   if (!host) return false;
   const i = Number(host.dataset.i);
   const kind = host.dataset.rowMenu || host.dataset.rowKind;
   const trigger = e.target.closest("[data-row-menu]");
-  if (trigger) { row.querySelector(".row-menu") ? closeRowMenu() : openRowMenu(trigger, i, kind); return true; }
+  if (trigger) {
+    // ⚠️ THE CLICK CAN HAVE REPAINTED THE PAGE UNDER ITSELF. handleNoteAction runs first in the
+    //    dispatcher and a click anywhere commits an open note, which rewrites the whole notes host,
+    //    so the trigger carried by the event may be a node that is no longer in the document. A
+    //    menu inserted beside a detached node is simply never seen. Re-find the live one by the two
+    //    attributes that name it.
+    const live = trigger.isConnected ? trigger
+      : app.querySelector(`[data-row-menu="${kind}"][data-i="${i}"]`);
+    if (!live) return true;
+    const liveRow = live.closest(ROW_MENU_ROW);
+    if (liveRow && liveRow.querySelector(".row-menu")) closeRowMenu();
+    else openRowMenu(live, i, kind);
+    return true;
+  }
   const item = e.target.closest("[data-rm-act]");
   if (!item) return false;
   const act = item.dataset.rmAct;
   closeRowMenu();
+  // ⚠️ A NOTE IS REACHED BY ID, SO IT BRANCHES BEFORE THE INDEX ARITHMETIC BELOW. `i` is the note's
+  //    id here, and draft.steps[i] would be a different row entirely (or undefined for the
+  //    negative id a note added this session carries).
+  if (kind === "note") {
+    if (act === "delete") { deleteNote(i); return true; }
+    if (act === "add-above" || act === "add-below") {
+      addNoteBeside(i, act === "add-above" ? "above" : "below");
+      return true;
+    }
+    return true;
+  }
   // B: both lists share the index arithmetic (insertIndexFor) and differ only in which array is
   // measured and which adder runs. A null index means the row this menu claimed to belong to is not a
   // real row any more — do nothing rather than guess a position; see row-insert.js.
@@ -3063,10 +3138,18 @@ function editIngRowEls(list) { return [...list.querySelectorAll("li.erow")]; }
 // once. `rows` is the list's row elements in order; the bar is inserted BEFORE rows[before], or
 // appended when before is null ("the end"). Deliberately NOT merged with the album's version: that one
 // is horizontal, lives in a flex strip, and opens a gap on purpose.
-function paintDropBar(list, rows, before) {
+// ⚠️ TWO OPTIONS, BOTH FOR THE NOTE LIST, AND BOTH DEFAULT TO THE BEHAVIOUR THE TWO EDITOR LISTS
+//    ALREADY HAD. `tag` is <li> for a list and <div> for the notes section, which is divs. And
+//    `afterLast` is what "the end" means when `rows` is a RUN inside its container rather than the
+//    whole of it: the bar goes after the last of them, not after the container's last child. The
+//    ingredient list is the reason that is opt-in — its rows are not its only children (a below-note
+//    row follows its owner), so changing the default would move its bar by one row.
+function paintDropBar(list, rows, before, { tag = "li", afterLast = false } = {}) {
   let bar = list.querySelector(".drop-bar");
-  if (!bar) { bar = document.createElement("li"); bar.className = "drop-bar"; bar.setAttribute("aria-hidden", "true"); }
-  if (before == null) list.appendChild(bar); else list.insertBefore(bar, rows[before]);
+  if (!bar) { bar = document.createElement(tag); bar.className = "drop-bar"; bar.setAttribute("aria-hidden", "true"); }
+  if (before != null) list.insertBefore(bar, rows[before]);
+  else if (afterLast && rows.length) rows[rows.length - 1].after(bar);
+  else list.appendChild(bar);
 }
 // Read the drop target back off the BAR rather than recomputing from clientY, so what lands is exactly
 // what the user was looking at. Walking forward to the next element that IS a row skips anything in
@@ -3083,9 +3166,11 @@ function beforeIndexFromBar(list, rows) {
 // dragend cleanup for either list. Scoped to the two editor lists BY NAME: .ghost-origin and .drop-bar
 // are also the album's class names, and a bare querySelectorAll would reach into a photo reorder.
 function clearRowDragArtifacts() {
-  document.querySelectorAll(".ingredient-list.edit .ghost-origin, #steps-list .ghost-origin")
+  document.querySelectorAll(".ingredient-list.edit .ghost-origin, #steps-list .ghost-origin,"
+                            + " .ie-note-block .ghost-origin")
     .forEach((el) => el.classList.remove("ghost-origin"));
-  document.querySelectorAll(".ingredient-list.edit .drop-bar, #steps-list .drop-bar")
+  document.querySelectorAll(".ingredient-list.edit .drop-bar, #steps-list .drop-bar,"
+                            + " .ie-note-block .drop-bar")
     .forEach((el) => el.remove());
   const h = document.getElementById("drag-img-host"); if (h) h.innerHTML = "";   // release the pill
 }
@@ -3251,6 +3336,84 @@ function stepDrop(e) {
 
 function stepDragEnd() {
   stepDragFrom = null;
+  clearRowDragArtifacts();
+}
+
+// ---- the Edit-mode note list's reorder ----------------------------------------------------------
+// Everything structural is inherited from C1 and C2: the shared drop bar and its read-back, C0's
+// height-agnostic arithmetic, the pill drag image, the rAF-deferred .ghost-origin, grip-only
+// draggability, mouse-only. Three things are its own.
+//
+// ⚠️ 1. THE LEGAL TARGETS ARE A GROUP, NOT A LIST. The Notes section is several groups and STEP
+// NOTES is itself ordered by step number, so a note may only move among the notes that share its
+// group key. The rule is draftReorder's; what lives here is only which ROWS on screen that is.
+// ⚠️ 2. A DROP OUTSIDE THAT SET IS NOT PREVENTED, which is how it snaps back with nothing changed:
+// without preventDefault on dragover no drop event fires at all, so there is no "refuse" branch to
+// get wrong.
+// ⚠️ 3. THE ROWS ARE KEYED BY NOTE ID, not by DOM index. A note's id survives a repaint and a
+// position does not, and repaintNotes rewrites the whole host on every held write.
+let noteDragFrom = null;                                  // the dragged note's id, as a string
+
+// The rows a note may be dropped among: every Edit-mode note row whose group key matches its own.
+function noteDropRowEls(id) {
+  const by = new Map(noteRows().map((n) => [String(n.id), n]));
+  const me = by.get(String(id));
+  if (!me) return [];
+  const key = noteGroupKey(me, NOTE_KINDS.kinds);
+  return [...document.querySelectorAll(".ie-note-block .ie-noterow")]
+    .filter((el) => {
+      const n = by.get(String(el.dataset.noteRow));
+      return n && noteGroupKey(n, NOTE_KINDS.kinds) === key;
+    });
+}
+
+function clearNoteDropBar() {
+  document.querySelectorAll(".ie-note-block .drop-bar").forEach((el) => el.remove());
+}
+
+function noteDragStart(e) {
+  const row = e.target.closest(".ie-note-block .ie-noterow");
+  if (!row || !noteHeld()) return;
+  noteDragFrom = row.dataset.noteRow;
+  try { e.dataTransfer.setData("text/plain", String(noteDragFrom)); e.dataTransfer.effectAllowed = "move"; } catch (_) {}
+  const n = noteRows().find((x) => String(x.id) === String(noteDragFrom));
+  // The SAME label rule a step's pill uses, because a note is a paragraph too — it carries an
+  // identifying prefix rather than a name. Fed the DISPLAY text, so a stripped label is not shown.
+  setDragPill(e, stepPillLabel({ text: n ? displayText(n, NOTE_KINDS.kinds) : "" }));
+  requestAnimationFrame(() => row.classList.add("ghost-origin"));   // deferred for C1's reason
+}
+
+// Paint only — never re-render here, for the reason the other two lists give.
+function noteDragOver(e) {
+  if (noteDragFrom == null) return;
+  const row = e.target.closest(".ie-note-block .ie-noterow");
+  const rows = noteDropRowEls(noteDragFrom);
+  const at = row ? rows.indexOf(row) : -1;
+  if (at < 0) { clearNoteDropBar(); return; }              // another group: no bar, and no drop
+  e.preventDefault();                                      // required, or no drop event fires
+  const from = rows.findIndex((r) => r.dataset.noteRow === String(noteDragFrom));
+  paintDropBar(row.parentElement, rows,
+               dropBeforeIndex(rows.map((r) => r.getBoundingClientRect()), e.clientY, from),
+               { tag: "div", afterLast: true });
+}
+
+function noteDrop(e) {
+  if (noteDragFrom == null) return;
+  const rows = noteDropRowEls(noteDragFrom);
+  const id = noteDragFrom;
+  noteDragFrom = null;
+  if (!rows.length) return;
+  e.preventDefault();
+  const before = beforeIndexFromBar(rows[0].parentElement, rows);
+  clearRowDragArtifacts();
+  if (before === undefined) return;                        // no bar was painted: nothing to apply
+  const next = draftReorder(view.draft.notes, NOTE_KINDS.kinds, id,
+                            before == null ? null : rows[before].dataset.noteRow);
+  if (next) holdNotes(next); else repaintNotes();          // refused: put the ghost row back
+}
+
+function noteDragEnd() {
+  noteDragFrom = null;
   clearRowDragArtifacts();
 }
 
@@ -4591,6 +4754,24 @@ function saveNewNote() {
     .catch((e) => { noteError(e.message); repaintNotes(); });
 }
 
+// A note added from another note's ⋯ menu. Edit mode only, which is where the menu is.
+// ⚠️ IT OPENS READY FOR TYPING, WHICH IS WHAT addStep DOES. The new row is empty, so a save that
+//    follows without a word typed drops it again (notesPayload filters a blank), exactly the
+//    contract an empty added step already has.
+// ⚠️ THE ID IS COMPUTED FROM THE SAME LIST draftAddBeside READS, so the two agree by construction.
+//    Reading it back off the result would mean trusting the order instead.
+function addNoteBeside(id, pos) {
+  if (!noteHeld()) return Promise.resolve();
+  saveOpenNote();
+  const next = draftAddBeside(view.draft.notes, NOTE_KINDS.kinds, id, pos);
+  if (!next) return Promise.resolve();
+  const newId = nextDraftId(view.draft.notes);
+  noteState.editingId = newId;
+  noteState.editingPlace = "ie";
+  noteState.drafts.set(newId, "");
+  return holdNotes(next);
+}
+
 function deleteNote(id) {
   if (noteHeld()) {
     // ⚠️ THE UNDO IS A LIST OPERATION TOO, so Cancel still throws the whole session away. The row
@@ -5265,6 +5446,13 @@ document.addEventListener("dragstart", stepDragStart);
 document.addEventListener("dragover", stepDragOver);
 document.addEventListener("drop", stepDrop);
 document.addEventListener("dragend", stepDragEnd);
+// The Edit-mode note list, same delegation for the same reason — repaintNotes replaces the whole
+// .ie-notes host on every held write, so scoping by closest(".ie-note-block .ie-noterow") survives
+// it. Disjoint from the other three: each returns early unless the drag started in its own rows.
+document.addEventListener("dragstart", noteDragStart);
+document.addEventListener("dragover", noteDragOver);
+document.addEventListener("drop", noteDrop);
+document.addEventListener("dragend", noteDragEnd);
 
 document.addEventListener("change", (e) => {
   if (view && view.editMode && view.draft && handlePlanAheadInput(e.target)) markDirty();

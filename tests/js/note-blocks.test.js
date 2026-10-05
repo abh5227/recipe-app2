@@ -7,7 +7,8 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { noteBlocks, noteBlocksFromText, noteParagraphs, classifyNote, displayText,
-         noteSections, linkedStepNo, STEP_NOTES_HEADER } from "../../static/note-blocks.js";
+         noteSections, linkedStepNo, linkedStepId,
+         STEP_NOTES_HEADER } from "../../static/note-blocks.js";
 
 const TABLE = JSON.parse(fs.readFileSync(
   path.join(import.meta.dirname, "../../static/note-kinds.json"), "utf8")).kinds;
@@ -203,4 +204,38 @@ test("an unknown kind is settled the same way in both halves", () => {
 test("the step-notes header is a plain string, uppercased by the shared heading rule", () => {
   assert.equal(STEP_NOTES_HEADER, "Step notes");
   assert.equal(STEP_NOTES_HEADER, STEP_NOTES_HEADER.trim());
+});
+
+
+// --- the same question, answered with the id ------------------------------------------------------
+// ⚠️ A NOTE ADDED BESIDE A LINKED ONE HAS TO REACH THE SAME STEP, and a row can only say that with
+// step_id. linkedStepId exists so the two answers cannot come from two different rules.
+
+test("linkedStepId mirrors linkedStepNo branch for branch", () => {
+  assert.equal(linkedStepId(row({ step_id: 7, step_no: 3 })), 7, "its own link");
+  assert.equal(linkedStepId(row({ refs: [{ ref_index: 0, step_id: 7, step_no: 5 }] })), 7,
+    "a step named in its words");
+  assert.equal(linkedStepId(row({})), null, "neither");
+});
+
+test("an own link whose number does not resolve counts for neither function", () => {
+  // The step became a heading or was deleted, so the page prints no number and the note reads in
+  // its type group. An id handed over from there would put a new note under a step nobody can see.
+  const r = row({ step_id: 7, step_no: null });
+  assert.equal(linkedStepNo(r), null);
+  assert.equal(linkedStepId(r), null);
+});
+
+test("an own link is asked first and alone, in both", () => {
+  const r = row({ step_id: 7, step_no: null,
+                  refs: [{ ref_index: 0, step_id: 9, step_no: 2 }] });
+  assert.equal(linkedStepNo(r), null, "the reference does not overrule the note's own link");
+  assert.equal(linkedStepId(r), null);
+});
+
+test("a reference with no number is skipped, as linkedStepNo skips it", () => {
+  const r = row({ refs: [{ ref_index: 0, step_id: 7, step_no: null },
+                         { ref_index: 1, step_id: 9, step_no: 4 }] });
+  assert.equal(linkedStepNo(r), 4);
+  assert.equal(linkedStepId(r), 9);
 });

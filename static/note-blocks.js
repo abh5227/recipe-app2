@@ -113,6 +113,17 @@ export function linkedStepNo(note) {
   return ref ? ref.step_no : null;
 }
 
+// The SAME question, answered with the step's id instead of its number. A note added beside a
+// linked one has to reach the same step, and the only way to say that in a row is step_id.
+// ⚠️ IT MIRRORS linkedStepNo BRANCH FOR BRANCH, deliberately: an own link is asked first and alone,
+// and a link whose number does not resolve does not count. Two functions reading the same rule
+// differently is how a note added under Step 4 lands under Notes instead.
+export function linkedStepId(note) {
+  if (note.step_id) return note.step_no ? note.step_id : null;
+  const ref = (note.refs || []).find((r) => r.step_no);
+  return ref ? ref.step_id : null;
+}
+
 // Note ROWS -> {steps: [row], blocks: [{kind, header, notes}]}, which is the whole Notes section in
 // one answer: what belongs to a step, in step order, then everything else grouped by type.
 // ⚠️ A LINKED NOTE IS IN EXACTLY ONE OF THE TWO. It used to appear under its type with a

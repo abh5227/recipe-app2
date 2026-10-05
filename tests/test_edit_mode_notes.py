@@ -359,3 +359,166 @@ def test_a_note_keeps_its_step_reference_across_an_id_matched_save(kitchen):
     assert after["id"] == n["id"]
     assert after["refs"][0]["step_id"] == steps[2]["id"], "the link survived the reword"
     assert after["refs"][0]["step_no"] == 3
+
+
+# ---------------------------------------------------------------------------------------------
+# Reordering. ⚠️ THE ORDER IS THE DATA. noteSections prints a group in list order and write_notes
+# assigns position from the order it is given, so a drag's whole effect is which position each
+# EXISTING row ends up with. The row ids must survive it, or a reorder would be a delete and a
+# re-add of every note on the recipe, and recipe_notes carries UNIQUE (recipe_id, position), which
+# a reordered list collides with the moment two rows swap.
+# ---------------------------------------------------------------------------------------------
+
+def _notes_payload(d):
+    """What static/note-draft.js::notesPayload sends: the row each note came from, NAMED."""
+    return [{"id": n["id"], "text": n["text"], "kind": n["kind"], "step_id": n["step_id"],
+             "ingredient_row_id": n["ingredient_row_id"],
+             "refs": [{"ref_index": f["ref_index"], "match_text": f["match_text"],
+                       "step_id": f["step_id"]} for f in (n["refs"] or [])]}
+            for n in d["notes"]]
+
+
+def test_reordering_notes_moves_the_positions_and_keeps_every_id(kitchen):
+    rid = _recipe(kitchen.client, notes="Note: one.\n\nNote: two.\n\nNote: three.")
+    before = _rows(kitchen.client, rid)
+    assert len(before) == 3, "nothing to compare against"
+
+    body = _draft(kitchen.client, rid)
+    sent = _notes_payload(_full(kitchen.client, rid))
+    body["notes"] = [sent[1], sent[0], sent[2]]                 # drag note two above note one
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+
+    after = _rows(kitchen.client, rid)
+    assert [n["text"] for n in after] == ["Note: two.", "Note: one.", "Note: three."]
+    assert [n["position"] for n in after] == [0, 1, 2]
+    assert {n["id"] for n in after} == {n["id"] for n in before}, "a move is not a delete and an add"
+    by_id = {n["id"]: n for n in after}
+    for n in before:
+        assert by_id[n["id"]]["text"] == n["text"], "a move changes no words"
+        assert by_id[n["id"]]["kind"] == n["kind"]
+        assert by_id[n["id"]]["step_id"] == n["step_id"]
+
+
+def test_a_reversed_list_never_collides_on_UNIQUE_recipe_id_position(kitchen):
+    """⚠️ THE CASE THE NEGATIVE-POSITION PASS IN _apply_rows EXISTS FOR. Writing a reordered list
+    straight back collides the moment two rows swap, and a full reversal collides on every row."""
+    rid = _recipe(kitchen.client,
+                  notes="Note: a.\n\nNote: b.\n\nNote: c.\n\nNote: d.\n\nNote: e.")
+    before = _rows(kitchen.client, rid)
+    assert len(before) == 5, "nothing to compare against"
+
+    body = _draft(kitchen.client, rid)
+    body["notes"] = list(reversed(_notes_payload(_full(kitchen.client, rid))))
+    r = kitchen.client.put(f"/api/recipes/{rid}", json=body)
+    assert r.status_code == 200, r.get_json()
+
+    after = _rows(kitchen.client, rid)
+    assert [n["text"] for n in after] == [n["text"] for n in reversed(before)]
+    assert [n["position"] for n in after] == [0, 1, 2, 3, 4], "positions are 0..n-1, with no gaps"
+    assert {n["id"] for n in after} == {n["id"] for n in before}
+
+
+def test_a_reorder_leaves_the_author_s_words_and_every_other_recipe_alone(kitchen):
+    rid = _recipe(kitchen.client, notes="Note: one.\n\nNote: two.")
+    other = _recipe(kitchen.client, notes="Note: elsewhere.", name="Brioche")
+    before, other_before = _rows(kitchen.client, rid), _rows(kitchen.client, other)
+    assert len(before) == 2 and other_before, "nothing to compare against"
+    _seed_originals(kitchen, rid, before)
+    originals = _originals(kitchen, rid)
+    assert len(originals) == 2, "the record this check compares against was not written"
+
+    body = _draft(kitchen.client, rid)
+    sent = _notes_payload(_full(kitchen.client, rid))
+    body["notes"] = [sent[1], sent[0]]
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+
+    assert _originals(kitchen, rid) == originals, "a reorder is not a save's business either"
+    assert _rows(kitchen.client, other) == other_before, "one recipe's drag touches one recipe"
+
+
+def test_a_reorder_mints_no_annotation_and_keeps_the_short_circuit(kitchen):
+    """A drag is a note change like any other, so it costs the recipe nothing."""
+    import app as A
+    rid = _recipe(kitchen.client, notes="Note: one.\n\nNote: two.")
+    assert kitchen.client.put(f"/api/recipes/{rid}",
+                              json=_draft(kitchen.client, rid)).status_code == 200  # settle a baseline
+    with A.orm_session() as s:
+        before_marks = A._recipe_annotations(s, rid)
+
+    body = _draft(kitchen.client, rid)
+    sent = _notes_payload(_full(kitchen.client, rid))
+    body["notes"] = [sent[1], sent[0]]
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+
+    with A.orm_session() as s:
+        assert A._recipe_annotations(s, rid) == before_marks
+
+
+def test_saving_the_same_order_back_moves_nothing_at_all(kitchen):
+    """The no-change save, with the ids the client now sends. Byte-identical rows."""
+    rid = _recipe(kitchen.client, notes="Note: one.\n\nTip: two.\n\nNote: three.")
+    before = _rows(kitchen.client, rid)
+    assert len(before) == 3, "nothing to compare against"
+
+    body = _draft(kitchen.client, rid)
+    body["notes"] = _notes_payload(_full(kitchen.client, rid))
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    assert _rows(kitchen.client, rid) == before
+
+
+def test_a_note_added_beside_another_lands_where_the_payload_puts_it(kitchen):
+    """"Add note above / below" is an insert into the list, and position follows the list order.
+
+    ⚠️ THE NEW NOTE CARRIES NO id, which is what tells the server it is a new row rather than a
+    rename of whichever row happens to sit at that position.
+    """
+    rid = _recipe(kitchen.client, notes="Note: one.\n\nTip: two.")
+    before = _rows(kitchen.client, rid)
+    assert len(before) == 2, "nothing to compare against"
+
+    body = _draft(kitchen.client, rid)
+    sent = _notes_payload(_full(kitchen.client, rid))
+    added = {"text": "added above the tip", "kind": sent[1]["kind"],
+             "step_id": sent[1]["step_id"], "ingredient_row_id": None, "refs": []}
+    body["notes"] = [sent[0], added, sent[1]]
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+
+    after = _rows(kitchen.client, rid)
+    assert [n["text"] for n in after] == ["Note: one.", "added above the tip", "Tip: two."]
+    assert [n["position"] for n in after] == [0, 1, 2]
+    assert after[1]["kind"] == before[1]["kind"], "it copied its neighbour's type"
+    assert after[1]["id"] not in {n["id"] for n in before}, "and it is a new row"
+    assert after[0]["id"] == before[0]["id"] and after[2]["id"] == before[1]["id"], \
+        "the two it was inserted between keep their own rows"
+
+
+def test_an_empty_added_note_is_dropped_by_the_save(kitchen):
+    """"Add note below" opens an empty row, exactly as "+ add step" does. Saving without typing
+    drops it again, which is the contract nonEmptySteps already has for a step."""
+    rid = _recipe(kitchen.client, notes="Note: one.")
+    before = _rows(kitchen.client, rid)
+    assert before, "nothing to compare against"
+
+    body = _draft(kitchen.client, rid)
+    sent = _notes_payload(_full(kitchen.client, rid))
+    body["notes"] = sent + [{"text": "", "kind": "notes", "step_id": None,
+                             "ingredient_row_id": None, "refs": []}]
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+    assert _rows(kitchen.client, rid) == before
+
+
+def test_deleting_a_note_from_the_menu_takes_its_row_and_renumbers_the_rest(kitchen):
+    rid = _recipe(kitchen.client, notes="Note: one.\n\nNote: two.\n\nNote: three.")
+    before = _rows(kitchen.client, rid)
+    assert len(before) == 3, "nothing to compare against"
+
+    body = _draft(kitchen.client, rid)
+    sent = _notes_payload(_full(kitchen.client, rid))
+    body["notes"] = [sent[0], sent[2]]                       # the middle one deleted from its ⋯ menu
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+
+    after = _rows(kitchen.client, rid)
+    assert [n["text"] for n in after] == ["Note: one.", "Note: three."]
+    assert [n["position"] for n in after] == [0, 1]
+    assert before[1]["id"] not in {n["id"] for n in after}, "the deleted row is gone"
+    assert [n["id"] for n in after] == [before[0]["id"], before[2]["id"]], "the survivors keep theirs"

@@ -15,6 +15,9 @@
 // survives. The draft has to show what the save will store, so it carries them the same way. Where
 // the two could disagree, the server wins: it is the one that writes.
 import { STEP_MENTION } from "./note-text.js";
+import { linkedStepNo, linkedStepId } from "./note-blocks.js";
+import { reorderBefore } from "./reorder.js";
+import { insertIndexFor } from "./row-insert.js";
 
 // {step id -> the number the page prints}, null for a heading.
 // ⚠️ THE PYTHON SIDE IS notes.py::step_numbers AND THE TWO ANSWER THE SAME QUESTION. The server
@@ -115,6 +118,84 @@ export function draftRestore(notes, row, at) {
   const i = Math.max(0, Math.min(list.length, at == null ? list.length : +at));
   list.splice(i, 0, { ...row });
   return list.map((n, k) => ({ ...n, position: k }));
+}
+
+// ---- the group a note is reordered inside -------------------------------------------------------
+// ⚠️ THE GROUP IS WHAT THE READER SEES, NOT A COLUMN. noteSections prints linked notes under STEP
+// NOTES ordered by step number, and everything else under its type. So a note's group is its STEP
+// when it has one and its KIND when it does not, and a drag may only move a note among the notes
+// that share that answer. A drop anywhere else is refused rather than clamped, which is
+// insertIndexFor's precedent: the wrong answer here is a note that silently changes what it is
+// about.
+// ⚠️ AND THE KIND IS THE DECORATED ONE. noteBlocks maps a kind the table does not list onto the
+// first kind, so two notes with different stored kinds can read in one group. Keying on the stored
+// value would refuse a drop the page plainly offers.
+export function noteGroupKey(note, table) {
+  const no = linkedStepNo(note);
+  if (no != null) return `step:${no}`;
+  const kinds = table || [];
+  const known = kinds.some((k) => k.kind === note.kind);
+  return `kind:${known || !kinds.length ? note.kind : kinds[0].kind}`;
+}
+
+// Move a note to sit immediately BEFORE `beforeId`, or to the END OF ITS OWN GROUP when that is
+// null. Returns a new list, or null for "refused, change nothing".
+// ⚠️ THE MOVE ITSELF IS reorderBefore, the same one the album and both editor lists use. What is
+// stated here is only which destinations are legal and what "the end" means for a group that is
+// not at the end of the list.
+// ⚠️ AND IT RENUMBERS position, because that is what the save sends and what the reading page reads
+// back. write_notes assigns positions from the order it is given, so the list order IS the order.
+export function draftReorder(notes, table, id, beforeId) {
+  const list = notes || [];
+  const from = list.findIndex((n) => sameId(n.id, id));
+  if (from < 0) return null;
+  const key = noteGroupKey(list[from], table);
+  let ref = beforeId == null ? null : beforeId;
+  if (ref == null) {
+    // the end of this note's own run: the first note AFTER the last of its mates, or the list's end
+    let last = -1;
+    list.forEach((n, i) => { if (noteGroupKey(n, table) === key) last = i; });
+    if (last < 0 || sameId(list[last].id, id)) return null;       // already last: nothing to do
+    ref = last + 1 < list.length ? list[last + 1].id : null;
+  } else {
+    const t = list.find((n) => sameId(n.id, ref));
+    if (!t || sameId(t.id, id)) return null;                       // onto itself, or a stale id
+    if (noteGroupKey(t, table) !== key) return null;               // another group: refused
+    // ⚠️ THE ROW'S OWN id VALUE, NOT THE CALLER'S. reorderBefore compares ids with !== and
+    //    indexOf, which are identity tests, and the caller reads this id off a data- attribute, so
+    //    it arrives as the STRING "159" against a list of NUMBERS. indexOf then answered -1,
+    //    reorderBefore took its defensive append branch, and a note dropped at the top of its
+    //    group landed at the BOTTOM of it. Measured in the browser; the unit tests passed numbers
+    //    and never saw it. sameId compares as strings on purpose; what goes on to reorderBefore
+    //    has to be the value the list holds.
+    ref = t.id;
+  }
+  const moved = reorderBefore(list.map((n) => n.id), list[from].id, ref);
+  const by = new Map(list.map((n) => [String(n.id), n]));
+  return moved.map((x, i) => ({ ...by.get(String(x)), position: i }));
+}
+
+// A note added above or below another one. Returns a new list, or null for "refused".
+// ⚠️ IT COPIES THE TYPE AND THE STEP LINK, WHICH IS THE WHOLE POINT. A blank note with neither
+// lands under the first type group, so "Add note below" on a Storage note under Step 4 would put
+// the new note somewhere else entirely and the cook would have to find it.
+// ⚠️ THE STEP IS COPIED AS AN ID, EVEN WHERE THE NEIGHBOUR REACHED ITS STEP THROUGH ITS WORDS. A
+// reference lives in the text and the new note has no text yet, so the only way to put it in the
+// same group is its own link. linkedStepId is the one place that rule is written down.
+// ⚠️ AND THE NEW ROW'S ID IS nextDraftId(notes), which a caller needs in order to open the editor
+// on it. Both read the same list, so both get the same answer; it is not returned twice.
+export function draftAddBeside(notes, table, id, pos) {
+  const list = notes || [];
+  const i = list.findIndex((n) => sameId(n.id, id));
+  if (i < 0) return null;
+  const at = insertIndexFor(pos, i, list.length);
+  if (at == null) return null;
+  const mate = list[i];
+  const row = { id: nextDraftId(list), kind: mate.kind, text: "",
+                step_id: linkedStepId(mate), ingredient_row_id: null,
+                position: at, step_no: null, step_ok: true, refs: [] };
+  return [...list.slice(0, at), row, ...list.slice(at)]
+    .map((n, k) => ({ ...n, position: k }));
 }
 
 // What the recipe PUT carries. One shape, built here, so Edit mode cannot send a note the per-note
