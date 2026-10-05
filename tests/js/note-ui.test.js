@@ -470,3 +470,18 @@ test("a linked note can still open the list, and the × is its own control", () 
   assert.match(html, /aria-label="Remove the link to step 3"/);
   assert.match(html, /aria-label="Linked to step 3\. Pick a different step"/);
 });
+
+test("the pencil hangs off a zero-width anchor, so it never costs the note a line", () => {
+  // ⚠️ AN INVISIBLE INLINE BUTTON STILL TAKES WIDTH. Measured in Edit mode's boxed look, where the
+  //    extra line shows as empty space inside the box: all-butter-pie-crust's Storage note was 64px
+  //    tall against 40px of words, and 40px with the pencil hidden.
+  const html = noteRowHTML(note({ text: "x" }), TABLE, esc, { editable: true });
+  assert.match(html, /<span class="note-pencil-slot"><button[^>]*class="note-pencil"/);
+  assert.doesNotMatch(noteRowHTML(note({ text: "x" }), TABLE, esc, {}), /note-pencil/,
+    "and a reader who does not own the recipe gets neither");
+});
+
+test("the pencil's anchor comes after the toast, so it never sits on top of Undo", () => {
+  const html = noteRowHTML(note({ text: "x" }), TABLE, esc, { editable: true, saved: true });
+  assert.ok(html.indexOf("note-toast") < html.indexOf("note-pencil-slot"));
+});

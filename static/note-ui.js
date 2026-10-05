@@ -101,8 +101,14 @@ export function noteRowHTML(note, table, esc, opts = {}) {
       `<a class="meta-step note-lead-step" href="#" data-note-step="${lead.no}">Step ${lead.no}</a>` +
       ` &middot; ${esc(lead.type)} &mdash; </span>`
     : "";
+  // ⚠️ IT HANGS OFF A ZERO-WIDTH ANCHOR, FOR THE REASON "+ note" DOES. An invisible inline button
+  //    still takes WIDTH, so a note whose last line nearly fills the measure wrapped one line
+  //    further for a control nobody can see. Measured in Edit mode's boxed look, where the extra
+  //    line is visible as empty space: all-butter-pie-crust's Storage note was 64px tall against
+  //    40px of words. The anchor costs nothing and the button is positioned out of the flow.
   const pencil = editable
-    ? `<button type="button" class="note-pencil" data-note-edit="${note.id}" aria-label="Edit this note">&#9998;</button>`
+    ? `<span class="note-pencil-slot"><button type="button" class="note-pencil"` +
+      ` data-note-edit="${note.id}" aria-label="Edit this note">&#9998;</button></span>`
     : "";
   const toast = saved ? savedToastHTML(note.id) : "";
   // ⚠️ NO NEWLINES INSIDE THE PARAGRAPH. .notes-para is white-space: pre-wrap, so an indent in this
@@ -112,10 +118,13 @@ export function noteRowHTML(note, table, esc, opts = {}) {
     //    it, and two notes on one step are two different kinds of thing as often as not.
     const type = `<span class="note-type">${esc(tagLabel(kindOf(table, note.kind)))}</span>`;
     return `<span class="step-note-line" data-note="${note.id}" data-note-place="${esc(place)}">` +
-      `${type}<span class="note-words"${editable ? ` data-note-edit="${note.id}"` : ""}>${body}</span>${pencil}${toast}</span>`;
+      `${type}<span class="note-words"${editable ? ` data-note-edit="${note.id}"` : ""}>${body}</span>${toast}${pencil}</span>`;
   }
   return `<p class="notes-para" data-note="${note.id}" data-note-place="${esc(place)}">` +
-    `${leadHTML}<span class="note-words"${editable ? ` data-note-edit="${note.id}"` : ""}>${body}</span>${link}${pencil}${toast}</p>`;
+    // ⚠️ THE PENCIL'S ANCHOR IS LAST, AFTER THE TOAST. It is zero-width and the pencil is
+    //    positioned off it, so an anchor placed before the toast would put the pencil on top of the
+    //    words "Saved · Undo" for the six seconds that offer is up.
+    `${leadHTML}<span class="note-words"${editable ? ` data-note-edit="${note.id}"` : ""}>${body}</span>${link}${toast}${pencil}</p>`;
 }
 
 // One note, EDITING: the note lifts onto a small panel and its controls sit in the panel's footer.

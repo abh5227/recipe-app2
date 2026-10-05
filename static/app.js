@@ -23,6 +23,8 @@ import { noteRowHTML, newNoteBoxHTML, notePatchBody, noteTextChanged, noteEditTe
          undoToastHTML, addNoteButtonHTML, tagLabel, kindOf, pickBarHTML,
          noteStepChanged } from "./note-ui.js";
 import { pickerRows, filterRows, startCursor, moveCursor, stepRowsOf } from "./step-picker.js";
+import { resolveNoteSteps, draftSetText, draftSetKind, draftSetStep, draftAdd, draftDelete,
+         draftRestore, notesPayload } from "./note-draft.js";
 import { noteTextHTML, stepNoteIndex } from "./note-text.js";
 import { makeHold, HOLD_MS } from "./hover-hold.js";
 // ⚠️ THE KIND TABLE IS ONE FILE, IMPORTED, NOT A COPY KEPT IN STEP BY A TEST. Vite inlines
@@ -1185,6 +1187,38 @@ function noteOne(n, opts) {
 function currentSteps() {
   const d = (view && view.editMode && view.draft) ? view.draft : (view && view.data);
   return (d && d.steps) || [];
+}
+
+// ⚠️ IN EDIT MODE A NOTE IS A DRAFT ROW, AND IT IS RESOLVED AGAINST THE DRAFT'S STEPS. The server
+// resolved step_no for the rows it sent, and the draft may since have gained a step or lost one, so
+// a link to a step the cook has just deleted has to read as unlinked BEFORE the save rather than
+// only after it. Reading view.data here is what made Edit mode show the database rather than the
+// edit.
+function noteRows() {
+  if (view && view.editMode && view.draft) {
+    return resolveNoteSteps(view.draft.notes || [], view.draft.steps || []);
+  }
+  return (view && view.data && view.data.notes) || [];
+}
+
+// Whether a note write goes to its own endpoint now or waits for Save changes. One question, asked
+// in one place, so the six write paths below cannot answer it differently.
+function noteHeld() {
+  return !!(view && view.editMode && view.draft);
+}
+
+// A held write: swap the draft's list, mark the page dirty exactly as a step or an ingredient edit
+// does, and repaint. Nothing reaches the network.
+function holdNotes(next) {
+  view.draft.notes = next;
+  markDirty();
+  repaintNotes();
+  return Promise.resolve();
+}
+
+// The note as the DRAFT holds it, which is what a held write has to read and change.
+function draftNote(id) {
+  return (view.draft.notes || []).find((n) => String(n.id) === String(id));
 }
 
 // The picker's rows for one note: the method, filtered by what has been typed, with the cursor on
@@ -2836,16 +2870,24 @@ function handlePlanAheadInput(el) {
 //    so a note written through its own endpoint afterwards is not in it. Reading the live rows is
 //    what keeps this block showing what the database actually holds.
 function ieNotesHTML(_d) {
-  const rows = (view.data.notes || []);
+  const rows = noteRows();
   // ⚠️ THE SAME ARRANGEMENT THE RECIPE PAGE DRAWS, from the same function. This built its own
   //    group loop with its own heading class, so the STEP NOTES group and the markers would have
   //    had to be written twice and kept in step by hand.
   const body = notesBodyHTML(rows, { editable: true, place: "ie" })
     || `<p class="notes-empty">No notes yet.</p>`;
+  // ⚠️ THE HINT IS GONE BECAUSE THE BEHAVIOUR IT WARNED ABOUT IS. "Notes save as you type" was
+  //    there so Cancel would not surprise a cook whose note had already been written. Notes are
+  //    held in the draft now and Cancel discards them like everything else on this screen, so the
+  //    line would be wrong as well as unnecessary.
+  // ⚠️ AND THE ADDER WEARS "+ add step"'s CLOTHES, which is the same .adder in the same
+  //    .step-adders row the method uses. A second look for the same gesture is a second thing to
+  //    learn.
   return `<div class="ie-block ie-note-block"><span class="ie-vlabel">Notes</span>
-      <p class="ie-note-aside">Notes save as you type.</p>
       ${body}${noteNewBoxHTML("general")}
-      <button type="button" class="ie-add" data-add-note="general">+ Add a note</button>
+      <div class="step-adders">
+        <button type="button" class="adder" data-add-note="general">+ Add a note</button>
+      </div>
       ${noteUndoHTML()}</div>`;
 }
 // (Image path is intentionally NOT editable here — real photo upload is the next feature; the recipe's
@@ -3383,14 +3425,16 @@ function draftPayload() {
       ext_step_id: w.ext_step_id == null ? null : +w.ext_step_id })),
     storage: (view.draft.storage || []).filter((x) => t(x.label)).map((x) => ({
       where_kept: t(x.where_kept) || "fridge", applies_to: t(x.applies_to) || null, label: t(x.label) })),
-    // ⚠️ `notes` IS DELIBERATELY NOT SENT, AND ITS ABSENCE IS THE FEATURE. A note is written through
-    //    its own endpoint the moment it is typed, in reading view and in Edit mode alike, so this
-    //    payload has no opinion about notes and write_notes reads an absent key as "leave them
-    //    alone". Sending them would make the recipe PUT a second note editor, racing the first: a
-    //    cook who added a note during an edit session would have it overwritten by the draft copy
-    //    taken before that note existed.
-    //    An explicit [] still clears the list, which is how an OLDER bundle empties it, and
-    //    test_an_explicit_empty_list_still_clears_them keeps that door working through the window.
+    // ⚠️ `notes` IS SENT AGAIN, AND IT IS THE DRAFT'S LIST RATHER THAN THE DATABASE'S. Edit mode
+    //    holds note changes until Save changes, so Cancel discards them like every other field on
+    //    that screen. The race this key was removed to avoid is gone with it: nothing in Edit mode
+    //    writes a note through its own endpoint any more, so there is no second writer to collide
+    //    with. On the recipe page notes still save as you type, and that path never builds a
+    //    draftPayload.
+    //    ⚠️ write_notes MATCHES AND UPDATES IN PLACE, by wording first and then by order, so a
+    //    save that changed no note writes the same rows back with the same ids. An explicit []
+    //    still clears the list, which is how the editor empties it.
+    notes: notesPayload(view.draft.notes),
   };
 }
 
@@ -4456,7 +4500,10 @@ function noteApi(path, opts) {
 // local copy is what keeps the page agreeing with the database after a collision.
 function adoptNotes(data) {
   if (data && data.notes) view.data.notes = data.notes;
-  if (view.draft) view.draft.notes = view.data.notes;
+  // ⚠️ IT DOES NOT REACH INTO THE DRAFT ANY MORE. It used to copy the server's list over
+  //    view.draft.notes, which is now the cook's unsaved work. Nothing in Edit mode calls a note
+  //    endpoint, so this only ever ran in reading view, and the line was a loaded gun pointed at
+  //    the thing Cancel exists to protect.
 }
 
 function noteError(msg) {
@@ -4500,7 +4547,7 @@ function flashSaved(id, before) {
 function saveOpenNote() {
   const id = noteState.editingId;
   if (id == null) return Promise.resolve();
-  const note = (view.data.notes || []).find((n) => n.id === id);
+  const note = noteRows().find((n) => String(n.id) === String(id));
   const draft = noteState.drafts.get(id);
   // ⚠️ AN UNCHANGED SAVE SENDS NOTHING. Click-away fires on every blur, so a PATCH per blur would be
   //    a write per glance.
@@ -4517,6 +4564,10 @@ function saveOpenNote() {
   //    they were a moment ago.
   const before = { text: note.text };
   closeNoteEditors();
+  // ⚠️ IN EDIT MODE THIS IS A LIST CHANGE AND NOT A WRITE, so there is no "Saved" toast and no
+  //    Undo offer: the note is not saved yet, and saying so would be a lie. The page's own Cancel
+  //    is the way back, which is the whole reason notes rejoined the draft.
+  if (noteHeld()) return holdNotes(draftSetText(view.draft.notes, id, String(draft).trim()));
   return noteApi(`/notes/${id}`, { method: "PATCH", body: notePatchBody({ text: draft }) })
     .then((data) => { adoptNotes(data); flashSaved(id, before); repaintNotes(); })
     .catch((e) => { noteError(e.message); repaintNotes(); });
@@ -4531,12 +4582,31 @@ function saveNewNote() {
   // "general" is the Notes section's own adder: a note attached to no step. Anything else is a step id.
   if (String(where) !== "general") body.step_id = +where;
   closeNoteEditors();
+  if (noteHeld()) {
+    return holdNotes(draftAdd(view.draft.notes,
+      { text, stepId: String(where) === "general" ? null : +where }));
+  }
   return noteApi("/notes", { method: "POST", body })
     .then((data) => { adoptNotes(data); if (data.note) flashSaved(data.note.id); repaintNotes(); })
     .catch((e) => { noteError(e.message); repaintNotes(); });
 }
 
 function deleteNote(id) {
+  if (noteHeld()) {
+    // ⚠️ THE UNDO IS A LIST OPERATION TOO, so Cancel still throws the whole session away. The row
+    //    itself is kept rather than a patch that would re-create it, because nothing has been
+    //    written and there is nothing to re-create it from.
+    const row = draftNote(id);
+    const at = (view.draft.notes || []).findIndex((n) => String(n.id) === String(id));
+    if (!row) return Promise.resolve();
+    noteState.undo = { token: `d${id}`, what: "Deleted", row, at };
+    setTimeout(() => {
+      if (noteState.undo && noteState.undo.token === `d${id}`) {
+        noteState.undo = null; repaintNotes();
+      }
+    }, NOTE_TOAST_MS);
+    return holdNotes(draftDelete(view.draft.notes, id));
+  }
   return noteApi(`/notes/${id}`, { method: "DELETE" })
     .then((data) => {
       adoptNotes(data);
@@ -4569,6 +4639,7 @@ function undoNote(token) {
   const u = noteState.undo;
   if (!u || u.token !== token) return Promise.resolve();
   noteState.undo = null;
+  if (noteHeld()) return holdNotes(draftRestore(view.draft.notes, u.row, u.at));
   return noteApi("/notes", { method: "POST", body: u.body })
     .then((data) => { adoptNotes(data); repaintNotes(); })
     .catch((e) => noteError(e.message));
@@ -4576,8 +4647,9 @@ function undoNote(token) {
 
 function setNoteKind(id, kind) {
   noteState.kindMenuFor = null;
-  const was = (view.data.notes || []).find((n) => n.id === id);
+  const was = noteRows().find((n) => String(n.id) === String(id));
   const before = was ? { kind: was.kind } : null;
+  if (noteHeld()) return holdNotes(draftSetKind(view.draft.notes, id, kind));
   return noteApi(`/notes/${id}`, { method: "PATCH", body: notePatchBody({ kind }) })
     .then((data) => { adoptNotes(data); flashSaved(id, before); repaintNotes(); })
     .catch((e) => { noteError(e.message); repaintNotes(); });
@@ -4588,11 +4660,12 @@ function setNoteKind(id, kind) {
 // omitted step_id means "leave the link alone" and a null one means "take it off".
 function setNoteStep(id, stepId) {
   noteState.stepMenuFor = null;
-  const was = (view.data.notes || []).find((n) => n.id === id);
+  const was = noteRows().find((n) => String(n.id) === String(id));
   // Picking the step it is already on is not a change, so it is not a write. The picker opens with
   // the current link under the cursor, which makes this the easiest key to press.
   if (was && !noteStepChanged(was, stepId)) { closePicker(); repaintNotes(); return Promise.resolve(); }
   const before = was ? { step_id: was.step_id == null ? null : was.step_id } : null;
+  if (noteHeld()) { closePicker(); return holdNotes(draftSetStep(view.draft.notes, id, stepId)); }
   return noteApi(`/notes/${id}`, { method: "PATCH", body: notePatchBody({ step_id: stepId }) })
     .then((data) => { adoptNotes(data); flashSaved(id, before); repaintNotes(); })
     .catch((e) => { noteError(e.message); repaintNotes(); });
@@ -4726,7 +4799,7 @@ function handleNoteAction(e) {
     saveOpenNote();
     noteState.editingId = id;
     noteState.editingPlace = place;
-    const note = (view.data.notes || []).find((n) => n.id === id);
+    const note = noteRows().find((n) => String(n.id) === String(id));
     // ⚠️ THE DRAFT IS SEEDED FROM WHAT THE PAGE SHOWS, NOT FROM THE ROW. Seeding it from note.text
     //    put the stripped label and the author's old step number straight back into the box, which
     //    is the disagreement this round exists to end. noteEditText is the one rule both sides read.
@@ -4760,7 +4833,7 @@ document.addEventListener("keydown", (e) => {
   const find = e.target && e.target.closest && e.target.closest("[data-note-pick-find]");
   if (!find) return;
   const id = +find.dataset.notePickFind;
-  const note = (view.data.notes || []).find((n) => n.id === id);
+  const note = noteRows().find((n) => String(n.id) === String(id));
   if (!note) return;
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     e.preventDefault();

@@ -2649,9 +2649,14 @@ a.note-lead-step { color: inherit; }
 
 /* The owner's one mark at rest. It is in the markup always and fades in, because a control revealed
    by being INSERTED moves the text as the pointer crosses it — the rule the ⋯ clusters follow. */
+/* ⚠️ AND IT IS OUT OF THE TEXT FLOW, on the same zero-width anchor "+ note" uses. At opacity 0 an
+   inline button still takes width, so a note whose last line nearly fills the measure wrapped one
+   more line for a mark nobody could see. */
+.note-pencil-slot { position: relative; display: inline-block; width: 0; height: 0; }
 .note-pencil {
-  margin-left: .35em; padding: 0; border: 0; background: none; cursor: pointer;
-  font-size: .9em; line-height: 1; color: var(--ink-soft); vertical-align: baseline;
+  position: absolute; left: .35em; top: -1.15em; white-space: nowrap;
+  padding: 0; border: 0; background: none; cursor: pointer;
+  font-size: .9em; line-height: 1; color: var(--ink-soft);
   opacity: 0; transition: opacity .12s ease;
 }
 .notes-para:hover .note-pencil, .step-note-line:hover .note-pencil,
@@ -2910,9 +2915,30 @@ li.step.step-tapped .step-add-note,
 .notes-add:hover { color: var(--green-lift); text-decoration: underline; }
 .notes-add:focus-visible { outline: 1px dotted currentColor; outline-offset: 2px; border-radius: 2px; }
 .notes-empty { margin: 0; font-style: italic; color: var(--ink-soft); }
-.ie-note-aside {
-  margin: 0 0 10px; font-family: var(--font-sans); font-size: 11px; color: var(--ink-soft);
+/* ---------- the Notes block inside Edit mode ---------- */
+/* ⚠️ THE BLOCK IS NOT A FLEX ROW, AND THAT IS WHAT PUT A HINT BESIDE A HEADING. .ie-block lays
+   its children out in a wrapping row and gives only .ie-vlabel a full-width line, so every other
+   child landed on a shared row and VARIATIONS sat next to the aside. The notes block is a block.
+   ⚠️ AND IT HAS SPACING ABOVE IT LIKE ANY OTHER SECTION. It is the last thing on the editing page
+   and sat flush against the step adders. */
+.ie-note-block { display: block; margin: 26px 0 0; }
+.ie-note-block > .ie-vlabel { display: block; margin-bottom: 6px; }
+/* ⚠️ THE NOTE TEXT TAKES THE READING SIZE, which .notes carries as a CONTAINER rule and Edit
+   mode never had. A note set at the card's 18.5px beside a step being edited at 15px is the thing
+   that read wrong in the click-through. */
+.ie-note-block .notes-para { font-size: 15px; line-height: 1.6; color: var(--ink-soft); }
+.ie-note-block .notes-kind:first-child { margin-top: 0; }
+/* ⚠️ EACH NOTE SITS IN THE DASHED FIELD THE OTHER EDIT ROWS USE (Andy's pick, look B). The same
+   edge and the same tint on hover, so a note reads as one more field on the page rather than as a
+   paragraph that happens to be clickable. The pencil fades in exactly as it does when reading. */
+.ie-note-block .notes-para {
+  border: 1px dashed color-mix(in srgb, var(--ink-soft) 45%, transparent);
+  border-radius: 7px; padding: 7px 9px; margin: 0 0 8px;
 }
+.ie-note-block .notes-para:hover { background: color-mix(in srgb, var(--berry) 5%, transparent); }
+/* The box is the note's own edge, so the group's bullet hangs OUTSIDE it rather than inside. */
+.ie-note-block .notes-group.marked .notes-para { padding-left: 1.35em; text-indent: -1.1em; }
+.ie-note-block .step-adders { margin-top: 12px; }
 
 /* ---------- saved / deleted, each with its undo ---------- */
 /* role="status", so it is announced without the focus moving. */
