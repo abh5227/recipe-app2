@@ -883,6 +883,72 @@ def note_kind(para):
     return None
 
 
+# ---------------------------------------------------------------------------------------------
+# A note's leading label: is it a TITLE?
+#
+# ⚠️ NOTHING CALLS THIS YET, AND THAT IS WHY IT IS HERE. The rule was written for the review list
+# that produced reports/note-titles-candidates.csv, and it lives next to note_kind so that when the
+# titles round reads Andy's decisions there is one rule to read, in the file the importer and the
+# corpus pass already share. A rule that exists only in a scratchpad is a rule the next pass will
+# write again, differently.
+#
+# ⚠️ THREE VERDICTS, AND THE THIRD IS THE POINT. A label this cannot defend is "unclear" and goes to
+# a review list with an empty DECISION column. A title is a judgement about what the author meant,
+# and a guess written into the data is invisible to the next pass.
+#
+# ⚠️ "not a title" FIRES ZERO TIMES ON THIS CORPUS. No note in the 300 opens with a discourse
+# marker, so that branch is stated by the tests and by nothing in the data. Said here rather than
+# left for someone to discover.
+
+# NOT A TITLE: a discourse marker. It adds emphasis and names nothing, so there is no heading in it.
+NOTE_TITLE_MARKERS = frozenset({
+    "important", "warning", "caution", "caveat", "ps", "p.s", "nb", "note that",
+    "remember", "fyi", "heads up", "disclaimer", "attention", "careful"})
+# UNCLEAR: anything that reads as a CLAUSE rather than a name. A subordinator, a pronoun, a modal or
+# a negation turns the label into a sentence about the cook, and a sentence is not a heading.
+NOTE_TITLE_CLAUSE_WORDS = frozenset({
+    "if", "when", "while", "unless", "because", "although", "since", "that", "which",
+    "you", "your", "i", "we", "they", "it", "can", "could", "will", "would", "should",
+    "must", "may", "don't", "dont", "do", "not", "never"})
+NOTE_TITLE_MAX_WORDS = 5
+
+
+def note_lead(text):
+    """(label, rest) when a paragraph opens with a leading label, else None.
+
+    ⚠️ THE SAME _NOTE_LEAD note_kind READS, so "a leading label" means one thing in this file and in
+    static/note-blocks.js, which pins the pattern from the other side."""
+    m = _NOTE_LEAD.match(text or "")
+    return (m.group(1), m.group(2)) if m else None
+
+
+def note_label_is_known(label):
+    """True when the kind table already names this label, so it is a KIND rather than a title."""
+    want = _norm_label(label)
+    return any(_norm_label(l) == want for k in NOTE_KINDS for l in k["labels"])
+
+
+def note_title_verdict(label):
+    """A leading label -> ("title" | "not a title" | "unclear", the reason).
+
+    The reason is carried so a review list can say WHY a label is waiting on a person, rather than
+    leaving the decision to be made twice."""
+    words = [w.strip(".,").lower().replace("\u2019", "'") for w in str(label or "").split()]
+    flat = " ".join(words)
+    if not words:
+        return "unclear", "no label"
+    if flat in NOTE_TITLE_MARKERS:
+        return "not a title", "a discourse marker, it names nothing"
+    if len(words) > NOTE_TITLE_MAX_WORDS:
+        return "unclear", f"{len(words)} words, longer than a heading"
+    hit = sorted({w for w in words if w in NOTE_TITLE_CLAUSE_WORDS})
+    if hit:
+        return "unclear", f"reads as a clause ({', '.join(hit)})"
+    if not str(label)[:1].isupper():
+        return "unclear", "does not start with a capital"
+    return "title", f"a {len(words)}-word name"
+
+
 def clean_notes(text):
     """The notes DATA rule -> (cleaned text, [what was removed]).
 
