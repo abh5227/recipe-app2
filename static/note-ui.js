@@ -78,7 +78,7 @@ export function noteBodyHTML(note, table, esc, { selfStepId = null } = {}) {
 export function noteRowHTML(note, table, esc, opts = {}) {
   const { editable = false, selfStepId = null, editing = false, draft = null,
           saved = false, place = "", where = "section", steps = null,
-          kindMenu = false, stepMenu = false } = opts;
+          kindMenu = false, stepMenu = false, lead = null } = opts;
   if (editing) return noteEditHTML(note, table, esc, { draft, place, steps, kindMenu, stepMenu });
   const body = noteBodyHTML(note, table, esc, { selfStepId });
   // ⚠️ THE SAME SHAPE A WAIT'S LINK HAS, for the same reason: one pattern for "this belongs to step
@@ -86,8 +86,17 @@ export function noteRowHTML(note, table, esc, opts = {}) {
   //    attached to a heading reads without it rather than with a wrong one. NOT inside the step's
   //    own popover, where it would point at the step the reader is already standing on — the same
   //    reasoning as the self-reference rule above.
-  const link = (where !== "pop" && note.step_no)
+  const link = (where !== "pop" && !lead && note.step_no)
     ? ` <a class="meta-step note-step" href="#" data-note-step="${note.step_no}">(step ${note.step_no})</a>`
+    : "";
+  // ⚠️ THE GROUP SAYS WHERE, THE LEAD SAYS WHICH, AND THE TRAILING LINK GOES. A note under STEP
+  //    NOTES opens with the step it belongs to and its type, so repeating "(step N)" at the end
+  //    would print the same pointer twice in one sentence. The number is the step's CURRENT one and
+  //    it is a link, the same promise the reference inside a note's words already makes.
+  const leadHTML = lead
+    ? `<span class="note-lead">` +
+      `<a class="meta-step note-lead-step" href="#" data-note-step="${lead.no}">Step ${lead.no}</a>` +
+      ` &middot; ${esc(lead.type)} &mdash; </span>`
     : "";
   const pencil = editable
     ? `<button type="button" class="note-pencil" data-note-edit="${note.id}" aria-label="Edit this note">&#9998;</button>`
@@ -103,7 +112,7 @@ export function noteRowHTML(note, table, esc, opts = {}) {
       `${type}<span class="note-words"${editable ? ` data-note-edit="${note.id}"` : ""}>${body}</span>${pencil}${toast}</span>`;
   }
   return `<p class="notes-para" data-note="${note.id}" data-note-place="${esc(place)}">` +
-    `<span class="note-words"${editable ? ` data-note-edit="${note.id}"` : ""}>${body}</span>${link}${pencil}${toast}</p>`;
+    `${leadHTML}<span class="note-words"${editable ? ` data-note-edit="${note.id}"` : ""}>${body}</span>${link}${pencil}${toast}</p>`;
 }
 
 // One note, EDITING: the note lifts onto a small panel and its controls sit in the panel's footer.

@@ -6,8 +6,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
-import { noteBlocks, noteBlocksFromText, noteParagraphs, classifyNote, displayText }
-  from "../../static/note-blocks.js";
+import { noteBlocks, noteBlocksFromText, noteParagraphs, classifyNote, displayText,
+         noteSections, linkedStepNo, STEP_NOTES_HEADER } from "../../static/note-blocks.js";
 
 const TABLE = JSON.parse(fs.readFileSync(
   path.join(import.meta.dirname, "../../static/note-kinds.json"), "utf8")).kinds;
@@ -109,4 +109,98 @@ test("rows keep their id, their step link and their references through the group
   assert.equal(block.notes[0].id, 7);
   assert.equal(block.notes[0].step_no, 3);
   assert.equal(block.notes[0].refs[0].match_text, "step 3");
+});
+
+// ---------------------------------------------------------------------------------------------
+// noteSections: the Notes section's arrangement, which is ONE rule read by the recipe page and by
+// Edit mode. The "linked" question is linkedStepNo and nothing else asks it a second way.
+// ---------------------------------------------------------------------------------------------
+const sect = (rows) => noteSections(rows, TABLE);
+const sectShape = (rows) => {
+  const { steps, blocks } = sect(rows);
+  return [steps.map((n) => [n.stepLinkNo, n.display]),
+          blocks.map((b) => [b.header, b.notes.map((n) => n.display)])];
+};
+
+test("linked means an own step link OR a step named in the words", () => {
+  assert.equal(linkedStepNo(row({ step_id: 7, step_no: 3 })), 3, "its own link");
+  assert.equal(linkedStepNo(row({ refs: [{ ref_index: 0, step_id: 7, step_no: 5 }] })), 5,
+    "a step named in its words");
+  assert.equal(linkedStepNo(row({})), null, "neither");
+});
+
+test("a link whose step became a heading is NOT linked, because there is no number to order by", () => {
+  // The server resolves step_no to null for a heading, which is the same rule a wait follows: a
+  // wrong number is worse than no link. The note keeps its stored step_id and reads in its type
+  // group rather than under a STEP NOTES heading that cannot say which step.
+  assert.equal(linkedStepNo(row({ step_id: 7, step_no: null })), null);
+  const [steps, blocks] = sectShape([row({ id: 1, text: "Tip: watch it.", kind: "tips",
+                                           step_id: 7, step_no: null })]);
+  assert.deepEqual(steps, []);
+  assert.deepEqual(blocks, [["Tips", ["watch it."]]]);
+});
+
+test("an own link is asked first and alone, so a mention does not overrule it", () => {
+  // A note carrying step_id is where its author put it. Its own link resolving to nothing does not
+  // quietly re-file it under a step it merely mentions.
+  assert.equal(linkedStepNo(row({ step_id: 7, step_no: null,
+                                  refs: [{ ref_index: 0, step_id: 9, step_no: 4 }] })), null);
+  assert.equal(linkedStepNo(row({ step_id: 7, step_no: 2,
+                                  refs: [{ ref_index: 0, step_id: 9, step_no: 4 }] })), 2);
+});
+
+test("a linked note leaves its type group entirely and appears once", () => {
+  const [steps, blocks] = sectShape([
+    row({ id: 1, kind: "tips", text: "Tip: rest it.", step_id: 4, step_no: 2 }),
+    row({ id: 2, kind: "tips", text: "Tip: salt early." }),
+  ]);
+  assert.deepEqual(steps, [[2, "rest it."]]);
+  assert.deepEqual(blocks, [["Tips", ["salt early."]]], "the linked one is not here as well");
+});
+
+test("step notes are ordered by step number, then by the order they were given in", () => {
+  const [steps] = sectShape([
+    row({ id: 1, text: "c", step_id: 30, step_no: 3 }),
+    row({ id: 2, text: "a", step_id: 10, step_no: 1 }),
+    row({ id: 3, text: "b", step_id: 10, step_no: 1 }),
+  ]);
+  assert.deepEqual(steps, [[1, "a"], [1, "b"], [3, "c"]],
+    "two notes on one step keep the order the cook put them in");
+});
+
+test("a note linked ONLY by its words sorts on the step it names", () => {
+  const [steps, blocks] = sectShape([
+    row({ id: 1, text: "Mix, then see step 6 for the rest.",
+          refs: [{ ref_index: 0, match_text: "step 6", step_id: 60, step_no: 6 }] }),
+    row({ id: 2, text: "Early one.", step_id: 10, step_no: 2 }),
+  ]);
+  assert.deepEqual(steps.map((x) => x[0]), [2, 6]);
+  assert.deepEqual(blocks, []);
+});
+
+test("with nothing linked there is no step group at all", () => {
+  const [steps, blocks] = sectShape([row({ id: 1, text: "Just a note." })]);
+  assert.deepEqual(steps, [], "no empty STEP NOTES heading on the 294 recipes without one");
+  assert.deepEqual(blocks, [["Notes", ["Just a note."]]]);
+});
+
+test("the step group carries the SAME display text the type group would have", () => {
+  // One decorator, so a note does not read one way under STEP NOTES and another under its type.
+  const linked = sect([row({ id: 1, kind: "variations", text: "Variation: add cheese.",
+                             step_id: 4, step_no: 2 })]).steps[0];
+  const plain = sect([row({ id: 1, kind: "variations", text: "Variation: add cheese." })])
+    .blocks[0].notes[0];
+  assert.equal(linked.display, "add cheese.");
+  assert.equal(linked.display, plain.display);
+  assert.equal(linked.displayStripped, plain.displayStripped);
+});
+
+test("an unknown kind is settled the same way in both halves", () => {
+  const linked = sect([row({ id: 1, kind: "nonsense", text: "x", step_id: 4, step_no: 1 })]).steps[0];
+  assert.equal(linked.kind, "notes", "the fallback kind, as noteBlocks would have given it");
+});
+
+test("the step-notes header is a plain string, uppercased by the shared heading rule", () => {
+  assert.equal(STEP_NOTES_HEADER, "Step notes");
+  assert.equal(STEP_NOTES_HEADER, STEP_NOTES_HEADER.trim());
 });

@@ -66,6 +66,17 @@ function displayParts(row, table) {
 // `stripped` is what tells the renderer whether the first letter needs a capital.
 function displayText(row, table) { return displayParts(row, table).text; }
 
+// A row with its kind settled and its display text worked out, which is what every renderer wants
+// and none of them should compute for itself.
+// ⚠️ ONE DECORATOR, SO A NOTE IN THE STEP NOTES GROUP AND THE SAME NOTE IN A TYPE GROUP CANNOT
+// READ DIFFERENTLY. noteBlocks did this inline and noteSections would have been a second copy.
+function decorate(row, table) {
+  const headers = new Map(table.map((k) => [k.kind, k.header]));
+  const kind = headers.has(row.kind) ? row.kind : table[0].kind;
+  const d = displayParts({ ...row, kind }, table);
+  return { ...row, kind, display: d.text, displayStripped: d.stripped };
+}
+
 // Note ROWS -> [{kind, header, notes: [row]}], in order of a kind's first appearance.
 // ⚠️ A KIND IS ONE BLOCK EVEN WHEN ITS ROWS ARE NOT ADJACENT. beans writes Note, Note, Tip and reads
 // as two blocks; a recipe that alternates would otherwise print the same header twice.
@@ -74,16 +85,58 @@ export function noteBlocks(rows, table) {
   const order = [];
   const byKind = new Map();
   for (const row of rows || []) {
-    const kind = headers.has(row.kind) ? row.kind : table[0].kind;
-    if (!byKind.has(kind)) {
-      byKind.set(kind, { kind, header: headers.get(kind), notes: [] });
-      order.push(kind);
+    const d = decorate(row, table);
+    if (!byKind.has(d.kind)) {
+      byKind.set(d.kind, { kind: d.kind, header: headers.get(d.kind), notes: [] });
+      order.push(d.kind);
     }
-    const d = displayParts({ ...row, kind }, table);
-    byKind.get(kind).notes.push({ ...row, display: d.text, displayStripped: d.stripped });
+    byKind.get(d.kind).notes.push(d);
   }
   return order.map((k) => byKind.get(k)).filter((b) => b.notes.length);
 }
+
+// ⚠️ ONE DEFINITION OF "LINKED", AND EVERY CALLER ASKS IT RATHER THAN DECIDING FOR ITSELF. A note
+// reaches a step by its own link (step_id, chosen in the editor) or by naming one in its words
+// (a stored reference), and both are the same thing to a reader standing on that step. It is the
+// rule the step note tag already follows (stepNoteIndex), stated once for the section too.
+// ⚠️ IT READS THE NUMBER, NOT THE ID, WHICH IS WHAT MAKES A HEADING FALL OUT. The server resolves
+// step_no to null for a link whose step has become a heading or gone, and a note the page cannot
+// print a number for does not belong in a group ordered by number. Such a note keeps its stored
+// link and reads in its type group, which is the rule a wait already follows: a wrong number is
+// worse than no link.
+// ⚠️ AND AN OWN LINK IS ASKED FIRST AND ALONE. A note carrying step_id is where its author put
+// it, so a reference in its words is not consulted to overrule that, and a note whose own link
+// resolves to nothing is not quietly re-filed under a step it merely mentions.
+export function linkedStepNo(note) {
+  if (note.step_id) return note.step_no || null;
+  const ref = (note.refs || []).find((r) => r.step_no);
+  return ref ? ref.step_no : null;
+}
+
+// Note ROWS -> {steps: [row], blocks: [{kind, header, notes}]}, which is the whole Notes section in
+// one answer: what belongs to a step, in step order, then everything else grouped by type.
+// ⚠️ A LINKED NOTE IS IN EXACTLY ONE OF THE TWO. It used to appear under its type with a
+// trailing "(step N)", and showing it in both places would say the same thing twice on one screen.
+// ⚠️ ORDERED BY THE STEP NUMBER, THEN BY THE NOTE'S OWN POSITION. Two notes on one step keep the
+// order the cook put them in, which a sort on the number alone does not promise.
+// ⚠️ ONE FUNCTION, THREE RENDERERS: the recipe page, Edit mode's block and the tests. The
+// section looked one way in reading view and another in Edit mode for exactly as long as each
+// built its own arrangement.
+export function noteSections(rows, table) {
+  const linked = [], rest = [];
+  for (const row of rows || []) {
+    (linkedStepNo(row) != null ? linked : rest).push(row);
+  }
+  const steps = linked
+    .map((row, i) => ({ row, no: linkedStepNo(row), i }))
+    .sort((a, b) => (a.no - b.no) || (a.i - b.i))
+    .map(({ row, no }) => ({ ...decorate(row, table), stepLinkNo: no }));
+  return { steps, blocks: noteBlocks(rest, table) };
+}
+
+// The STEP NOTES group's heading. A plain string, uppercased by the same CSS rule that uppercases a
+// step section heading, so it is not shouted here as well.
+export const STEP_NOTES_HEADER = "Step notes";
 
 // The old string shape, for a payload that predates migration 060.
 // ⚠️ NOTHING ON THE PAGE CALLS THIS. app.js renders rows through noteBlocks; this is reachable only
@@ -97,4 +150,4 @@ export function noteBlocksFromText(text, table) {
   }), table);
 }
 
-export { noteParagraphs, classifyNote, normLabel, displayText, displayParts, LEAD };
+export { noteParagraphs, classifyNote, normLabel, displayText, displayParts, decorate, LEAD };

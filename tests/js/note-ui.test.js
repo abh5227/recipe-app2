@@ -341,3 +341,36 @@ test("the walk is one walk: the parts the link and the plain text come from", ()
   assert.equal(parts[1].step_no, 8);
   assert.equal(parts[1].v, "step 9", "the author's words are still what was matched");
 });
+
+// --- the STEP NOTES lead -------------------------------------------------------------------------
+// "Step 4 · Tip — " opens a note in the STEP NOTES group. The number is the step's CURRENT one and
+// it is a link; the trailing "(step N)" goes, because the lead already said it.
+
+test("the lead opens the note with a linked step number and the type", () => {
+  const html = noteRowHTML(note({ step_id: 4, step_no: 2, text: "Rest it." }), TABLE, esc,
+    { lead: { no: 2, type: "Tip" } });
+  assert.match(html, /<span class="note-lead">/);
+  assert.match(html, /data-note-step="2">Step 2<\/a>/, "the number is a link, like other step links");
+  assert.match(html, /&middot; Tip &mdash; /);
+  assert.ok(html.indexOf('class="note-lead"') < html.indexOf('class="note-words"'),
+    "the lead is inline before the words, never on its own line");
+});
+
+test("a led note does NOT also print the trailing (step N)", () => {
+  const n = note({ step_id: 4, step_no: 2, text: "Rest it." });
+  assert.match(noteRowHTML(n, TABLE, esc, {}), /\(step 2\)/, "without a lead it still does");
+  assert.doesNotMatch(noteRowHTML(n, TABLE, esc, { lead: { no: 2, type: "Tip" } }), /\(step 2\)/);
+});
+
+test("the lead's type is escaped like every other injected string", () => {
+  const html = noteRowHTML(note({ step_no: 1 }), TABLE, esc, { lead: { no: 1, type: '<b>"x"' } });
+  assert.match(html, /&lt;b&gt;&quot;x&quot;/);
+  assert.doesNotMatch(html, /<b>/);
+});
+
+test("a popover note never takes a lead, because the popover IS the step", () => {
+  const html = noteRowHTML(note({ step_id: 4, step_no: 2, text: "Rest it." }), TABLE, esc,
+    { where: "pop", place: "pop:4" });
+  assert.doesNotMatch(html, /note-lead/);
+  assert.doesNotMatch(html, /\(step 2\)/);
+});

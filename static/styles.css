@@ -1286,7 +1286,16 @@ a:hover { color: var(--berry-lift); }
    SUBHEADING is a sentence lifted off one step, so it is bold and normal case and smaller than both.
    The two columns are one decision and not two by construction now, not by care: both read
    --fs-section-label, so there is no second number to keep in step. */
-.steps li.group {
+/* ⚠️ A NOTES GROUP HEADING IS THIS RULE, NOT A COPY OF ITS VALUES. .notes-kind carried its own
+   12px mono block, so the method said "a part starts here" one way and the notes said it another,
+   and nothing stopped the two drifting further. They are one selector list now: change the section
+   treatment and the notes follow by construction. The notes side covers the recipe page, Edit mode
+   and the STEP NOTES group, because all three draw the same .notes-kind through notesBodyHTML.
+   ⚠️ THE UNDERLINE COMES WITH IT. It is part of what a section heading looks like here, and a
+   notes heading that took the size and the colour but not the rule would be a near-match, which is
+   the thing one shared rule exists to stop being possible. */
+.steps li.group,
+.notes-kind {
   font-family: var(--font-mono); font-size: var(--fs-section-label); font-weight: 600;
   letter-spacing: 0.1em; text-transform: uppercase; color: var(--green);
   margin: 22px 0 10px; padding: 0 0 5px; border-bottom: 1.5px solid var(--border-defined);   /* "more defined" (B): defined underline */
@@ -1294,7 +1303,8 @@ a:hover { color: var(--berry-lift); }
 /* A section OPENS A GROUP, which is space above rather than a second rule. 22px against the step
    list's 16px row gap reads as a break; the first heading needs none, because the method column's
    own heading is already above it. */
-.steps li.group:first-child { margin-top: 0; }
+.steps li.group:first-child,
+.notes-kind:first-child { margin-top: 0; }
 /* ⚠️ A SUBHEADING IS A LABEL LIFTED OFF ONE STEP, so it belongs TO that step rather than over a
    group of them, and the spacing is what says so: 4px below against 22px above the next section.
    104 of the ~220 headings are these (46 joined to their step by a colon, 58 by a dash), and at the
@@ -1415,13 +1425,8 @@ a:hover { color: var(--berry-lift); }
    space on top of the margins. On .notes-para it still does the only job it ever had. */
 .notes-para { margin: 0 0 10px; white-space: pre-wrap; }
 .notes-para:last-child { margin-bottom: 0; }
-/* The kind header takes the ingredient column's section treatment, which is what a short label
-   naming a part of the page looks like everywhere else in the app (see .steps li.group). */
-.notes-kind {
-  margin: 16px 0 7px; font-family: var(--font-mono); font-size: 12px; font-weight: 600;
-  letter-spacing: 0.1em; text-transform: uppercase; color: var(--green);
-}
-.notes-kind:first-child { margin-top: 0; }
+/* The kind header IS the step section heading, by sharing its rule rather than restating it. See
+   the selector list above .steps li.group. */
 .hint {
   margin-top: 20px; font-size: 14px; color: var(--ink-soft);
   font-style: italic; font-family: var(--display);
@@ -2614,10 +2619,33 @@ a.meta-step.note-step { font-size: .92em; color: var(--ink-soft); }
 /* ⚠️ ONE SET OF RULES, BECAUSE THERE IS ONE COMPONENT. The reading page, the step popover and Edit
    mode's Notes block all render note-ui.js, so a note that looks right in one place looks right in
    the other two.
-   ⚠️ AND READING IS LIVE, UNCHANGED. .notes, .notes-kind and .notes-para keep every rule they had
-   above: the type is carried by the group heading, the step link is live's own "(step N)" at the
-   end of the words. Everything below is either the OWNER's pencil, the editor, or the popover. A
-   reader who does not own the recipe sees the page exactly as it shipped. */
+   ⚠️ THE TYPE IS STILL CARRIED BY THE GROUP HEADING AND NOWHERE ELSE on the reading page. What
+   changed this round is the ARRANGEMENT (a STEP NOTES group first, a bullet on a group of two or
+   more) and not the note itself: no per-note tag, no dropdown at rest, no divider. Everything
+   below is either the OWNER's pencil, the editor, or the popover. */
+
+/* ⚠️ A MARKER MARKS A LIST, SO IT GOES ON THE GROUP AND NOT ON THE NOTE. Two or more notes under
+   one heading are a list and read better with a bullet; one note is a paragraph. The class is put
+   on the wrapper by notesBodyHTML, so the rule here never has to count anything.
+   ⚠️ AND THE INDENT HANGS. text-indent pulls the first line back by exactly the bullet's width
+   and the padding puts it back, so a note that wraps starts its second line under its own words
+   rather than under the bullet. Without it a three-line note reads as three bullets' worth of
+   ragged left edge. */
+.notes-group.marked .notes-para { padding-left: 1.1em; text-indent: -1.1em; }
+.notes-group.marked .notes-para::before {
+  content: "\2022"; color: var(--ink-soft); display: inline-block; width: 1.1em; text-indent: 0;
+}
+
+/* The STEP NOTES lead: "Step 4 · Tip — ", the step's CURRENT number and the note's type, in the
+   same mono the group headings use one size down. It is INLINE with the note's first words on
+   purpose: a lead on its own line is the floating "(step 1)" line that round 1 was rejected for. */
+.note-lead {
+  font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: .07em;
+  text-transform: uppercase; color: var(--green);
+}
+/* The number is a link with the same promise a wait's link makes, and it takes the lead's colour
+   rather than .note-step's grey, because it is part of the label it sits in. */
+a.note-lead-step { color: inherit; }
 
 /* The owner's one mark at rest. It is in the markup always and fades in, because a control revealed
    by being INSERTED moves the text as the pointer crosses it — the rule the ⋯ clusters follow. */
@@ -2773,10 +2801,6 @@ li.step.step-tapped .step-add-note,
 .notes-empty { margin: 0; font-style: italic; color: var(--ink-soft); }
 .ie-note-aside {
   margin: 0 0 10px; font-family: var(--font-sans); font-size: 11px; color: var(--ink-soft);
-}
-.ie-notes-kind {
-  margin: 14px 0 6px; font-family: var(--font-mono); font-size: 11px; font-weight: 600;
-  letter-spacing: .1em; text-transform: uppercase; color: var(--green);
 }
 
 /* ---------- saved / deleted, each with its undo ---------- */

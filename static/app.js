@@ -18,9 +18,9 @@ import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
 import { browseList, cardTags, monthYear } from "./browse.js";
 import { panelBlocks } from "./panel-blocks.js";
-import { noteBlocks, displayText } from "./note-blocks.js";
+import { noteSections, displayText, STEP_NOTES_HEADER } from "./note-blocks.js";
 import { noteRowHTML, newNoteBoxHTML, notePatchBody, noteTextChanged, noteEditText,
-         undoToastHTML, addNoteButtonHTML } from "./note-ui.js";
+         undoToastHTML, addNoteButtonHTML, tagLabel, kindOf } from "./note-ui.js";
 import { noteTextHTML, stepNoteIndex } from "./note-text.js";
 import { makeHold, HOLD_MS } from "./hover-hold.js";
 // ⚠️ THE KIND TABLE IS ONE FILE, IMPORTED, NOT A COPY KEPT IN STEP BY A TEST. Vite inlines
@@ -1118,15 +1118,15 @@ function jumpToStep(n) {
 // ⚠️ "+ note" IS OWNER-ONLY AND THE SERVER AGREES. is_mine decides whether it is drawn, and every
 // note route asks the same question again, because a hidden button is not an access rule.
 function notesSectionHTML(rows) {
-  const blocks = noteBlocks(rows || [], NOTE_KINDS.kinds);
   const mine = !!(view && view.data && view.data.is_mine);
-  if (!blocks.length && !mine) return "";
+  const body = notesBodyHTML(rows, { editable: mine, place: "section" });
+  if (!body && !mine) return "";
   // ⚠️ ONE QUIET ADDER, AT THE FOOT, FOR A NOTE THAT BELONGS TO NO STEP. A note about a step is
   //    added from that step, where the cook is already looking.
   const adder = mine
     ? `<button type="button" class="notes-add" data-add-note="general" aria-label="Add a note to this recipe">+ Add a note</button>`
     : "";
-  if (!blocks.length) {
+  if (!body) {
     // ⚠️ NO NOTES MEANS NO CARD. Live prints nothing at all under the method on a recipe with no
     //    notes, and an empty bordered box with "No notes yet." in it is a visible change to 205 of
     //    the 300 recipes — measured against the live commit, 116px of furniture where the page had
@@ -1134,10 +1134,32 @@ function notesSectionHTML(rows) {
     //    something to show.
     return `<div class="notes-none">${noteNewBoxHTML("general")}${adder}${noteUndoHTML()}</div>`;
   }
-  return `<div class="notes">${blocks.map((b) => `
-    <h3 class="notes-kind">${esc(b.header)}</h3>
-    ${b.notes.map((n) => noteOne(n, { editable: mine, place: "section", where: "section" })).join("")}`).join("")}` +
+  return `<div class="notes">${body}` +
     `${noteNewBoxHTML("general")}${adder}${noteUndoHTML()}</div>`;
+}
+
+// ⚠️ ONE ARRANGEMENT, BOTH VIEWS, AND THAT IS WHAT "THE SAME LOOK EVERYWHERE" MEANS IN CODE. The
+// recipe page and Edit mode's Notes block called noteBlocks separately and laid the groups out
+// themselves, so the two could drift by one template edit. There is one function now, and a group
+// drawn here is the group drawn there.
+// ⚠️ THE STEP NOTES GROUP COMES FIRST AND ONLY WHEN THERE IS ONE. No empty heading on the 294
+// recipes with nothing attached to a step, and no "General" heading over the type groups either:
+// the type IS the heading, so a second one above it names nothing.
+// ⚠️ A MARKER MARKS A LIST, SO A GROUP OF ONE GETS NONE. The bullet says "these belong together
+// and there are several"; drawn over a single note it is a list that is not a list. The hanging
+// indent is what makes it worth having, because a wrapped second line then starts under the words
+// rather than under the bullet.
+function notesBodyHTML(rows, { editable, place }) {
+  const { steps, blocks } = noteSections(rows || [], NOTE_KINDS.kinds);
+  const group = (header, notes, led) =>
+    `<h3 class="notes-kind">${esc(header)}</h3>` +
+    `<div class="notes-group${notes.length >= 2 ? " marked" : ""}">` +
+    notes.map((n) => noteOne(n, {
+      editable, place, where: "section",
+      lead: led ? { no: n.stepLinkNo, type: tagLabel(kindOf(NOTE_KINDS.kinds, n.kind)) } : null,
+    })).join("") + `</div>`;
+  return (steps.length ? group(STEP_NOTES_HEADER, steps, true) : "") +
+    blocks.map((b) => group(b.header, b.notes, false)).join("");
 }
 
 // One call site for every place a note is drawn, so the four opts that decide what it looks like are
@@ -2783,11 +2805,11 @@ function handlePlanAheadInput(el) {
 //    what keeps this block showing what the database actually holds.
 function ieNotesHTML(_d) {
   const rows = (view.data.notes || []);
-  const blocks = noteBlocks(rows, NOTE_KINDS.kinds);
-  const body = blocks.length
-    ? blocks.map((b) => `<h4 class="ie-notes-kind">${esc(b.header)}</h4>` +
-        b.notes.map((n) => noteOne(n, { editable: true, place: "ie", where: "section" })).join("")).join("")
-    : `<p class="notes-empty">No notes yet.</p>`;
+  // ⚠️ THE SAME ARRANGEMENT THE RECIPE PAGE DRAWS, from the same function. This built its own
+  //    group loop with its own heading class, so the STEP NOTES group and the markers would have
+  //    had to be written twice and kept in step by hand.
+  const body = notesBodyHTML(rows, { editable: true, place: "ie" })
+    || `<p class="notes-empty">No notes yet.</p>`;
   return `<div class="ie-block ie-note-block"><span class="ie-vlabel">Notes</span>
       <p class="ie-note-aside">Notes save as you type.</p>
       ${body}${noteNewBoxHTML("general")}
