@@ -2076,15 +2076,31 @@ def clear_hero_if_matches(s, recipe_id, paths):
 
 
 def unlink_unreferenced(paths):
-    """After a delete/cascade has COMMITTED, unlink each file — but ONLY if no surviving recipe still points
-    at it as its hero. Guards the copy-shares-image case: copy_recipe carries the image PATH, so two recipes
+    """After a delete/cascade has COMMITTED, unlink each file — but ONLY if no surviving row still points
+    at it. Guards the copy-shares-image case: copy_recipe carries the image PATH, so two recipes
     can share one file; deleting one must not unlink a file the other still uses. Opens its own session for
-    the reference check (the rows are already gone). Idempotent (delete_image no-ops a missing file)."""
+    the reference check (the rows are already gone). Idempotent (delete_image no-ops a missing file).
+
+    ⚠️ BOTH TABLES THAT POINT AT A FILE ARE ASKED, AND ONE OF THEM USED TO BE MISSING. Two columns
+    name an image, `recipes.image` and `cook_photos.path`, and this read only the first, so a
+    surviving ALBUM row was invisible to the guard and its file was unlinked underneath it. The
+    hero-upload route is what makes the two diverge: it inserts a cook_photos row AND sets
+    recipes.image to the same path, and uploading a REPLACEMENT hero leaves the old path as a plain
+    album photo. So the sequence that loses a file is ordinary use. A owns a recipe and uploads a
+    hero P, somebody copies that recipe as a test recipe (copy_recipe carries the path), A uploads a
+    new hero so P is now only an album photo, and the copy's bulk delete gathers P, finds no
+    recipes.image matching, and unlinks a file A's own album row still points at. Reproduced through
+    the HTTP API, with a 200 and no sign anything happened. All three callers share this function,
+    so the single-account spelling of it was broken the same way.
+
+    ⚠️ IT IS A UNION, NOT A SECOND LOOP. One question, "does anything still reference this path",
+    asked once over both columns."""
     paths = [p for p in dict.fromkeys(paths) if p]   # de-dup, drop falsy
     if not paths:
         return
     with orm_session() as s:
         still = set(s.scalars(select(Recipe.image).where(Recipe.image.in_(paths))))
+        still |= set(s.scalars(select(CookPhoto.path).where(CookPhoto.path.in_(paths))))
     for p in paths:
         if p not in still:
             images.delete_image(p)
@@ -2715,20 +2731,36 @@ def delete_note(rid, note_id):
 
 @app.route("/api/test-recipes", methods=["DELETE"])
 def delete_test_recipes():
-    """Delete ALL test-tier recipes at once (their children cascade via ON DELETE CASCADE).
-    Inherently safe — matches only source='test', never app/seed. Sibling namespace to
+    """Delete the CALLER'S test-tier recipes at once (their children cascade via ON DELETE CASCADE).
+    Matches only source='test', never app/seed, and only rows the requester owns. Sibling namespace to
     /api/recipes/<rid> so it can't be shadowed by a recipe slugged 'test'. Mirrors delete_recipe's 2c
     file cleanup: the cascade removes ROWS but not FILES, so gather every test recipe's cook-photo paths
     + hero files BEFORE the delete and unlink them AFTER commit — otherwise a bulk test-delete orphans
     those files on disk. unlink_unreferenced skips any file a surviving recipe still references as its hero
-    (the copy-shares-image guard: a test recipe whose hero is shared with a surviving app copy keeps it)."""
+    (the copy-shares-image guard: a test recipe whose hero is shared with a surviving app copy keeps it).
+
+    ⚠️ OWNER IS PART OF THE DELETE, NOT A CHECK AROUND IT. This used to match source='test' alone,
+    with no owner clause, and copy_recipe stamps every copy with owner=current_user.id. So any
+    logged-in account could delete any other account's test copies, and the Browse header told them
+    how many were there: the button's count came from GET /api/recipes, which is not owner-filtered,
+    so B saw "Delete 1 test recipe" because A had made one. Folding the owner into the WHERE means a
+    row somebody else owns is never selected, by the same rule get_ingredient follows, rather than
+    fetched and then judged.
+
+    ⚠️ AND THE FILE SWEEP IS SCOPED THE SAME WAY, for the same reason the delete is. Gathering every
+    test recipe's photos and then deleting only your own would unlink another account's hero while
+    its recipe row survived, which is worse than the cross-owner delete: a live row pointing at a
+    file that is gone. unlink_unreferenced's copy-share guard would not help, because it asks which
+    files a SURVIVING recipe still references and the answer would be "this one", only after the
+    sweep had already been built from the wrong set."""
     with orm_session() as s:
+        mine = (Recipe.source == "test", Recipe.owner == current_user.id)
         files = list(s.scalars(select(CookPhoto.path)
                                .join(Recipe, CookPhoto.recipe_id == Recipe.id)
-                               .where(Recipe.source == "test")))          # every test recipe's album files
+                               .where(*mine)))                 # the caller's test recipes' album files
         files += list(s.scalars(select(Recipe.image)
-                                .where(Recipe.source == "test", Recipe.image.isnot(None))))   # + their heroes
-        n = s.execute(delete(Recipe).where(Recipe.source == "test")).rowcount   # children cascade (FK ON)
+                                .where(*mine, Recipe.image.isnot(None))))     # + their heroes
+        n = s.execute(delete(Recipe).where(*mine)).rowcount     # children cascade (FK ON)
         s.commit()
     unlink_unreferenced(files)   # AFTER commit: unlink files no surviving recipe uses (copy-share guarded)
     return jsonify({"deleted": n})

@@ -660,7 +660,15 @@ async function renderHome() {
   app.className = "page home-view";
   const recipes = await api("/api/recipes");
 
-  const testCount = recipes.filter((r) => r.source === "test").length;
+  // ⚠️ MY TEST RECIPES, NOT EVERYONE'S. GET /api/recipes is deliberately not owner-filtered (every
+  // recipe appears for every account, only the personal-layer aggregates are per-user), so counting
+  // source === "test" alone counted other accounts' copies. The button then offered to delete them,
+  // and the endpoint did. The server scopes the delete to the caller now, so a count that included
+  // somebody else's would promise a delete that no longer happens.
+  // ⚠️ is_mine, NOT owner. list_recipes pops the raw owner id and sends the boolean instead, as a
+  // least-exposure signal, so reading r.owner here is undefined on every row and the count would be
+  // a flat zero: the button would never appear and the fix would look like a feature removal.
+  const testCount = recipes.filter((r) => r.source === "test" && r.is_mine).length;
   const bulkTest = testCount
     ? `<span id="test-bulk"><button class="btn danger-soft sm" data-delete-test>Delete ${testCount} test recipe${testCount > 1 ? "s" : ""}</button></span>`
     : "";
