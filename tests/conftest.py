@@ -28,6 +28,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 import corpus_guard                                                            # noqa: E402
 
 dbguard.install(corpus_guard.live_db())
+# ⚠️ AND THE WALL dbguard CANNOT BE. dbguard patches sqlite3.connect, and $DATABASE_URL does not go
+# through sqlite3 at all: app.orm_session() hands it to SQLAlchemy, which opens Postgres. So one
+# exported variable walks past make_kitchen's redirect AND past the patch above. urlguard checks the
+# variable itself, at import, and refuses the run rather than redirecting it quietly. The Postgres CI
+# leg sets $DATABASE_URL on purpose and declares it with $RECIPE_APP_TEST_DATABASE=1.
+import urlguard                                                                # noqa: E402
+
+urlguard.install(corpus_guard.live_db())
 
 
 def pytest_configure(config):

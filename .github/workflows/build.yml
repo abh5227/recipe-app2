@@ -39,6 +39,13 @@ jobs:
       - name: Run Postgres integration tests
         env:
           DATABASE_URL: postgresql+psycopg://postgres@localhost:5432/recipe_test
+          # ⚠️ AND THE RUN HAS TO SAY THAT URL IS A THROWAWAY. tests/urlguard.py refuses to start the
+          # suite when DATABASE_URL is set without this, because app.orm_session() prefers the
+          # variable over the throwaway file make_kitchen creates, so an inherited variable sends
+          # every fixture and every write somewhere nobody chose. This step sets it on purpose, so it
+          # declares it. Without this line the step refuses at startup and the leg stops running,
+          # which tests/test_database_url_guard.py reads this file to check.
+          RECIPE_APP_TEST_DATABASE: "1"
           # A Postgres DATABASE_URL makes app.py FAIL CLOSED without SECRET_KEY (docs/SECURITY.md), so
           # this step MUST supply one. This is a throwaway CI value, NOT a real/production secret.
           SECRET_KEY: ci-only-not-a-real-secret
