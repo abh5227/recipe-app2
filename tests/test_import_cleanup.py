@@ -1521,6 +1521,60 @@ def test_a_dash_joined_kind_label_classifies_like_a_colon_joined_one():
     assert ic.note_kind("Flour - 500g of it.") is None
 
 
+def test_the_lead_pattern_agrees_with_the_client_case_by_case():
+    """The Python half of tests/js/note-lead-sync.test.js.
+
+    ⚠️ THE KIND SYNC TEST CANNOT SEE THIS. It compares the kind each side answers, and a label the
+    table does not list answers "no kind" on both sides whether the pattern matched or not. So both
+    halves reading ASCII only was invisible to it: "Café: use a dark roast" matched nothing in
+    either language and every test passed.
+
+    Regenerate the fixture with scripts/gen_note_lead_cases.py."""
+    import json
+    import pathlib
+
+    cases = json.loads((pathlib.Path(__file__).resolve().parent / "fixtures"
+                        / "note-lead-cases.json").read_text())["cases"]
+    wrong = []
+    for c in cases:
+        m = ic._NOTE_LEAD.match(c["text"])
+        got = (m.group(1), m.group(2)) if m else (None, None)
+        if got != (c["label"], c["body"]):
+            wrong.append((c["text"][:48], c["label"], got[0]))
+    assert wrong == [], f"{len(wrong)} of {len(cases)} disagree with the recorded label"
+
+
+def test_a_label_may_be_written_in_any_script():
+    """⚠️ [A-Za-z] WAS THE WHOLE RULE AND IT IS NOT WHAT A LETTER IS. The é fails the inner class,
+    the match stops there, and the paragraph is prose. The corpus carries no such label, so this was
+    found by reading the pattern rather than by running it over the 177."""
+    assert ic.note_lead("Caf\u00e9: use a dark roast.") == ("Caf\u00e9", "use a dark roast.")
+    assert ic.note_lead("Cr\u00e8me fra\u00eeche: stir it in off the heat.") == (
+        "Cr\u00e8me fra\u00eeche", "stir it in off the heat.")
+    assert ic.note_lead("Jalape\u00f1o \u2013 take the seeds out.") == (
+        "Jalape\u00f1o", "take the seeds out.")
+    assert ic.note_lead("\u03a1\u03af\u03b3\u03b1\u03bd\u03b7: dried on the stalk.") == (
+        "\u03a1\u03af\u03b3\u03b1\u03bd\u03b7", "dried on the stalk.")
+    assert ic.note_lead("\u0411\u043e\u0440\u0449: serve it with sour cream.") == (
+        "\u0411\u043e\u0440\u0449", "serve it with sour cream.")
+    # a digit and an underscore are still not letters, so neither opens a label
+    assert ic.note_lead("500g: that is the flour.") is None
+    assert ic.note_lead("_private: not a letter.") is None
+
+
+def test_the_look_alike_repair_still_declines_a_real_other_script():
+    """⚠️ THE TWO RULES PULL IN OPPOSITE DIRECTIONS AND BOTH ARE RIGHT. normalize_lookalikes
+    rewrites "\u041c\u0410\u041a\u0415 THE CHICKEN" because every non-Latin letter in it has a
+    Latin twin, and it leaves \u0411\u043e\u0440\u0449 and \u03a1\u03af\u03b3\u03b1\u03bd\u03b7
+    alone because \u0449, \u03b3 and \u03b7 have none. Widening the label class is what lets a real
+    Cyrillic or Greek label be READ as a label, instead of being turned into mojibake first."""
+    for text in ["\u0411\u043e\u0440\u0449: serve it with sour cream and dill.",
+                 "\u03a1\u03af\u03b3\u03b1\u03bd\u03b7: the Greek kind is dried on the stalk."]:
+        assert ic.normalize_lookalikes(text) == text
+    # and the one corpus row the repair exists for is still repaired
+    assert ic.normalize_lookalikes("\u041c\u0410\u041a\u0415 THE CHICKEN:") == "MAKE THE CHICKEN:"
+
+
 # ---- the label refusals (review fix 4) -----------------------------------------------------------
 # ⚠️ MEASURED AGAINST THE REVIEWED CORPUS IN BOTH DIRECTIONS. A person approved 104 lead-in labels
 # over the 300 recipes and declined 12. With no decisions in hand the importer lifted 122 of them, so

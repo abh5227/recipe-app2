@@ -919,10 +919,30 @@ NOTE_KINDS = json.loads(
 #    which must agree stop agreeing, so the set is named here and the pattern is built from it.
 #    THE HYPHEN STAYS LAST, where a character class reads it as a literal rather than a range.
 _NOTE_SEP_CHARS = ":.\u2013\u2014-"
+# ⚠️ A LETTER IS A LETTER IN ANY SCRIPT, AND [A-Za-z] SAID OTHERWISE. The class was ASCII, so
+#    "Café: use a dark roast" could never be read as a label at all: the é fails the inner class,
+#    the match stops, and the paragraph is prose. Same for "Crème fraîche", "Jalapeño", and for a
+#    label written in Greek or Cyrillic. The corpus carries no such case today, which is exactly why
+#    it had to be found by reading the rule rather than by running it over the 177.
+#    ⚠️ [^\W\d_] IS HOW \p{L} IS SPELLED IN PYTHON'S re, and it is not quite \p{L}: it is every
+#    character \w admits except a digit and the underscore, which is the letters plus the Nl and No
+#    numerals (Ⅷ, ²) and NOT the combining marks. static/note-blocks.js spells the same set
+#    [\p{L}\p{Nl}\p{No}] for that reason rather than the obvious \p{L}, and
+#    tests/fixtures/note-lead-cases.json holds the two to one answer per case.
+#    ⚠️ THE LOOK-ALIKE REPAIR STILL RUNS FIRST AND STILL DECLINES. normalize_lookalikes rewrites
+#    "МАКЕ THE CHICKEN" because every non-Latin letter in it has a Latin twin, and leaves "Борщ"
+#    and "Ρίγανη" alone because щ, γ and η have none. So widening this class is what lets a real
+#    Cyrillic or Greek label be read as a label, rather than turning one into mojibake.
+_NOTE_LABEL_LETTER = r"[^\W\d_]"
+_NOTE_LABEL_INNER = r"(?:[^\W\d_]|[ '\u2019/-])"
+# ⚠️ ONE SPELLING OF "A LABEL", NAMED ONCE. _NOTE_LEAD and _NOTE_LABEL_ONLY ask the same question
+#    about the same characters, and widening one of them alone is how "Café: ..." becomes a title
+#    while "Café" on a line of its own stays prose.
+_NOTE_LABEL_PAT = _NOTE_LABEL_LETTER + _NOTE_LABEL_INNER + r"{0,28}?"
 _NOTE_LEAD = re.compile(
-    r"^\s*([A-Za-z][A-Za-z '\u2019/-]{0,28}?)\s*[" + _NOTE_SEP_CHARS + r"]\s+(\S[\s\S]*)$")
+    r"^\s*(" + _NOTE_LABEL_PAT + r")\s*[" + _NOTE_SEP_CHARS + r"]\s+(\S[\s\S]*)$")
 # A paragraph that is ONLY a label, with nothing under it.
-_NOTE_LABEL_ONLY = re.compile(r"^\s*([A-Za-z][A-Za-z '\u2019/-]{0,28}?)\s*[:.]?\s*$")
+_NOTE_LABEL_ONLY = re.compile(r"^\s*(" + _NOTE_LABEL_PAT + r")\s*[:.]?\s*$")
 
 
 def _norm_label(s):

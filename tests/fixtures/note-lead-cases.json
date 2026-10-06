@@ -1,0 +1,125 @@
+{
+ "what": "The shared LEAD pattern, case by case. import_cleanup._NOTE_LEAD and static/note-blocks.js LEAD read a label off the front of a note's paragraph, and the two are hand-written mirrors. Each case records the label and the body the pattern must produce, or null when it must not match at all. Regenerate with scripts/gen_note_lead_cases.py.",
+ "cases": [
+  {
+   "text": "Tip: a wetter dough gives a chewier crumb and a more open texture.",
+   "label": "Tip",
+   "body": "a wetter dough gives a chewier crumb and a more open texture."
+  },
+  {
+   "text": "Flour. This recipe works best with a high protein bread flour.",
+   "label": "Flour",
+   "body": "This recipe works best with a high protein bread flour."
+  },
+  {
+   "text": "Leftovers – best to pan fry them fresh so they stay crisp.",
+   "label": "Leftovers",
+   "body": "best to pan fry them fresh so they stay crisp."
+  },
+  {
+   "text": "Variation — for pita pockets, roll them a little thinner.",
+   "label": "Variation",
+   "body": "for pita pockets, roll them a little thinner."
+  },
+  {
+   "text": "Freezing - wrap each one twice before it goes in the freezer.",
+   "label": "Freezing",
+   "body": "wrap each one twice before it goes in the freezer."
+  },
+  {
+   "text": "Baker's percentage: the flour is always 100 and the rest is read against it.",
+   "label": "Baker's percentage",
+   "body": "the flour is always 100 and the rest is read against it."
+  },
+  {
+   "text": "Baker’s percentage: the flour is always 100 and the rest is read against it.",
+   "label": "Baker’s percentage",
+   "body": "the flour is always 100 and the rest is read against it."
+  },
+  {
+   "text": "Make-ahead: the dough keeps for two days in the fridge.",
+   "label": "Make-ahead",
+   "body": "the dough keeps for two days in the fridge."
+  },
+  {
+   "text": "Oven/stovetop: either works, the oven is just steadier.",
+   "label": "Oven/stovetop",
+   "body": "either works, the oven is just steadier."
+  },
+  {
+   "text": "Café: use a dark roast, it stands up to the milk.",
+   "label": "Café",
+   "body": "use a dark roast, it stands up to the milk."
+  },
+  {
+   "text": "Crème fraîche: stir it in off the heat so it does not split.",
+   "label": "Crème fraîche",
+   "body": "stir it in off the heat so it does not split."
+  },
+  {
+   "text": "Jalapeño – take the seeds out if you want it milder.",
+   "label": "Jalapeño",
+   "body": "take the seeds out if you want it milder."
+  },
+  {
+   "text": "Æbleskiver: turn them with a knitting needle, not a fork.",
+   "label": "Æbleskiver",
+   "body": "turn them with a knitting needle, not a fork."
+  },
+  {
+   "text": "Ρίγανη: the Greek kind is dried on the stalk.",
+   "label": "Ρίγανη",
+   "body": "the Greek kind is dried on the stalk."
+  },
+  {
+   "text": "Борщ: serve it with a spoon of sour cream and dill.",
+   "label": "Борщ",
+   "body": "serve it with a spoon of sour cream and dill."
+  },
+  {
+   "text": "Café: use a dark roast, it stands up to the milk.",
+   "label": null,
+   "body": null
+  },
+  {
+   "text": "Ⅷ: the eighth batch was the one that worked.",
+   "label": "Ⅷ",
+   "body": "the eighth batch was the one that worked."
+  },
+  {
+   "text": "²: squared, which is how the tin is measured here.",
+   "label": "²",
+   "body": "squared, which is how the tin is measured here."
+  },
+  {
+   "text": "500g: that is the flour, not the total.",
+   "label": null,
+   "body": null
+  },
+  {
+   "text": "_private: an underscore is not a letter.",
+   "label": null,
+   "body": null
+  },
+  {
+   "text": "Serve with rice - or with bread.",
+   "label": "Serve with rice",
+   "body": "or with bread."
+  },
+  {
+   "text": "Tip:no space after the colon.",
+   "label": null,
+   "body": null
+  },
+  {
+   "text": "A label this long is not a heading any more because it runs past the limit: and then a body.",
+   "label": null,
+   "body": null
+  },
+  {
+   "text": "No separator at all so this is simply a sentence about flour",
+   "label": null,
+   "body": null
+  }
+ ]
+}

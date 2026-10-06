@@ -663,3 +663,61 @@ def test_a_note_of_nothing_but_marks_keeps_them_rather_than_emptying(tmp_path=No
     assert plan.text == "*   *"
     assert plan.marks is None
     assert plan.verdict == "no title"
+
+
+# ---- a title may be written in any language (Andy's call, 2026-10-06) ---------------------------
+# ⚠️ THE CORPUS HAS NO CASE, WHICH IS WHY THE GAP SURVIVED A WHOLE ROUND OF MEASUREMENT. Every
+# threshold in this rule was measured over the 177 notes, and the 177 are entirely ASCII, so
+# "measured against the corpus" said nothing at all about the letter class. The rule was ASCII-only
+# and reproduced all 36 decisions while doing it.
+
+@pytest.mark.parametrize("text,title,body", [
+    ("Café: use a dark roast, it stands up to the milk.",
+     "Café", "use a dark roast, it stands up to the milk."),
+    ("Crème fraîche: stir it in off the heat so it does not split.",
+     "Crème fraîche", "stir it in off the heat so it does not split."),
+    ("Jalapeño – take the seeds out if you want it milder in the sauce.",
+     "Jalapeño", "take the seeds out if you want it milder in the sauce."),
+    ("Æbleskiver: turn them with a knitting needle rather than a fork.",
+     "Æbleskiver", "turn them with a knitting needle rather than a fork."),
+    # Greek and Cyrillic, which is where the look-alike repair had to be checked as well
+    ("Ρίγανη: the Greek kind is dried on the stalk and keeps for a year.",
+     "Ρίγανη",
+     "the Greek kind is dried on the stalk and keeps for a year."),
+    ("Борщ: serve it with a spoon of sour cream and plenty of dill.",
+     "Борщ", "serve it with a spoon of sour cream and plenty of dill."),
+])
+def test_an_accented_or_non_latin_label_can_be_a_title(text, title, body):
+    plan = ic.note_title_plan(text)
+    assert plan.verdict == "title", plan.reason
+    assert plan.title == title
+    assert plan.text == body
+
+
+def test_the_look_alike_repair_leaves_a_real_greek_or_cyrillic_title_alone():
+    """⚠️ TWO RULES PULLING OPPOSITE WAYS, AND BOTH ARE RIGHT. normalize_lookalikes runs ahead of
+    every label rule and rewrites "МАКЕ THE CHICKEN" because each non-Latin
+    letter in it has a Latin twin. It declines Борщ and
+    Ρίγανη because щ, γ and η have none, so widening the
+    label class is what lets a real title in another script be read as a title rather than mangled
+    into one in Latin."""
+    for text in ["Борщ: serve it with a spoon of sour cream and plenty of dill.",
+                 "Ρίγανη: the Greek kind is dried on the stalk."]:
+        assert ic.normalize_lookalikes(text) == text
+        assert ic.note_title_plan(ic.normalize_lookalikes(text)).verdict == "title"
+
+
+def test_widening_the_letter_class_refuses_what_it_always_refused():
+    """The two pieces of evidence the period form needs, and the clause test, read words rather than
+    characters, so neither should move. Stated rather than assumed."""
+    # an abbreviation is still not a title
+    assert ic.note_title_plan(
+        "Mrs. Smith gave me this recipe when we moved in next door.").verdict == "no title"
+    # a clause word is still a statement
+    assert ic.note_title_plan(
+        "You can use Canned Chickpeas. Drain them well first.").verdict == "no title"
+    # a paired dash still encloses
+    assert ic.note_title_plan(
+        "Salt - and this is important - goes in at the very end.").verdict == "no title"
+    # a digit still opens no label
+    assert ic.note_title_plan("500g: that is the flour, not the total weight.").verdict == "no title"

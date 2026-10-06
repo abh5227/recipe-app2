@@ -21,8 +21,16 @@
 
 // A leading label: a short capitalized-ish phrase, then a colon or a period, then the note itself.
 // The period form is real and common ("Flour. This recipe works best with..." on brioche-bread).
-// ⚠️ KEEP IN STEP WITH import_cleanup._NOTE_LEAD. tests/js/note-kinds-sync.test.js pins it.
-const LEAD = /^\s*([A-Za-z][A-Za-z '’/-]{0,28}?)\s*[:.–—-]\s+(\S[\s\S]*)$/;
+// ⚠️ KEEP IN STEP WITH import_cleanup._NOTE_LEAD. tests/js/note-kinds-sync.test.js pins the kinds
+// and tests/fixtures/note-lead-cases.json pins this pattern itself, label and body, case by case.
+// ⚠️ A LETTER IS A LETTER IN ANY SCRIPT, AND [A-Za-z] SAID OTHERWISE. "Café: use a dark roast" could
+// not be read as a label at all, because the é fails the inner class and the match stops there.
+// ⚠️ AND THE SET IS \p{L}\p{Nl}\p{No}, NOT THE OBVIOUS \p{L}. Python spells this class [^\W\d_],
+// which is every character \w admits bar a digit and the underscore: the letters, plus the Nl and No
+// numerals (Ⅷ, ²), and NOT the combining marks. Writing \p{L} here would make the two sides
+// disagree on Ⅷ and ², which Python admits and \p{L} does not. A DECOMPOSED "Café" is refused
+// by both, since neither class takes a combining mark, and the fixture pins that agreement too.
+const LEAD = /^\s*([\p{L}\p{Nl}\p{No}][\p{L}\p{Nl}\p{No} '’/-]{0,28}?)\s*[:.–—-]\s+(\S[\s\S]*)$/u;
 
 function normLabel(s) {
   return String(s || "").replace(/’/g, "'").trim().replace(/\s+/g, " ").toLowerCase();
