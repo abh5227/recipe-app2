@@ -60,12 +60,25 @@ export function noteTextParts(note) {
   return capFirst(parts, note);
 }
 
-// ⚠️ THE CAPITAL IS DISPLAY ONLY, AND ONLY AFTER A STRIPPED LABEL. "SAME DAY VERSION: increase
-// water…" is a sentence whose first letter was carried by the label, so removing the label leaves
-// it lowercase. A note whose label was NOT stripped is the author's own opening and is left alone.
+// ⚠️ THE CAPITAL IS DISPLAY ONLY, AND ONLY WHERE THE OPENING WAS TAKEN AWAY. "SAME DAY VERSION:
+// increase water…" is a sentence whose first letter was carried by the label, so removing the label
+// leaves it lowercase. A note whose opening is the author's own is left exactly as written.
 // Nothing here is written back: the stored row keeps the author's words until the cook edits it.
+// ⚠️ A TITLE IS THE SECOND WAY THAT HAPPENS, AND IT IS THE SAME RULE RATHER THAN A SECOND ONE.
+// The titles round lifted a label into the `title` column and took it off the front of the text, so
+// mirin's note now stores "substitute Chinese cooking wine…" under the title "Mirin" and reads as a
+// sentence that starts in the middle. Four of the 28 titled notes are like that (39, 83, 84, 103).
+// Andy's call, 2026-10-06. The question both arms ask is the same one: did something that used to
+// carry this sentence's first letter stop being part of it?
+// ⚠️ AND ONLY A LOWERCASE LETTER MOVES. \p{Ll} is the whole test, so a body opening on a number
+// ("200g is the flour…"), on a bracket or on a non-cased script is left alone, which is why this is
+// a regex rather than charAt(0).toUpperCase().
+function noteOpeningWasTakenAway(note) {
+  return !!(note.displayStripped || String(note.title == null ? "" : note.title).trim());
+}
+
 function capFirst(parts, note) {
-  if (!note.displayStripped || !parts.length || parts[0].t !== "text") return parts;
+  if (!noteOpeningWasTakenAway(note) || !parts.length || parts[0].t !== "text") return parts;
   const v = parts[0].v.replace(/^(\s*)(\p{Ll})/u, (_, sp, ch) => sp + ch.toUpperCase());
   return v === parts[0].v ? parts : [{ ...parts[0], v }, ...parts.slice(1)];
 }
