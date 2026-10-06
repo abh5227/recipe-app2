@@ -1058,27 +1058,51 @@ no-visible-change tidy-up.
   step in its words, 2 notes mention a step and neither carries its own link, so the count of notes
   with their own link AND a mention of a different step is **0**.
 
-### What the safety round left for next round · NEXT ROUND
+### What the safety round left for next round · 1 of 2 FIXED
 
-Two findings from the safety round's independent review, both listed rather than fixed because
-neither is reachable on today's data and both want a decision rather than a patch.
+1. **`delete_ingredient` had no owner clause while its sibling read did.** ✅ **FIXED.**
+   `get_ingredient` folded ownership into the lookup, `owner IS NULL OR owner = current_user.id`, so
+   a personal row was never fetched by anyone else. `DELETE /api/ingredients/<iid>` checked the tier
+   and the link count and never mentioned `owner`, so one account could delete another's personal,
+   unlinked row by id. The same clause is now on the lookup AND on the DELETE statement, because a
+   read-then-write on a bare id is correct only while nothing changes in between. **`owner IS NULL`
+   stays deletable by anyone**, which is what keeps the route the undo it exists to be: the promote
+   path creates its row with `owner` NULL on purpose, so restricting the delete to `owner = me`
+   would make a wrong promote permanent again. 0 rows are affected today, so the tests build the
+   personal row they need rather than relying on one existing.
 
-1. **`delete_ingredient` has no owner clause while its sibling read does.** `get_ingredient` folds
-   ownership into the lookup, `owner IS NULL OR owner = current_user.id`, so a personal row is never
-   fetched by anyone else. `DELETE /api/ingredients/<iid>` checks the tier and the link count and
-   never mentions `owner`, so one account could delete another's personal, unlinked row by id.
-   Inert and measured rather than assumed: `ingredients` holds 0 rows on live, and the only create
-   path leaves `owner` NULL on purpose until the Panel's stage 3. **That stage is the moment this
-   bites**, so it belongs in the same commit as the first personal row rather than before it.
-
-2. **The `$DATABASE_URL` guard is nailed to the import door only.** `tests/urlguard.py` runs once at
-   conftest import, and `app.orm_session()` re-reads the environment on every call, so a test that
+2. **The `$DATABASE_URL` guard is nailed to the import door only.** · NEXT ROUND
+   `tests/urlguard.py` runs once at conftest import, and `app.orm_session()` re-reads the environment on every call, so a test that
    sets the variable mid-run reaches a database the guard never saw.
    `tests/test_live_guards.py` already does `monkeypatch.setenv("DATABASE_URL", …)`, so the pattern
    is in the suite. `tests/dbguard.py` chose the patch-the-function shape for exactly this reason
    and the analogue here is an autouse fixture that re-runs the check. Low priority on purpose: the
    harm this exists to stop is a variable inherited from a shell, a direnv file or a parent process,
    and the import-time check covers all three.
+
+### What the demo-row round left for next round · NEXT ROUND
+
+Two findings from this round's independent review, both in `app.py`, both inert on today's data, and
+both left rather than fixed because the round's scope was `delete_ingredient` and widening a scope
+mid-round is how an unreviewed change rides along.
+
+1. **`list_ingredients` and `in_season` have the hole `delete_ingredient` just closed.**
+   `GET /api/ingredients` returns every row's `{id, name}` with no owner clause, and
+   `GET /api/in-season/<month>` joins through `ingredient_seasons` with none either. Measured by the
+   reviewer with two accounts and one personal row: `GET /api/ingredients/<iid>` is correctly 404
+   for a stranger and `DELETE` is now correctly 404, while both list routes hand the row's id and
+   name straight over. That defeats `get_ingredient`'s own stated reason for answering 404 rather
+   than 403, which is that a personal ingredient's EXISTENCE is the private fact and ids here are
+   slugified names. Inert today: live `ingredients` holds 0 rows and 0 with a non-null owner. The
+   fix is the same `or_(Ingredient.owner.is_(None), Ingredient.owner == current_user.id)` on both,
+   hoisted into one helper so there is one answer to which ingredient rows a reader may see.
+
+2. **`delete_ingredient` does not check its own rowcount.** The owner clause is on the DELETE as
+   well as the lookup, which is the right shape, and the route then reports `200 {"deleted": iid}`
+   without looking at what the statement did. If the owner changed between the lookup and the write,
+   it reports a deletion that did not happen. Not reproduced: it needs a concurrent writer, and this
+   is a single-user app, so it is a correctness tidy rather than a live defect. One line, before the
+   commit.
 
 **And one thing that is a decision, not debt.** The round proposed deleting `join-narrow-1.db` on the
 grounds that no code opens it. True, and not the question: it is the artifact two recorded
