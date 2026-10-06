@@ -8,7 +8,11 @@ name: Cold start
 
 on:
   push:
-    branches: [ main ]
+    # ⚠️ `ci/**` IS HERE SO A ROUND CAN BE PROVED BEFORE main CARRIES IT. A push event reads the
+    # workflow file from the ref being pushed, so a branch has to carry this line for its own run to
+    # happen. Without it a side-branch push ran nothing, which is how a broken test reached main:
+    # the Postgres leg has no local equivalent on macOS, so CI is the only place it runs at all.
+    branches: [ main, 'ci/**' ]
   schedule:
     # Mondays ~06:20 UTC. Weekly because this decays from the OUTSIDE — a new Node or Python
     # release can break the documented steps with no commit of ours to trigger a push run.
