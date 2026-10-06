@@ -336,13 +336,18 @@ class RecipeNote(Base):
     ⚠️ ingredient_row_id IS WRITTEN BY NOTHING YET. It names a LINE of this recipe, not a library
     row, because the line is what a note is about and the line already carries its own library link.
     The picker is a later round; the column is here so that round needs no migration in its deploy
-    window."""
+    window.
+
+    ⚠️ title IS OPTIONAL AND NULL IS NOT ''. Migration 062. NULL means the note has no title, which
+    is what 148 of the 176 notes carry once the titles round has run. The CHECK refuses a blank
+    string, so a cleared Title box cannot leave a second spelling of "none" in the column."""
     __tablename__ = "recipe_notes"
     id = Column(Integer, primary_key=True)
     recipe_id = Column(Text, ForeignKey("recipes.id", ondelete="CASCADE"), nullable=False)
     position = Column(Integer, nullable=False)
     kind = Column(Text, ForeignKey("note_kinds.kind"), nullable=False, server_default="notes")
     text_ = Column("text", Text, nullable=False)        # "text" shadows sqlalchemy.text, as on steps
+    title = Column(Text)                                # optional; NULL means no title
     step_id = Column(Integer, ForeignKey("recipe_steps.id", ondelete="SET NULL"))
     ingredient_row_id = Column(Integer, ForeignKey("recipe_ingredients.id", ondelete="SET NULL"))
     __table_args__ = (
@@ -350,6 +355,8 @@ class RecipeNote(Base):
         Index("idx_recipe_notes_step", "step_id"),
         Index("idx_recipe_notes_ing", "ingredient_row_id"),
         CheckConstraint("length(trim(text)) > 0"),
+        CheckConstraint("title IS NULL OR length(trim(title)) > 0",
+                        name="ck_recipe_notes_title_not_blank"),
         UniqueConstraint("recipe_id", "position"),
         {"sqlite_autoincrement": True},
     )
