@@ -11,6 +11,7 @@
 //
 //   node scripts/gen_save_roundtrip.mjs tests/fixtures/save-roundtrip.json
 import { ingToPayload, stepToPayload } from "../static/save-payload.js";
+import { notesPayload } from "../static/note-draft.js";
 import fs from "node:fs";
 
 const ROWS = [
@@ -96,11 +97,49 @@ const STEPS = [
   { id: 9106, position: 5, is_heading: 0, text: "Knead for 10 minutes." },
 ];
 
+// ⚠️ THE NOTES WERE NOT IN THIS FIXTURE, AND THAT IS HOW A COLUMN WENT MISSING. notesPayload is a
+// hand-written key list like ingToPayload's, and `title` was left out of it, so Edit mode's Save
+// wrote the stored title back over the one the cook had just typed: a 200, nothing on screen, and
+// every title change in that view lost. The Python side's own PUT tests passed because they
+// hand-build a payload WITH the title in it, which is the exact sentence this file's header already
+// has about ingredients. A note goes through notesPayload, so a note belongs here.
+const NOTES = [
+  { shape: "titled",
+    row: { id: 9201, position: 0, kind: "notes", title: "Flour", text: "Use 11% protein flour.",
+           step_id: null, ingredient_row_id: null, step_no: null, refs: [] } },
+
+  { shape: "untitled, which is 148 of the 176",
+    row: { id: 9202, position: 1, kind: "tips", title: null, text: "Rest the dough overnight.",
+           step_id: null, ingredient_row_id: null, step_no: null, refs: [] } },
+
+  { shape: "a title the cook CLEARED, which must arrive as null and not as ''",
+    row: { id: 9203, position: 2, kind: "notes", title: "   ", text: "The title box was emptied.",
+           step_id: null, ingredient_row_id: null, step_no: null, refs: [] } },
+
+  { shape: "titled AND linked to a step, with the number the server resolved",
+    row: { id: 9204, position: 3, kind: "storage", title: "To Freeze the pie shell",
+           text: "Wrap it tightly first.", step_id: 9102, ingredient_row_id: null, step_no: 1,
+           refs: [] } },
+
+  { shape: "titled, with a step reference in its own words",
+    row: { id: 9205, position: 4, kind: "notes", title: "Shaping",
+           text: "Fold it over, then proceed with step 2 as written.", step_id: null,
+           ingredient_row_id: null, step_no: null,
+           refs: [{ ref_index: 0, match_text: "step 2", step_id: 9103, step_no: 2 }] } },
+
+  { shape: "a draft note, whose negative id never leaves the client",
+    row: { id: -2, position: 5, kind: "notes", title: "Shaping", text: "Added this session.",
+           step_id: null, ingredient_row_id: null, step_no: null, refs: [] } },
+];
+
 const out = {
-  note: "Captured from static/save-payload.js. Regenerate with scripts/gen_save_roundtrip.mjs.",
+  note: "Captured from static/save-payload.js and static/note-draft.js. Regenerate with "
+      + "scripts/gen_save_roundtrip.mjs.",
   rows: ROWS.map((r) => ({ shape: r.shape, row: r.row, payload: ingToPayload(r.row) })),
   steps: STEPS.map((s) => ({ row: s, payload: stepToPayload(s) })),
+  notes: NOTES.map((n) => ({ shape: n.shape, row: n.row, payload: notesPayload([n.row])[0] })),
 };
 fs.writeFileSync(process.argv[2] || "tests/fixtures/save-roundtrip.json",
                  JSON.stringify(out, null, 1) + "\n");
-console.log(`wrote ${out.rows.length} ingredient shapes and ${out.steps.length} steps`);
+console.log(`wrote ${out.rows.length} ingredient shapes, ${out.steps.length} steps `
+          + `and ${out.notes.length} notes`);

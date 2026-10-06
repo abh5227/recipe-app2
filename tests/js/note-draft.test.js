@@ -160,11 +160,36 @@ test("the payload is the shape write_notes reads, and carries no client-only fie
                                    refs: [{ ref_index: 0, match_text: "step 1", step_id: 10,
                                             step_no: 1 }] })]);
   assert.deepEqual(out, [{
-    text: "keep me", kind: "tips", step_id: 30, ingredient_row_id: null,
+    text: "keep me", title: null, kind: "tips", step_id: 30, ingredient_row_id: null,
     refs: [{ ref_index: 0, match_text: "step 1", step_id: 10 }],
   }]);
   assert.ok(!("id" in out[0]), "a draft id never leaves the client");
   assert.ok(!("step_no" in out[0]), "the number is derived and the server derives it");
+});
+
+test("the payload carries the title, which it did not, and every title change was lost", () => {
+  // ⚠️ THE DEFECT A FRESH REVIEW FOUND. This list was hand-written without `title`, and the server
+  //    reads absent-means-KEEP on a row matched by id, so Edit mode's Save wrote the STORED title
+  //    back over the one the cook had just typed: setting, changing and clearing one were all lost,
+  //    with a 200 and nothing on screen to say so. Same shape as `heading_level` missing from a
+  //    copy, which flattened every subheading, and the five more columns the review of THAT then
+  //    measured short on the same route.
+  // ⚠️ AND THE KEY IS ALWAYS PRESENT, never conditional, because a sent null is how the editor
+  //    CLEARS a title and absent means keep.
+  const set = notesPayload([note({ id: 7, text: "body", title: "Flour" })]);
+  assert.equal(set[0].title, "Flour");
+  for (const cleared of [null, undefined, "", "   "]) {
+    const out = notesPayload([note({ id: 7, text: "body", title: cleared })]);
+    assert.ok("title" in out[0], `title=${JSON.stringify(cleared)} dropped the key`);
+    assert.equal(out[0].title, null, "a cleared title is sent as null, the only spelling of none");
+  }
+  assert.equal(notesPayload([note({ id: 7, text: "body", title: "  Flour  " })])[0].title, "Flour");
+});
+
+test("a new note carries its title too, so Edit mode can create one with a heading", () => {
+  const out = notesPayload([note({ id: -2, text: "body", title: "Shaping" })]);
+  assert.equal(out[0].title, "Shaping");
+  assert.ok(!("id" in out[0]), "and it is still a draft id that never leaves the client");
 });
 
 test("a note left blank is not sent, exactly like a blank ingredient row", () => {

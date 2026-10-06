@@ -1101,3 +1101,111 @@ def test_a_heading_naming_a_link_that_exists_nowhere_is_still_refused(kitchen):
         "steps": [{"id": 9100, "heading": "Wilt the [[nonesuch]].", "level": 1}]})
     assert r.status_code == 400
     assert "nonesuch" in r.get_json()["error"]
+
+
+# ---- the notes, through the client's OWN payload --------------------------------------------------
+# ⚠️ WHY THEY ARE HERE AT ALL. notesPayload is a hand-written key list exactly like ingToPayload's,
+# and `title` was left out of it. The server reads absent-means-KEEP on a row matched by id, so
+# Edit mode's Save wrote the stored title back over the one the cook had just typed: every title
+# change in that view lost, with a 200 and nothing on screen. Every PUT test for the title passed,
+# because every one of them hand-built a payload WITH the key in it. That is this file's own
+# header sentence, applied to a second builder nobody had added to the fixture.
+
+NOTE_COLS = ("position", "kind", "title", "text", "step_id", "ingredient_row_id")
+
+
+def _seed_notes(kitchen, rid, notes=None):
+    """The fixture's note rows, written straight to the table beside the ingredients and steps."""
+    notes = FIX["notes"] if notes is None else notes
+    with kitchen.conn() as c:
+        c.execute("DELETE FROM recipe_notes WHERE recipe_id=?", (rid,))
+        for n in notes:
+            row = n["row"]
+            if row["id"] < 0:
+                continue                      # a draft note has no stored row yet, by definition
+            c.execute(f"INSERT INTO recipe_notes (id, recipe_id, {','.join(NOTE_COLS)}) "
+                      f"VALUES (?,?,{','.join('?' * len(NOTE_COLS))})",
+                      # ⚠️ THE DRAFT'S TITLE AND THE STORED ONE ARE NOT THE SAME VALUE. The
+                      #    cleared-title fixture row holds "   ", which is what the Title box
+                      #    actually contains after a cook empties it, and the column's own CHECK
+                      #    refuses a blank string. So the STORED side is NULL and the builder is
+                      #    what has to turn one into the other.
+                      (row["id"], rid,
+                       *[((row.get(k) or "").strip() or None) if k == "title" else row.get(k)
+                         for k in NOTE_COLS]))
+        c.commit()
+    return [n for n in notes if n["row"]["id"] > 0]
+
+
+def _stored_notes(kitchen, rid):
+    with kitchen.conn() as c:
+        return [dict(r) for r in c.execute(
+            f"SELECT id,{','.join(NOTE_COLS)} FROM recipe_notes WHERE recipe_id=? "
+            f"ORDER BY position, id", (rid,))]
+
+
+def _put_with_notes(kitchen, rid, note_payloads):
+    """Edit mode's Save: the client's own ingredient, step and note payloads, together."""
+    return kitchen.client.put(f"/api/recipes/{rid}", json={
+        "name": "Round Trip",
+        "ingredients": [r["payload"] for r in FIX["rows"]],
+        "steps": [s["payload"] for s in FIX["steps"]],
+        "notes": note_payloads,
+    })
+
+
+def test_a_no_edit_save_keeps_every_note_title(kitchen):
+    """The client's payload, sent back unchanged. Every title has to survive it."""
+    rid = _seed(kitchen, name="Notes Round Trip")
+    stored = _seed_notes(kitchen, rid)
+    before = _stored_notes(kitchen, rid)
+    assert [n["title"] for n in before] == ["Flour", None, None, "To Freeze the pie shell",
+                                            "Shaping"], before
+    assert before[2]["title"] is None, "the cleared-title row has to be stored as NULL"
+
+    r = _put_with_notes(kitchen, rid, [n["payload"] for n in stored])
+    assert r.status_code == 200, r.get_json()
+    assert _stored_notes(kitchen, rid) == before, "a no-edit save moved a note row"
+
+
+def test_the_clients_payload_can_change_a_title_and_can_clear_one(kitchen):
+    """⚠️ THE DEFECT, STATED AS A TEST. This sends the payload notesPayload ACTUALLY builds, not a
+    hand-written one, so a key missing from that builder fails here."""
+    import copy
+    rid = _seed(kitchen, name="Notes Retitled")
+    stored = _seed_notes(kitchen, rid)
+    payloads = copy.deepcopy([n["payload"] for n in stored])
+
+    payloads[0]["title"] = "Bread flour"          # changed
+    payloads[1]["title"] = "Resting"              # set, where there was none
+    payloads[3]["title"] = None                   # cleared
+    r = _put_with_notes(kitchen, rid, payloads)
+    assert r.status_code == 200, r.get_json()
+
+    got = {n["id"]: n["title"] for n in _stored_notes(kitchen, rid)}
+    assert got[9201] == "Bread flour"
+    assert got[9202] == "Resting"
+    assert got[9204] is None
+    assert got[9205] == "Shaping", "an untouched note's title moved"
+
+
+def test_the_clients_payload_never_lets_a_blank_title_reach_the_column(kitchen):
+    """The fixture's third note carries "   " in the draft, and the builder sends null for it."""
+    rid = _seed(kitchen, name="Notes Blank")
+    stored = _seed_notes(kitchen, rid)
+    cleared = next(n for n in FIX["notes"] if "CLEARED" in n["shape"])
+    assert cleared["payload"]["title"] is None, "the builder sent a blank string"
+    r = _put_with_notes(kitchen, rid, [n["payload"] for n in stored])
+    assert r.status_code == 200, r.get_json()
+    with kitchen.conn() as c:
+        assert c.execute("SELECT COUNT(*) FROM recipe_notes WHERE title = ''").fetchone()[0] == 0
+
+
+def test_the_notes_fixture_is_the_builders_output_and_carries_the_title_key(kitchen):
+    """⚠️ A CHECK THAT READ NOTHING FAILS. If the fixture lost its notes section, every test above
+    would pass over an empty list."""
+    assert len(FIX["notes"]) >= 5, FIX.get("notes")
+    assert all("title" in n["payload"] for n in FIX["notes"]), \
+        "the key must be present on every note, because absent means KEEP on the server"
+    assert any(n["payload"]["title"] for n in FIX["notes"])
+    assert any(n["payload"]["title"] is None for n in FIX["notes"])

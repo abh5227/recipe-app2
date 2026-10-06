@@ -1,5 +1,5 @@
 {
- "note": "Captured from static/save-payload.js. Regenerate with scripts/gen_save_roundtrip.mjs.",
+ "note": "Captured from static/save-payload.js and static/note-draft.js. Regenerate with scripts/gen_save_roundtrip.mjs.",
  "rows": [
   {
    "shape": "heading",
@@ -384,6 +384,158 @@
    "payload": {
     "id": 9106,
     "text": "Knead for 10 minutes."
+   }
+  }
+ ],
+ "notes": [
+  {
+   "shape": "titled",
+   "row": {
+    "id": 9201,
+    "position": 0,
+    "kind": "notes",
+    "title": "Flour",
+    "text": "Use 11% protein flour.",
+    "step_id": null,
+    "ingredient_row_id": null,
+    "step_no": null,
+    "refs": []
+   },
+   "payload": {
+    "id": 9201,
+    "text": "Use 11% protein flour.",
+    "title": "Flour",
+    "kind": "notes",
+    "step_id": null,
+    "ingredient_row_id": null,
+    "refs": []
+   }
+  },
+  {
+   "shape": "untitled, which is 148 of the 176",
+   "row": {
+    "id": 9202,
+    "position": 1,
+    "kind": "tips",
+    "title": null,
+    "text": "Rest the dough overnight.",
+    "step_id": null,
+    "ingredient_row_id": null,
+    "step_no": null,
+    "refs": []
+   },
+   "payload": {
+    "id": 9202,
+    "text": "Rest the dough overnight.",
+    "title": null,
+    "kind": "tips",
+    "step_id": null,
+    "ingredient_row_id": null,
+    "refs": []
+   }
+  },
+  {
+   "shape": "a title the cook CLEARED, which must arrive as null and not as ''",
+   "row": {
+    "id": 9203,
+    "position": 2,
+    "kind": "notes",
+    "title": "   ",
+    "text": "The title box was emptied.",
+    "step_id": null,
+    "ingredient_row_id": null,
+    "step_no": null,
+    "refs": []
+   },
+   "payload": {
+    "id": 9203,
+    "text": "The title box was emptied.",
+    "title": null,
+    "kind": "notes",
+    "step_id": null,
+    "ingredient_row_id": null,
+    "refs": []
+   }
+  },
+  {
+   "shape": "titled AND linked to a step, with the number the server resolved",
+   "row": {
+    "id": 9204,
+    "position": 3,
+    "kind": "storage",
+    "title": "To Freeze the pie shell",
+    "text": "Wrap it tightly first.",
+    "step_id": 9102,
+    "ingredient_row_id": null,
+    "step_no": 1,
+    "refs": []
+   },
+   "payload": {
+    "id": 9204,
+    "text": "Wrap it tightly first.",
+    "title": "To Freeze the pie shell",
+    "kind": "storage",
+    "step_id": 9102,
+    "ingredient_row_id": null,
+    "refs": []
+   }
+  },
+  {
+   "shape": "titled, with a step reference in its own words",
+   "row": {
+    "id": 9205,
+    "position": 4,
+    "kind": "notes",
+    "title": "Shaping",
+    "text": "Fold it over, then proceed with step 2 as written.",
+    "step_id": null,
+    "ingredient_row_id": null,
+    "step_no": null,
+    "refs": [
+     {
+      "ref_index": 0,
+      "match_text": "step 2",
+      "step_id": 9103,
+      "step_no": 2
+     }
+    ]
+   },
+   "payload": {
+    "id": 9205,
+    "text": "Fold it over, then proceed with step 2 as written.",
+    "title": "Shaping",
+    "kind": "notes",
+    "step_id": null,
+    "ingredient_row_id": null,
+    "refs": [
+     {
+      "ref_index": 0,
+      "match_text": "step 2",
+      "step_id": 9103
+     }
+    ]
+   }
+  },
+  {
+   "shape": "a draft note, whose negative id never leaves the client",
+   "row": {
+    "id": -2,
+    "position": 5,
+    "kind": "notes",
+    "title": "Shaping",
+    "text": "Added this session.",
+    "step_id": null,
+    "ingredient_row_id": null,
+    "step_no": null,
+    "refs": []
+   },
+   "payload": {
+    "text": "Added this session.",
+    "title": "Shaping",
+    "kind": "notes",
+    "step_id": null,
+    "ingredient_row_id": null,
+    "refs": []
    }
   }
  ]

@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { ingToPayload, stepToPayload } from "../../static/save-payload.js";
+import { notesPayload } from "../../static/note-draft.js";
 
 const FIX = JSON.parse(
   fs.readFileSync(path.join(import.meta.dirname, "../fixtures/save-roundtrip.json"), "utf8"));
@@ -34,6 +35,28 @@ test("stepToPayload still produces exactly what the fixture records", () => {
   for (const { row, payload } of FIX.steps) {
     assert.deepEqual(stepToPayload(row), payload);
   }
+});
+
+test("notesPayload still produces exactly what the fixture records", () => {
+  // ⚠️ THE NOTES WERE NOT IN THIS FIXTURE, AND THAT IS HOW `title` WENT MISSING FROM THE PAYLOAD.
+  //    notesPayload is a hand-written key list exactly like ingToPayload's, so the sentence in this
+  //    file's header applied to it word for word and nothing held it.
+  for (const { shape, row, payload } of FIX.notes) {
+    assert.deepEqual(notesPayload([row])[0], payload, `notesPayload drifted for: ${shape}`);
+  }
+});
+
+test("the notes fixture covers the shapes a title can be in", () => {
+  const shapes = FIX.notes.map((n) => n.shape).join(" | ");
+  for (const needed of ["titled", "untitled", "CLEARED", "linked to a step", "draft note"]) {
+    assert.ok(shapes.includes(needed), `no fixture note covers "${needed}"`);
+  }
+  // and the three answers the title can arrive as, read off the captured payloads
+  const titles = FIX.notes.map((n) => n.payload.title);
+  assert.ok(titles.includes("Flour"), "no fixture note carries a title");
+  assert.ok(titles.includes(null), "no fixture note carries a cleared or absent one");
+  assert.ok(FIX.notes.every((n) => "title" in n.payload),
+    "the key has to be present on every note, because absent means KEEP on the server");
 });
 
 test("the client canonicalizes the unit on the way out, which the server key must expect", () => {

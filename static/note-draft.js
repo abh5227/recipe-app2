@@ -286,6 +286,15 @@ export function notesPayload(notes) {
     .map((n) => ({
       ...(Number.isInteger(+n.id) && +n.id > 0 ? { id: +n.id } : {}),
       text: String(n.text).trim(),
+      // ⚠️ IT WAS MISSING, AND THAT MADE EVERY TITLE CHANGE IN EDIT MODE A SILENT NO-OP. The server
+      //    reads absent-means-KEEP on a row matched by id, so a Save that left this key out wrote
+      //    the stored title back over the one the cook had just typed, with a 200 and nothing on
+      //    screen to say so. Setting, changing and clearing a title were all lost.
+      //    This is the hand-written-list shape CLAUDE.md records twice: `heading_level` missing from
+      //    a copy flattened every subheading, and the review that found it then measured five more
+      //    columns short on the same route. A sent null is how the editor CLEARS a title, so the key
+      //    is always present rather than conditional.
+      title: n.title == null || !String(n.title).trim() ? null : String(n.title).trim(),
       kind: n.kind,
       step_id: n.step_id == null ? null : +n.step_id,
       ingredient_row_id: n.ingredient_row_id == null ? null : +n.ingredient_row_id,
