@@ -1,0 +1,1067 @@
+{
+ "_why": "Live's 177 recipe_notes rows as they stand BEFORE the titles round, captured once so the two strongest tests of the title rule can run in CI. They were marked live_catalog and skipped there, and that marker exists for the 10,020-entry library rather than for 177 short strings. tests/test_note_title_rule.py reads this and the two decision CSVs in docs/data-repairs/, so the comparison is against Andy's recorded decisions rather than against a copy of them. Regenerate with scripts/gen_note_corpus.py after a pass changes these rows.",
+ "notes": [
+  {
+   "id": 1,
+   "recipe": "1-2-3-4-5-tofu",
+   "kind": "notes",
+   "text": "**Chinese black vinegar**\nChinese black vinegar (zhènjiāng xiāngcù, 镇江香醋) is made from fermented black sticky rice or regular glutinous rice. It can also be made using rice in combination with sorghum and/or wheat."
+  },
+  {
+   "id": 2,
+   "recipe": "1-2-3-4-5-tofu",
+   "kind": "notes",
+   "text": "Originating in the city of Zhenjiang in Jiangsu province, it is quite literally black in color and has a full bodied, malty, complex taste. It is mildly acidic, less so than a regular distilled white vinegar, with a faintly sweet flavor."
+  },
+  {
+   "id": 3,
+   "recipe": "1-2-3-4-5-tofu",
+   "kind": "notes",
+   "text": "Chinese black vinegar is widely used in Chinese cooking for all types of cold appetizers, braised meats and fish, noodles and as a dipping condiment for dumplings."
+  },
+  {
+   "id": 4,
+   "recipe": "1-2-3-4-5-tofu",
+   "kind": "notes",
+   "text": "_Buying_\nLook for bottles with yellow labels marked Chinkiang Vinegar or Zhenjiang Vinegar at your local Chinese grocery store."
+  },
+  {
+   "id": 5,
+   "recipe": "acqua-pazza",
+   "kind": "notes",
+   "text": "Any fairly firm white fish fillets that aren’t too thick will work just fine here. Here are some suggestions: \n- Snapper, tilapia, halibut, cod, bass"
+  },
+  {
+   "id": 6,
+   "recipe": "acqua-pazza",
+   "kind": "notes",
+   "text": "Made for Marshall and Maeve for the first time : )"
+  },
+  {
+   "id": 7,
+   "recipe": "agedashi-tofu",
+   "kind": "notes",
+   "text": "DASHI: Vegetarian Japanese stock is great to have on hand for enhancing many of the dishes in this book. It is a great swap in Asian food for classic vegetable stock for many reasons, but mostly because vegetable stock is based on a French mirepoix of ingredients, including quite distinctive flavours such as garlic and celery, which in some more subtle dishes - including miso soup - are too intrusive. There is also the advantage of not having added salt, which is in most instant vegetable stocks, so you can better control the seasoning of your dish."
+  },
+  {
+   "id": 8,
+   "recipe": "agedashi-tofu",
+   "kind": "notes",
+   "text": "There are a few ways to make dashi, but the most common uses kombu, a Japanese kelp. You can buy packs of dried powdered kombudashi from Asian stores or online"
+  },
+  {
+   "id": 9,
+   "recipe": "all-butter-pie-crust",
+   "kind": "tips",
+   "text": "Tip: Add the ice water a few tablespoons at a time. Use just enough water for the dough to come together without being crumbly."
+  },
+  {
+   "id": 10,
+   "recipe": "all-butter-pie-crust",
+   "kind": "storage",
+   "text": "To Store: Dough can be stored in the fridge for up to 2 days."
+  },
+  {
+   "id": 11,
+   "recipe": "all-butter-pie-crust",
+   "kind": "storage",
+   "text": "To Freeze: Wrap the dough in a few layers of plastic wrap and then put the wrapped dough into a freezer bag for up to 3 months."
+  },
+  {
+   "id": 12,
+   "recipe": "all-butter-pie-crust",
+   "kind": "notes",
+   "text": "Form a Pie Shell: To form the pie shell, take a disk from the refrigerator and let rest for 5 minutes at room temperature. Roll the dough out on a floured surface into a 14 inch round. Wrap the dough over the rolling pin, pick it up and carefully unroll it over a 9 inch pie plate. Gently fit the pie into the bottom and sides of the pie plate. Use a sharp knife or kitchen shears to trim a 1 inch overhang. Fold the edges under and press to seal."
+  },
+  {
+   "id": 13,
+   "recipe": "all-butter-pie-crust",
+   "kind": "notes",
+   "text": "To Freeze the pie shell: Place the pie shell into the refrigerator to chill and set for 1 hour. Wrap tightly with a few layers of plastic wrap and place in freezer until ready to bake. Store in the freezer for up to 3 months."
+  },
+  {
+   "id": 14,
+   "recipe": "all-butter-pie-crust",
+   "kind": "notes",
+   "text": "Blind Bake: Place a piece of parchment paper or coffee filter into the center of the pie crust. Fill the center with pie weights or dry beans to keep the dough from puffing up while baking. Chill for 30 minutes. Bake the crust at 375 degrees for 20 minutes. Remove the pie from the oven and carefully lift out the paper and weights. Prick the bottom of the crust using a fork to prevent bubbles, return to the oven for an additional 15 to 20 minutes or until the crust is golden all over."
+  },
+  {
+   "id": 15,
+   "recipe": "aloo-potato-parathas",
+   "kind": "variations",
+   "text": "Variation: Add ¼ cup grated cheddar cheese to the potatoes in step 2."
+  },
+  {
+   "id": 16,
+   "recipe": "baked-cauliflower-with-red-onions-feta-and-dill-firinda-karnabahar-mucveri",
+   "kind": "notes",
+   "text": "Baking brought out a sweetness in the cauliflower which balanced nicely with the sharp feta; a lovely dish, packed with flavour. Diced red pepper also works well in this dish."
+  },
+  {
+   "id": 17,
+   "recipe": "baked-cauliflower-with-red-onions-feta-and-dill-firinda-karnabahar-mucveri",
+   "kind": "notes",
+   "text": "I serve this baked cauliflower with cacik yoghurt dip with cucumbers and shepherd's salad with sumac onions. It can be served hot or at room temperature with a grilled main course and lemon wedges on the side."
+  },
+  {
+   "id": 18,
+   "recipe": "baked-rosemary-chickpeas",
+   "kind": "notes",
+   "text": "Grape syrup is a condiment made from grapes cooked down into a thick syrup. It is common in Greece and other Mediterranean countries. Thick and sweet without added sugar, it's used on pancakes and bread, as well as in baking. It's often available in Italian or gourmet markets, or at online retailers; if you can't find it, substitute with 2 tablespoons brown sugar, maple syrup, or honey."
+  },
+  {
+   "id": 19,
+   "recipe": "baked-zucchini-needs-a-redemption",
+   "kind": "notes",
+   "text": "**Note for next time: Oven couldn't hold the temperature, so turned out soggy!**"
+  },
+  {
+   "id": 20,
+   "recipe": "basic-dal",
+   "kind": "notes",
+   "text": "For added punch, toss in a minced garlic clove when the dal is done cooking, before you add the chhonk."
+  },
+  {
+   "id": 21,
+   "recipe": "basic-hummus",
+   "kind": "notes",
+   "text": "This hummus will keep in the refrigerator for up to 3 days."
+  },
+  {
+   "id": 22,
+   "recipe": "beans",
+   "kind": "notes",
+   "text": "Note: Some legumes, like lentils and split peas, do not need to be soaked. Also, if you don't have time to soak, you can still cook your beans on the stovetop or using the other methods below. You will just need to cook your beans for longer, sometimes even for double the cooking time."
+  },
+  {
+   "id": 23,
+   "recipe": "beans",
+   "kind": "notes",
+   "text": "Note: You can save your cooked bean liquid and use as a veggie stock."
+  },
+  {
+   "id": 24,
+   "recipe": "beans",
+   "kind": "tips",
+   "text": "Tip: While cooking your beans, you can add herbs to add flavor and aid in digestion. These herbs include cumin, bay leaves, fennel, and fresh epazote (available in Latin markets)."
+  },
+  {
+   "id": 25,
+   "recipe": "birria-tacos",
+   "kind": "storage",
+   "text": "Leftovers – Best to pan fry fresh so they’re crispy. Excellent for prepare ahead – keep the beef (tossed in the sauce), red oil and Consommé separate, prep chopped coriander and onion. Then cook on demand! Keeps 4 days in the fridge, freezer 3 months."
+  },
+  {
+   "id": 26,
+   "recipe": "biscuits",
+   "kind": "notes",
+   "text": "As an alternative to folding, you can cut and stack because you don't get bent edges (no fold there). Roll your dough out, cut it into quarters, stack them, and roll them flat again. You\ncan do this 2 or 3 times to build up a ton of layer."
+  },
+  {
+   "id": 27,
+   "recipe": "brioche-bread",
+   "kind": "notes",
+   "text": "Flour. This recipe works best with flour with around 11% protein. All-purpose flour protein levels can vary between brands, and the name of the flour itself can vary between countries. It’s best to check protein levels rather than just the name of the flour"
+  },
+  {
+   "id": 28,
+   "recipe": "brioche-bread",
+   "kind": "notes",
+   "text": "Kneading by hand. Brioche bread can be made without a stand mixer. It can be kneaded by hand, although it may take longer and require more effort. It’s a very sticky wet dough, so don’t be tempted to add more flour, or it will ruin the texture."
+  },
+  {
+   "id": 29,
+   "recipe": "brioche-bread",
+   "kind": "storage",
+   "text": "Storing. Brioche can be stored in an airtight container at room temperature for up to three days. Alternatively, it can be frozen for future use."
+  },
+  {
+   "id": 30,
+   "recipe": "brioche-cinnamon-rolls",
+   "kind": "notes",
+   "text": "Measurements - Both grams and US cup sizes are provided. Use the toggle on the recipe card to switch between the two."
+  },
+  {
+   "id": 31,
+   "recipe": "brioche-cinnamon-rolls",
+   "kind": "notes",
+   "text": "More information - See my brioche bread recipe post for more details on making brioche dough."
+  },
+  {
+   "id": 32,
+   "recipe": "brioche-cinnamon-rolls",
+   "kind": "notes",
+   "text": "Yeast If you want to test the viability of your yeast before beginning, warm the milk (to around 95-104°F / 35-40°C) and mix in the yeast with one tablespoon of the sugar. Leave it to sit for 10 minutes first. If it becomes foamy, it's good to go."
+  },
+  {
+   "id": 33,
+   "recipe": "brioche-cinnamon-rolls",
+   "kind": "notes",
+   "text": "Flour. This recipe works best with flour with around 11% protein. All-purpose flour protein levels can vary between brands, and the name of the flour itself can vary between countries. It’s best to check protein levels rather than just the name of the flour"
+  },
+  {
+   "id": 34,
+   "recipe": "brioche-cinnamon-rolls",
+   "kind": "notes",
+   "text": "Kneading by hand. Brioche dough can be made without a stand mixer. It can be kneaded by hand, although it may take longer and require more effort. It's a sticky wet dough, so don't be tempted to add more flour, or it will ruin the texture."
+  },
+  {
+   "id": 35,
+   "recipe": "brioche-cinnamon-rolls",
+   "kind": "storage",
+   "text": "Storing. Brioche cinnamon rolls can be stored in an airtight container at room temperature for up to three days. Rewarm them gently in the microwave over the following days."
+  },
+  {
+   "id": 36,
+   "recipe": "brown-butter-bourbon-snickerdoodles",
+   "kind": "notes",
+   "text": "Feel free to use any whiskey in place of the bourbon; dark, spiced rum also works well and gives the dough a subtle cinnamon-y flavor."
+  },
+  {
+   "id": 37,
+   "recipe": "brown-butter-brownie-cookies",
+   "kind": "notes",
+   "text": "The cookies will keep in an airtight container in a single layer for up to 1 week."
+  },
+  {
+   "id": 38,
+   "recipe": "brownies",
+   "kind": "notes",
+   "text": "When these brownies come out of the oven, they'll be super gooey in the middle. Allow them to cool completely, about 2 hours, before you slice into them to give them a chance to set up. They'll continue to firm up the longer they're out of the oven. If you still prefer a firmer brownie, store them in the fridge."
+  },
+  {
+   "id": 39,
+   "recipe": "bulgogi-bowls",
+   "kind": "notes",
+   "text": "Mirin — substitute Chinese cooking wine or cooking sake plus ½ tsp brown sugar, or omit for no alcohol."
+  },
+  {
+   "id": 40,
+   "recipe": "buttermilk-biscuits",
+   "kind": "notes",
+   "text": "-White Lily or Martha White flour, which is made with soft wheat (mean-ing less gluten). If you can get your hands on either of these brands, use 3½ cups. Otherwise, you can mix cake flour with all-purpose, as l've done below."
+  },
+  {
+   "id": 41,
+   "recipe": "cappuccino-muffins",
+   "kind": "notes",
+   "text": "The yogurt or buttermilk can be substituted with 168g of regular milk (¾ cup minus ¾ Tbsp) plus 12g (¾ Tbsp) white vinegar or lemon juice. Mix these two ingredients together before beginning the recipe to let it sit and curdle for 5-10 minutes."
+  },
+  {
+   "id": 42,
+   "recipe": "cappuccino-muffins",
+   "kind": "notes",
+   "text": "Freeze for up to 3 months. Let them cool completely, and place each muffin in a freezer-safe container or freezer bag"
+  },
+  {
+   "id": 43,
+   "recipe": "chicago-style-italian-beef-pot-roast-sandwich",
+   "kind": "notes",
+   "text": "Made with Mom and Dad in Boston"
+  },
+  {
+   "id": 44,
+   "recipe": "chicken-broth",
+   "kind": "notes",
+   "text": "Cooled broth can be refrigerated for up to 4 days or frozen for up to 1 month"
+  },
+  {
+   "id": 45,
+   "recipe": "chicken-broth",
+   "kind": "notes",
+   "text": "**Enriched Chicken and Pork Broth**\nSubstitute 2 pounds pork necks for 2 pounds of chicken wings."
+  },
+  {
+   "id": 46,
+   "recipe": "chickpea-falafel-patties",
+   "kind": "notes",
+   "text": "By Chef Sandra Lewis, Life at the Table, Blue Zones Project Fort Worth, Texas"
+  },
+  {
+   "id": 47,
+   "recipe": "chipotle-black-beans",
+   "kind": "storage",
+   "text": "Storage: Store leftovers covered in the refrigerator for up to 4 days."
+  },
+  {
+   "id": 48,
+   "recipe": "chipotle-black-beans",
+   "kind": "storage",
+   "text": "Freezer: The beans can be cooled and packed in freezer-safe containers, labeled, and frozen for up to 3 months. Thaw overnight in the refrigerator."
+  },
+  {
+   "id": 49,
+   "recipe": "chipotle-black-beans",
+   "kind": "notes",
+   "text": "Quick soak: If you forgot to soak your beans the night before, use this method to get a jump-start on cooking them."
+  },
+  {
+   "id": 50,
+   "recipe": "chipotle-black-beans",
+   "kind": "notes",
+   "text": "Pick through and rinse 1 pound beans. To a large saucepan, add beans and enough liquid to cover them by 1 inch."
+  },
+  {
+   "id": 51,
+   "recipe": "chipotle-black-beans",
+   "kind": "notes",
+   "text": "Bring beans to boil and cook for 2 minutes. Remove saucepan from heat, cover, and let beans sit for 1 hour. Drain and discard soaking liquid."
+  },
+  {
+   "id": 52,
+   "recipe": "chocolate-chip-cookies",
+   "kind": "notes",
+   "text": "The cookies, stored airtight at room temperature, will keep up to 5 days or can be frozen up to 1 month. The cookie dough can be portioned and refrigerated up to 2 days ahead or frozen up to 2 months. If freezing, allow the portioned dough to chill in the refrigerator for at least 2 hours before transferring the entire sheet to the freezer. Once the balls are frozen solid, pack the pieces into a resealable plastic freezer bag and, store. Bake the cookies directly from the freezer without thawing first, but keep in mind you may need to add a minute or two to the bake time."
+  },
+  {
+   "id": 53,
+   "recipe": "chocolate-chip-cookies",
+   "kind": "notes",
+   "text": "You can add only one variety of chocolate rather than the mix of milk and dark, just note that doing so will change the balance of sweetness (all dark chocolate making it less sweet, all milk chocolate making it more). Seek out chocolate disks or féves, like the ones by Guittard or Valrhona, since they melt into wonderful gooey puddles inside the cookies. If you can't find disks, opt for a block or bar of chocolate and coarsely chop all of it yourself. If possible, avoid chips, since they typically contain emulsifiers that prevent them from melting."
+  },
+  {
+   "id": 54,
+   "recipe": "chocolate-chip-cookies",
+   "kind": "notes",
+   "text": "You can also add 1 cup chopped toasted nuts (4.2 oz / 120g), such as walnuts, almonds, or pecans, to the batter along with the chocolate."
+  },
+  {
+   "id": 55,
+   "recipe": "chocolate-chip-cookies",
+   "kind": "notes",
+   "text": "Sprinkle some flaky salt on top of the cookies prior to baking if you're a salty dessert person. Even though the dough contains a whopping 2 teaspoons of kosher salt, it's mainly there to bring out the flavors of the other ingredients; the baked cookies don't taste noticeably salty."
+  },
+  {
+   "id": 56,
+   "recipe": "chocolate-hazelnut-wedges",
+   "kind": "notes",
+   "text": "If using raw, skin-on hazelnuts (instead of blanched), immediately transfer them to a clean dish towel after toasting and rub vigorously to remove their skins. It's okay if some skin is still attached."
+  },
+  {
+   "id": 57,
+   "recipe": "chocolate-hazelnut-wedges",
+   "kind": "notes",
+   "text": "The shortbread will keep in an airtight container for up to 1 week."
+  },
+  {
+   "id": 58,
+   "recipe": "cilantro-chutney",
+   "kind": "notes",
+   "text": "There are also many ways to customize it—add mint for fresher notes, or nuts for richness."
+  },
+  {
+   "id": 59,
+   "recipe": "cinnamon-scones",
+   "kind": "notes",
+   "text": "To freeze them place the cooled scones in an airtight container or freezer bag. The scones will maintain the best quality for about 2 to 3 months. To defrost them, leave them in the bag or container and defrost at room temperature for 2-3 hours before serving."
+  },
+  {
+   "id": 60,
+   "recipe": "cinnamon-scones",
+   "kind": "notes",
+   "text": "They can also be frozen unbaked. Freeze first on a baking sheet then move to freezer safe bag or container. They can be baked frozen (let them sit out while the oven is pre-heating). They will need a few more minutes of baking time."
+  },
+  {
+   "id": 61,
+   "recipe": "cinnamon-sugar-speculoos-squares",
+   "kind": "notes",
+   "text": "The cookie butter can be found next to the nut butters in well-stocked grocery stores, including Trader Joe's."
+  },
+  {
+   "id": 62,
+   "recipe": "coconut-curried-golden-lentils",
+   "kind": "notes",
+   "text": "*To improve digestibility and slightly speed cooking time, you can soak lentils by covering with cool water and soaking overnight or for 6-8 hours. Then rinse, drain, and proceed with recipe as instructed."
+  },
+  {
+   "id": 63,
+   "recipe": "coconut-curried-golden-lentils",
+   "kind": "notes",
+   "text": "Note: Soaking lentils is optional but can improve digestibility and speed cook time."
+  },
+  {
+   "id": 64,
+   "recipe": "dan-dan-noodles",
+   "kind": "notes",
+   "text": "**Sui mi ya cai**"
+  },
+  {
+   "id": 65,
+   "recipe": "dan-dan-noodles",
+   "kind": "notes",
+   "text": "Sui mi ya cai is a type of preserved vegetable from Sichuan Province. Made with mustard greens, it is dried, seasoned, and fermented, resulting in a salty, savory product. Suggest using it within a week or two of opening."
+  },
+  {
+   "id": 66,
+   "recipe": "dry-rub-for-ribs",
+   "kind": "notes",
+   "text": "Made with Vedant and Sophia."
+  },
+  {
+   "id": 67,
+   "recipe": "earl-grey-tea-cake",
+   "kind": "notes",
+   "text": "Variables\n1. Slightly increase the amount of chocolate\n2. Kept everything super cold for the icing like put metal bowls in the freezer… don’t know if it actually did something"
+  },
+  {
+   "id": 68,
+   "recipe": "falafel-crackers",
+   "kind": "notes",
+   "text": "CHICKPEA FLOUR - Also known as garbanzo bean flour or gram flour, chickpea flour is naturally gluten-free, made from ground chickpeas. It is available from Bob's Red Mill online and at health food stores."
+  },
+  {
+   "id": 69,
+   "recipe": "french-baguette",
+   "kind": "notes",
+   "text": "If using fresh Yeast: 8g"
+  },
+  {
+   "id": 70,
+   "recipe": "french-fries",
+   "kind": "notes",
+   "text": "Freezing – Freezes 100% perfectly! After Fry #1, fully cool the fries then freeze on a tray (you can stack them all on one tray). Once frozen, they can be tipped into a container or ziplock bag for freezing – just like store bought frozen fries! Cook from frozen for 4 1/2 minutes."
+  },
+  {
+   "id": 71,
+   "recipe": "french-fries",
+   "kind": "notes",
+   "text": "Re-use oil 3 to 4 times. Cool then store in jars. The oil shouldn’t need to be strained after cooking the fries."
+  },
+  {
+   "id": 72,
+   "recipe": "garlic-kale-salad-with-crispy-chickpeas",
+   "kind": "notes",
+   "text": "Tandoori Masala Blend: 3 Tbsp cumin, 2 Tbsp garlic powder, 2 Tbsp paprika, 3 tsp ginger, 2 tsp coriander, 2 tsp cardamom."
+  },
+  {
+   "id": 73,
+   "recipe": "ginger-chicken",
+   "kind": "notes",
+   "text": "Young Ginger vs Mature Ginger"
+  },
+  {
+   "id": 74,
+   "recipe": "ginger-chicken",
+   "kind": "notes",
+   "text": "Mature ginger packs a more concentrated spicy ginger flavor than young ginger. Young ginger is vaguely pink in color, with slightly transparent skin. It has a more mildly spicy and almost floral flavor."
+  },
+  {
+   "id": 75,
+   "recipe": "ginger-chicken",
+   "kind": "notes",
+   "text": "The ginger you can get in most U.S. stores is mature ginger."
+  },
+  {
+   "id": 76,
+   "recipe": "ginger-chicken",
+   "kind": "notes",
+   "text": "Young ginger is only available a couple months out of the year when it’s in season (mid-September to early November), if at all."
+  },
+  {
+   "id": 77,
+   "recipe": "glazed-pumpkin-scones",
+   "kind": "notes",
+   "text": "I used almost ¼ cup whole milk and a little under 1 tablespoon of greek yogurt"
+  },
+  {
+   "id": 78,
+   "recipe": "glazed-pumpkin-scones",
+   "kind": "notes",
+   "text": "Good not great, missing some things, good rise, could use more butter - 11/4/24 AWH"
+  },
+  {
+   "id": 79,
+   "recipe": "glazed-pumpkin-scones",
+   "kind": "notes",
+   "text": "Light and dry, looking for denser - 11/4/24 MQD"
+  },
+  {
+   "id": 80,
+   "recipe": "green-chicken-chili-soup",
+   "kind": "notes",
+   "text": "To make ahead, (reduce the chicken stock to use only 2 cups) cool the soup and add it to a freezer ziplock bag or airtight container. Store in the freezer for up to 1 month. When ready to use, thaw out and reheat in a pot over medium heat on the stov"
+  },
+  {
+   "id": 81,
+   "recipe": "hong-kong-style-shrimp-chow-mein-noodles",
+   "kind": "notes",
+   "text": "I recommend that you use uncooked, cleaned frozen shrimp. For this Shrimp Chow Mein recipe, I used uncooked shrimp, peeled off the shells, and left the tails on. The tails add nice flavor to the dish, but you can remove them if you prefer. I also like to butterfly the shrimp: use a sharp knife and carefully cut about two thirds of the way into the backs of each shrimp to do this."
+  },
+  {
+   "id": 82,
+   "recipe": "italian-two-bean-soup",
+   "kind": "notes",
+   "text": "Soak beans for 8 - 10 hours before cooking"
+  },
+  {
+   "id": 83,
+   "recipe": "italian-two-bean-soup",
+   "kind": "notes",
+   "text": "Cannellini – also known as White Italian Beans, white kidney beans."
+  },
+  {
+   "id": 84,
+   "recipe": "italian-two-bean-soup",
+   "kind": "notes",
+   "text": "Borlotti – also known as Cranberry bean, Roman bean"
+  },
+  {
+   "id": 85,
+   "recipe": "italian-two-bean-soup",
+   "kind": "notes",
+   "text": "You can also used canned beans, just be sure to drain and rinse before using."
+  },
+  {
+   "id": 86,
+   "recipe": "italian-two-bean-soup",
+   "kind": "notes",
+   "text": "Any leftover soup should be stored in an airtight container and refrigerated. It will last up to 3-4 days in the fridge."
+  },
+  {
+   "id": 87,
+   "recipe": "italian-two-bean-soup",
+   "kind": "notes",
+   "text": "Freeze the completely cooled soup in a freezer safe container. It will keep for up to 6 months in the freezer"
+  },
+  {
+   "id": 88,
+   "recipe": "key-lime-pie",
+   "kind": "notes",
+   "text": "Any leftover pie will keep, covered with plastic, for several days in the refrigerator (the crust will soften over time)."
+  },
+  {
+   "id": 89,
+   "recipe": "key-lime-pie",
+   "kind": "notes",
+   "text": "*Pie recipe for year 5 anniversary 3/14/25 : ) *"
+  },
+  {
+   "id": 90,
+   "recipe": "kfc-spicy-chicken-rice-bowl",
+   "kind": "notes",
+   "text": "Note: This recipe is for 4 servings, but only toss the chicken you'll eat now with the dressing so it won't become soggy. I will give the dressing ingredient amounts for 1 portion, and you can scale it up as needed. Each portion of fried chicken is about 120g."
+  },
+  {
+   "id": 91,
+   "recipe": "lavender-chocolate-chunk-cookies",
+   "kind": "notes",
+   "text": "If wrapped tightly in plastic, the dough can be stored in the refrigerator for several days before baking. If too firm to scoop, let sit at room temperature for 15 minutes and try again."
+  },
+  {
+   "id": 92,
+   "recipe": "lavender-chocolate-chunk-cookies",
+   "kind": "notes",
+   "text": "The cookies will keep in an airtight container for up to 1 week."
+  },
+  {
+   "id": 93,
+   "recipe": "leek-and-potato-soup",
+   "kind": "notes",
+   "text": "To add ham next time"
+  },
+  {
+   "id": 94,
+   "recipe": "malted-brownie-biscotti",
+   "kind": "notes",
+   "text": "The biscotti will keep in an airtight container for up to 1 week."
+  },
+  {
+   "id": 95,
+   "recipe": "malted-chocolate-chip-cookie-bars",
+   "kind": "notes",
+   "text": "If wrapped tightly in plastic, the dough can be made several days in advance and stored in the fridge. When ready to bake, let the dough sit at room temperature for 15 minutes, press into the baking pan, and bake as instructed."
+  },
+  {
+   "id": 96,
+   "recipe": "malted-chocolate-chip-cookie-bars",
+   "kind": "notes",
+   "text": "The bars will keep in an airtight container in a single layer for up to 1 week."
+  },
+  {
+   "id": 97,
+   "recipe": "marbled-chocolate-sugar-cookies",
+   "kind": "notes",
+   "text": "If wrapped tightly in plastic, both doughs can be stored in the refrigerator for several days before baking. When ready to bake, let sit at room temperature for about 30 minutes until you can easily form them into ropes and roll into balls."
+  },
+  {
+   "id": 98,
+   "recipe": "marbled-chocolate-sugar-cookies",
+   "kind": "notes",
+   "text": "The cookies will keep in an airtight container for up to 1 week."
+  },
+  {
+   "id": 99,
+   "recipe": "matar-paneer",
+   "kind": "tips",
+   "text": "Tip: As soon as you cube the paneer, put it in warm water until you are ready to cook it—this will make sure it doesn't dry out. Just be sure to drain it before adding it to the pan."
+  },
+  {
+   "id": 100,
+   "recipe": "matcha-amaretti-cookies",
+   "kind": "notes",
+   "text": "Make sure to use almond flour, not almond meal. Almond flour has a finer texture and is made with blanched almonds, allowing the bright green color of the matcha to shine. If you can't find it, you can easily make your own by grinding blanched almonds in a food processor until they are the texture of fine sand. If there are any large pieces of almond still remaining, sift the flour through a fine-mesh sieve to remove them."
+  },
+  {
+   "id": 101,
+   "recipe": "mejadra",
+   "kind": "notes",
+   "text": "Different rices and brands require different ratios of rice to water. Whatever the water quantity is, reduce it by 1/4 cup."
+  },
+  {
+   "id": 102,
+   "recipe": "mexican-rice",
+   "kind": "notes",
+   "text": "Tomato Sauce: I used this because it’s fast and easy, but for a more authentic version, add 1-2 fresh tomatoes to a blender with the onion and garlic, and blend before adding to the rice."
+  },
+  {
+   "id": 103,
+   "recipe": "mexican-rice",
+   "kind": "notes",
+   "text": "Tomato Bouillon: granules or cubes, found in the Mexican aisle or online. This adds color and flavor to the rice. If you can’t find it, substitute chicken Bouillon."
+  },
+  {
+   "id": 104,
+   "recipe": "milky-tea-tres-leches",
+   "kind": "notes",
+   "text": "Make up to 2 days in advance and store in the fridge."
+  },
+  {
+   "id": 105,
+   "recipe": "mocha-chocolate-chunk-cookies",
+   "kind": "notes",
+   "text": "The cookies will keep in an airtight container for up to 1 week."
+  },
+  {
+   "id": 106,
+   "recipe": "new-york-style-bagel",
+   "kind": "notes",
+   "text": "If you are unable to get active dry or instant yeast, you can use fresh yeast. The general rule of thumb is a ratio of 2.5:1, fresh to active dry. The amount of active dry yeast used in the recipe is only 6 grams, you would need about 15 grams of fresh yeast."
+  },
+  {
+   "id": 107,
+   "recipe": "new-york-style-bagel",
+   "kind": "notes",
+   "text": "When substituting fresh yeast, you may want to make a few adjustments to the method. Fresh yeast does not need to be proofed like active dry yeast. The water, sugar, and yeast step will be unnecessary in this case, so do keep that in mind. But, as some have told me, they’ve simply substituted fresh yeast for the active dry yeast and followed the steps as directed without any issues."
+  },
+  {
+   "id": 108,
+   "recipe": "no-knead-bread",
+   "kind": "notes",
+   "text": "Use yeast labelled 'instant' or 'rapid rise'. If you only have active dry yeast, dissolve it in the water first (no need to foam), then add the flour and salt and proceed as written."
+  },
+  {
+   "id": 109,
+   "recipe": "osmanthus-cake",
+   "kind": "notes",
+   "text": "Osmanthus or guìhuā in Manadarin (桂花), is a sweet, fragrant flower native to East Asia. You may find it as a dried tea, in syrup for baking Chinese desserts, or as a flavoring in wine for braised meat dishes."
+  },
+  {
+   "id": 110,
+   "recipe": "osmanthus-cake",
+   "kind": "notes",
+   "text": "The closest equivalent you might know of is elderflower. Both elderflower and osmanthus share the same lightly floral, yet not overpowering flavor."
+  },
+  {
+   "id": 111,
+   "recipe": "osmanthus-cake",
+   "kind": "notes",
+   "text": "In this recipe, we’re using osmanthus syrup, which you can find jarred in Chinese grocery stores labelled 糖桂花"
+  },
+  {
+   "id": 112,
+   "recipe": "osmanthus-cake",
+   "kind": "notes",
+   "text": "Also known as tea olive in the Deep South"
+  },
+  {
+   "id": 113,
+   "recipe": "pasta-e-ceci",
+   "kind": "notes",
+   "text": "You can use Canned Chickpeas. If you use them you’ll want to cut the water in half."
+  },
+  {
+   "id": 114,
+   "recipe": "penne-alla-vodka",
+   "kind": "notes",
+   "text": "Leftover dishes\nPenne alla vodka pizza"
+  },
+  {
+   "id": 115,
+   "recipe": "pita-bread",
+   "kind": "variations",
+   "text": "VARIATION - For pita pockets, use a rolling pin to roll each ball into a 6-inch circle. Place on a prepared baking sheet; you can probably fit three or four at once. Bake at 400°F until they puff up and are lightly browned, about 5 minutes. Let cool on the sheet."
+  },
+  {
+   "id": 116,
+   "recipe": "potato-scallion-cakes-fritterra",
+   "kind": "notes",
+   "text": "Chop the blanched scallions finely, or the cakes will break along scallion fault lines as they fry. And don't be shy with the heat; searing them quickly helps hold the loose batter together—-this will keep you from adding too many bread crumbs, which, after a certain point, you will regret."
+  },
+  {
+   "id": 117,
+   "recipe": "prego-rolls-steak-and-piri-piri-sandwiches",
+   "kind": "notes",
+   "text": "These sandwiches are best made by grilling the steak outside, but you can still make this recipe if you don't have an outdoor grill. Just cook the steak in a ripping-hot cast-iron pan. Look for Portuguese rolls at your local grocery store (they're usually near the kaiser rolls), and if you can't find them, a soft bread roll like a ciabatta roll or other flour-dusted roll will work well."
+  },
+  {
+   "id": 118,
+   "recipe": "pumpkin-banana-bread",
+   "kind": "notes",
+   "text": "Store in an airtight container at room temperature for up to 3 days. Loaf and be frozen for up to 2 months and thawed in the fridge"
+  },
+  {
+   "id": 119,
+   "recipe": "pumpkin-banana-bread",
+   "kind": "notes",
+   "text": "If you notice that the top of the bread is getting too brown but the middle isn’t baked through yet, tent a piece of aluminum foil and place it over top of the loaf while it’s still baking."
+  },
+  {
+   "id": 120,
+   "recipe": "pumpkin-banana-bread",
+   "kind": "notes",
+   "text": "A medium-sized banana is about 4 ounces and measures between 7-8 inches."
+  },
+  {
+   "id": 121,
+   "recipe": "pumpkin-banana-bread",
+   "kind": "notes",
+   "text": "WOULDNT MAKE AGAIN"
+  },
+  {
+   "id": 122,
+   "recipe": "pumpkin-scones",
+   "kind": "notes",
+   "text": "Fresh pumpkin: Blot the pumpkin puree to remove moisture. Pumpkin puree has a lot of moisture, and excess moisture will lead to cakey cookies. Blotting the pumpkin with paper towels will remove as much moisture as possible, leading to a nice, chewy texture. Alternatively, you can press the pumpkin against the sides of a very fine mesh strainer."
+  },
+  {
+   "id": 123,
+   "recipe": "pumpkin-scones",
+   "kind": "notes",
+   "text": "Strain runny puree to remove excess liquid. Some varieties of pie pumpkins can have more moisture than others. If your puree is more watery than canned puree, you should strain it in a cheesecloth-lined mesh strainer for 15-30 minutes or until thickened before using the puree in your favorite pumpkin pie recipe. You can also spread it out on a baking sheet and bake it at 300°F, stirring frequently, until thickened. I’d recommend puree again to make sure it’s totally smooth."
+  },
+  {
+   "id": 124,
+   "recipe": "pumpkin-scones",
+   "kind": "notes",
+   "text": "To prevent sticking: Flour the sharp knife or bench scraper to help keep the dough from sticking when cut."
+  },
+  {
+   "id": 125,
+   "recipe": "pumpkin-scones",
+   "kind": "notes",
+   "text": "For a thinner glaze, add 1 or 2 teaspoons more milk and drizzle the glaze over the scones."
+  },
+  {
+   "id": 126,
+   "recipe": "pumpkin-scones",
+   "kind": "notes",
+   "text": "Made for Sophia and Vedant’s coffee party :)"
+  },
+  {
+   "id": 127,
+   "recipe": "pumpkin-spice-sandwich-cookies-with-brown-butter-cream-cheese-frosting",
+   "kind": "notes",
+   "text": "Pumpkin pie spice can be found in the spice section of most well-stocked grocery stores. If unavailable, you can make your own by combining 4 teaspoons ground cinnamon, 2 ½ teaspoons ground ginger, ½ teaspoon ground allspice, ½ teaspoon ground cloves, and ½ teaspoon ground nutmeg. This will give you just enough spice mixture to make this recipe."
+  },
+  {
+   "id": 128,
+   "recipe": "quick-easy-hainanese-chicken-rice-khao-mun-gai",
+   "kind": "notes",
+   "text": "If you only want to use white meat for this dish, that's fine, but the chicken thighs are also going to be your main source of chicken fat trimmings that you need for the rice. So you need to make sure that whatever chicken you use, you are able to trim enough chicken fat off of it. Or, if you’re making your own chicken stock, choose bones with fatty bits attached (back bones are good for this) and you can skim the fat off the stock when it’s done. You can also trim fat and skin off of chicken thighs that you can save for another dish!"
+  },
+  {
+   "id": 129,
+   "recipe": "quick-easy-hainanese-chicken-rice-khao-mun-gai",
+   "kind": "notes",
+   "text": "You can use store bought stock for a super quick/easy version, but for the most authentic flavour I highly recommend using Asian-style homemade stock for this one."
+  },
+  {
+   "id": 130,
+   "recipe": "quick-easy-hainanese-chicken-rice-khao-mun-gai",
+   "kind": "notes",
+   "text": "It’s traditional to serve a bowl of chicken broth on the side since the dish itself isn’t very saucy. The broth can be simply seasoned with salt and pepper, but you’ll sometimes see people putting a few pieces of winter melon in it."
+  },
+  {
+   "id": 131,
+   "recipe": "raspberry-chocolate-chunk-cookies",
+   "kind": "notes",
+   "text": "Freeze-dried raspberries can be found in the dried fruit and nuts section of most well-stocked grocery stores, such as Whole Foods and Trader Joe's. If unavailable, any freeze-dried berry, such as strawberries or blueberries, can work as a substitute"
+  },
+  {
+   "id": 132,
+   "recipe": "raspberry-pie-6-year-anniversary-pie",
+   "kind": "notes",
+   "text": "If the edges brown too fast, cover them with strips of aluminum foil about halfway through baking."
+  },
+  {
+   "id": 133,
+   "recipe": "raspberry-pie-6-year-anniversary-pie",
+   "kind": "notes",
+   "text": "NOTE FOR NEXT TIME: Add more cinnamon!!"
+  },
+  {
+   "id": 134,
+   "recipe": "rhubarb-cake",
+   "kind": "notes",
+   "text": "Try to pick rhubarb stalks that are very firm and stiff (not flabby), dark red, and blemish-free."
+  },
+  {
+   "id": 135,
+   "recipe": "rhubarb-cake",
+   "kind": "notes",
+   "text": "Err on the side of baking the loaf more rather than less. It's an extremely moist cake, and underbaking it even slightly could cause it to fall a bit as it cools (though it will still taste great)."
+  },
+  {
+   "id": 136,
+   "recipe": "roasted-cauliflower-with-garlic",
+   "kind": "notes",
+   "text": "Made for Vedant and Sophia with ribs and mashed potatoes."
+  },
+  {
+   "id": 137,
+   "recipe": "roasted-chili-flakes",
+   "kind": "notes",
+   "text": "Safety note \nDo not immediately open the grinder lid after you stop the blade. Give the chili dust time to settle down before opening, 15-20 seconds at least, otherwise you will inhale chili dust and that is NOT FUN. Also when you deem it safe to open the lid, do not put your face directly on top of it; and make sure there isn't a fan or anything blowing nearby. This all seems obvious until you forget about it, folks."
+  },
+  {
+   "id": 138,
+   "recipe": "roasted-chili-flakes",
+   "kind": "notes",
+   "text": "How to Store Chili Flakes\nStore in an airtight container in the fridge or freezer, because chilies do get moldy overtime. I usually only make one small jar at a time and keep it in the fridge, but if you have more than you can use within 6 months, keep a small amount in the fridge and the extra in the freezer."
+  },
+  {
+   "id": 139,
+   "recipe": "roasted-pumpkin",
+   "kind": "notes",
+   "text": "Baked pumpkin and pumpkin purée will keep covered in the refrigerator up to 1 week, or in the freezer for 1 month (or longer)."
+  },
+  {
+   "id": 140,
+   "recipe": "salsa-verde",
+   "kind": "notes",
+   "text": "Reminder. High heat doesn’t mean high heat, way too long or way too high of temp."
+  },
+  {
+   "id": 141,
+   "recipe": "salted-brown-butter-pecan-tassies",
+   "kind": "notes",
+   "text": "The pastry dough can be made several days in advance, formed into a disc, then wrapped in plastic and stored in the fridge. When ready to bake, let the dough sit out at room temperature for 30 minutes to soften lightly"
+  },
+  {
+   "id": 142,
+   "recipe": "shrimp-scampi",
+   "kind": "notes",
+   "text": "Made for Maeve, Molly, Krista, Mathew and Patrick LBI - August 2024"
+  },
+  {
+   "id": 143,
+   "recipe": "smashed-cucumber-salad",
+   "kind": "notes",
+   "text": "**After 3/3 version**\nAH - Go light on the salt, maybe even a little less than what this has.\nAH - Make sure to use the long ones or cut the big ones into smaller pieces"
+  },
+  {
+   "id": 144,
+   "recipe": "snickerdoodle-shortbread",
+   "kind": "notes",
+   "text": "Unbaked, cut-out shortbread cookies can be stored in the freezer for several months. To freeze them, place the cut-out cookies on a baking sheet, freeze uncovered for 30 minutes, then transfer to a zip-top bag"
+  },
+  {
+   "id": 145,
+   "recipe": "spiced-filipino-adobo-with-chicken-and-pork",
+   "kind": "notes",
+   "text": "Replace the first three sweetly fragranced spices with a more earthy mix of cumin, paprika, and turmeric."
+  },
+  {
+   "id": 146,
+   "recipe": "spiced-filipino-adobo-with-chicken-and-pork",
+   "kind": "notes",
+   "text": "Use sulfurous spices, such as mustard, curry leaves, and asafetida, to emphasize the meatiness of the dish."
+  },
+  {
+   "id": 147,
+   "recipe": "spiced-filipino-adobo-with-chicken-and-pork",
+   "kind": "notes",
+   "text": "Alter the citrus-sour profile by replacing the vinegar with tamarind water and adding lemongrass to the paste mix."
+  },
+  {
+   "id": 148,
+   "recipe": "spiced-pumpkin-olive-oil-and-orange-cake",
+   "kind": "notes",
+   "text": "The cake keeps well in an airtight container for a couple of days."
+  },
+  {
+   "id": 149,
+   "recipe": "spiced-pumpkin-olive-oil-and-orange-cake",
+   "kind": "notes",
+   "text": "You'll need an 8 ½ × 4 ½ in./22 × 11 cm loaf pan."
+  },
+  {
+   "id": 150,
+   "recipe": "spiced-scallops-with-saffron-beurre-blanc",
+   "kind": "notes",
+   "text": "Make a more earthy, South Indian-style spice seasoning by replacing the fennel and ginger with curry leaves and mustard and cumin seeds."
+  },
+  {
+   "id": 151,
+   "recipe": "spiced-scallops-with-saffron-beurre-blanc",
+   "kind": "notes",
+   "text": "Use a Mediterranean spice palette and pair fennel seeds with cumin and hot paprika—smoked if you prefer-instead of ginger."
+  },
+  {
+   "id": 152,
+   "recipe": "spiced-scallops-with-saffron-beurre-blanc",
+   "kind": "notes",
+   "text": "For stronger pepper notes, lightly crack the whole peppercorns, to release more flavor oils, before adding to the beurre blanc."
+  },
+  {
+   "id": 153,
+   "recipe": "spinach-and-feta-parcels-fatayer-sabanekh",
+   "kind": "notes",
+   "text": "These parcels make perfect picnic food and keep well in an airtight container for 2-3 days."
+  },
+  {
+   "id": 154,
+   "recipe": "sweet-potato-and-onion-hash",
+   "kind": "notes",
+   "text": "Note: For a simpler version of this dish, steam purple, white, or orange sweet potatoes until soft. Toss with 1 tablespoon of vegetable oil, chopped scallions, and a dash of salt."
+  },
+  {
+   "id": 155,
+   "recipe": "syrian-style-lentils-with-chard",
+   "kind": "notes",
+   "text": "COOK'S NOTE: Grape or pomegranate molasses is used in place of vinegar to bring bright acidity and tartness to this meze. Both molasses are made from sour fruit juice that is reduced with a little bit of salt to form a concentrated syrup that looks similar to aged balsamic vinegar. Combined with a little lemon juice and olive oil, it makes a delicious dressing."
+  },
+  {
+   "id": 156,
+   "recipe": "tahini-brioche-loaves-and-dinner-rolls",
+   "kind": "notes",
+   "text": "The dough will keep in the freezer for up to 5 days."
+  },
+  {
+   "id": 157,
+   "recipe": "thai-tea-ice-cream-chatramues-thai-tea",
+   "kind": "notes",
+   "text": "Good consistency but need a new mix."
+  },
+  {
+   "id": 158,
+   "recipe": "the-best-new-york-style-bagel",
+   "kind": "variations",
+   "text": "SAME DAY VERSION: increase water to ~354 grams/1.5 cups and increase instant yeast to 1 tablespoon. After shaping, rise at room temp for about 20 minutes (warmer kitchen) or 30 minutes (cooler kitchen) and then proceed with step 9."
+  },
+  {
+   "id": 159,
+   "recipe": "the-best-new-york-style-bagel",
+   "kind": "notes",
+   "text": "Consider using vital wheat gluten, which is widely available in supermarkets. Vital wheat gluten will increase the protein content of the flour and give you such a beautiful crisp and chew."
+  },
+  {
+   "id": 160,
+   "recipe": "the-best-new-york-style-bagel",
+   "kind": "notes",
+   "text": "When you get to the boiling stage, make sure your kettle/water bath is deep enough for the bagels to float in and replenish the water if it boils off too much for second batch (assuming you are boiling 3 or 4 at a time)."
+  },
+  {
+   "id": 161,
+   "recipe": "the-best-new-york-style-bagel",
+   "kind": "notes",
+   "text": "Make sure the kettle water reaches a rolling boil, otherwise, the bagels will not puff up a lot during this stage."
+  },
+  {
+   "id": 162,
+   "recipe": "the-best-new-york-style-bagel",
+   "kind": "notes",
+   "text": "If the water isn’t deep enough in the boiling pan, the bagels can stick to the bottom of the pan."
+  },
+  {
+   "id": 163,
+   "recipe": "the-best-new-york-style-bagel",
+   "kind": "notes",
+   "text": "You can boil the bagels for 30 to 45 seconds (up to 2 minutes) on each side; taking care to flip them over gently. If the bagels deflate in the water, they proofed too long (risen too much) or were boiled for too long."
+  },
+  {
+   "id": 164,
+   "recipe": "the-best-new-york-style-bagel",
+   "kind": "notes",
+   "text": "The longer boiling time will give you a thicker crust and shorter times result in thinner crust. To begin, use the shorter boiling times listed."
+  },
+  {
+   "id": 165,
+   "recipe": "the-best-new-york-style-bagel",
+   "kind": "notes",
+   "text": "Egg wash is NOT needed; the kettle bath gives these bagels a nice shiny finish (using convection setting will blow bagels dry and decrease shine)."
+  },
+  {
+   "id": 166,
+   "recipe": "the-best-new-york-style-bagel",
+   "kind": "notes",
+   "text": "I sometimes use parchment or silicone baking sheets to prevent over browning on the bottom of bagels."
+  },
+  {
+   "id": 167,
+   "recipe": "the-best-new-york-style-bagel",
+   "kind": "notes",
+   "text": "Note: Please see directions on your brand of yeast. If it requires activation by adding water and/or sugar, use some from the amounts stated in the recipe. RedStar/SAF (instant or active yeast) does NOT require activation but Fleishman's active dry yeast does."
+  },
+  {
+   "id": 168,
+   "recipe": "tofu-basil-endive-leaves",
+   "kind": "tips",
+   "text": "Tip: One whole endive will have more than enough leaves; radicchio also works."
+  },
+  {
+   "id": 169,
+   "recipe": "tseke-com-peix-frito-local-spinach-with-curry-sauce-and-crispy-fried-fish",
+   "kind": "notes",
+   "text": "Used salmon as a substitute because it's oily and fat similar to that of a mackerel."
+  },
+  {
+   "id": 170,
+   "recipe": "turkish-simit",
+   "kind": "notes",
+   "text": "Pekmez - Available at Middle Eastern stores, pekmez is grape molasses. Brush it on with a very light touch-\"just kiss the dough,\" as our good friend in Istanbul suggests. For an authentic simit with a light caramel and crunchy crust, there is no substitute for pekmez. It's found in Turkish homes and used the way we use granulated sugar. It is common for moms to give their kids a spoonful of pekmez each morning; it helps in blood circulation and rejuvenation."
+  },
+  {
+   "id": 171,
+   "recipe": "vietnamese-caramel-ginger-chicken",
+   "kind": "notes",
+   "text": "Chicken – I cut most into 4, some into 3. You want them quite large so they don’t dry out during the required simmer time."
+  },
+  {
+   "id": 172,
+   "recipe": "waffle",
+   "kind": "notes",
+   "text": "Use room temperature eggs if possible. This is not a make-or-break situation! If you are making this waffle recipe first thing in the morning and need to use eggs straight out of the refrigerator, your waffles will still turn out delicious! But if you have the time, set the eggs out 30 minutes to 1 hour before you start the waffles."
+  },
+  {
+   "id": 173,
+   "recipe": "waffle",
+   "kind": "notes",
+   "text": "Don’t over-mix the batter. Once the wet and dry ingredients are just incorporated, the batter is ready. It might be a little lumpy, and that’s okay! Those lumps will actually help with the fluffy texture."
+  },
+  {
+   "id": 174,
+   "recipe": "waffle",
+   "kind": "notes",
+   "text": "For waffles that stay crisp: Place the cooked waffles on a wire rack when they’re ready. If you pile them up on a platter, they release steam and soften up. You can also warm the oven to 200°F and place the wire rack in the oven to keep the waffles warm."
+  },
+  {
+   "id": 175,
+   "recipe": "waffle",
+   "kind": "notes",
+   "text": "Between waffles, let the waffle iron heat up again. A warm waffle maker will not give you crisp waffles: You need it screaming hot, so give it at least 30 seconds between each waffle to heat back up."
+  },
+  {
+   "id": 176,
+   "recipe": "warm-buttered-hummus",
+   "kind": "notes",
+   "text": "To make smooth, creamy hummus, add a pinch of baking soda to the water while you are cooking the chickpeas. This will help soften their skins quickly. Puree the chickpeas first with garlic and salt in a food processor, for about 3 minutes. When the chickpeas are finely ground and almost resemble cookie dough (it starts to form a ball in the food processor), add the lemon, tahini, and olive oil slowly with the motor running, seasoning everything with cumin and salt. Continue to blend for 5 to 8 minutes longer, until it's as smooth as possible."
+  },
+  {
+   "id": 177,
+   "recipe": "warm-squash-chickpea-salad-with-tahini",
+   "kind": "notes",
+   "text": "Maybe you want the grip of sweet raw red onion to shake up your mouth. Maybe you don't. If you'd prefer to tone it down, just soak the onion bits in cold water for 15 minutes or so after chopping, then drain well."
+  }
+ ]
+}

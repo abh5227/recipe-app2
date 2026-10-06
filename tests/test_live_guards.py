@@ -164,6 +164,8 @@ _READ_ONLY_BY_INSPECTION = {
     "gates/tablediff.py":         "row-for-row comparison, opens both sides through state.open_ro",
     "gates/rounds.py":            "the per-round gate; reads two JSON readings and, for the table "
                                   "half, reaches a database only through gates/tablediff",
+    "gen_note_corpus.py":         "captures the note rows into a test fixture, opens mode=ro so "
+                                  "SQLite itself refuses a write",
 }
 
 # scripts/ plus the gates subfolder. scripts/applied/ is deliberately NOT here: those 16 are spent
@@ -394,6 +396,11 @@ def test_the_no_dry_run_exemptions_are_still_what_they_say_they_are():
     # ⚠️ THE REHEARSAL SERVER'S REASON IS TWO REFUSALS, so both are read back here rather than
     #    taken on trust. Without them it is a server that can write the owner's photo library and
     #    serve a bundle from a different commit than its own code.
+    # ⚠️ AND THE FIXTURE GENERATOR'S REASON IS ITS mode=ro, so that is read back too.
+    gen = (REPO / "scripts" / "gen_note_corpus.py").read_text(encoding="utf-8")
+    assert "?mode=ro" in gen, "the generator no longer opens read-only"
+    for write in ("INSERT INTO", "UPDATE ", "DELETE FROM"):
+        assert write not in gen, f"the generator now runs {write}"
     rehearse = (REPO / "scripts" / "serve_rehearsal.py").read_text(encoding="utf-8")
     assert "refusing to serve the REAL photo folder" in rehearse
     assert "refusing to serve from the main working tree" in rehearse

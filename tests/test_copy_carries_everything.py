@@ -205,3 +205,21 @@ def test_what_the_copy_resets_is_the_deliberate_half(loaded, kitchen):
 def Recipe_columns():
     from models import Recipe
     return Recipe.__table__.c.keys()
+
+
+def test_a_copy_carries_a_notes_title(kitchen):
+    """⚠️ STATED OVER THE TABLE, NOT OVER A LIST OF COLUMNS, which is why this needed no code. The
+    copy builds its note rows from `dict(n)` minus the reset set, so `title` came along the day the
+    column existed. This is the test that would have failed if anyone had written a column list
+    there, which is the defect `heading_level` and five more columns were found in."""
+    rid = kitchen.client.post("/api/recipes", json={
+        "name": "Titled", "ingredients": [{"raw_text": "1 cup flour"}],
+        "steps": [{"text": "Mix."}],
+        "notes": [{"text": "Use bread flour."}, {"text": "An ordinary note."}]}).get_json()["id"]
+    first = kitchen.client.get(f"/api/recipes/{rid}").get_json()["notes"][0]["id"]
+    kitchen.client.patch(f"/api/recipes/{rid}/notes/{first}", json={"title": "Flour"})
+
+    new_id = kitchen.client.post(f"/api/recipes/{rid}/copy").get_json()["id"]
+    got = kitchen.client.get(f"/api/recipes/{new_id}").get_json()["notes"]
+    assert [n["title"] for n in got] == ["Flour", None], got
+    assert [n["text"] for n in got] == ["Use bread flour.", "An ordinary note."], got
