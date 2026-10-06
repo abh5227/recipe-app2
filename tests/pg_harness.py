@@ -13,6 +13,7 @@ state matches build_db.build() logically. NOT collected by pytest (not test_*.py
 """
 import csv
 import datetime
+import os
 import sys
 from pathlib import Path
 
@@ -163,6 +164,17 @@ def reset_and_seed(engine):
     names = [t.name for t in models.Base.metadata.sorted_tables
              if t.name not in KEEP_THROUGH_RESET]
     with engine.begin() as conn:
+        # ⚠️ THE DATABASE ITSELF IS ASKED BEFORE THE TRUNCATE, NOT ITS ADDRESS. urlguard reads
+        # $DATABASE_URL at startup and this reads the connection: current_database() against what
+        # the URL resolves to, then the harness marker. A database this run did not create carries
+        # no marker, and one that carries no marker may be claimed only while it is empty. See
+        # tests/dbmarker.py for why an address check cannot answer this on its own.
+        import dbmarker
+        import urlguard
+        dbmarker.claim_or_verify_pg(
+            conn,
+            expected_db=urlguard.effective_database(os.environ.get(urlguard.ENV_URL)),
+            content_tables=names)
         conn.execute(text("TRUNCATE " + ", ".join(names) + " RESTART IDENTITY CASCADE"))
         seed_all(conn)
         ensure_note_kinds(conn)

@@ -14,6 +14,7 @@ for _p in (str(REPO), str(HERE)):
     if _p not in sys.path:
         sys.path.insert(0, _p)
 
+import dbmarker                                       # the check on the database itself, not its name
 from fixtures import TEST_RECIPES, TEST_INGREDIENTS   # test-owned content (fixtures.py) — seeded
                                                       # instead of seed.py's RECIPES / INGREDIENTS
 
@@ -21,11 +22,17 @@ from fixtures import TEST_RECIPES, TEST_INGREDIENTS   # test-owned content (fixt
 class Kitchen:
     """A freshly built test database plus a client to talk to it."""
 
-    def __init__(self, db_path, client):
+    def __init__(self, db_path, client, temp_root):
         self.db = db_path
         self.client = client
+        # ⚠️ REQUIRED, NOT OPTIONAL. A default would make the marker check skippable by forgetting
+        # an argument, which is the one failure mode a guard cannot have. See tests/dbmarker.py.
+        self.temp_root = temp_root
 
     def conn(self):
+        # ⚠️ ASKED ON EVERY CONNECTION, BECAUSE EVERY ONE OF THEM CAN WRITE. The check is a
+        # read-only open and one SELECT, and this is the door the suite's own writes go through.
+        dbmarker.verify_sqlite(self.db, self.temp_root)
         c = sqlite3.connect(self.db)
         c.row_factory = sqlite3.Row
         c.execute("PRAGMA foreign_keys = ON")
@@ -46,6 +53,17 @@ class Kitchen:
         on Postgres, which always enforces them), so this matches conn()'s explicit PRAGMA.
         """
         import app
+        # ⚠️ ASKED ABOUT THE DATABASE THE FACTORY WILL OPEN, NOT THE ONE THIS OBJECT REMEMBERS.
+        # orm_session() composes its URL from the module-global app.DB at CALL time, and that global
+        # does not have to still equal self.db: building a second Kitchen rebinds it, which three
+        # tests in this suite do. Verifying self.db there passed while the write went elsewhere.
+        # Measured by review: with app.DB pointed at an unmarked database, a session write landed in
+        # it and the check returned happily. This is the same rule corpus_guard states, that a guard
+        # has to know the FILE rather than a name for it.
+        # The residual, stated: orm_session() prefers $DATABASE_URL over app.DB, so on a run with
+        # that variable set this is a check on the path and not on the connection. That is the
+        # mid-run setenv gap ROADMAP defers, not a new one, and urlguard covers the inherited case.
+        dbmarker.verify_sqlite(app.DB, self.temp_root)
         return app.orm_session()
 
     def count(self, table, where=""):
@@ -67,8 +85,15 @@ class Kitchen:
             return c.execute("PRAGMA foreign_key_check").fetchall()
 
     def rebuild(self):
+        # A rebuild re-runs the migrations and the seed over this database, so it is checked the
+        # same way the first build is, and re-marked after in case the build replaced the file.
         import build_db
+        # ⚠️ AND THE SAME HERE, ON THE GLOBAL build_db.build() ACTUALLY READS. Verifying self.db and
+        # then rebuilding build_db.DB re-ran the whole migration chain and the seed over a database
+        # this run did not create, and then STAMPED self.db, marking the one it had not rebuilt.
+        dbmarker.verify_sqlite(build_db.DB, self.temp_root)
         build_db.build()
+        dbmarker.stamp_sqlite(build_db.DB)
 
 
 # auth-3b: the routes are login-gated, so the harness logs a reserved test user into its client by
@@ -116,6 +141,10 @@ def make_kitchen(tmp_path, login=True):
     authenticated and the ~300 route tests pass un-edited against the login-gated routes. Pass
     login=False for a logged-out client (e.g. to assert unauthenticated 401 behavior)."""
     db = Path(tmp_path) / "test.db"
+    # ⚠️ BEFORE ANYTHING IS REBOUND OR BUILT. claim_sqlite refuses a path outside this test's own
+    # temp directory and refuses to adopt a database some other run made, so a harness aimed at a
+    # copy of live stops here with nothing written. See tests/dbmarker.py.
+    dbmarker.claim_sqlite(db, temp_root=Path(tmp_path))
     import migrate
     import build_db
     import app
@@ -149,10 +178,15 @@ def make_kitchen(tmp_path, login=True):
     build_db.LIBRARY_NAMES_CSV = Path(tmp_path) / "library_names.csv"
 
     build_db.build()                       # apply migrations + load seed content (from TEST_RECIPES)
+    # ⚠️ MARKED THE MOMENT IT EXISTS, AND AFTER THE BUILD RATHER THAN BEFORE IT. build_db.build()
+    # deletes a database that has no schema_migrations table and recreates it once ("Old-format
+    # database found"), and a freshly stamped empty file looks exactly like that, so a marker
+    # written first would be discarded and every later check would fail.
+    dbmarker.stamp_sqlite(db)
     client = app.app.test_client()
     if login:
         login_test_client(client, ensure_test_user())   # authenticate against the just-built DB
-    return Kitchen(db, client)
+    return Kitchen(db, client, temp_root=Path(tmp_path))
 
 
 def write_paprika_archive(path, recipes, malformed=()):

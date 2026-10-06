@@ -326,6 +326,28 @@ How this project is run:
   `mode=ro` URI**, because the 7 catalog tests check the real 10,020-entry library and a fixture
   database has the tables with no rows. A marked test that opens live for WRITING is refused like any
   other.
+- **AND THE SUITE ASKS THE DATABASE ITSELF, NOT ITS ADDRESS.** `tests/dbmarker.py` mints one random
+  token per run, the harness marks the database it creates with it, and every path that writes,
+  truncates or drops asks the connected database for that token first. *Why:* every other guard here
+  answers a question about a NAME. `dbguard` compares a path, and its device and inode, against live.
+  `urlguard` reads `$DATABASE_URL` and asks the dialect what it would open. Neither can see a harness
+  pointed at a real database that is not live and sits in no variable: a copy of live under another
+  name, a restored backup, a colleague's Postgres. A database this run did not create cannot produce
+  the token, so it is refused whatever it is called, and the address checks stay in front as the
+  first line.
+  ⚠️ **THE MARK GOES ON AFTER THE BUILD, NOT BEFORE IT.** `build_db.build()` deletes a database with
+  no `schema_migrations` table and recreates it once, and a freshly stamped empty file looks exactly
+  like that, so a marker written first is discarded and every later check fails. The pre-build check
+  is therefore a different question: the path must not exist, or must already carry this run's token,
+  and must lie inside the directory pytest made for this test.
+  ⚠️ **AND POSTGRES HAS TO EARN ITS FIRST CLAIM, BECAUSE THE HARNESS DOES NOT CREATE IT.** CI's
+  service does, and `alembic upgrade head` builds the schema, so the first `reset_and_seed` meets a
+  database with no marker. It may claim one only while every content table is EMPTY, which a database
+  anybody cares about is not. A marker holding a different token is a harness database from an earlier
+  run, which is what a developer reusing one test database sees on their second run, so the token is
+  replaced rather than stopping the run. `current_database()` is compared against what the URL
+  resolves to, through `urlguard.effective_database`, so there is one answer to which database opens.
+
 - **A SCRIPT THAT CAN OPEN A DATABASE WIRES THE SHARED GUARD, AND THE SUITE CHECKS IT.**
   `tests/test_live_guards.py` walks `scripts/` plus `migrate.py` and fails on anything that can reach
   a database without `--i-mean-live` and `--db`. Stated over the folder, so the NEXT script written is

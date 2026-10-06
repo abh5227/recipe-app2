@@ -72,6 +72,20 @@ def _effective_database(parsed):
     return opts.get("dbname") or opts.get("database") or parsed.database
 
 
+def effective_database(url):
+    """The database name a URL would actually open, or None when it cannot be read.
+
+    The public form of the rule above, for a caller that needs the same answer. tests/pg_harness.py
+    compares it against the connection's own `current_database()`, and asking it here rather than
+    re-deriving it there is what keeps one answer to the question."""
+    if not url:
+        return None
+    try:
+        return _effective_database(_parse(url))
+    except Exception:                                # unreadable URL: the caller gets no claim
+        return None
+
+
 def _parse(url):
     """The URL as SQLAlchemy reads it.
 

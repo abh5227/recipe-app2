@@ -1142,3 +1142,92 @@ def test_a_copy_carries_its_notes_on_postgres(pg):
     assert [n["text"] for n in copied["notes"]] == ["Carry on at step 2."]
     own = {s["id"] for s in copied["steps"]}
     assert copied["notes"][0]["step_id"] in own, "the copy's note points at the original's step"
+
+
+# ---- 9. THE HARNESS WRITES ONLY TO A DATABASE IT MADE --------------------------------------------
+# ⚠️ THESE RUN HERE AND NOWHERE ELSE, because to_regclass and current_database() are Postgres's own
+# and the SQLite half of the rule is covered in tests/test_db_marker.py. The CI step runs this file,
+# and its ran-nothing guard means a silent skip fails the step rather than passing it.
+
+def test_the_harness_marks_the_postgres_database(pg):
+    """reset_and_seed claims the database on its first use of a run and marks it with the token."""
+    import dbmarker
+    with pg.engine.connect() as c:
+        token = c.execute(text(f'SELECT token FROM "{dbmarker.MARKER_TABLE}"')).scalar()
+    assert token == dbmarker.TOKEN
+
+
+def test_the_marker_survives_the_truncate(pg):
+    """⚠️ THE TRUNCATE MUST NOT TAKE THE THING THAT AUTHORIZES IT. reset_and_seed builds its table
+    list from models metadata, which the marker is deliberately not part of."""
+    import dbmarker
+    pg_harness.reset_and_seed(pg.engine)                  # a second reset in the same run
+    with pg.engine.connect() as c:
+        assert c.execute(text(f'SELECT token FROM "{dbmarker.MARKER_TABLE}"')).scalar() == dbmarker.TOKEN
+
+
+def test_a_postgres_database_the_harness_did_not_make_is_refused(pg):
+    """The round's case, on the dialect that TRUNCATEs: a database carrying rows and no marker is
+    refused, and the rows are still there afterwards."""
+    import dbmarker
+    with pg.engine.begin() as c:
+        c.execute(text(f'DROP TABLE "{dbmarker.MARKER_TABLE}"'))
+    before = _count(pg.engine, "SELECT count(*) FROM recipes")
+    assert before, "the fixture seeded no recipes, so this test would prove nothing"
+
+    with pytest.raises(dbmarker.Refused) as e:
+        pg_harness.reset_and_seed(pg.engine)
+    assert "NOT empty" in str(e.value)
+    assert _count(pg.engine, "SELECT count(*) FROM recipes") == before, \
+        "the harness truncated a database it was supposed to refuse"
+
+
+def test_an_empty_postgres_database_with_no_marker_is_claimed(pg):
+    """The other direction, which is what lets CI's own first reset work: a database with the
+    schema and no rows is what `alembic upgrade head` leaves, and the harness may claim it."""
+    import dbmarker
+    import models
+    names = [t.name for t in models.Base.metadata.sorted_tables
+             if t.name not in pg_harness.KEEP_THROUGH_RESET]
+    with pg.engine.begin() as c:                          # emptied WITHOUT the harness
+        c.execute(text(f'DROP TABLE "{dbmarker.MARKER_TABLE}"'))
+        c.execute(text("TRUNCATE " + ", ".join(names) + " RESTART IDENTITY CASCADE"))
+
+    pg_harness.reset_and_seed(pg.engine)
+    with pg.engine.connect() as c:
+        assert c.execute(text(f'SELECT token FROM "{dbmarker.MARKER_TABLE}"')).scalar() == dbmarker.TOKEN
+
+
+def test_a_connection_that_is_not_the_url_s_database_is_refused(pg):
+    """current_database() against what $DATABASE_URL resolves to. A query string can send the
+    connection somewhere the URL does not appear to name, which urlguard refuses at startup, and
+    this is the same question asked of the connection that is actually open."""
+    import dbmarker
+    with pg.engine.begin() as c:
+        with pytest.raises(dbmarker.Refused) as e:
+            dbmarker.claim_or_verify_pg(c, expected_db="a_database_this_is_not",
+                                        content_tables=[])
+    assert "not what the URL appears to say" in str(e.value)
+
+
+def test_a_marker_from_an_earlier_run_is_replaced_rather_than_refused(pg):
+    """A developer reusing one test database sees this on their second run. The marker table's
+    presence is the evidence that the database is the harness's, since nothing else creates it, so
+    the token is replaced instead of stopping the run."""
+    import dbmarker
+    with pg.engine.begin() as c:
+        c.execute(text(f'UPDATE "{dbmarker.MARKER_TABLE}" SET token = :t'), {"t": "b" * 32})
+    pg_harness.reset_and_seed(pg.engine)
+    with pg.engine.connect() as c:
+        assert c.execute(text(f'SELECT token FROM "{dbmarker.MARKER_TABLE}"')).scalar() == dbmarker.TOKEN
+
+
+def test_an_unresolvable_database_url_refuses_the_truncate(pg):
+    """⚠️ FAIL CLOSED. A URL this environment cannot read used to remove the current_database()
+    comparison, which left the marker as the whole answer at exactly the moment the one thing that
+    could say where the connection went was unreadable."""
+    import dbmarker
+    with pg.engine.begin() as c:
+        with pytest.raises(dbmarker.Refused) as e:
+            dbmarker.claim_or_verify_pg(c, expected_db=None, content_tables=[])
+    assert "cannot say which database" in str(e.value)

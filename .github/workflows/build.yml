@@ -50,6 +50,13 @@ jobs:
           # this step MUST supply one. This is a throwaway CI value, NOT a real/production secret.
           SECRET_KEY: ci-only-not-a-real-secret
         run: |
+          # ⚠️ THE GUARDS RUN BEFORE THE SCHEMA WRITE, NOT ONLY BEFORE THE TESTS. alembic upgrade
+          # head issues the CREATE TABLEs, and it runs OUTSIDE pytest, so neither urlguard (which
+          # installs at conftest import) nor the harness marker (which installs inside
+          # reset_and_seed) is in front of it. The documented local flow is
+          # `export DATABASE_URL=...; alembic upgrade head; pytest ...`, which is exactly the
+          # inherited-variable case urlguard exists for, so the check is invoked here by hand.
+          PYTHONPATH=tests:scripts python -c "import corpus_guard, urlguard; urlguard.install(corpus_guard.live_db())"
           alembic upgrade head                  # create the schema on the CI Postgres service
           # ⚠️ test_schema_parity.py RUNS HERE AND NOWHERE ELSE, because comparing the two schemas
           # needs both of them. In the SQLite run above its Postgres tests skip, so this step is the

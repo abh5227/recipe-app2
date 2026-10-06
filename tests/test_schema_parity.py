@@ -50,6 +50,10 @@ TABLE_ALLOWANCES = {
                          "alembic_version, so neither table is part of the shared schema.",
     "alembic_version":   "Alembic's revision stamp. The SQLite side is tracked by "
                          "schema_migrations instead.",
+    "_harness_marker":   "The test harness's own marker, holding the token that proves a database "
+                         "was created by this run (tests/dbmarker.py). It exists only in a test "
+                         "database, is created by neither the migrations nor Alembic, and is part "
+                         "of no dialect's schema.",
 }
 
 # a column type is compared by AFFINITY, not by the dialect's name for it
