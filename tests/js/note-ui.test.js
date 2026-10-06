@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { displayParts } from "../../static/note-blocks.js";
 import { tagLabel, kindOf, kindMenuHTML, noteBodyHTML, noteRowHTML, noteEditHTML, noteInputHTML,
+         noteTitleInputHTML, noteTitleChanged,
          stepMenuHTML, newNoteBoxHTML, addNoteButtonHTML, notePatchBody, noteTextChanged,
          noteEditText, savedToastHTML, undoToastHTML, pickBarHTML,
          noteStepChanged } from "../../static/note-ui.js";
@@ -599,5 +600,69 @@ test("no title means no heading element at all, not an empty one", () => {
     const html = noteRowHTML(decorated({ id: 3, kind: "notes", title, text: "Body." }),
                              TABLE, esc, {});
     assert.ok(!/note-title/.test(html), `title=${JSON.stringify(title)}: ${html}`);
+  }
+});
+
+// ---- the Title box ------------------------------------------------------------------------------
+
+test("the editor draws an optional Title box above the text, in one editor for both views", () => {
+  const html = noteEditHTML(note({ id: 4, title: "Flour", text: "Body." }), TABLE, esc, {});
+  assert.ok(/data-note-title="4"/.test(html), html);
+  assert.ok(/value="Flour"/.test(html), html);
+  assert.ok(/placeholder="Title \(optional\)"/.test(html), "the box has to say it is optional");
+  assert.ok(html.indexOf("data-note-title") < html.indexOf("data-note-input"),
+    "the title sits above the text, the way it reads on the page");
+});
+
+test("an untitled note opens with an empty Title box, not with no box", () => {
+  for (const title of [null, undefined, ""]) {
+    const html = noteEditHTML(note({ id: 4, title, text: "Body." }), TABLE, esc, {});
+    assert.ok(/data-note-title="4"/.test(html), `title=${JSON.stringify(title)}`);
+    assert.ok(/value=""/.test(html), html);
+  }
+});
+
+test("a title draft wins over the stored title while the box is open", () => {
+  const html = noteEditHTML(note({ id: 4, title: "Flour", text: "Body." }), TABLE, esc,
+                            { titleDraft: "Bread flour" });
+  assert.ok(/value="Bread flour"/.test(html), html);
+  assert.ok(!/value="Flour"/.test(html), html);
+  // and an empty draft is a CLEARED box, not an absent one
+  const cleared = noteEditHTML(note({ id: 4, title: "Flour", text: "Body." }), TABLE, esc,
+                               { titleDraft: "" });
+  assert.ok(/value=""/.test(cleared), cleared);
+});
+
+test("a title is escaped in the box, so a quote in one cannot break out of the attribute", () => {
+  const html = noteEditHTML(note({ id: 4, title: '"x" & <b>', text: "Body." }), TABLE, esc, {});
+  assert.ok(/value="&quot;x&quot; &amp; &lt;b&gt;"/.test(html), html);
+});
+
+test("a save carries the title only when it moved, and a cleared one is a change", () => {
+  // ⚠️ notePatchBody TESTS FOR THE KEY, NOT THE VALUE, because clearing a title is a change and
+  //    there is no such thing as clearing a note's text.
+  assert.deepEqual(notePatchBody({ text: "x" }), { text: "x" });
+  assert.deepEqual(notePatchBody({ title: "Flour" }), { title: "Flour" });
+  assert.deepEqual(notePatchBody({ title: "" }), { title: "" });
+  assert.deepEqual(notePatchBody({ title: null }), { title: null });
+  assert.deepEqual(notePatchBody({ text: "x", title: "Flour" }), { text: "x", title: "Flour" });
+});
+
+test("opening a note and closing it is not a title change, which is what keeps bytes still", () => {
+  // ⚠️ THE SAME RULE THE TEXT FOLLOWS. A write per blur would rewrite 28 rows on a glance and take
+  //    every one of their recipes out of the byte-equal short-circuit set.
+  const n = note({ id: 4, title: "Flour", text: "Body." });
+  assert.equal(noteTitleChanged(n, "Flour"), false);
+  assert.equal(noteTitleChanged(n, "  Flour  "), false, "compared trimmed, as the text is");
+  assert.equal(noteTitleChanged(n, "Bread flour"), true);
+  assert.equal(noteTitleChanged(n, ""), true, "clearing one IS a change");
+});
+
+test("null and empty are one resting state, because the box shows them the same way", () => {
+  for (const stored of [null, undefined, ""]) {
+    const n = note({ id: 4, title: stored, text: "Body." });
+    assert.equal(noteTitleChanged(n, ""), false, `stored=${JSON.stringify(stored)}`);
+    assert.equal(noteTitleChanged(n, "   "), false, "whitespace is empty");
+    assert.equal(noteTitleChanged(n, "Flour"), true);
   }
 });

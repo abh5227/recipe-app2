@@ -1086,7 +1086,12 @@ def write_notes(s, rid, payload):
         iid = iid if iid in ing_ids else None
         kind = _keep("kind", notes_rules.DEFAULT_KIND)
         kind = kind if kind in kinds else notes_rules.DEFAULT_KIND
-        plan.append((kept, dict(recipe_id=rid, position=pos, kind=kind, text=text_,
+        # ⚠️ AND THE TITLE IS KEPT THE SAME WAY, which is the whole reason _keep exists. A PUT that
+        #    named a row by id and sent only its text once cleared the cook's chosen kind and their
+        #    step link, and the old client's bare-string shape carries no keys at all, so a title
+        #    read as absent-means-empty would be wiped by one save from anything older than this.
+        title = _note_title(_keep("title"))
+        plan.append((kept, dict(recipe_id=rid, position=pos, kind=kind, text=text_, title=title,
                                 step_id=sid, ingredient_row_id=iid)))
         # What this note's references should be after the save: one per "step N" in the text,
         # taking an explicit payload value when the editor sent one, else the stored link when the
@@ -2349,6 +2354,20 @@ def _is_row_id(v):
     return isinstance(v, int) and not isinstance(v, bool)
 
 
+def _note_title(value):
+    """A note's title as it is STORED: trimmed, or None.
+
+    ⚠️ NULL AND '' ARE NOT TWO SPELLINGS OF "no title", and the CHECK on the column refuses the
+    second one. A cleared Title box therefore has to arrive as NULL rather than as a blank string,
+    or an otherwise ordinary save is an IntegrityError. One function, because both doors write this
+    column and the per-note PATCH and the recipe PUT disagreeing about it is the shape four reviews
+    of the notes round found four times."""
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
 def _note_payload_error(rows, kinds):
     """The first thing wrong inside a note entry, or None. Types only, no database reads.
 
@@ -2375,6 +2394,11 @@ def _note_payload_error(rows, kinds):
         #    about an unknown kind. That is a decision for Andy, not a defect to close here.
         if n.get("kind") is not None and not isinstance(n["kind"], str):
             return f"a note's kind must be text, not {type(n['kind']).__name__}"
+        # A title is optional, and a non-string one is a payload nothing can read. Refused for the
+        # reason the kind's TYPE is refused above: the alternative is a 500 or a column holding
+        # whatever str() made of a list.
+        if "title" in n and n["title"] is not None and not isinstance(n["title"], str):
+            return f"a note's title must be text, not {type(n['title']).__name__}"
         refs = n.get("refs")
         if refs is not None and not isinstance(refs, list):
             return "a note's refs must be a list"
@@ -2538,6 +2562,14 @@ def _validated_note_fields(payload, step_ids, kinds, *, creating):
         if kind not in kinds:
             return None, f"unknown note kind: {kind!r}"
         vals["kind"] = kind
+    if "title" in payload:
+        title = payload.get("title")
+        if title is not None and not isinstance(title, str):
+            return None, "a note's title must be text"
+        # ⚠️ A CLEARED BOX IS A CHANGE, SO '' HAS TO REACH vals. It becomes NULL on the way, which
+        #    is the only spelling of "no title" the column accepts, and returning early on a blank
+        #    string would make clearing a title the one edit the editor could not save.
+        vals["title"] = _note_title(title)
     if "step_id" in payload:
         sid = payload.get("step_id")
         if sid is not None:

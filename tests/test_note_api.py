@@ -628,3 +628,178 @@ def test_opening_the_picker_and_leaving_writes_nothing(kitchen):
                                 json={"step_id": sid}).status_code == 200
 
     assert kitchen.client.get(f"/api/recipes/{rid}").get_json()["notes"] == before
+
+# ---- the optional title, through both write doors -----------------------------------------------
+
+def _titled(kitchen, title=None):
+    """An owned recipe with one note, and that note's id."""
+    rid = _recipe(kitchen.client, "Rolls", notes=[{"text": "This recipe works best with 11%."}])
+    nid = _notes_of(kitchen.client, rid)[0]["id"]
+    if title is not None:
+        kitchen.client.patch(f"/api/recipes/{rid}/notes/{nid}", json={"title": title})
+    return rid, nid
+
+
+def _put(kitchen, rid, notes):
+    """Edit mode's Save: the WHOLE recipe, read back and sent again with only the notes swapped.
+
+    ⚠️ IT IS THE WHOLE RECIPE BECAUSE THE ROUTE IS. A PUT carrying only `notes` is a 400 ("a name is
+    required", then "ingredients and steps must be lists"), so a test that sent a bare notes list
+    would be exercising the refusal rather than the save. Reading the payload back and returning it
+    is also what the client does, which is what makes the unchanged-save test below mean something.
+    """
+    got = kitchen.client.get(f"/api/recipes/{rid}").get_json()
+    body = {k: got["recipe"].get(k) for k in ("name", "author", "source_url", "category",
+                                              "servings", "prep_time", "cook_time", "total_time",
+                                              "descr")}
+    body["ingredients"] = [{k: i.get(k) for k in ("id", "is_heading", "qty", "label", "note",
+                                                  "raw_text")} for i in got["ingredients"]]
+    body["steps"] = [{k: st.get(k) for k in ("id", "is_heading", "text")} for st in got["steps"]]
+    body["notes"] = notes
+    return kitchen.client.put(f"/api/recipes/{rid}", json=body)
+
+
+def _stored(kitchen, nid, cols="title"):
+    with kitchen.conn() as c:
+        return c.execute(f"SELECT {cols} FROM recipe_notes WHERE id = ?", (nid,)).fetchone()
+
+
+def test_the_per_note_patch_sets_and_clears_a_title(kitchen):
+    """The recipe page's door: autosave with an Undo, so one PATCH per field that moved."""
+    rid, nid = _titled(kitchen)
+    r = kitchen.client.patch(f"/api/recipes/{rid}/notes/{nid}", json={"title": "Flour"})
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["note"]["title"] == "Flour"
+    assert _stored(kitchen, nid)[0] == "Flour"
+
+    # ⚠️ A CLEARED BOX WRITES NULL, NOT ''. The column's CHECK refuses a blank string, so the one
+    #    spelling of "none" it accepts is what has to arrive, and returning early on an empty value
+    #    would make clearing a title the single edit the editor could not save.
+    r = kitchen.client.patch(f"/api/recipes/{rid}/notes/{nid}", json={"title": ""})
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["note"]["title"] is None
+    assert _stored(kitchen, nid)[0] is None
+
+
+def test_a_title_is_trimmed_and_whitespace_alone_is_no_title(kitchen):
+    rid, nid = _titled(kitchen)
+    kitchen.client.patch(f"/api/recipes/{rid}/notes/{nid}", json={"title": "  Flour  "})
+    assert _stored(kitchen, nid)[0] == "Flour"
+    kitchen.client.patch(f"/api/recipes/{rid}/notes/{nid}", json={"title": "   "})
+    assert _stored(kitchen, nid)[0] is None
+
+
+def test_a_title_that_is_not_text_is_refused_rather_than_stored(kitchen):
+    """⚠️ THE SHAPE write_notes ONCE ANSWERED 200 FOR. `notes: [1, 2, 3]` left a recipe with 0 note
+    rows and a nulled column, so a type the column cannot hold is refused at the door."""
+    rid, nid = _titled(kitchen)
+    for bad in ([], {}, 7):
+        r = kitchen.client.patch(f"/api/recipes/{rid}/notes/{nid}", json={"title": bad})
+        assert r.status_code == 400, (bad, r.get_json())
+        assert "title" in r.get_json()["error"]
+    assert _stored(kitchen, nid)[0] is None
+
+
+def test_changing_only_the_title_leaves_the_text_and_the_step_link_alone(kitchen):
+    """The rule the kind and the step link already follow: only the keys the payload names."""
+    rid, nid = _titled(kitchen)
+    sid = _steps_of(kitchen.client, rid)[0]["id"]
+    kitchen.client.patch(f"/api/recipes/{rid}/notes/{nid}",
+                         json={"kind": "tips", "step_id": sid})
+    before = _stored(kitchen, nid, "text, kind, step_id")
+    kitchen.client.patch(f"/api/recipes/{rid}/notes/{nid}", json={"title": "Flour"})
+    assert _stored(kitchen, nid, "text, kind, step_id") == before
+
+
+def test_the_recipe_put_keeps_a_title_it_was_not_sent(kitchen):
+    """⚠️ ABSENT MEANS KEEP ON A ROW MATCHED BY ID. A PUT naming a row and sending only its text
+    once cleared the cook's chosen kind AND their step link on every row, and the old client's
+    bare-string shape carries no keys at all. A title read as absent-means-empty goes the same way
+    on one save from anything older than this round."""
+    rid, nid = _titled(kitchen, "Flour")
+    text = _stored(kitchen, nid, "text")[0]
+
+    r = _put(kitchen, rid, [{"id": nid, "text": text}])
+    assert r.status_code == 200, r.get_json()
+    assert _stored(kitchen, nid)[0] == "Flour"
+
+    # the documented old-client shape, which carries no keys at all
+    r = _put(kitchen, rid, text)
+    assert r.status_code == 200, r.get_json()
+    assert [n["title"] for n in _notes_of(kitchen.client, rid)] == ["Flour"]
+
+
+def test_the_recipe_put_sets_and_clears_a_title_when_it_is_named(kitchen):
+    """Edit mode's door. The whole list arrives on Save, so the title comes with it."""
+    rid, nid = _titled(kitchen)
+    text = _stored(kitchen, nid, "text")[0]
+    r = _put(kitchen, rid, [{"id": nid, "text": text, "title": "Kneading by hand"}])
+    assert r.status_code == 200, r.get_json()
+    assert _stored(kitchen, nid)[0] == "Kneading by hand"
+
+    r = _put(kitchen, rid, [{"id": nid, "text": text, "title": None}])
+    assert r.status_code == 200, r.get_json()
+    assert _stored(kitchen, nid)[0] is None
+
+
+def test_a_put_title_that_is_not_text_is_refused_before_anything_is_written(kitchen):
+    rid, nid = _titled(kitchen, "Flour")
+    text = _stored(kitchen, nid, "text")[0]
+    for bad in ([], {}, 7):
+        r = _put(kitchen, rid, [{"id": nid, "text": text, "title": bad}])
+        assert r.status_code == 400, (bad, r.get_json())
+    assert _stored(kitchen, nid)[0] == "Flour", "a refused payload wrote something anyway"
+
+
+def test_a_put_with_no_changes_leaves_a_titled_row_untouched(kitchen):
+    """⚠️ THE WHOLE POINT OF THE ROW-MATCHING RULE. A save that changed nothing used to give every
+    wait a new row id, which cost brioche-bread its byte-equal short-circuit permanently. A title
+    must not reopen that door from the notes side."""
+    rid, nid = _titled(kitchen, "Flour")
+    with kitchen.conn() as c:
+        c.row_factory = __import__("sqlite3").Row
+        before = [dict(r) for r in c.execute(
+            "SELECT * FROM recipe_notes WHERE recipe_id = ? ORDER BY position", (rid,))]
+    assert before and before[0]["title"] == "Flour"
+
+    payload = [{k: n[k] for k in ("id", "text", "title", "kind", "step_id")} for n in before]
+    r = _put(kitchen, rid, payload)
+    assert r.status_code == 200, r.get_json()
+    with kitchen.conn() as c:
+        c.row_factory = __import__("sqlite3").Row
+        after = [dict(r) for r in c.execute(
+            "SELECT * FROM recipe_notes WHERE recipe_id = ? ORDER BY position", (rid,))]
+    assert after == before, "an unchanged save moved a row"
+
+
+def test_a_blank_title_cannot_reach_the_column_from_either_door(kitchen):
+    """The CHECK is the backstop and these are the two doors in front of it. A row holding '' would
+    be a second spelling of "no title", which is what the column was written to refuse."""
+    rid, nid = _titled(kitchen)
+    text = _stored(kitchen, nid, "text")[0]
+    kitchen.client.patch(f"/api/recipes/{rid}/notes/{nid}", json={"title": "  "})
+    _put(kitchen, rid, [{"id": nid, "text": text, "title": "   "}])
+    with kitchen.conn() as c:
+        assert c.execute("SELECT COUNT(*) FROM recipe_notes WHERE title = ''").fetchone()[0] == 0
+    assert _stored(kitchen, nid)[0] is None
+
+
+def test_a_title_comes_back_on_the_recipe_payload(kitchen):
+    """The read path needed no change, because read_notes selects the whole table. This says so, and
+    it is what would fail if a hand-written column list ever replaced it."""
+    rid, nid = _titled(kitchen, "Flour")
+    mine = next(n for n in _notes_of(kitchen.client, rid) if n["id"] == nid)
+    assert mine["title"] == "Flour"
+
+
+def test_a_title_mints_no_mark_and_costs_the_recipe_nothing(kitchen):
+    """Andy's ruling, extended to the new column. A note is a playground: editing one takes no part
+    in "your changes" and does not take the recipe off the untouched list."""
+    rid, nid = _titled(kitchen)
+    import app as A
+    with A.orm_session() as s:
+        before = A._recipe_annotations(s, rid)
+    kitchen.client.patch(f"/api/recipes/{rid}/notes/{nid}", json={"title": "Flour"})
+    kitchen.client.patch(f"/api/recipes/{rid}/notes/{nid}", json={"title": ""})
+    with A.orm_session() as s:
+        assert A._recipe_annotations(s, rid) == before == []

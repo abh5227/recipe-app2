@@ -2723,6 +2723,26 @@ a.note-lead-step { color: inherit; }
 }
 .note-input:focus { outline: none; box-shadow: 0 0 0 1px var(--border-defined); }
 
+/* The optional Title, above the text.
+   ⚠️ IT IS THE NOTE BOX'S OWN RULE WITH THE SUBHEADING'S TYPE ON IT, not a third field style. The
+   box, the radius, the padding and the focus ring are .note-input's, shared above, so the two read
+   as one panel; what differs is the TYPE, which is the same .note-title the page prints, because
+   the field has to show what the title will look like.
+   ⚠️ A PLACEHOLDER THAT SAYS "(optional)" IS LOAD-BEARING. 148 of the 176 notes have no title, so
+   an empty box is the resting state rather than something left undone. */
+.note-title-input {
+  display: block; width: 100%; box-sizing: border-box;
+  font-family: var(--font-serif); font-size: var(--fs-step-sub); font-weight: 700;
+  letter-spacing: normal;
+  color: var(--ink); background: var(--paper);
+  border: 0; border-radius: 7px; padding: 5px 8px; margin-bottom: 5px;
+  box-shadow: 0 0 0 1px var(--paper-edge);
+}
+.note-title-input:focus { outline: none; box-shadow: 0 0 0 1px var(--border-defined); }
+.note-title-input::placeholder {
+  font-family: var(--font-sans); font-size: 13px; font-weight: 400; color: var(--ink-soft);
+}
+
 /* The footer. Its rule belongs to the PANEL, not to the list: a line between notes would make the
    Notes section read as a form, which is the thing this design exists to avoid. */
 .note-foot {

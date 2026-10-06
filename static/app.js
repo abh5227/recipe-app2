@@ -19,11 +19,11 @@ import { isToMake } from "./tomake.js";
 import { browseList, cardTags, monthYear } from "./browse.js";
 import { panelBlocks } from "./panel-blocks.js";
 import { noteSections, displayText, STEP_NOTES_HEADER } from "./note-blocks.js";
-import { noteRowHTML, newNoteBoxHTML, notePatchBody, noteTextChanged, noteEditText,
+import { noteRowHTML, newNoteBoxHTML, notePatchBody, noteTextChanged, noteTitleChanged, noteEditText,
          undoToastHTML, addNoteButtonHTML, tagLabel, kindOf, pickBarHTML,
          noteStepChanged } from "./note-ui.js";
 import { pickerRows, filterRows, startCursor, moveCursor, stepRowsOf } from "./step-picker.js";
-import { resolveNoteSteps, draftSetText, draftSetKind, draftSetStep, draftAdd, draftDelete,
+import { resolveNoteSteps, draftSetText, draftSetTitle, draftSetKind, draftSetStep, draftAdd, draftDelete,
          draftRestore, notesPayload, draftReorder, draftAddBeside,
          nextDraftId, noteGroupKey, noteDragMates } from "./note-draft.js";
 import { noteTextHTML, stepNoteIndex } from "./note-text.js";
@@ -1223,6 +1223,7 @@ function noteOne(n, opts) {
     ...opts,
     editing: noteEditing(n.id, opts.place),
     draft: noteDraft(n.id),
+    titleDraft: noteTitleDraft(n.id),
     saved: noteJustSaved(n.id),
     steps: currentSteps(),
     kindMenu: noteState.kindMenuFor === n.id,
@@ -1293,7 +1294,11 @@ function stepPickText(text, isHeading) {
 // ⚠️ WHICH NOTE IS OPEN IS VIEW STATE, NOT DRAFT STATE, and it lives here rather than in view.draft
 // because notes are edited in READING view too, where there is no draft at all. One place, read by
 // both renderers.
-const noteState = { editingId: null, editingPlace: null, drafts: new Map(), newOn: null,
+// ⚠️ THE TITLE HAS ITS OWN DRAFT MAP, NOT A FIELD INSIDE THE TEXT ONE. `drafts` holds a STRING per
+// note id and a dozen places read it that way (noteDraft, noteTextChanged, the growNoteInput
+// handler), so widening it to an object would be a change to every one of them for one new field.
+const noteState = { editingId: null, editingPlace: null, drafts: new Map(),
+                    titleDrafts: new Map(), newOn: null,
                     newText: "", savedId: null, savedBefore: null, kindMenuFor: null,
                     stepMenuFor: null, undo: null, tapStep: null,
                     // the picker: what has been typed, where the arrows are, and which note is
@@ -1307,6 +1312,9 @@ function noteEditing(id, place) {
   return noteState.editingId === id && noteState.editingPlace === place;
 }
 function noteDraft(id) { return noteState.drafts.has(id) ? noteState.drafts.get(id) : null; }
+function noteTitleDraft(id) {
+  return noteState.titleDrafts.has(id) ? noteState.titleDrafts.get(id) : null;
+}
 function noteJustSaved(id) { return noteState.savedId === id; }
 
 // ⚠️ ONE UNDO AT A TIME, AT THE FOOT OF THE NOTES. A toast per deleted note would stack, and the
@@ -4743,6 +4751,7 @@ function closeNoteEditors() {
   noteState.kindMenuFor = null;
   noteState.stepMenuFor = null;
   noteState.drafts.clear();
+  noteState.titleDrafts.clear();
   closePicker();
 }
 
@@ -4772,26 +4781,47 @@ function saveOpenNote() {
   if (id == null) return Promise.resolve();
   const note = noteRows().find((n) => String(n.id) === String(id));
   const draft = noteState.drafts.get(id);
+  const titleDraft = noteState.titleDrafts.get(id);
   // ⚠️ AN UNCHANGED SAVE SENDS NOTHING. Click-away fires on every blur, so a PATCH per blur would be
   //    a write per glance.
-  if (!note || draft == null || !noteTextChanged(note, draft, NOTE_KINDS.kinds)) {
+  // ⚠️ AND THE TITLE IS ASKED THE SAME QUESTION AS THE TEXT. Opening a note and closing it has to
+  //    leave the row byte-identical, which is what keeps the recipe in the byte-equal set, so
+  //    neither field alone decides and neither is ignored.
+  // ⚠️ THE ROW IS CHECKED BEFORE EITHER FIELD IS ASKED ABOUT, because both questions read it.
+  //    noteTextChanged runs the display rule over note.text, which throws on a missing row.
+  if (!note) { closeNoteEditors(); repaintNotes(); return Promise.resolve(); }
+  const textMoved = draft != null && noteTextChanged(note, draft, NOTE_KINDS.kinds);
+  const titleMoved = titleDraft != null && noteTitleChanged(note, titleDraft);
+  if (!textMoved && !titleMoved) {
     closeNoteEditors(); repaintNotes(); return Promise.resolve();
   }
-  if (!String(draft).trim()) {
-    // Clearing a note's text and clicking away is not a delete. Deleting is the Delete button, which
-    // offers an Undo; a silent delete from an empty box has nothing to undo.
+  // Clearing a note's text and clicking away is not a delete. Deleting is the Delete button, which
+  // offers an Undo; a silent delete from an empty box has nothing to undo.
+  // ⚠️ IT READS THE DRAFT WHERE THERE IS ONE AND THE ROW WHERE THERE IS NOT, because a save may now
+  //    be carrying a title change with the text untouched, and `draft` is null in that case.
+  const nextText = draft != null ? String(draft) : String(note.text || "");
+  if (!nextText.trim()) {
     closeNoteEditors(); repaintNotes(); return Promise.resolve();
   }
   // ⚠️ THE UNDO PUTS BACK THE STORED ROW, NOT THE SHOWN TEXT. A save rewrites the row to what was
   //    on screen (no label, the current number), so the only honest undo is the author's words as
-  //    they were a moment ago.
-  const before = { text: note.text };
+  //    they were a moment ago. The title goes in it for the same reason: an Undo that restored the
+  //    words and left a title the cook had just cleared would put the row back half way.
+  const before = { text: note.text, title: note.title == null ? null : note.title };
   closeNoteEditors();
   // ⚠️ IN EDIT MODE THIS IS A LIST CHANGE AND NOT A WRITE, so there is no "Saved" toast and no
   //    Undo offer: the note is not saved yet, and saying so would be a lie. The page's own Cancel
   //    is the way back, which is the whole reason notes rejoined the draft.
-  if (noteHeld()) return holdNotes(draftSetText(view.draft.notes, id, String(draft).trim()));
-  return noteApi(`/notes/${id}`, { method: "PATCH", body: notePatchBody({ text: draft }) })
+  if (noteHeld()) {
+    let next = view.draft.notes;
+    if (textMoved) next = draftSetText(next, id, nextText.trim());
+    if (titleMoved) next = draftSetTitle(next, id, titleDraft);
+    return holdNotes(next);
+  }
+  const body = {};
+  if (textMoved) body.text = nextText;
+  if (titleMoved) body.title = titleDraft;
+  return noteApi(`/notes/${id}`, { method: "PATCH", body: notePatchBody(body) })
     .then((data) => { adoptNotes(data); flashSaved(id, before); repaintNotes(); })
     .catch((e) => { noteError(e.message); repaintNotes(); });
 }
@@ -4877,7 +4907,10 @@ function undoNote(token) {
     //    because enterEditMode used not to clear it. A PATCH from inside a held session writes
     //    straight past Save and Cancel, which is the one thing Edit mode promises it cannot do.
     if (noteHeld()) {
-      return holdNotes(draftSetText(view.draft.notes, id, String(before.text || "")));
+      // ⚠️ BOTH FIELDS, because a save can now carry either or both. An Undo that restored the
+      //    words and left a title the cook had just cleared would put the row back half way.
+      return holdNotes(draftSetTitle(
+        draftSetText(view.draft.notes, id, String(before.text || "")), id, before.title));
     }
     return noteApi(`/notes/${id}`, { method: "PATCH", body: notePatchBody(before) })
       .then((data) => { adoptNotes(data); repaintNotes(); })
@@ -5059,6 +5092,9 @@ function handleNoteAction(e) {
     //    put the stripped label and the author's old step number straight back into the box, which
     //    is the disagreement this round exists to end. noteEditText is the one rule both sides read.
     noteState.drafts.set(id, note ? noteEditText(note, NOTE_KINDS.kinds) : "");
+    // ⚠️ THE TITLE IS SEEDED FROM THE ROW, NOT THROUGH noteEditText. It is stored verbatim and the
+    //    page prints it verbatim, so there is no display rule between the two to go through.
+    noteState.titleDrafts.set(id, note && note.title ? String(note.title) : "");
     repaintNotes();
     return true;
   }
@@ -5125,7 +5161,11 @@ document.addEventListener("keydown", (e) => {
 // Enter saves, Shift+Enter makes a line, Escape cancels. One handler for the open note and for the
 // new-note box, because they are the same keystrokes.
 document.addEventListener("keydown", (e) => {
-  const open = e.target && e.target.closest && e.target.closest("[data-note-input]");
+  // ⚠️ THE TITLE BOX IS THE SAME EDITOR, SO IT TAKES THE SAME KEYSTROKES. Enter in a one-line
+  //    field otherwise submits nothing and Escape otherwise closes the popover the panel sits in,
+  //    which would lose the typed title with no way back.
+  const open = e.target && e.target.closest
+    && e.target.closest("[data-note-input], [data-note-title]");
   const fresh = e.target && e.target.closest && e.target.closest("[data-new-note-input]");
   if (!open && !fresh) return;
   if (e.key === "Enter" && !e.shiftKey) {
@@ -5145,6 +5185,9 @@ document.addEventListener("keydown", (e) => {
 document.addEventListener("input", (e) => {
   const open = e.target && e.target.closest && e.target.closest("[data-note-input]");
   if (open) { noteState.drafts.set(+open.dataset.noteInput, open.value); growNoteInput(open); return; }
+  // The Title box, which is a single line and so never grows.
+  const title = e.target && e.target.closest && e.target.closest("[data-note-title]");
+  if (title) { noteState.titleDrafts.set(+title.dataset.noteTitle, title.value); return; }
   const fresh = e.target && e.target.closest && e.target.closest("[data-new-note-input]");
   if (fresh) { noteState.newText = fresh.value; growNoteInput(fresh); return; }
   // ⚠️ THE FILTER IS THE ONE FIELD THAT DOES REPAINT ON EVERY LETTER, because the list IS its

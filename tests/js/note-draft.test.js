@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { noteStepNumbers, resolveNoteSteps, scanMentions, carryRefs, nextDraftId,
-         draftSetText, draftSetKind, draftSetStep, draftAdd, draftDelete, draftRestore,
+         draftSetText, draftSetTitle, draftSetKind, draftSetStep, draftAdd, draftDelete, draftRestore,
          notesPayload, noteGroupKey, draftReorder, draftAddBeside,
          noteDragMates } from "../../static/note-draft.js";
 import { noteSections } from "../../static/note-blocks.js";
@@ -572,4 +572,32 @@ test("every note with a mate can actually be moved, which is the rule's whole po
     assert.equal(mates.has(String(r.id)), legal,
       `note ${r.id}: grip ${mates.has(String(r.id))} but a legal drop is ${legal}`);
   }
+});
+
+test("a held title change touches the title and nothing else", () => {
+  // ⚠️ NOT draftSetText's SHAPE. A reference names words in the note's TEXT, so re-running the
+  //    reference carry over a title would ask that rule about a string it knows nothing about.
+  const notes = [{ id: 1, title: null, text: "proceed with step 9", kind: "notes",
+                   refs: [{ ref_index: 0, match_text: "step 9", step_id: 42 }] }];
+  const next = draftSetTitle(notes, 1, "Shaping");
+  assert.equal(next[0].title, "Shaping");
+  assert.equal(next[0].text, "proceed with step 9");
+  assert.deepEqual(next[0].refs, notes[0].refs, "the references are untouched");
+  assert.notEqual(next, notes, "a new list, like every other draft setter");
+});
+
+test("a cleared title is held as null, the one spelling the column accepts", () => {
+  const notes = [{ id: 1, title: "Shaping", text: "x", kind: "notes", refs: [] }];
+  assert.equal(draftSetTitle(notes, 1, "")[0].title, null);
+  assert.equal(draftSetTitle(notes, 1, "   ")[0].title, null);
+  assert.equal(draftSetTitle(notes, 1, null)[0].title, null);
+  assert.equal(draftSetTitle(notes, 1, "  Shaping  ")[0].title, "Shaping", "and it is trimmed");
+});
+
+test("a title change leaves every other note alone", () => {
+  const notes = [{ id: 1, title: null, text: "a", kind: "notes", refs: [] },
+                 { id: 2, title: "Keep me", text: "b", kind: "tips", refs: [] }];
+  const next = draftSetTitle(notes, 1, "New");
+  assert.equal(next[1].title, "Keep me");
+  assert.equal(next[1], notes[1], "an untouched row is the same object");
 });

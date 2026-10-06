@@ -80,11 +80,12 @@ export function noteBodyHTML(note, table, esc, { selfStepId = null } = {}) {
 // whichever one lost focus last decided what was saved. `place` is the instance, so the click that
 // opened an editor is the only place that gets one.
 export function noteRowHTML(note, table, esc, opts = {}) {
-  const { editable = false, selfStepId = null, editing = false, draft = null,
+  const { editable = false, selfStepId = null, editing = false, draft = null, titleDraft = null,
           saved = false, place = "", where = "section", steps = null,
           kindMenu = false, stepMenu = false, lead = null, pick = null } = opts;
   if (editing) {
-    return noteEditHTML(note, table, esc, { draft, place, steps, kindMenu, stepMenu, pick });
+    return noteEditHTML(note, table, esc, { draft, titleDraft, place, steps, kindMenu, stepMenu,
+                                            pick });
   }
   const body = noteBodyHTML(note, table, esc, { selfStepId });
   // ⚠️ THE SAME SHAPE A WAIT'S LINK HAS, for the same reason: one pattern for "this belongs to step
@@ -156,8 +157,8 @@ export function noteRowHTML(note, table, esc, opts = {}) {
 // about a note you are changing, so the reading page carries none of them and reads exactly as live.
 // ⚠️ THE FOOTER'S RULE BELONGS TO THE PANEL, NOT TO THE LIST. A line between notes would make the
 // Notes section read as a form, which is the thing this design exists to avoid.
-export function noteEditHTML(note, table, esc, { draft = null, place = "", steps = null,
-                                                 kindMenu = false, stepMenu = false,
+export function noteEditHTML(note, table, esc, { draft = null, titleDraft = null, place = "",
+                                                 steps = null, kindMenu = false, stepMenu = false,
                                                  pick = null } = {}) {
   const kind = kindOf(table, note.kind);
   // ⚠️ A LINKED NOTE CAN STILL OPEN THE LIST, AND THAT IS TWO CONTROLS RATHER THAN ONE. The whole
@@ -180,6 +181,7 @@ export function noteEditHTML(note, table, esc, { draft = null, place = "", steps
   //    which anchored a 7-row step list to the panel's left edge rather than to the control that
   //    opened it. .note-anchor is the positioned parent and costs no layout.
   return `<div class="note-edit" data-note="${note.id}" data-note-place="${esc(place)}">` +
+    noteTitleInputHTML(note.id, titleDraft != null ? titleDraft : (note.title || ""), esc) +
     noteInputHTML(note.id, draft != null ? draft : noteEditText(note, table), esc) +
     `<div class="note-foot">` +
       `<span class="note-anchor">` +
@@ -254,6 +256,20 @@ export function noteInputHTML(id, text, esc) {
     ` placeholder="A note…">${esc(text || "")}</textarea>`;
 }
 
+// The optional Title, ABOVE the text, in the one editor both views draw.
+// ⚠️ ONE INPUT, NOT TWO. The note panel on the recipe page and Edit mode's block render through the
+// same noteEditHTML, so a title box written per view would be the drift this component was folded
+// into one function to stop.
+// ⚠️ IT IS A SINGLE-LINE input, NOT A TEXTAREA. A title is a subheading and the stylesheet gives it
+// the step subheading's own rule, which has no second line in it.
+// ⚠️ AND EMPTY IS THE RESTING STATE FOR 148 OF THE 176 NOTES, so the placeholder has to say the box
+// is optional rather than ask for something.
+export function noteTitleInputHTML(id, title, esc) {
+  return `<input type="text" class="note-title-input" data-note-title="${id}"` +
+    ` aria-label="Title, optional. A short name for this note"` +
+    ` placeholder="Title (optional)" value="${esc(title || "")}">`;
+}
+
 // The box that opens for "+ note". `where` is a STEP's id, or "general" for the Notes section's own
 // adder, so the draft cannot collide with an open note editor.
 export function newNoteBoxHTML(where, esc, { text = "" } = {}) {
@@ -307,9 +323,22 @@ export function notePatchBody(fields) {
   const out = {};
   if (fields.text != null) out.text = String(fields.text);
   if (fields.kind != null) out.kind = String(fields.kind);
+  // ⚠️ "title" in fields, NOT fields.title != null, BECAUSE CLEARING ONE IS A CHANGE. The other
+  //    string fields use != null and may: there is no such thing as clearing a note's text. A
+  //    title cleared to "" has to reach the server, which stores it as NULL.
+  if ("title" in fields) out.title = fields.title == null ? null : String(fields.title);
   if ("step_id" in fields) out.step_id = fields.step_id == null ? null : +fields.step_id;
   if (fields.position != null) out.position = +fields.position;
   return out;
+}
+
+// ⚠️ AN UNCHANGED SAVE SENDS NOTHING, and the title is asked the same way the text is. Opening a
+// note and closing it has to leave the row byte-identical, which is what keeps a recipe in the
+// byte-equal short-circuit set, and the title is compared TRIMMED against the stored value with
+// null and "" read as the same resting state, because the box shows both as empty.
+export function noteTitleChanged(note, draft) {
+  const was = String((note && note.title) == null ? "" : note.title).trim();
+  return String(draft == null ? "" : draft).trim() !== was;
 }
 
 // ⚠️ AN UNCHANGED SAVE SENDS NOTHING. Click-away fires on every blur, including the ones where the

@@ -88,6 +88,16 @@ export function draftSetText(notes, id, text) {
     ? { ...n, text: String(text), refs: carryRefs(n.refs, text) } : n));
 }
 
+// ⚠️ A TITLE IS SET WITHOUT TOUCHING THE REFERENCES, which is the one thing that makes it unlike
+// draftSetText. A reference names words in the note's TEXT, so re-running carryRefs here would ask
+// the reference rule about a string it knows nothing about.
+// ⚠️ AND "" IS STORED AS null, the one spelling of "no title" the column accepts, so a cleared box
+// in the draft matches what the server would have written.
+export function draftSetTitle(notes, id, title) {
+  const to = title == null || !String(title).trim() ? null : String(title).trim();
+  return (notes || []).map((n) => (sameId(n.id, id) ? { ...n, title: to } : n));
+}
+
 export function draftSetKind(notes, id, kind) {
   return (notes || []).map((n) => (sameId(n.id, id) ? { ...n, kind: String(kind) } : n));
 }
