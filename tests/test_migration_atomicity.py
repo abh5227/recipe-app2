@@ -147,6 +147,109 @@ def test_migrate_recovers_and_applies_the_file_cleanly_afterwards(tmp_path, monk
     assert name in recorded, f"{name} was not recorded after the recovery run"
 
 
+# Every migration that opens a transaction, rebuild or not. A rebuild is the loudest case and not
+# the only one, and the go-live step for the titles round asked the question directly: force 062 to
+# fail partway through on a copy and the database must be left exactly as it was.
+TRANSACTIONAL = [n for n in _all_migrations()
+                 if re.search(r"^\s*BEGIN\s*;", (MIGRATIONS / n).read_text(), re.I | re.M)]
+
+
+def _truncate_before_commit(sql):
+    """The file as a crash before its final COMMIT would leave it."""
+    i = [m.start() for m in re.finditer(r"^\s*COMMIT\s*;", sql, re.I | re.M)][-1]
+    return sql[:i]
+
+
+@pytest.mark.parametrize("name", TRANSACTIONAL)
+def test_a_migration_interrupted_inside_its_transaction_leaves_nothing_behind(
+        tmp_path, monkeypatch, name):
+    """⚠️ STATED OVER EVERY TRANSACTIONAL MIGRATION, NOT OVER THE REBUILDS. The six rebuilds are the
+    case that hurts most and the question is the same for an ALTER: 062 adds recipe_notes.title with
+    a CHECK, and the go-live for that round had to show that a failure partway through leaves the
+    database byte-identical and the app still serving it. Two shapes were measured on a copy of live
+    at migration 061, a statement erroring after the ALTER and the process being killed before the
+    COMMIT, and both came back with the same sha256. This is that check, generalized and in CI.
+
+    ⚠️ AND THE FILENAME MUST NOT BE RECORDED. migrate.py tracks by filename only, so a file recorded
+    after a half-run can never be retried and the drift is permanent."""
+    sql = (MIGRATIONS / name).read_text()
+    db = _build_up_to(tmp_path, name, monkeypatch, name=f"t-{name}.db")
+    before = _shape(db)
+    _replay(db, _truncate_before_commit(sql))
+    after = _shape(db)
+
+    assert after[0] == before[0], (
+        f"{name} interrupted before its COMMIT changed the schema.\n"
+        f"  gone:  {[r[1] for r in before[0] if r not in after[0]]}\n"
+        f"  added: {[r[1] for r in after[0] if r not in before[0]]}")
+    assert after[1] == before[1], f"{name} interrupted before its COMMIT changed row counts"
+
+    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    recorded = {r[0] for r in c.execute("SELECT filename FROM schema_migrations")}
+    c.close()
+    assert name not in recorded, f"{name} was recorded as applied after being interrupted"
+
+    # and the retry works, which is the other half of all-or-nothing
+    monkeypatch.setattr(migrate_mod, "MIGRATIONS_DIR", MIGRATIONS)
+    migrate_mod.migrate(verbose=False, db=db)
+    c = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    recorded = {r[0] for r in c.execute("SELECT filename FROM schema_migrations")}
+    c.close()
+    assert name in recorded, f"{name} did not apply after the interrupted run"
+
+
+# ⚠️ SEVEN OLDER ADDITIVE MIGRATIONS HAVE NO TRANSACTION, AND THAT IS A RECORDED GAP RATHER THAN A
+# PASS. Measured 2026-10-06 while proving 062 all-or-nothing for the titles round. Each adds two or
+# more columns under one `executescript`, which auto-commits every statement on its own, so an
+# interrupted run leaves some columns added and the filename unrecorded. The retry then dies forever
+# on "duplicate column name", which is the same permanent-drift shape the five rebuilds had.
+# 031 is the worst of them: two ADD COLUMNs followed by two UPDATEs, so a backfill can be missing
+# with the columns in place and nothing saying so. 048 adds four columns, a table and two indexes.
+#
+# They are NOT fixed here. All seven ran on live long ago and wrapping them changes nothing for any
+# database past them (migrate.py tracks by filename, never by checksum), so it is a safe edit of the
+# kind CLAUDE.md allows, exactly as the five rebuilds were. It is a FRESH CLONE that is still
+# exposed, and that is a decision for Andy rather than a change to smuggle into a round about note
+# titles. ⚠️ A NEW ONE IS NOT ADMITTED: the list is closed, so the next additive migration written
+# has to carry its own BEGIN/COMMIT or this test fails.
+UNWRAPPED_ADDITIVE = {
+    "009_recipe_import_uid.sql", "013_ingredient_weight_convert_flag.sql",
+    "015_recipe_ingredient_qty_unit.sql", "018_ownership_user_columns.sql",
+    "027_cook_photo_position.sql", "031_ingredient_identity.sql", "048_ratings_cluster.sql",
+}
+
+
+def test_an_additive_column_migration_carries_its_own_transaction():
+    """⚠️ AN `ALTER TABLE ... ADD COLUMN` LOOKS ATOMIC ON ITS OWN AND THE FILE IS NOT. A migration
+    that adds a column and then backfills it, or adds two, is several auto-committing statements
+    under executescript, and the half-applied result is a schema the deploy's code has no name for,
+    with a retry that can never succeed. Stated over the folder so the next additive migration is
+    covered before anyone remembers it. 062, the titles round's own, carries its BEGIN/COMMIT."""
+    missing = []
+    for p in sorted(MIGRATIONS.glob("*.sql")):
+        s = p.read_text()
+        if not re.search(r"\bADD\s+COLUMN\b", s, re.I):
+            continue
+        # one bare ALTER and nothing else is atomic by itself, which is what SQLite guarantees
+        statements = [x for x in (t.strip() for t in s.split(";"))
+                      if x and not x.startswith("--")]
+        body = [x for x in statements
+                if not re.match(r"^(BEGIN|COMMIT|PRAGMA)\b", x, re.I)
+                and not x.lstrip().startswith("--")]
+        if len(body) <= 1:
+            continue
+        if not (re.search(r"^\s*BEGIN\s*;", s, re.I | re.M)
+                and re.search(r"^\s*COMMIT\s*;", s, re.I | re.M)):
+            missing.append(p.name)
+    assert set(missing) <= UNWRAPPED_ADDITIVE, (
+        "a migration with more than one statement auto-commits each of them under executescript, "
+        "so an interrupted run leaves a schema nothing was written against and a retry that dies "
+        f"on a duplicate column: {sorted(set(missing) - UNWRAPPED_ADDITIVE)}")
+    gone = UNWRAPPED_ADDITIVE - set(missing)
+    assert not gone, (
+        f"these were fixed and the exemption list was not updated: {sorted(gone)}")
+
+
 def test_every_table_rebuild_migration_is_one_transaction():
     """Stated over the FOLDER, so the next rebuild written is covered before anyone remembers it."""
     missing = []
