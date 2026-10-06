@@ -1298,7 +1298,7 @@ function stepPickText(text, isHeading) {
 // note id and a dozen places read it that way (noteDraft, noteTextChanged, the growNoteInput
 // handler), so widening it to an object would be a change to every one of them for one new field.
 const noteState = { editingId: null, editingPlace: null, drafts: new Map(),
-                    titleDrafts: new Map(), newOn: null,
+                    titleDrafts: new Map(), focusField: "text", newOn: null,
                     newText: "", savedId: null, savedBefore: null, kindMenuFor: null,
                     stepMenuFor: null, undo: null, tapStep: null,
                     // the picker: what has been typed, where the arrows are, and which note is
@@ -4644,7 +4644,16 @@ function restoreNoteFocus() {
   if (noteState.editingId != null) {
     const row = document.querySelector(
       `.note-edit[data-note="${noteState.editingId}"][data-note-place="${noteState.editingPlace}"]`);
-    el = row && row.querySelector("[data-note-input]");
+    // ⚠️ WHICHEVER FIELD HAD THE CARET, NOT ALWAYS THE TEXTAREA. This asked only for
+    //    [data-note-input], and a repaint is reachable while the Title box has focus: flashSaved's
+    //    six-second toast timeout calls repaintNotes() unconditionally and closeNoteEditors does
+    //    not clear savedId. So saving note A, opening note B inside those six seconds and typing in
+    //    B's Title box moved the caret to the end of B's TEXT at expiry, and the characters after
+    //    that landed in the text draft, which the next save then wrote.
+    //    noteState.focusField records which one was last touched, so the question is answered from
+    //    what happened rather than from a default.
+    const want = noteState.focusField === "title" ? "[data-note-title]" : "[data-note-input]";
+    el = row && (row.querySelector(want) || row.querySelector("[data-note-input]"));
   } else if (noteState.newOn != null) {
     el = document.querySelector(`[data-new-note-input="${noteState.newOn}"]`);
   }
@@ -4752,6 +4761,7 @@ function closeNoteEditors() {
   noteState.stepMenuFor = null;
   noteState.drafts.clear();
   noteState.titleDrafts.clear();
+  noteState.focusField = "text";
   closePicker();
 }
 
@@ -5095,6 +5105,7 @@ function handleNoteAction(e) {
     // ⚠️ THE TITLE IS SEEDED FROM THE ROW, NOT THROUGH noteEditText. It is stored verbatim and the
     //    page prints it verbatim, so there is no display rule between the two to go through.
     noteState.titleDrafts.set(id, note && note.title ? String(note.title) : "");
+    noteState.focusField = "text";      // a newly opened note puts the caret in its words
     repaintNotes();
     return true;
   }
@@ -5184,10 +5195,19 @@ document.addEventListener("keydown", (e) => {
 // Keystrokes go into the draft and NOT through a repaint, or the caret would jump on every letter.
 document.addEventListener("input", (e) => {
   const open = e.target && e.target.closest && e.target.closest("[data-note-input]");
-  if (open) { noteState.drafts.set(+open.dataset.noteInput, open.value); growNoteInput(open); return; }
+  if (open) {
+    noteState.focusField = "text";
+    noteState.drafts.set(+open.dataset.noteInput, open.value);
+    growNoteInput(open);
+    return;
+  }
   // The Title box, which is a single line and so never grows.
   const title = e.target && e.target.closest && e.target.closest("[data-note-title]");
-  if (title) { noteState.titleDrafts.set(+title.dataset.noteTitle, title.value); return; }
+  if (title) {
+    noteState.focusField = "title";
+    noteState.titleDrafts.set(+title.dataset.noteTitle, title.value);
+    return;
+  }
   const fresh = e.target && e.target.closest && e.target.closest("[data-new-note-input]");
   if (fresh) { noteState.newText = fresh.value; growNoteInput(fresh); return; }
   // ⚠️ THE FILTER IS THE ONE FIELD THAT DOES REPAINT ON EVERY LETTER, because the list IS its
