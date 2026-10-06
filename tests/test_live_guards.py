@@ -365,6 +365,10 @@ _NO_DRY_RUN = {
     "migrate.py":              "not a pass. Applying the pending migrations IS its job, it is "
                                "idempotent by the schema_migrations ledger, and the chain's own "
                                "rehearsal calls it first",
+    "serve_rehearsal.py":      "not a pass. It serves a COPY through the app for a click-through, "
+                               "so every write is an ordinary one a person made in the UI, and "
+                               "there is nothing for a dry run to preview. It refuses the real "
+                               "photo folder and refuses to run from the main working tree",
 }
 
 
@@ -387,6 +391,14 @@ def test_the_no_dry_run_exemptions_are_still_what_they_say_they_are():
     survey = (REPO / "scripts" / "scan_notes_for_waits.py").read_text(encoding="utf-8")
     for write in ("INSERT INTO", "UPDATE recipe", "DELETE FROM"):
         assert write not in survey, f"the survey script now runs {write}"
+    # ⚠️ THE REHEARSAL SERVER'S REASON IS TWO REFUSALS, so both are read back here rather than
+    #    taken on trust. Without them it is a server that can write the owner's photo library and
+    #    serve a bundle from a different commit than its own code.
+    rehearse = (REPO / "scripts" / "serve_rehearsal.py").read_text(encoding="utf-8")
+    assert "refusing to serve the REAL photo folder" in rehearse
+    assert "refusing to serve from the main working tree" in rehearse
+    assert '"--photos", required=True' in rehearse, "the photo folder must not have a default"
+    assert '"--db", required=True' in rehearse, "the database must not have a default"
 
 
 # ---- $DATABASE_URL beside a --db (review fix) ---------------------------------------------------
