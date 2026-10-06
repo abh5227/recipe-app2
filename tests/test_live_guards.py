@@ -311,6 +311,8 @@ def test_a_decision_file_a_pass_reads_is_not_touched_by_any_of_this():
         "step-headings-candidates-2026-09-30.csv",
         "step-leadin-labels-2026-09-30.csv",
         "step-dash-labels-2026-09-30.csv",
+        "note-titles-2026-10-05.csv",            # read by apply_note_titles.py
+        "emphasis-marks-2026-10-05.csv",         # read by apply_note_titles.py
     ]
     for name in read_by_passes:
         path = REPO / "docs" / "data-repairs" / name

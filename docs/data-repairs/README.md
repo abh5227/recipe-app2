@@ -1,7 +1,7 @@
 # The corpus passes, and the order they run in
 
-Eleven scripts carry the repairs over all 300 recipes, four for Round A and seven for the notes round
-below. They are not interchangeable and they are not independent. Each one reads the state the one
+Twelve scripts carry the repairs over all 300 recipes: four for Round A, seven for the notes round
+below, and one for the titles round after it. They are not interchangeable and they are not independent. Each one reads the state the one
 before it left, so running them out of order produces a different corpus, and running one twice is
 not always a no-op.
 
@@ -55,6 +55,27 @@ chain against one database is now five ordinary command lines:
     python3.13 scripts/strip_author_step_numbers.py "$DB" --apply the author's own numbering, and
                                                                   the labels it was hiding
     python3.13 scripts/apply_capitalization.py "$DB" --apply      first letters, LAST
+
+### The titles round, which runs after all of the above
+
+    python3.13 migrate.py --db "$DB"                              062, recipe_notes.title
+    python3.13 scripts/apply_note_titles.py "$DB" --apply         33 writes over 21 recipes: the 27
+                                                                  titles, the 2 kind moves, note
+                                                                  64's merge into 65, and the
+                                                                  wrapping emphasis marks off note
+                                                                  89 and ingredient headings 9213
+                                                                  and 9217
+
+⚠️ **IT RUNS AFTER `apply_capitalization`, NOT BEFORE IT.** The capitalization pass rewrites first
+letters of step text and this pass rewrites note text, so they do not collide. The order that does
+matter is against `notes_to_rows`: a title is lifted out of a note ROW, and before that pass there
+are no rows to lift it out of.
+
+⚠️ **AND IT IS THE FIRST PASS WHOSE WRITES ARE MOSTLY OUTSIDE THE BASELINE.** Notes are a
+playground, so 31 of the 33 writes are invisible to `snapshot_diff` and need no lockstep at all.
+The two that are not are ingredient headings 9213 and 9217 on brioche-cinnamon-rolls, which carry
+`raw_text` and therefore ARE baseline content, and they are patched with their entries in one
+transaction.
 
 ⚠️ **`strip_author_step_numbers` RUNS AFTER `apply_note_decisions`, AND THE ORDER IS NOT A
 PREFERENCE.** A step reference stores a step ID, so renumbering cannot move it. But RESOLVING one
@@ -154,8 +175,8 @@ surveys below are cited nowhere and stay untracked, which is what the category i
 | `total-time-unclear-2026-09-30.csv` | 10 | survey: recipes whose total does not add up | nothing | no |
 | `extension-step-links-2026-09-30.csv` | 7 | survey: waits whose alternative points at another step | nothing | no |
 | `step-heading-level-1-candidates-2026-09-30.csv` | 15 | survey: lifted labels with 2+ steps and no section above | nothing | no |
-| `note-titles-2026-10-05.csv` | 27 | Andy's DECISION for every note carrying a leading label, one of `title`, `title: <text>`, `no` or `label`, each optionally naming a kind | the titles pass | yes |
-| `emphasis-marks-2026-10-05.csv` | 30 | Andy's DECISION for every wrapping emphasis mark in the corpus, one of `strip`, `keep`, `derived` or `merge-title-into-next`, with a title where the line carries one | the titles pass | yes |
+| `note-titles-2026-10-05.csv` | 27 | Andy's DECISION for every note carrying a leading label, one of `title`, `title: <text>`, `no` or `label`, each optionally naming a kind | `apply_note_titles.py` | yes |
+| `emphasis-marks-2026-10-05.csv` | 30 | Andy's DECISION for every wrapping emphasis mark in the corpus, one of `strip`, `keep`, `derived` or `merge-title-into-next`, with a title where the line carries one | `apply_note_titles.py` | yes |
 | `demo-data-2026-07.md` | n/a | the record of the two ad hoc demo-seeding runs of 2026-07-25 and 2026-07-26, what each wrote, what the two removal passes took on 2026-10-05, and the batches that look machine-made and are the owner's own | nothing. It is a RECORD, not an input: the inputs are the two round files in `golive/rounds/` | yes, deliberately |
 
 ## The titles round's two decision files
@@ -174,5 +195,6 @@ note case is a bold or italic line of its own, and there is not one in-sentence 
 300 recipes. So the rule STRIPS the marks and reads the line as a title, rather than rendering it
 italic, and the importer flags a mark that is not a title line instead of stripping it.
 
-⚠️ **A survey becomes a decision the moment a pass reads it.** The pass reads the DECISION column
-and refuses a blank or unparseable value, so a clone that cannot open these two files cannot run it.
+⚠️ **A survey becomes a decision the moment a pass reads it.** `apply_note_titles.py` reads the
+DECISION column and refuses a blank or unparseable value, so a clone that cannot open these two
+files cannot run the pass.

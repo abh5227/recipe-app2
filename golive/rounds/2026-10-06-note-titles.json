@@ -1,0 +1,24 @@
+{
+  "round": "2026-10-06-note-titles",
+  "why": "Give the corpus's notes the titles Andy decided in docs/data-repairs/note-titles-2026-10-05.csv and emphasis-marks-2026-10-05.csv. Migration 062 adds recipe_notes.title. 33 writes over 21 recipes: 27 notes get a title with the title removed from the front of their text, notes 13 and 70 move to kind storage, note 64's title moves onto note 65 and row 64 is deleted, and the wrapping emphasis marks come off note 89 and off ingredient headings 9213 and 9217. Notes are a playground so 31 of those writes are outside the baseline entirely. The two ingredient headings ARE baseline content and are patched in lockstep. recipe_notes_original is not touched and the retired recipes.notes column is left alone.",
+  "short_circuit": "unchanged",
+  "annotations": "unchanged",
+  "counts": {
+    "migrations": [
+      61,
+      62
+    ],
+    "recipe_notes": [
+      177,
+      176
+    ]
+  },
+  "tables": {
+    "except": [
+      "schema_migrations",
+      "recipe_notes",
+      "recipe_ingredients",
+      "recipe_snapshots"
+    ]
+  }
+}
