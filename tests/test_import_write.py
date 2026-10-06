@@ -628,11 +628,31 @@ def test_an_imported_recipe_s_notes_become_rows(kitchen):
         s.commit()
     with kitchen.conn() as conn:
         rows = conn.execute(
-            "SELECT position, kind, text FROM recipe_notes WHERE recipe_id='noted-import' "
+            "SELECT position, kind, text, title FROM recipe_notes WHERE recipe_id='noted-import' "
             "ORDER BY position").fetchall()
-    assert [r["text"] for r in rows] == ["Flour. Use bread flour.", "Storing. Keeps three days."]
+    # ⚠️ THE TITLE RULE RUNS IN THE IMPORTER NOW, which is clause (2) of FIX BY RULE: a note
+    #    imported today lands in the shape the 300 were moved into. "Flour" is a one-word name over
+    #    a three-word body, so it is lifted and the body keeps the rest.
+    assert [r["text"] for r in rows] == ["Use bread flour.", "Storing. Keeps three days."]
+    assert [r["title"] for r in rows] == ["Flour", None]
     # the kind comes from the shared table, so a labelled paragraph lands under its own header
+    # ⚠️ AND A KNOWN LABEL IS A KIND RATHER THAN A TITLE. "Storing" passes every title test on its
+    #    shape, and promoting it would print a heading over a note already filed under Storage.
     assert [r["kind"] for r in rows] == ["notes", "storage"]
+
+    # ⚠️ AND THE RECORD KEEPS THE PARAGRAPH THE TITLE WAS LIFTED FROM. recipe_notes_original has no
+    #    title column on purpose: a title is a thing the app lifted out of the publisher's words.
+    with kitchen.conn() as conn:
+        orig = conn.execute(
+            "SELECT position, text FROM recipe_notes_original WHERE recipe_id='noted-import' "
+            "ORDER BY position").fetchall()
+    assert [r["text"] for r in orig] == ["Flour. Use bread flour.", "Storing. Keeps three days."]
+
+    # and the lift is in the review queue, because a person should see what was moved
+    with kitchen.conn() as conn:
+        flags = [r["flag"] for r in conn.execute(
+            "SELECT flag FROM import_flags WHERE recipe_id='noted-import'").fetchall()]
+    assert "note_title_lifted" in flags, flags
 
 
 def test_an_imported_recipe_s_notes_survive_the_first_save(kitchen):
@@ -697,3 +717,102 @@ def test_an_imported_recipe_is_byte_equal_to_its_own_baseline(kitchen):
     with app.orm_session() as s:
         assert app.serialize_recipe_content(s, "baseline-notes") == stored
         assert app._recipe_annotations(s, "baseline-notes") == []
+
+
+# ---- the title rule in the importer -------------------------------------------------------------
+
+def _imported_notes(kitchen, notes, uid, slug):
+    c = _cleaned(name=slug.replace("-", " ").title(), directions=["Mix."], uid=uid, notes=notes)
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, _plan(c)) is True
+        s.commit()
+    with kitchen.conn() as conn:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT position, kind, text, title FROM recipe_notes WHERE recipe_id=? "
+            "ORDER BY position", (slug,)).fetchall()]
+        flags = [dict(r) for r in conn.execute(
+            "SELECT flag, reason FROM import_flags WHERE recipe_id=?", (slug,)).fetchall()]
+        orig = [r["text"] for r in conn.execute(
+            "SELECT text FROM recipe_notes_original WHERE recipe_id=? ORDER BY position",
+            (slug,)).fetchall()]
+    return rows, flags, orig
+
+
+def test_an_imported_note_wrapped_in_emphasis_marks_loses_them_and_keeps_the_record(kitchen):
+    """⚠️ THE MARKS ARE TITLES IN MARKDOWN CLOTHING, which is what decided the rule. Every one of
+    the corpus's note cases is a bold or italic line of its own over a body, and there is not one
+    in-sentence emphasis in the 300 recipes."""
+    rows, flags, orig = _imported_notes(
+        kitchen, "**Chinese black vinegar**\nIt is made from fermented black rice.",
+        "WRAP-UID", "wrap-import")
+    assert [r["title"] for r in rows] == ["Chinese black vinegar"]
+    assert [r["text"] for r in rows] == ["It is made from fermented black rice."]
+    assert orig == ["**Chinese black vinegar**\nIt is made from fermented black rice."], \
+        "the record has to keep the marks, or there is no way back to what arrived"
+    assert any(f["flag"] == "step_heading_unwrapped" for f in flags), flags
+
+
+def test_an_imported_note_the_rule_cannot_decide_is_flagged_and_stored_whole(kitchen):
+    """DECLINE OVER GUESS. A title guessed here is a heading nothing on the page says is wrong."""
+    rows, flags, _orig = _imported_notes(
+        kitchen, "Made with Vedant and Sophia. It was a good evening.",
+        "UNCLEAR-UID", "unclear-import")
+    assert [r["title"] for r in rows] == [None]
+    assert [r["text"] for r in rows] == ["Made with Vedant and Sophia. It was a good evening."]
+    unclear = [f for f in flags if f["flag"] == "note_title_unclear"]
+    assert unclear, flags
+    assert "longer than a heading" in unclear[0]["reason"], unclear
+
+
+def test_an_imported_note_with_a_tiny_body_takes_no_title_and_no_flag(kitchen):
+    """french-baguette's note 69 is "If using fresh Yeast: 8g". A heading over an amount is worse
+    than no heading, and the rule can say so, so there is nothing to ask a person."""
+    rows, flags, _orig = _imported_notes(
+        kitchen, "If using fresh Yeast: 8g", "TINY-UID", "tiny-import")
+    assert [r["title"] for r in rows] == [None]
+    assert [r["text"] for r in rows] == ["If using fresh Yeast: 8g"]
+    assert not [f for f in flags if f["flag"].startswith("note_title")], flags
+
+
+def test_the_title_rule_runs_before_the_step_mentions_are_scanned(kitchen):
+    """⚠️ THE ORDER IS THE POINT. The rule takes a label off the FRONT of the text, so a mention's
+    ordinal counted over the old string would belong to words that are no longer there."""
+    rows, _flags, _orig = _imported_notes(
+        kitchen, "Shaping: fold it over, then proceed with step 3 as written.",
+        "ORDER-UID", "order-import")
+    assert [r["title"] for r in rows] == ["Shaping"]
+    assert rows[0]["text"] == "Fold it over, then proceed with step 3 as written."
+    with kitchen.conn() as conn:
+        refs = [dict(r) for r in conn.execute(
+            "SELECT r.match_text, r.step_id FROM recipe_note_step_refs r "
+            "JOIN recipe_notes n ON n.id = r.note_id WHERE n.recipe_id='order-import'").fetchall()]
+    assert [r["match_text"] for r in refs] == ["step 3"]
+    assert [r["step_id"] for r in refs] == [None], "the number is the author's, so it is unresolved"
+    # ⚠️ AND THE FIRST LETTER IS CAPITALIZED IN THE BODY, NOT IN THE LABEL. Capitalizing before the
+    #    lift would have put the capital on "Shaping" and left "fold" lowercase on the page.
+    assert rows[0]["text"][0] == "F"
+
+
+def test_an_imported_note_with_a_known_label_gets_the_kind_and_no_title(kitchen):
+    rows, flags, _orig = _imported_notes(
+        kitchen, "Freezing - cool them first, then freeze on a tray in one layer.",
+        "KIND-UID", "kind-import")
+    assert [r["kind"] for r in rows] == ["storage"]
+    assert [r["title"] for r in rows] == [None]
+    assert rows[0]["text"].startswith("Freezing - "), "the author's words stay, label and all"
+    assert not [f for f in flags if f["flag"].startswith("note_title")], flags
+
+
+def test_an_ordinary_note_is_untouched_and_its_record_is_what_it_always_was(kitchen):
+    """The regression that matters most: the overwhelming majority of imported notes have no title
+    in them, and this round must leave every one of them exactly as it was."""
+    rows, flags, orig = _imported_notes(
+        kitchen, "Keep this paragraph as it is written.", "PLAIN-UID", "plain-import")
+    assert [r["title"] for r in rows] == [None]
+    assert [r["text"] for r in rows] == ["Keep this paragraph as it is written."]
+    assert orig == ["Keep this paragraph as it is written."]
+    # ⚠️ THE TITLE FLAGS, NOT THE WHOLE QUEUE. This fixture carries no ingredients, so the recipe
+    #    always has a `no_ingredients` flag, and asserting over the list would make this test about
+    #    the fixture's shape rather than about the rule.
+    assert [f for f in flags if f["flag"].startswith("note_")] == [], flags
+    assert [f for f in flags if f["flag"] == "step_heading_unwrapped"] == [], flags

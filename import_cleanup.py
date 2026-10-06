@@ -820,6 +820,11 @@ STEP_STRUCTURE_REASONS = {
         "a lifted label held an ingredient link with no later mention to move it to",
     "step_alternatives":
         "sibling alternatives were found; check where the shared steps begin",
+    "note_title_lifted":
+        "a note's leading label was lifted out of its text and became the note's title",
+    "note_title_unclear":
+        "a note opens with something that may be a title and a rule could not decide; the words are "
+        "stored whole and a person decides",
     "step_label_declined":
         "a lead-in label was found and NOT lifted, because a rule read it as a clause rather than "
         "a title; the step was left whole for a person to decide",

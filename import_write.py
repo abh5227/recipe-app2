@@ -204,10 +204,41 @@ def _note_rows(notes_text):
     import notes as notes_rules
     rows, flags = [], []
     for i, para in enumerate(notes_rules.paragraphs(notes_text)):
+        # ⚠️ THE TITLE RULE RUNS FIRST, BEFORE THE MENTIONS ARE SCANNED AND BEFORE THE FIRST LETTER
+        #    IS CAPITALIZED, and the order is the point. The rule may take a label off the FRONT of
+        #    the text ("Flour. This recipe works best..." -> title "Flour"), so a mention's ordinal
+        #    counted over the old string would belong to words that are no longer there, and the
+        #    first visible letter would be capitalized in the label rather than in the body.
+        #    This is clause (2) of FIX BY RULE: one function, import_cleanup.note_title_plan, and
+        #    the corpus pass is the other caller.
+        plan = cleanup.note_title_plan(para)
+        # ⚠️ WHAT THE PUBLISHER WROTE, KEPT ONLY WHERE THE RULE MOVED IT. recipe_notes_original is
+        #    the one copy of the original and it has no title column, so where a title was lifted
+        #    out of the front of a paragraph the record has to hold the paragraph. Where the rule
+        #    changed nothing it is left absent, so the record for an ordinary note is exactly what
+        #    it was before this round.
+        as_given = para if plan.text != para else None
+        para, title, kind = plan.text, plan.title, plan.kind
+        if plan.marks:
+            flags.append({"position": None, "flag": "step_heading_unwrapped",
+                          "reason": f"a note's first line was wrapped in {plan.marks!r} "
+                                    f"(note {i + 1}); the marks were removed"})
+        if plan.verdict == "title":
+            flags.append({"position": None, "flag": "note_title_lifted",
+                          "reason": f"{cleanup.STEP_STRUCTURE_REASONS['note_title_lifted']} "
+                                    f"({title!r} on note {i + 1})"})
+        elif plan.verdict == "unclear":
+            # ⚠️ DECLINE OVER GUESS. The words are stored exactly as the publisher wrote them and
+            #    the recipe is flagged. A title guessed here is a heading nothing on the page says
+            #    is wrong.
+            flags.append({"position": None, "flag": "note_title_unclear",
+                          "reason": f"{cleanup.STEP_STRUCTURE_REASONS['note_title_unclear']} "
+                                    f"(note {i + 1}: {plan.reason})"})
         mentions = notes_rules.scan_step_mentions(para)
         # the first letter a reader sees, by the same rule the steps take
         para = cleanup.capitalize_first_visible(para)
-        rows.append({"position": i, "kind": notes_rules.kind_of(para), "text": para,
+        rows.append({"position": i, "kind": kind or notes_rules.kind_of(para), "text": para,
+                     "title": title, "as_given": as_given,
                      "mentions": [{"ref_index": m["ref_index"], "match_text": m["match_text"]}
                                   for m in mentions]})
         for m in mentions:
@@ -399,7 +430,10 @@ def commit_plan(executor, plan, owner_id=None, snapshot=True):
     for row in plan.get("notes") or ():
         note_id = executor.execute(insert(RecipeNote.__table__).values(
             recipe_id=r["id"], position=row["position"], kind=row["kind"],
-            text=row["text"])).inserted_primary_key[0]
+            # ⚠️ NAMED EXPLICITLY, like every other key here. A column the plan carries and this
+            #    dict forgets is silently defaulted, which is the defect the heading_level comment
+            #    further up records.
+            text=row["text"], title=row.get("title"))).inserted_primary_key[0]
         for m in row.get("mentions") or ():
             executor.execute(insert(RecipeNoteStepRef.__table__).values(
                 note_id=note_id, ref_index=m["ref_index"], match_text=m["match_text"],
@@ -408,9 +442,13 @@ def commit_plan(executor, plan, owner_id=None, snapshot=True):
         #    a playground now, so they are not in the baseline and nothing compares them. This is
         #    the only copy of what the publisher actually wrote (migration 061), and it is what a
         #    future "restore the original notes" would read.
+        # ⚠️ AND IT RECORDS THE PARAGRAPH AS IT ARRIVED, TITLE AND ALL. recipe_notes_original has no
+        #    title column on purpose: a title is a thing the app LIFTED out of the publisher's
+        #    words, so the record keeps the sentence it was lifted from. Splitting it across two
+        #    columns would make the only copy of the original unreadable as one piece.
         executor.execute(insert(RecipeNoteOriginal.__table__).values(
             recipe_id=r["id"], position=row["position"], kind=row["kind"],
-            text=row["text"], recorded_at=r["created_at"]))
+            text=row.get("as_given") or row["text"], recorded_at=r["created_at"]))
     snap = RecipeSnapshot.__table__
     exists = snapshot and executor.execute(
         select(snap.c.id).where(snap.c.recipe_id == r["id"], snap.c.reason == "original")).first()
