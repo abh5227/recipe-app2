@@ -58,6 +58,16 @@ MARKS_CSV = REPAIRS / "emphasis-marks-2026-10-05.csv"
 
 # The whole vocabulary. A DECISION outside this aborts.
 VERBS = {"title", "no", "label", "strip", "merge-title-into-next", "keep", "derived"}
+# ⚠️ AND THE PLACES, NAMED, BECAUSE A ROW ID MEANS NOTHING WITHOUT ONE. The marks CSV's `where`
+#    column says which table the id belongs to, and a value this pass does not know is refused
+#    rather than guessed at. Only these two can be WRITTEN: the step and recipe-notes rows in that
+#    file are all `keep` or `derived`, which _plan_one returns before it reads any id at all.
+_WHERE = {"note", "ingredient", "ingredient heading", "step", "recipe notes"}
+# And the two it can WRITE. A `step` or `recipe notes` row reaching the write branch would have its
+# id read as a recipe_ingredients id, which is how a decision about step 3650 edited ingredient 3650
+# in review. Every such row in the committed files is `keep` or `derived`, so this fires only on a
+# file somebody has edited.
+_WRITABLE = {"note", "ingredient", "ingredient heading"}
 
 
 class BadDecision(Exception):
@@ -118,7 +128,10 @@ def read_decisions():
                          # the label the review list read, which is what a bare `title` means. It is
                          # how a second run recognises its own work: the title comes OFF the text,
                          # so the rule can no longer tell you what it was.
-                         "candidate": (r.get("candidate_title") or "").strip()})
+                         "candidate": (r.get("candidate_title") or "").strip(),
+                         # what the decision was made ABOUT, for the stale check on the ingredient
+                         # rows. The note rows are checked by re-running the rule instead.
+                         "text": r.get("text") or ""})
     # ⚠️ A CHECK THAT READ NOTHING FAILS. A truncated decision file would otherwise make the pass
     #    report success having applied a subset, which is how three committed records were reduced
     #    to their header lines during an earlier round and nobody noticed until a diff was read.
@@ -127,7 +140,7 @@ def read_decisions():
     return rows
 
 
-def _plan_one(ic, row, notes, ings):
+def _plan_one(ic, row, notes, ings, claimed=None, doomed=None):
     """One decision against the database as it is now -> (action, detail) or ("REFUSE", why).
 
     action is one of: title, label, strip, merge, ing_strip, noop, skip.
@@ -140,6 +153,17 @@ def _plan_one(ic, row, notes, ings):
     if "keep" in verbs:
         return "skip", "in-sentence emphasis or a footnote marker, left as written"
 
+    # ⚠️ THE `where` COLUMN IS READ FOR WHAT IT SAYS. It held "note or not", so the marks CSV's
+    #    three `step` rows (3650, 3651, 3853) were read as recipe_ingredients ids and were safe only
+    #    because all three are `keep`. Step ids and ingredient ids overlap in live's ranges, so one
+    #    added or mistyped `strip` on a step row edited an unrelated ingredient line. Demonstrated
+    #    in review: a `step,3650,strip` row rewrote ingredient 3650.
+    if row["where"] not in _WHERE:
+        return "REFUSE", (f"{row['where']!r} is not a place this pass knows "
+                          f"({', '.join(sorted(_WHERE))})")
+    if row["where"] not in _WRITABLE:
+        return "REFUSE", (f"this pass writes notes and ingredient rows, and row {row['row_id']} is "
+                          f"a {row['where']}")
     if row["where"] != "note":
         rid = int(row["row_id"])
         got = ings.get(rid)
@@ -147,11 +171,21 @@ def _plan_one(ic, row, notes, ings):
             return "REFUSE", f"no ingredient row {rid}"
         if got["recipe_id"] != row["recipe"]:
             return "REFUSE", f"ingredient {rid} is on {got['recipe_id']}, not {row['recipe']}"
+        # ⚠️ AND THE DECISION'S OWN RECORD OF THE TEXT IS CHECKED, which it was not. The note
+        #    branch below refuses a row whose words have moved, and these two rows are the ONLY
+        #    baseline content the round writes, so they are the half that most needed it. The marks
+        #    CSV carries a `text` column holding what the decision was made about and nothing read
+        #    it. The dead `if` that used to sit here had two identical arms.
+        was = (row.get("text") or "").strip()
         stripped, marks = ic.strip_wrapping_marks(got["raw_text"])
         if marks is None:
-            if got["raw_text"] == (want_title or got["raw_text"]):
-                return "noop", "already stripped"
+            if was and got["raw_text"].strip() not in (was, ic.strip_wrapping_marks(was)[0].strip()):
+                return "REFUSE", (f"ingredient {rid} reads {got['raw_text']!r} and the decision was "
+                                  f"made about {was!r}")
             return "noop", "already stripped"
+        if was and got["raw_text"].strip() != was:
+            return "REFUSE", (f"ingredient {rid} reads {got['raw_text']!r} and the decision was "
+                              f"made about {was!r}")
         return "ing_strip", {"id": rid, "recipe": row["recipe"], "raw_text": stripped,
                              "was": got["raw_text"], "marks": marks}
 
@@ -180,6 +214,23 @@ def _plan_one(ic, row, notes, ings):
             return "REFUSE", f"note {nid} has no next note to move its title onto"
         if nxt["title"]:
             return "REFUSE", f"note {nxt['id']} already carries the title {nxt['title']!r}"
+        # ⚠️ AND A SIBLING DECISION MAY HAVE CLAIMED THAT ROW ALREADY. nxt["title"] is read off the
+        #    PRE-RUN snapshot, so it cannot see that another merge in the same file is about to put
+        #    a title there. Two consecutive merges wrote both and the SECOND one won, with 0
+        #    complaints and nothing for the gate to catch, because notes are outside the baseline.
+        #    Demonstrated in review on three notes with merges on the first two.
+        if claimed is not None and nxt["id"] in claimed:
+            return "REFUSE", (f"note {nxt['id']} is already the target of another decision in this "
+                              f"run, so two titles would land on one row")
+        # ⚠️ AND THE TARGET MUST NOT BE A ROW THIS RUN DELETES, which is the shape the review
+        #    actually produced. Three notes with merges on the first two: "Alpha" went onto note 2
+        #    and note 2 was then deleted by its own merge, so "Alpha" was gone with 0 complaints.
+        #    The gate cannot see it either, because notes are outside the baseline.
+        if doomed is not None and nxt["id"] in doomed:
+            return "REFUSE", (f"note {nxt['id']} is itself deleted by another decision in this run, "
+                              f"so the title would go with it")
+        if claimed is not None:
+            claimed.add(nxt["id"])
         return "merge", {"id": nid, "recipe": row["recipe"], "title": plan.text,
                          "onto": nxt["id"], "position": note["position"]}
 
@@ -272,8 +323,14 @@ def run(db, apply=False):
             "WHERE raw_text IS NOT NULL")).mappings()}
 
     todo, noop, skip, refused = [], [], [], []
+    claimed = set()                     # rows a merge in this run will title, see _plan_one
+    # ⚠️ READ UP FRONT, NOT ACCUMULATED, because the row that kills a merge's target may be decided
+    #    LATER in the file. A forward pass that added as it went could not see it, which is exactly
+    #    how "Alpha" disappeared in review.
+    doomed = {int(r["row_id"]) for r in decisions
+              if r["where"] == "note" and "merge-title-into-next" in r["verbs"]}
     for row in decisions:
-        action, detail = _plan_one(ic, row, notes, ings)
+        action, detail = _plan_one(ic, row, notes, ings, claimed, doomed)
         if action == "REFUSE":
             refused.append((row, detail))
         elif action == "noop":
@@ -295,6 +352,14 @@ def run(db, apply=False):
     print(f"  not this round's business : {len(skip)}")
     for row, why in skip:
         print(f"      {row['where']:4s} {str(row['row_id'])[:30]:30s} {why}")
+    # ⚠️ A FLAG WAS PARSED AND READ BY NOTHING, so the one row carrying it recorded nothing anywhere.
+    #    `flag <name>` is how a decision says "this is not for this round, and here is why it is
+    #    worth coming back to", and the only way it means anything is if the run says so.
+    flagged = [r for r in decisions if r["flag"]]
+    print(f"  flagged for a later round : {len(flagged)}")
+    for row in flagged:
+        print(f"      {row['where']:4s} {str(row['row_id'])[:10]:10s} {row['flag']}: "
+              f"{row['reason'][:70]}")
     print(f"  refused                   : {len(refused)}")
     for row, why in refused:
         print(f"      {row['file']} line {row['line']}: {why}")
@@ -339,11 +404,15 @@ def run(db, apply=False):
                               {"t": d["title"], "n": d["onto"]})
                     s.execute(sqlalchemy.text("DELETE FROM recipe_notes WHERE id=:n"),
                               {"n": d["id"]})
-                    # ⚠️ THE GAP IS CLOSED AND THE SURVIVORS GO OUT OF THE WAY FIRST.
-                    #    recipe_notes carries UNIQUE (recipe_id, position), so renumbering in place
-                    #    collides the moment one row takes another's slot. Negative positions in
-                    #    one pass, final positions in a second, which is the dance write_plan_ahead
-                    #    does for waits and storage.
+                    # ⚠️ THE GAP IS CLOSED, AND THE TWO-PASS DANCE IS KEPT BECAUSE IT IS FREE AND
+                    #    NOT BECAUSE THIS OPERATION NEEDS IT. recipe_notes carries
+                    #    UNIQUE (recipe_id, position), and write_plan_ahead has to push rows to
+                    #    negative slots first because it writes a REORDERED list, where two rows can
+                    #    swap. Compacting after a delete only ever moves a row DOWN (position[i] is
+                    #    always >= i over distinct ascending positions), so it cannot collide, which
+                    #    the review measured by deleting the dance and finding every test still
+                    #    green. Said plainly here rather than letting the comment claim a hazard
+                    #    this code cannot produce.
                     left = [r["id"] for r in s.execute(sqlalchemy.text(
                         "SELECT id FROM recipe_notes WHERE recipe_id=:r ORDER BY position, id"),
                         {"r": rid}).mappings()]
@@ -354,6 +423,15 @@ def run(db, apply=False):
                     for i, nid in enumerate(left):
                         s.execute(sqlalchemy.text(
                             "UPDATE recipe_notes SET position=:p WHERE id=:n"), {"p": i, "n": nid})
+                    # ⚠️ AND recipe_notes_original IS NOT RENUMBERED, WHICH IS A DECISION. After
+                    #    this merge dan-dan-noodles has one note at position 0 and TWO originals, at
+                    #    0 and 1, so the two tables no longer line up row for row. Renumbering would
+                    #    mean DELETING the original of row 64, and that row holds the only copy of
+                    #    "**Sui mi ya cai**" as its author wrote it. A playground is only safe if
+                    #    there is a way back, and the way back is the author's paragraphs in the
+                    #    author's order. They are a LIST, not a join: a restore reads the whole list
+                    #    rather than matching positions, which is the same rule apply_note_decisions
+                    #    follows when it matches a note by WORDING rather than by slot.
                 elif action == "ing_strip":
                     s.execute(sqlalchemy.text(
                         "UPDATE recipe_ingredients SET raw_text=:x WHERE id=:i"),

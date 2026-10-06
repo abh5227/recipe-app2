@@ -63,7 +63,7 @@ def _kitchen(tmp_path):
     return db
 
 
-def _files(monkeypatch, tmp_path, title_rows, mark_rows=()):
+def _files(monkeypatch, tmp_path, title_rows, mark_rows=(), mark_text=""):
     """Two decision files in the committed shape, pointed at by the pass.
 
     ⚠️ THROUGH monkeypatch, not by assignment. Setting the module globals directly leaked the temp
@@ -77,7 +77,7 @@ def _files(monkeypatch, tmp_path, title_rows, mark_rows=()):
                  + "".join(f"rolls,{nid},,{cand},title,,,,{dec},because\n"
                            for nid, cand, dec in title_rows))
     m.write_text("recipe,where,id,field,marks,classification,text,proposed_fix,DECISION,REASON\n"
-                 + "".join(f"rolls,{where},{rid},,,,,,{dec},because\n"
+                 + "".join(f"rolls,{where},{rid},,,,{mark_text},,{dec},because\n"
                            for where, rid, dec in mark_rows))
     monkeypatch.setattr(pass_, "TITLES_CSV", t)
     monkeypatch.setattr(pass_, "MARKS_CSV", m)
@@ -323,3 +323,72 @@ def test_the_round_file_names_the_rows_the_decision_files_do():
     assert set(spec["tables"]["except"]) == {
         "schema_migrations", "recipe_notes", "recipe_ingredients", "recipe_snapshots"}
     assert spec["counts"]["migrations"] == [61, 62]
+
+
+# ---- what a fresh review found -------------------------------------------------------------------
+
+def test_a_place_the_pass_does_not_know_is_refused(monkeypatch, tmp_path):
+    """⚠️ IT READ `where` AS NOTE-OR-NOT, so the marks CSV's three `step` rows were read as
+    recipe_ingredients ids and were safe only because all three are `keep`. Step ids and ingredient
+    ids overlap in live's ranges, so one added or mistyped `strip` on a step row edited an unrelated
+    ingredient line. Demonstrated in review: a `step,3650,strip` row rewrote ingredient 3650."""
+    db = _kitchen(tmp_path)
+    pass_ = _files(monkeypatch, tmp_path, [], [("step", 9213, "strip")])
+    with pytest.raises(SystemExit):
+        pass_.run(str(db), apply=True)
+    assert _rows(db, "SELECT raw_text FROM recipe_ingredients WHERE id=9213")[0]["raw_text"] == (
+        "_Cinnamon Filling_"), "a step row's decision reached an ingredient"
+
+    bad = _files(monkeypatch, tmp_path, [], [("somewhere else", 9213, "strip")])
+    with pytest.raises(SystemExit):
+        bad.run(str(db), apply=True)
+
+
+def test_an_ingredient_row_whose_text_has_moved_is_refused(monkeypatch, tmp_path):
+    """⚠️ THE ONLY BASELINE CONTENT THE ROUND WRITES, AND IT HAD NO STALE CHECK. The note branch
+    refuses a row whose words have moved and this one did not: the guard it had was an `if` with two
+    identical arms. The marks CSV already carries a `text` column holding what the decision was made
+    about, and nothing read it."""
+    db = _kitchen(tmp_path)
+    with sqlite3.connect(db) as c:
+        c.execute("UPDATE recipe_ingredients SET raw_text='_Something Else Entirely_' WHERE id=9213")
+    pass_ = _files(monkeypatch, tmp_path, [], [("ingredient heading", 9213, "strip")],
+                   mark_text="_Cinnamon Filling_")
+    with pytest.raises(SystemExit) as e:
+        pass_.run(str(db), apply=True)
+    assert "no longer matches" in str(e.value)
+    assert _rows(db, "SELECT raw_text FROM recipe_ingredients WHERE id=9213")[0]["raw_text"] == (
+        "_Something Else Entirely_"), "it wrote anyway"
+
+
+def test_a_merge_onto_a_row_another_merge_deletes_is_refused(monkeypatch, tmp_path):
+    """⚠️ "Alpha" DISAPPEARED AND NOTHING COMPLAINED. Three notes with merges on the first two:
+    "Alpha" went onto note 2, and note 2 was then deleted by its own merge, so the title went with
+    it. nxt is read off the PRE-RUN snapshot, which cannot see what a sibling decision will do, and
+    the gate cannot see it either because notes are outside the baseline."""
+    db = _kitchen(tmp_path)
+    with sqlite3.connect(db) as c:
+        c.execute("DELETE FROM recipe_notes")
+        for nid, pos, text in ((1, 0, "**Alpha**"), (2, 1, "**Beta**"), (3, 2, BODY_NOTE)):
+            c.execute("INSERT INTO recipe_notes (id, recipe_id, position, kind, text) "
+                      "VALUES (?, 'rolls', ?, 'notes', ?)", (nid, pos, text))
+    pass_ = _files(monkeypatch, tmp_path, [],
+                   [("note", 1, "strip; merge-title-into-next"),
+                    ("note", 2, "strip; merge-title-into-next")])
+    with pytest.raises(SystemExit) as e:
+        pass_.run(str(db), apply=True)
+    assert "no longer matches" in str(e.value), "the abort is the shared refusal message"
+    assert _rows(db, "SELECT COUNT(*) c FROM recipe_notes")[0]["c"] == 3, "it deleted a row anyway"
+    assert _rows(db, "SELECT title FROM recipe_notes WHERE id=2")[0]["title"] is None
+
+
+def test_a_flag_in_a_decision_is_reported_rather_than_parsed_and_dropped(monkeypatch, tmp_path,
+                                                                         capsys):
+    """⚠️ `flag <name>` WAS PARSED AND READ BY NOTHING, so the one row carrying it recorded nothing
+    anywhere. A decision that says "come back to this" only means something if the run says so."""
+    db = _kitchen(tmp_path)
+    pass_ = _files(monkeypatch, tmp_path, [], [("step", 3651, "keep; flag split-footnote")])
+    pass_.run(str(db), apply=False)
+    out = capsys.readouterr().out
+    assert "flagged for a later round : 1" in out, out
+    assert "split-footnote" in out, out
