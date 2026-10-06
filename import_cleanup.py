@@ -20,6 +20,7 @@ at the bottom — with its `import paprika_native_reader`, `import zipfile` and 
 ARCHIVE — is now import_cleanup_preview.py, which imports THIS module rather than the reverse.
 A new source belongs in its own reader + preview, never here.
 """
+import collections
 import json
 import pathlib
 import re
@@ -858,7 +859,14 @@ NOTE_KINDS = json.loads(
 #    Widening is safe because note_kind returns a kind only for a label IN the table, so a
 #    non-kind label still returns None and the paragraph stays whole.
 #    ⚠️ KEEP IN STEP WITH static/note-blocks.js LEAD. tests/js/note-kinds-sync.test.js pins it.
-_NOTE_LEAD = re.compile(r"^\s*([A-Za-z][A-Za-z '\u2019/-]{0,28}?)\s*[:.\u2013\u2014-]\s+(\S[\s\S]*)$")
+#    ⚠️ ONE SEPARATOR SET, NAMED ONCE, AND THE TITLE RULE READS IT BACK OFF THE SAME MATCH. Which
+#    separator the author used is evidence: a colon or a dash is somebody marking a heading, a full
+#    stop is only how a sentence ends. A second pattern to recover that character is how two rules
+#    which must agree stop agreeing, so the set is named here and the pattern is built from it.
+#    THE HYPHEN STAYS LAST, where a character class reads it as a literal rather than a range.
+_NOTE_SEP_CHARS = ":.\u2013\u2014-"
+_NOTE_LEAD = re.compile(
+    r"^\s*([A-Za-z][A-Za-z '\u2019/-]{0,28}?)\s*[" + _NOTE_SEP_CHARS + r"]\s+(\S[\s\S]*)$")
 # A paragraph that is ONLY a label, with nothing under it.
 _NOTE_LABEL_ONLY = re.compile(r"^\s*([A-Za-z][A-Za-z '\u2019/-]{0,28}?)\s*[:.]?\s*$")
 
@@ -911,6 +919,18 @@ NOTE_TITLE_CLAUSE_WORDS = frozenset({
     "you", "your", "i", "we", "they", "it", "can", "could", "will", "would", "should",
     "must", "may", "don't", "dont", "do", "not", "never"})
 NOTE_TITLE_MAX_WORDS = 5
+# ⚠️ THE FULL-STOP FORM GETS A TIGHTER CEILING, AND IT WAS FOUND BY WRITING THE TEST. A colon or a
+#    dash is somebody marking a heading. A full stop is how every sentence ends, so the only thing
+#    separating "Flour. This recipe works best with..." from an ordinary note whose first sentence
+#    is short is that the first reads as a name. "Made with Vedant and Sophia. It was great." has no
+#    clause word in it and five words is enough room to be a whole statement, so the rule promoted
+#    it to a heading. dry-rub-for-ribs' note 66 is "Made with Vedant and Sophia." with nothing after
+#    it, which _NOTE_LEAD does not match at all, so the corpus never showed this. The importer would
+#    have.
+#    Measured over the 9 period-form leads the 300 recipes carry: the titles Andy kept are 1 and 3
+#    words ("Flour", "Storing", "Reminder", "Kneading by hand"), and the two he refused are 4 and 5
+#    words AND carry clause words. So three refuses none of them, and a longer one goes to a person.
+NOTE_TITLE_PERIOD_MAX_WORDS = 3
 
 
 def note_lead(text):
@@ -928,25 +948,215 @@ def note_label_is_known(label):
     return any(_norm_label(l) == want for k in NOTE_KINDS for l in k["labels"])
 
 
-def note_title_verdict(label):
+def _label_words(label):
+    """A label's words, lowercased, with the punctuation and the curly apostrophe normalized."""
+    return [w.strip(".,").lower().replace("\u2019", "'") for w in str(label or "").split()]
+
+
+def note_label_clause_words(label):
+    """The clause words in a label. One of these turns it into a sentence about the cook.
+
+    Named so note_title_plan can ask the question directly rather than reading it back out of a
+    verdict's reason string, which is the shape a rule stated twice takes."""
+    return sorted({w for w in _label_words(label) if w in NOTE_TITLE_CLAUSE_WORDS})
+
+
+def note_title_verdict(label, marked=False):
     """A leading label -> ("title" | "not a title" | "unclear", the reason).
 
     The reason is carried so a review list can say WHY a label is waiting on a person, rather than
-    leaving the decision to be made twice."""
-    words = [w.strip(".,").lower().replace("\u2019", "'") for w in str(label or "").split()]
+    leaving the decision to be made twice.
+
+    ⚠️ marked IS THE ONE PIECE OF EVIDENCE A LABEL'S SHAPE CANNOT CARRY, and it defaults to the
+    reading that refuses more. True means the author marked the line as a heading, with a colon, a
+    dash or an emphasis wrap, and then a clause in it is ordinary: waffle's note 174 reads "For
+    waffles that stay crisp:" and is a title. False is the full-stop form, where the label is only
+    the note's first sentence unless it reads as a name, so a clause in it settles the question
+    rather than opening one: pasta-e-ceci's "You can use Canned Chickpeas." is not a title and
+    nobody needs to be asked."""
+    words = _label_words(label)
     flat = " ".join(words)
     if not words:
         return "unclear", "no label"
     if flat in NOTE_TITLE_MARKERS:
         return "not a title", "a discourse marker, it names nothing"
-    if len(words) > NOTE_TITLE_MAX_WORDS:
+    # ⚠️ THE CLAUSE TEST COMES BEFORE THE LENGTH TEST, because the two give different VERDICTS and
+    #    the clause is the more specific evidence. "You can use Canned Chickpeas" is 5 words and a
+    #    statement, and reading its length first would send Andy's `no` to a review queue.
+    hit = note_label_clause_words(label)
+    if hit and not marked:
+        return "not a title", f"a statement, not a name ({', '.join(hit)})"
+    limit = NOTE_TITLE_MAX_WORDS if marked else NOTE_TITLE_PERIOD_MAX_WORDS
+    if len(words) > limit:
         return "unclear", f"{len(words)} words, longer than a heading"
-    hit = sorted({w for w in words if w in NOTE_TITLE_CLAUSE_WORDS})
-    if hit:
-        return "unclear", f"reads as a clause ({', '.join(hit)})"
     if not str(label)[:1].isupper():
         return "unclear", "does not start with a capital"
     return "title", f"a {len(words)}-word name"
+
+
+# ---------------------------------------------------------------------------------------------
+# A note's TITLE: the whole rule, in one place, for the importer and the corpus pass.
+#
+# note_title_verdict above answers about a label's SHAPE and nothing else. This is the rule, and
+# what it adds is the evidence the shape cannot see: which separator the author used, how much text
+# follows, whether the kind table already names the label, and whether the line is wrapped in
+# emphasis marks. Andy decided all 36 cases the corpus offers (docs/data-repairs/
+# note-titles-2026-10-05.csv and emphasis-marks-2026-10-05.csv) and this reproduces those decisions.
+#
+# ⚠️ FOUR VERDICTS, AND "unclear" IS THE ONE THAT MATTERS. A title is a judgement about what the
+# author meant. Where the rule cannot defend one it says so and the row goes to the review queue
+# with an empty DECISION column, which is where all 36 of these decisions came from.
+
+# ⚠️ TWO WORDS, AND THE NUMBER IS MEASURED RATHER THAN CHOSEN. french-baguette's note 69 reads
+#    "If using fresh Yeast: 8g", a body of ONE word, and promoting that label would print a heading
+#    over an amount. The smallest body under a title Andy kept is SEVEN words (italian-two-bean-
+#    soup's "also known as Cranberry bean, Roman bean"), then 9, then 13. So the gap the threshold
+#    sits in runs from 1 to 7, and two admits note 69 and refuses none of the 23 titles.
+NOTE_TITLE_TINY_BODY_WORDS = 2
+
+# The emphasis runs a whole line can be wrapped in, longest first so "**x**" is read as bold rather
+# than as italic around "*x*".
+_NOTE_EMPHASIS_RUNS = ("**", "__", "*", "_")
+
+
+def strip_wrapping_marks(line):
+    """(the line with its wrapping emphasis run removed, the run) or (line, None).
+
+    ⚠️ LOOSER THAN MARKDOWN, DELIBERATELY. CommonMark will not close emphasis on a delimiter with
+    whitespace in front of it, so key-lime-pie's note 89, "*Pie recipe for year 5 anniversary
+    3/14/25 : ) *", is not emphasis by the spec and the corpus survey's classifier filed it under
+    "unpaired marker, not emphasis". It is somebody wrapping a line all the same. The space goes
+    with the mark.
+
+    ⚠️ A SECOND RUN INSIDE THE LINE MEANS IT IS NOT A WRAP. "*a* and *b*" opens and closes twice,
+    which is in-sentence emphasis. The corpus has none of it, 19 of its 30 marks are footnote
+    markers, and stripping one would edit a sentence rather than lift a heading. Any occurrence of
+    the run's own character inside refuses the whole line."""
+    s = (line or "").strip()
+    for run in _NOTE_EMPHASIS_RUNS:
+        if len(s) <= 2 * len(run) or not (s.startswith(run) and s.endswith(run)):
+            continue
+        inner = s[len(run):-len(run)]
+        if run[0] in inner:                 # "***x***" and "**a** and **b**" both land here
+            continue
+        return inner.strip(), run
+    return line, None
+
+
+def note_lead_separator(text):
+    """The separator character _NOTE_LEAD matched, read out of the SAME match it already made.
+
+    ⚠️ NOT A SECOND PATTERN. The slice between the label and the body is whitespace, the separator
+    and whitespace, by construction, so exactly one character in it belongs to _NOTE_SEP_CHARS and
+    that is the one."""
+    m = _NOTE_LEAD.match(text or "")
+    if not m:
+        return None
+    for ch in m.string[m.end(1):m.start(2)]:
+        if ch in _NOTE_SEP_CHARS:
+            return ch
+    return None
+
+
+def note_title_kind(title):
+    """The kind a title's OPENING words name, or None.
+
+    "To Freeze the pie shell" is not a label the table knows, and it opens with one that is, so the
+    note belongs under Storage while keeping its own heading. Longest first, so the most specific
+    label in the table wins."""
+    words = str(title or "").split()
+    for n in range(len(words), 0, -1):
+        head = " ".join(words[:n])
+        if note_label_is_known(head):
+            want = _norm_label(head)
+            for k in NOTE_KINDS:
+                if any(_norm_label(l) == want for l in k["labels"]):
+                    return k["kind"]
+    return None
+
+
+def _title_case(label):
+    """ALL CAPS goes to normal case through the existing heading rule. Anything else is left alone.
+
+    agedashi-tofu writes "DASHI:" and falafel-crackers writes "CHICKPEA FLOUR -", and both print as
+    a heading, so both are cased. "Blind Bake" and "Tomato Bouillon" are already written the way
+    their author wanted them and is_caps says so."""
+    t = str(label or "").strip()
+    return sentence_case(t) if is_caps(t) else t
+
+
+NoteTitlePlan = collections.namedtuple(
+    "NoteTitlePlan", "verdict reason text title kind marks")
+
+
+def _plan(verdict, reason, text, title=None, kind=None, marks=None):
+    return NoteTitlePlan(verdict, reason, text, title, kind, marks)
+
+
+def note_title_plan(text):
+    """A note's stored text -> what the rule says a title on it should be.
+
+    verdict is one of:
+      "title"     a title, in .title, with .text the note's words once the title has come off the
+                  front. Leaving the title in both would print it twice.
+      "label"     the leading label is one the kind table names, so it sets .kind and is NOT a
+                  title. .text keeps the author's words verbatim, label and all, which is the rule
+                  migration 060 states.
+      "no title"  there is nothing here to promote, and the rule can say so.
+      "unclear"   a person decides. Goes to the review queue.
+
+    .marks carries the emphasis run stripped off the first line, or None, so a caller can report
+    the strip separately from the title.
+    """
+    raw = "" if text is None else str(text)
+    first, nl, rest = raw.partition("\n")
+    unwrapped, marks = strip_wrapping_marks(first)
+    text_now = (unwrapped + nl + rest) if marks else raw
+    body_below = rest.strip()
+
+    # 1. A label the table knows is a KIND, whatever its shape. "Freezing" passes every title test
+    #    and promoting it would print "Freezing" over a note already filed under Storage.
+    kind = note_kind(text_now)
+    if kind is not None:
+        label = note_lead(text_now)[0]
+        return _plan("label", f"{label!r} is a {kind} label", text_now, kind=kind, marks=marks)
+
+    # 2. A bare wrapped first line is the author drawing the heading themselves, which is the
+    #    strongest evidence in the corpus. All five note cases have this shape.
+    if marks and note_lead(text_now) is None:
+        shape, why = note_title_verdict(unwrapped, marked=True)
+        if not body_below:
+            if shape == "title":
+                # dan-dan-noodles' note 64 is "**Sui mi ya cai**" and its body was split into the
+                # next row. A heading with nothing under it is a person's call, not a rule's.
+                return _plan("unclear", "a title line with nothing under it", text_now, marks=marks)
+            return _plan("no title", f"a wrapped line, and {why}", text_now, marks=marks)
+        if shape != "title":
+            return _plan("unclear", f"a wrapped line over a body, and {why}", text_now, marks=marks)
+        title = _title_case(unwrapped)
+        return _plan("title", "a wrapped title line over its body", rest.lstrip("\n"),
+                     title=title, kind=note_title_kind(title), marks=marks)
+
+    # 3. The leading-label form: a short label, a separator, then the note.
+    lead = note_lead(text_now)
+    if lead is None:
+        return _plan("no title", "no leading label and no title line", text_now, marks=marks)
+    label, body = lead
+    words = len(body.split())
+    if words <= NOTE_TITLE_TINY_BODY_WORDS:
+        return _plan("no title", f"only {words} word(s) follow the label", text_now, marks=marks)
+
+    # A colon or a dash marks a heading. A full stop is how a sentence ends, so the period form has
+    # to read as a name on its own and pasta-e-ceci's "You can use Canned Chickpeas." does not.
+    sep = note_lead_separator(text_now)
+    shape, why = note_title_verdict(label, marked=(sep != "."))
+    if shape == "title":
+        title = _title_case(label)
+        return _plan("title", f"a label on {sep!r}, {why}", body,
+                     title=title, kind=note_title_kind(title), marks=marks)
+    if shape == "not a title":
+        return _plan("no title", why, text_now, marks=marks)
+    return _plan("unclear", why, text_now, marks=marks)
 
 
 def clean_notes(text):

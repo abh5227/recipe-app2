@@ -1,14 +1,18 @@
-"""Is a note's leading label a TITLE? The rule, held before anything reads it.
+"""Is a note's leading label a TITLE? The rule, and the 36 decisions it has to reproduce.
 
-⚠️ NOTHING CALLS import_cleanup.note_title_verdict YET, AND THIS FILE IS WHY IT IS SAFE TO LEAVE IT
-THAT WAY. The rule produced reports/note-titles-candidates.csv, the review list Andy decides from.
-The titles round will read those decisions and then this rule will have a caller. Until then the
-tests are the only thing holding its answers still, so they are stated now rather than written
-alongside the pass that will depend on them.
+note_title_verdict answers about a label's SHAPE. note_title_plan is the rule: it adds the
+separator the author used, how much text follows, whether the kind table already names the label,
+and whether the line is wrapped in emphasis marks.
 
-⚠️ AND "not a title" IS PINNED HERE AND NOWHERE ELSE. No note in the 300 opens with a discourse
-marker, so that branch has no evidence in the corpus at all. A branch with no data behind it is
-exactly the one that quietly stops working.
+⚠️ THE DECISIONS ARE THE TEST, AND THEY ARE IN THE REPO. Andy decided all 36 cases the corpus
+offers, in docs/data-repairs/note-titles-2026-10-05.csv and emphasis-marks-2026-10-05.csv, and
+test_the_rule_reproduces_every_one_of_andys_decisions reads those files rather than a copy of their
+contents. A rule whose cases are retyped into its own test agrees with the test and with nothing
+else.
+
+⚠️ AND "not a title" IS PINNED HERE AND NOWHERE ELSE for the discourse markers. No note in the 300
+opens with one, so that branch has no evidence in the corpus at all. A branch with no data behind it
+is exactly the one that quietly stops working.
 """
 import pathlib
 import sys
@@ -26,16 +30,27 @@ verdict = lambda s: ic.note_title_verdict(s)[0]                       # noqa: E7
 # --- a name is a title -----------------------------------------------------------------------
 
 @pytest.mark.parametrize("label", [
-    "Form a Pie Shell",        # all-butter-pie-crust, the case that started the question
     "Blind Bake",
     "Tomato Bouillon",
     "DASHI",
-    "To Freeze the pie shell",
     "Measurements",
-    "Kneading by hand",
+    "Kneading by hand",       # brioche-bread's note 28, and the only 3-word one of these
 ])
-def test_a_short_capitalized_name_is_a_title(label):
+def test_a_short_capitalized_name_is_a_title_under_any_separator(label):
     assert verdict(label) == "title"
+    assert ic.note_title_verdict(label, marked=True)[0] == "title"
+
+
+@pytest.mark.parametrize("label", [
+    "Form a Pie Shell",        # all-butter-pie-crust, the case that started the question
+    "To Freeze the pie shell",
+    "For waffles that stay crisp",
+])
+def test_a_longer_name_needs_the_heading_mark_the_author_actually_wrote(label):
+    """All three carry a COLON in the corpus, which is what admits them. Over the full-stop form
+    they are 4 and 5 words with no clause word, the shape "Made with Vedant and Sophia" has too, so
+    there they go to a person instead."""
+    assert ic.note_title_verdict(label, marked=True)[0] == "title"
 
 
 def test_the_reason_is_carried_so_a_review_list_can_say_why(label="Blind Bake"):
@@ -60,10 +75,6 @@ def test_the_marker_test_ignores_case_and_trailing_punctuation():
 # --- anything it cannot defend goes to a person ---------------------------------------------------
 
 @pytest.mark.parametrize("label,why", [
-    ("If using fresh Yeast", "clause"),
-    ("You can use Canned Chickpeas", "clause"),
-    ("Don't over-mix the batter", "clause"),
-    ("When the dough is cold", "clause"),
     ("One two three four five six", "longer than a heading"),
     ("a lowercase thing", "capital"),
 ])
@@ -73,9 +84,43 @@ def test_a_label_the_rule_cannot_defend_is_unclear_with_a_reason(label, why):
     assert why in reason
 
 
+# --- a clause is settled by the separator, not left for a person --------------------------------
+
+@pytest.mark.parametrize("label", [
+    "If using fresh Yeast",
+    "You can use Canned Chickpeas",
+    "Don't over-mix the batter",
+    "When the dough is cold",
+])
+def test_a_clause_under_a_full_stop_is_a_sentence_and_not_a_title(label):
+    """⚠️ THIS USED TO READ "unclear" AND THE SEPARATOR IS WHAT CHANGED IT. The full-stop form means
+    the label is only the note's first sentence unless it reads as a name, so a clause in it settles
+    the question rather than opening one. pasta-e-ceci's "You can use Canned Chickpeas." is Andy's
+    `no`, and sending it to a review queue would ask a person something the rule can answer."""
+    assert verdict(label) == "not a title"
+
+
+@pytest.mark.parametrize("label", [
+    "If using fresh Yeast",
+    "For waffles that stay crisp",
+    "When the dough is cold",
+])
+def test_the_same_clause_under_a_colon_or_a_dash_is_a_title(label):
+    """marked=True is the author having drawn a heading. waffle's note 174 is "For waffles that stay
+    crisp:" and it is Andy's `title`, clause word and all."""
+    assert ic.note_title_verdict(label, marked=True)[0] == "title"
+
+
+def test_marked_defaults_to_the_reading_that_refuses_more():
+    # A caller that does not say which separator it saw gets the full-stop answer.
+    assert verdict("You can use Canned Chickpeas") == "not a title"
+    assert ic.note_title_verdict("You can use Canned Chickpeas", marked=False)[0] == "not a title"
+
+
 def test_a_curly_apostrophe_reads_as_a_straight_one():
     # The corpus holds both, and a clause word spelled with the curly form is the same clause word.
-    assert verdict("Don’t over-mix the batter") == "unclear"
+    assert verdict("Don’t over-mix the batter") == "not a title"
+    assert ic.note_label_clause_words("Don’t over-mix the batter") == ["don't"]
 
 
 def test_an_empty_label_is_unclear_rather_than_a_crash():
@@ -84,11 +129,35 @@ def test_an_empty_label_is_unclear_rather_than_a_crash():
     assert verdict("   ") == "unclear"
 
 
-def test_five_words_is_in_and_six_is_out():
-    # The boundary is stated, so moving it is a decision rather than an accident.
+def test_the_two_word_ceilings_are_stated():
+    """The boundaries are named, so moving one is a decision rather than an accident.
+
+    ⚠️ THE FULL-STOP FORM IS TIGHTER, AND THAT WAS FOUND BY WRITING A TEST RATHER THAN BY READING
+    THE CORPUS. "Made with Vedant and Sophia. It was great." has no clause word in it, and under one
+    shared ceiling of five the rule promoted it to a heading. dry-rub-for-ribs' note 66 is that
+    sentence with nothing after it, which _NOTE_LEAD does not match, so the corpus never showed it
+    and the importer would have. Measured over the 9 period-form leads the 300 carry, the titles are
+    1 and 3 words and the refusals are 4 and 5 with clause words in them."""
     assert ic.NOTE_TITLE_MAX_WORDS == 5
-    assert verdict("One Two Three Four Five") == "title"
-    assert verdict("One Two Three Four Five Six") == "unclear"
+    assert ic.NOTE_TITLE_PERIOD_MAX_WORDS == 3
+    # marked, which is a colon, a dash or an emphasis wrap: five is in and six is out
+    assert ic.note_title_verdict("One Two Three Four Five", marked=True)[0] == "title"
+    assert ic.note_title_verdict("One Two Three Four Five Six", marked=True)[0] == "unclear"
+    # the full-stop form: three is in and four goes to a person
+    assert verdict("One Two Three") == "title"
+    assert verdict("One Two Three Four") == "unclear"
+
+
+def test_a_short_sentence_under_a_full_stop_is_not_promoted_to_a_heading():
+    """⚠️ THE HOLE THE PERIOD CEILING CLOSES, kept as its own case because it is the shape that got
+    through. clean_notes' docstring already warned about this exact sentence from the other side:
+    "Made with Vedant and Sophia." is a whole sentence that happens to be short."""
+    plan = ic.note_title_plan("Made with Vedant and Sophia. It was great.")
+    assert plan.verdict == "unclear"
+    assert plan.title is None
+    # and the real corpus row, which has no body at all, is not even a lead
+    assert ic.note_lead("Made with Vedant and Sophia.") is None
+    assert ic.note_title_plan("Made with Vedant and Sophia.").verdict == "no title"
 
 
 # --- it reads the same "leading label" the rest of the app does -----------------------------------
@@ -110,26 +179,341 @@ def test_a_label_the_kind_table_knows_is_a_KIND_and_not_a_title():
     assert ic.note_label_is_known("Blind Bake") is False
 
 
-def test_nothing_in_the_repo_calls_the_rule_yet():
-    """⚠️ THE POINT OF MOVING IT HERE WAS TO KEEP IT, NOT TO RUN IT. A caller appearing by accident
-    would turn a review list Andy has not decided yet into data. When the titles round lands, this
-    test is the one that should fail and be deleted on purpose."""
+# --- the emphasis wrap ----------------------------------------------------------------------------
+
+@pytest.mark.parametrize("line,inner,run", [
+    ("**Chinese black vinegar**", "Chinese black vinegar", "**"),
+    ("_Buying_", "Buying", "_"),
+    ("_Cinnamon Filling_", "Cinnamon Filling", "_"),
+    ("__bold the other way__", "bold the other way", "__"),
+    ("*italic*", "italic", "*"),
+])
+def test_a_wrapped_line_loses_its_marks(line, inner, run):
+    assert ic.strip_wrapping_marks(line) == (inner, run)
+
+
+def test_a_space_before_the_closing_mark_still_closes_it():
+    """⚠️ LOOSER THAN MARKDOWN ON PURPOSE, AND THIS IS THE CASE THAT NEEDED IT. CommonMark will not
+    close emphasis on a delimiter with whitespace in front of it, so the corpus survey's classifier
+    filed key-lime-pie's note 89 under "unpaired marker, not emphasis". It is somebody wrapping a
+    line all the same, and the space goes with the mark."""
+    assert ic.strip_wrapping_marks("*Pie recipe for year 5 anniversary 3/14/25 : ) *") == (
+        "Pie recipe for year 5 anniversary 3/14/25 : )", "*")
+
+
+@pytest.mark.parametrize("line", [
+    "*To improve digestibility you can soak lentils overnight. Drain before cooking.",
+    "*Turn the heat lower if needed to avoid burning. Transfer the beans and set aside.",
+    "¼ teaspoon salt*",
+    "regular yogurt (any flavor*)",
+    "*a* and *b*",
+    "**a** and **b**",
+    "***three***",
+    "**",
+    "*",
+    "",
+])
+def test_a_footnote_marker_and_in_sentence_emphasis_are_left_alone(line):
+    """19 of the corpus's 30 marks are footnote markers and there is not one in-sentence emphasis in
+    the 300 recipes. A rule that stripped either would edit a sentence rather than lift a heading."""
+    assert ic.strip_wrapping_marks(line) == (line, None)
+
+
+def test_a_line_with_no_wrap_comes_back_byte_identical():
+    # Not stripped, not trimmed. A save that changes nothing has to leave the bytes alone.
+    for line in ("  Flour. This recipe works best...  ", "Freezing – Freezes 100%"):
+        assert ic.strip_wrapping_marks(line) == (line, None)
+
+
+# --- the separator, read off the one pattern ------------------------------------------------------
+
+@pytest.mark.parametrize("text,sep", [
+    ("Blind Bake: put the weights in.", ":"),
+    ("Flour. This recipe works best with bread flour.", "."),
+    ("Measurements - Both grams and US cup sizes are provided.", "-"),
+    ("Cannellini – also known as White Italian Beans.", "–"),
+    ("Mirin — substitute Chinese cooking wine.", "—"),
+    ("No label here at all", None),
+])
+def test_the_separator_is_read_back_off_the_same_match(text, sep):
+    assert ic.note_lead_separator(text) == sep
+
+
+def test_the_lead_pattern_is_built_from_the_named_separator_set():
+    """⚠️ ONE PATTERN, NOT TWO. The title rule needs to know WHICH separator it saw, and a second
+    regex to recover that character is how two rules that must agree stop agreeing. The hyphen stays
+    last in the set, where a character class reads it as a literal rather than as a range."""
+    assert ic._NOTE_SEP_CHARS == ":.–—-"
+    assert ic._NOTE_SEP_CHARS.endswith("-")
+    assert f"[{ic._NOTE_SEP_CHARS}]" in ic._NOTE_LEAD.pattern
+    # a label whose own characters include the hyphen still reads, which is what a range would break
+    assert ic.note_lead("Slow-cook: lid on.") == ("Slow-cook", "lid on.")
+
+
+# --- the tiny body --------------------------------------------------------------------------------
+
+def test_a_body_of_one_or_two_words_takes_no_title():
+    """⚠️ MEASURED, NOT CHOSEN. french-baguette's note 69 is "If using fresh Yeast: 8g", a body of
+    ONE word, and a heading over an amount is worse than no heading. The smallest body under a title
+    Andy kept is SEVEN words, then 9, then 13, so the threshold sits in a gap from 1 to 7."""
+    assert ic.NOTE_TITLE_TINY_BODY_WORDS == 2
+    assert ic.note_title_plan("If using fresh Yeast: 8g").verdict == "no title"
+    assert ic.note_title_plan("Flour: bread flour").verdict == "no title"       # two words
+    assert ic.note_title_plan("Flour: use bread flour").verdict == "title"      # three is a body
+    # and seven words is a title, which is the other side of the gap
+    assert ic.note_title_plan(
+        "Borlotti – also known as Cranberry bean, Roman bean").verdict == "title"
+
+
+# --- ALL CAPS goes through the existing heading rule ----------------------------------------------
+
+def test_all_caps_is_cased_and_everything_else_is_left_as_written():
+    assert ic.note_title_plan("DASHI: Vegetarian Japanese stock is great to have.").title == "Dashi"
+    assert ic.note_title_plan(
+        "CHICKPEA FLOUR - Also known as garbanzo bean flour or gram flour.").title == "Chickpea flour"
+    # is_caps says no, so the author's own capitals stand
+    assert ic.note_title_plan("Blind Bake: Place a piece of parchment in the shell.").title == (
+        "Blind Bake")
+    assert ic.note_title_plan(
+        "Tomato Bouillon: granules or cubes, found in the Mexican aisle.").title == "Tomato Bouillon"
+
+
+# --- a known type label is a KIND, never a title --------------------------------------------------
+
+def test_a_known_label_sets_the_kind_and_keeps_the_text_verbatim():
+    """migration 060's rule: the words are stored as the author wrote them, label and all, and the
+    kind sits beside them. Promoting "Freezing" would print a heading over a note already filed
+    under Storage."""
+    text = "Freezing – Freezes 100% perfectly! After Fry #1, fully cool the fries."
+    plan = ic.note_title_plan(text)
+    assert (plan.verdict, plan.kind, plan.title) == ("label", "storage", None)
+    assert plan.text == text, "not one character of it moves"
+
+
+def test_freezing_is_a_storage_label():
+    """Added for french-fries' note 70, which is the corpus's only one. The fixture the JS sync test
+    reads was regenerated with it, or that test fails by design."""
+    assert ic.note_label_is_known("Freezing") is True
+    assert ic.note_kind("Freezing: cool them first, then freeze on a tray.") == "storage"
+
+
+def test_a_title_opening_with_a_known_label_carries_that_kind_and_keeps_its_own_heading():
+    """all-butter-pie-crust's note 13. "To Freeze the pie shell" is not a label the table knows, and
+    it opens with one that is, so the note belongs under Storage with its own heading."""
+    plan = ic.note_title_plan("To Freeze the pie shell: Place the pie shell into the refrigerator.")
+    assert (plan.verdict, plan.title, plan.kind) == (
+        "title", "To Freeze the pie shell", "storage")
+    assert ic.note_title_kind("Blind Bake") is None
+
+
+# --- the four verdicts ----------------------------------------------------------------------------
+
+def test_a_title_comes_off_the_front_of_the_text():
+    plan = ic.note_title_plan("Flour. This recipe works best with flour with around 11% protein.")
+    assert plan.verdict == "title"
+    assert plan.title == "Flour"
+    assert plan.text == "This recipe works best with flour with around 11% protein."
+
+
+def test_a_wrapped_title_line_over_a_body_is_a_title():
+    plan = ic.note_title_plan("**Enriched Chicken and Pork Broth**\nSubstitute 2 pounds pork necks.")
+    assert (plan.verdict, plan.title, plan.marks) == (
+        "title", "Enriched Chicken and Pork Broth", "**")
+    assert plan.text == "Substitute 2 pounds pork necks."
+
+
+def test_a_title_line_with_nothing_under_it_goes_to_a_person():
+    """⚠️ dan-dan-noodles' note 64 IS THE CASE, and it is why this is not "no title". The row holds
+    "**Sui mi ya cai**" and nothing else, because its body was split into the next note. A heading
+    with nothing under it is a person's call: Andy's decision moves the title onto that next row and
+    deletes this one, and no rule reading one row can see that."""
+    plan = ic.note_title_plan("**Sui mi ya cai**")
+    assert (plan.verdict, plan.marks) == ("unclear", "**")
+    assert plan.text == "Sui mi ya cai"
+    assert "nothing under it" in plan.reason
+
+
+def test_a_wrapped_sentence_with_no_body_loses_its_marks_and_takes_no_title():
+    """key-lime-pie's note 89. Nine words is not a heading, so the marks come off and that is all."""
+    plan = ic.note_title_plan("*Pie recipe for year 5 anniversary 3/14/25 : ) *")
+    assert (plan.verdict, plan.title, plan.marks) == ("no title", None, "*")
+    assert plan.text == "Pie recipe for year 5 anniversary 3/14/25 : )"
+
+
+def test_a_wrapped_whole_note_whose_label_the_table_knows_is_a_label():
+    """baked-zucchini's note 19. Unwrap first, then ask: "Note for next time:" is a label the table
+    already names, so it sets the kind and there is no title."""
+    plan = ic.note_title_plan(
+        "**Note for next time: Oven couldn't hold the temperature, so turned out soggy!**")
+    assert (plan.verdict, plan.kind, plan.title, plan.marks) == ("label", "notes", None, "**")
+    assert plan.text == "Note for next time: Oven couldn't hold the temperature, so turned out soggy!"
+
+
+def test_a_note_with_no_label_and_no_wrap_takes_no_title():
+    plan = ic.note_title_plan("I roasted these alongside the chicken and they were better for it.")
+    assert (plan.verdict, plan.title, plan.marks) == ("no title", None, None)
+    assert plan.text == "I roasted these alongside the chicken and they were better for it."
+    assert "no leading label" in plan.reason
+
+
+def test_a_discourse_marker_takes_no_title():
+    """The branch with no evidence in the corpus, stated here because of that."""
+    plan = ic.note_title_plan("Important: do not skip the chilling step, it will not set.")
+    assert plan.verdict == "no title"
+    assert "names nothing" in plan.reason
+
+
+def test_an_empty_note_is_no_title_rather_than_a_crash():
+    for text in (None, "", "   "):
+        plan = ic.note_title_plan(text)
+        assert plan.verdict == "no title"
+        assert plan.title is None
+
+
+def test_a_long_label_under_a_colon_is_the_one_shape_that_stays_unclear():
+    # Length is not settled by the separator, so this is still a person's call.
+    plan = ic.note_title_plan("One two three four five six: and then the body of the note follows.")
+    assert plan.verdict == "unclear"
+    assert "longer than a heading" in plan.reason
+
+
+# --- Andy's 36 decisions, read from the files rather than retyped ---------------------------------
+
+def _decisions():
+    """(where, row id, recipe, DECISION) for every row Andy decided a rule question on.
+
+    `keep` and `derived` rows are not rule questions: `keep` is in-sentence emphasis or a footnote
+    marker the rule must leave alone, and `derived` names the retired recipes.notes copy, which this
+    round does not touch."""
+    import csv
+    d = pathlib.Path(BASE) / "docs" / "data-repairs"
+    out = []
+    with (d / "note-titles-2026-10-05.csv").open() as fh:
+        for r in csv.DictReader(fh):
+            out.append(("note", int(r["note_id"]), r["recipe"], r["DECISION"].strip()))
+    with (d / "emphasis-marks-2026-10-05.csv").open() as fh:
+        for r in csv.DictReader(fh):
+            dec = r["DECISION"].strip()
+            if dec == "derived" or dec.startswith("keep"):
+                continue
+            out.append(("note" if r["where"] == "note" else "ing",
+                        int(r["id"]), r["recipe"], dec))
+    return out
+
+
+def _wanted(decision):
+    """Andy's DECISION -> (verdict the rule must reach, title or None, kind or None, strip)."""
+    verbs, title, kind = set(), None, None
+    for part in [p.strip() for p in decision.split(";")]:
+        if part.startswith("title:"):
+            verbs.add("title")
+            title = part[len("title:"):].strip()
+        elif part.startswith("kind="):
+            kind = part[len("kind="):].strip()
+        elif part:
+            verbs.add(part)
+    verdict = ("label" if "label" in verbs else
+               "title" if "title" in verbs else
+               # the rule cannot see the next row, so it declines and the decision answers
+               "unclear" if "merge-title-into-next" in verbs else
+               "no title")
+    return verdict, title, kind, "strip" in verbs
+
+
+def test_every_decision_in_both_files_is_filled_in_and_parses():
+    """⚠️ A CHECK THAT READ NOTHING FAILS. An empty DECISION column would make the comparison below
+    pass on an empty set of cases."""
+    rows = _decisions()
+    assert len(rows) == 36, f"{len(rows)} decided rows, expected 36"
+    blank = [(w, i) for w, i, _r, d in rows if not d]
+    assert blank == [], f"undecided rows: {blank}"
+    for w, i, _r, d in rows:
+        verdict, _t, _k, _s = _wanted(d)
+        assert verdict in ("title", "label", "no title", "unclear"), (i, d)
+
+
+@pytest.mark.live_catalog
+def test_the_rule_reproduces_every_one_of_andys_decisions():
+    """⚠️ READ FROM THE DATABASE AND FROM THE DECISION FILES, NOT FROM A COPY OF EITHER. A rule
+    whose cases are retyped into its own test agrees with the test and with nothing else. The 36
+    rows are live's own text, so this is marked live_catalog and skips in CI exactly as the catalog
+    tests do. Every case it covers is also stated above against literal text, which is what keeps
+    the rule pinned where live is not available."""
+    import sqlite3
+    sys.path.insert(0, str(BASE / "scripts"))
+    import corpus_guard
+    live = corpus_guard.live_db()
+    if not live.exists():
+        pytest.skip("no live database here")
+    con = sqlite3.connect(f"file:{live}?mode=ro", uri=True)
+    notes = {r[0]: r[1] for r in con.execute("SELECT id, text FROM recipe_notes")}
+    ings = {r[0]: r[1] for r in con.execute("SELECT id, raw_text FROM recipe_ingredients")}
+
+    differ = []
+    for where, rid, recipe, decision in _decisions():
+        want_verdict, want_title, want_kind, want_strip = _wanted(decision)
+        if where == "ing":
+            _text, marks = ic.strip_wrapping_marks(ings[rid])
+            if bool(marks) != want_strip:
+                differ.append(f"ingredient {rid} ({recipe}): marks={marks!r}, wanted {want_strip}")
+            continue
+        plan = ic.note_title_plan(notes[rid])
+        for got, want, what in ((plan.verdict, want_verdict, "verdict"),
+                                (bool(plan.marks), want_strip, "strip"),
+                                (plan.title, want_title, "title"),
+                                (plan.kind, want_kind, "kind")):
+            if what in ("title", "kind") and want is None:
+                continue                      # the decision is silent, so the rule may say anything
+            if got != want:
+                differ.append(f"note {rid} ({recipe}) {decision!r}: {what} {got!r}, wanted {want!r}")
+    assert differ == [], "\n".join(differ)
+
+
+@pytest.mark.live_catalog
+def test_the_rule_invents_nothing_on_a_row_nobody_reviewed():
+    """⚠️ THE OTHER HALF, AND THE ONE THAT MATTERS FOR THE IMPORTER. The pass only applies recorded
+    decisions, so a rule that over-reaches is invisible there. The importer runs the rule freely.
+    Measured over all 177 corpus notes: it writes a title or asks a question on exactly the 34 rows
+    Andy reviewed and on none of the other 143."""
+    import sqlite3
+    sys.path.insert(0, str(BASE / "scripts"))
+    import corpus_guard
+    live = corpus_guard.live_db()
+    if not live.exists():
+        pytest.skip("no live database here")
+    con = sqlite3.connect(f"file:{live}?mode=ro", uri=True)
+    rows = con.execute("SELECT id, recipe_id, kind, text FROM recipe_notes").fetchall()
+    assert len(rows) == 177, f"{len(rows)} notes, the measurement was taken over 177"
+    reviewed = {rid for _w, rid, _r, _d in _decisions()}
+
+    reached = []
+    for nid, recipe, kind, text in rows:
+        plan = ic.note_title_plan(text)
+        touched = (plan.verdict in ("title", "unclear") or plan.marks
+                   or (plan.kind is not None and plan.kind != kind))
+        if touched and nid not in reviewed:
+            reached.append(f"note {nid} ({recipe}): {plan.verdict}, title={plan.title!r}, "
+                           f"kind={plan.kind!r}, marks={plan.marks!r}")
+    assert reached == [], "\n".join(reached)
+
+
+# --- who may call the rule ------------------------------------------------------------------------
+
+def test_the_rule_has_one_copy_and_the_client_does_not_read_it():
+    """⚠️ THIS REPLACES test_nothing_in_the_repo_calls_the_rule_yet, WHICH WAS TRUE UNTIL THIS ROUND
+    AND IS THE TEST THAT WAS MEANT TO FAIL. What it was protecting was that the rule exists ONCE. So
+    that is what is asserted now: the definition is in import_cleanup and every caller reaches it
+    from there, and no second copy has grown in the browser. Vite inlines static/note-kinds.json for
+    the client, and the TITLE rule is a server rule."""
     import subprocess
-    out = set(subprocess.run(
-        ["git", "grep", "-l", "-e", "note_title_verdict", "-e", "note_label_is_known",
-         "--", "*.py"],
-        cwd=BASE, capture_output=True, text=True).stdout.split())
-    # ⚠️ THE FILE THAT DEFINES IT MUST BE IN THE ANSWER, or this passes on an empty grep. A subset
-    #    check alone said nothing: rename the function, delete it, or mistype the pattern and the
-    #    result is the empty set, which is a subset of anything. That is the "a check with nothing
-    #    to compare must fail" rule, in the one test whose whole job is to compare.
-    allowed = {"import_cleanup.py", "tests/test_note_title_rule.py"}
+    names = ["-e", "note_title_plan", "-e", "note_title_verdict", "-e", "strip_wrapping_marks"]
+    out = set(subprocess.run(["git", "grep", "-l"] + names + ["--", "*.py"],
+                             cwd=BASE, capture_output=True, text=True).stdout.split())
+    # ⚠️ THE FILE THAT DEFINES IT MUST BE IN THE ANSWER, or this passes on an empty grep. Rename the
+    #    function, delete it, or mistype the pattern and the result is the empty set, which is a
+    #    subset of anything.
     assert "import_cleanup.py" in out, f"the rule itself was not found: {sorted(out)}"
-    assert out <= allowed, f"something new reads the title rule: {sorted(out - allowed)}"
-    # ⚠️ AND THE JS SIDE IS ASKED TOO. The pattern above reads *.py only, so a browser caller was
-    #    invisible to the very check that exists to say nothing calls this yet.
-    js = subprocess.run(
-        ["git", "grep", "-l", "-e", "note_title_verdict", "-e", "note_label_is_known",
-         "--", "*.js", "*.json"],
-        cwd=BASE, capture_output=True, text=True).stdout.split()
-    assert not js, f"the title rule reached the client: {js}"
+    assert "def note_title_plan" in (BASE / "import_cleanup.py").read_text()
+    js = subprocess.run(["git", "grep", "-l"] + names + ["--", "*.js"],
+                        cwd=BASE, capture_output=True, text=True).stdout.split()
+    assert not js, f"a second copy of the title rule reached the client: {js}"
