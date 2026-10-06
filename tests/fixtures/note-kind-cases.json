@@ -752,6 +752,56 @@
    "why": "storage upper"
   },
   {
+   "text": "freezing: body text here.",
+   "kind": "storage",
+   "why": "storage via ':'"
+  },
+  {
+   "text": "FREEZING: body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "freezing. body text here.",
+   "kind": "storage",
+   "why": "storage via '.'"
+  },
+  {
+   "text": "FREEZING. body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "freezing - body text here.",
+   "kind": "storage",
+   "why": "storage via '-'"
+  },
+  {
+   "text": "FREEZING - body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "freezing – body text here.",
+   "kind": "storage",
+   "why": "storage via '–'"
+  },
+  {
+   "text": "FREEZING – body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
+   "text": "freezing — body text here.",
+   "kind": "storage",
+   "why": "storage via '—'"
+  },
+  {
+   "text": "FREEZING — body text here.",
+   "kind": "storage",
+   "why": "storage upper"
+  },
+  {
    "text": "make ahead: body text here.",
    "kind": "storage",
    "why": "storage via ':'"
@@ -1823,7 +1873,7 @@
   },
   {
    "text": "Freezing – Freezes 100% perfectly! After Fry #1, fully cool the fries then freeze on a tray (you can stack them all on one tray). Once frozen, they can be tipped into a container or ziplock bag for freezing – just like store bought frozen fries! Cook from frozen for 4 1/2 minutes.",
-   "kind": null,
+   "kind": "storage",
    "why": "corpus"
   },
   {

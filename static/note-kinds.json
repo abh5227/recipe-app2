@@ -1,5 +1,5 @@
 {
- "note": "The note kinds a Notes paragraph's leading label maps to. Read by BOTH static/note-blocks.js (display grouping) and import_cleanup (the data rule), so the two cannot disagree about what a label means. corpus_* are measured on the 300 recipes; a kind with 0 is carried for imports, not for this corpus.",
+ "note": "The note kinds a Notes paragraph's leading label maps to. Read by BOTH static/note-blocks.js (display grouping) and import_cleanup (the data rule), so the two cannot disagree about what a label means. corpus_* are measured over the 177 recipe_notes rows, re-read on 2026-10-05. A kind with 0 is carried for imports, not for this corpus.",
  "kinds": [
   {
    "kind": "notes",
@@ -36,13 +36,14 @@
     "to store",
     "freezer",
     "to freeze",
+    "freezing",
     "make ahead",
     "make-ahead",
     "keeping",
     "leftovers"
    ],
-   "corpus_paragraphs": 6,
-   "corpus_recipes": 4
+   "corpus_paragraphs": 8,
+   "corpus_recipes": 6
   },
   {
    "kind": "variations",
@@ -55,8 +56,8 @@
     "swaps",
     "same day version"
    ],
-   "corpus_paragraphs": 2,
-   "corpus_recipes": 2
+   "corpus_paragraphs": 3,
+   "corpus_recipes": 3
   },
   {
    "kind": "serving",
