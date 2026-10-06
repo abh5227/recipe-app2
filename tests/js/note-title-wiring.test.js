@@ -18,12 +18,21 @@ import { draftSetTitle, draftSetText } from "../../static/note-draft.js";
 
 const APP = fs.readFileSync(path.join(import.meta.dirname, "../../static/app.js"), "utf8");
 
-/** The body of the named top-level function, by brace matching. */
+/** The body of the named top-level function, by brace matching.
+ * ⚠️ THE OPENING BRACE IS THE ONE AFTER THE PARAMETER LIST, not the first one found. flashSaved
+ * takes a DESTRUCTURED options object, so "the first { after the name" returned
+ * "{ created = false }" and every assertion about the function's body failed against it. */
 function body(name) {
   const at = APP.indexOf(`function ${name}(`);
   assert.ok(at > 0, `${name} is not in app.js`);
-  const open = APP.indexOf("{", at);
-  let depth = 0;
+  let depth = 0, close = -1;
+  for (let i = APP.indexOf("(", at); i < APP.length; i++) {
+    if (APP[i] === "(") depth++;
+    else if (APP[i] === ")" && --depth === 0) { close = i; break; }
+  }
+  assert.ok(close > 0, `${name}'s parameter list never closes`);
+  const open = APP.indexOf("{", close);
+  depth = 0;
   for (let i = open; i < APP.length; i++) {
     if (APP[i] === "{") depth++;
     else if (APP[i] === "}" && --depth === 0) return APP.slice(open, i + 1);
@@ -125,4 +134,96 @@ test("the held branch changes the title without touching the references", () => 
   assert.equal(both[0].text, "proceed with step 9");
   assert.deepEqual(both[0].refs.map((r) => [r.ref_index, r.match_text, r.step_id]),
                    [[0, "step 9", 42]], "the reference still names the same step");
+});
+
+// ---- "+ note" opens the whole panel (Andy's call, 2026-10-06) -----------------------------------
+// ⚠️ THE NEW-NOTE BOX WAS THE ONE PLACE THAT DID NOT SHARE THE EDITOR, and it had its own state
+// (newText), its own attribute (data-new-note-input), its own save call on the Enter handler, its
+// own branch in restoreNoteFocus and its own branch in click-away. Five copies of "a note is being
+// typed". The panel is the editor now, so what is checked here is that those five are GONE rather
+// than that a sixth has been added beside them.
+
+// ⚠️ A "THIS IS GONE" ASSERTION HAS TO READ THE CODE, NOT THE COMMENTS, and the first draft of
+// this test did not: the comment explaining that [data-new-note-input] had been removed was itself
+// a match for it, so the test failed on the explanation of its own subject.
+const CODE = APP.replace(/\/\/[^\n]*/g, "");
+
+test("the new-note box carries no state, no attribute and no handler of its own", () => {
+  assert.doesNotMatch(CODE, /newText/, "noteState.newText survived the fold");
+  assert.doesNotMatch(CODE, /data-new-note-input/,
+    "a selector for the bare box's own attribute survived");
+  assert.doesNotMatch(CODE, /data-new-note=/, "the bare box's wrapper attribute survived");
+});
+
+test("+ note opens an editor, so every shared handler finds it", () => {
+  const b = body("handleNoteAction");
+  // the add branch sets the editor's own state rather than a parallel set
+  assert.match(b, /noteState\.newRow = newNoteRow\(where, NOTE_KINDS\.kinds\)/);
+  assert.match(b, /noteState\.editingId = NEW_NOTE_ID/);
+  assert.match(b, /noteState\.editingPlace = `new:\$\{where\}`/);
+  assert.match(b, /noteState\.drafts\.set\(NEW_NOTE_ID, ""\)/);
+  assert.match(b, /noteState\.titleDrafts\.set\(NEW_NOTE_ID, ""\)/);
+});
+
+test("saveOpenNote is the one entry point, and it decides create against patch", () => {
+  const b = body("saveOpenNote");
+  assert.match(b, /String\(id\) === String\(NEW_NOTE_ID\)\) return saveNewNote\(\)/,
+    "a new note has to reach saveNewNote through the shared save, not past it");
+});
+
+test("the create carries the title, the type and the step the panel was holding", () => {
+  const b = body("saveNewNote");
+  assert.match(b, /noteDraft\(NEW_NOTE_ID\)/, "the text comes from the shared draft map");
+  assert.match(b, /noteTitleDraft\(NEW_NOTE_ID\)/, "the title comes from the shared draft map");
+  assert.match(b, /if \(title\) body\.title = title/);
+  assert.match(b, /if \(row\.kind\) body\.kind = row\.kind/);
+  assert.match(b, /if \(stepId != null\) body\.step_id = stepId/);
+  // an empty new note is still dropped, which is what "+ note" has always done
+  assert.match(b, /if \(!text\) \{ closeNoteEditors\(\); repaintNotes\(\); return Promise\.resolve\(\); \}/);
+});
+
+test("closing throws the unsaved row away with the drafts", () => {
+  // ⚠️ WITHOUT IT the next "+ note" opens holding the last one's type and step link.
+  assert.match(body("closeNoteEditors"), /noteState\.newRow = null/);
+});
+
+test("the type and the link on a new note are local, never a write", () => {
+  // ⚠️ CREATING THE ROW SO THE TYPE COULD BE STORED would make "+ note" write the moment it was
+  //    opened, which is the one thing an empty new note must not do.
+  for (const fn of ["setNoteKind", "setNoteStep"]) {
+    const b = body(fn);
+    assert.match(b, /String\(id\) === String\(NEW_NOTE_ID\) && noteState\.newRow/, fn);
+    assert.match(b, /return Promise\.resolve\(\)/, fn);
+  }
+});
+
+test("one lookup answers 'which note is this' for a row the server has never seen", () => {
+  const b = body("noteRowFor");
+  assert.match(b, /noteState\.newRow/);
+  assert.match(b, /resolveNoteSteps/, "step_no is resolved, never stored");
+  // and the write paths ask it rather than doing their own find
+  for (const fn of ["setNoteKind", "setNoteStep"]) {
+    assert.match(body(fn), /noteRowFor\(id\)/, fn);
+  }
+});
+
+test("the panel's menus read the same state a stored note's do", () => {
+  const b = body("noteNewBoxHTML");
+  assert.match(b, /kindMenu: noteState\.kindMenuFor === NEW_NOTE_ID/);
+  assert.match(b, /stepMenu: noteState\.stepMenuFor === NEW_NOTE_ID/);
+  assert.match(b, /resolveNoteSteps\(\[noteState\.newRow\], currentSteps\(\)\)/);
+});
+
+test("the Undo after a create is a DELETE, because there is no earlier version", () => {
+  // ⚠️ IT USED TO DO NOTHING. saveNewNote drew "Saved · Undo" and undoNote returned early on a null
+  //    `before`, so the one control on that toast was dead. Found while folding "+ note" into the
+  //    editor, which is where "same save rules as editing" has to mean something.
+  assert.match(body("saveNewNote"), /flashSaved\(data\.note\.id, null, \{ created: true \}\)/);
+  const b = body("undoNote");
+  assert.match(b, /const created = noteState\.savedNew/);
+  assert.match(b, /if \(created\) \{ repaintNotes\(\); return deleteNote\(id\); \}/);
+  // and the flag is cleared everywhere savedId is, or the next save's Undo would delete
+  assert.match(body("flashSaved"), /noteState\.savedNew = !!created/);
+  assert.match(body("flashSaved"), /noteState\.savedNew = false/);
+  assert.match(body("enterEditMode"), /noteState\.savedNew = false/);
 });

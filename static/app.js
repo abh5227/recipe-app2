@@ -19,7 +19,8 @@ import { isToMake } from "./tomake.js";
 import { browseList, cardTags, monthYear } from "./browse.js";
 import { panelBlocks } from "./panel-blocks.js";
 import { noteSections, displayText, STEP_NOTES_HEADER } from "./note-blocks.js";
-import { noteRowHTML, newNoteBoxHTML, notePatchBody, noteTextChanged, noteTitleChanged, noteEditText,
+import { noteRowHTML, newNoteBoxHTML, newNoteRow, NEW_NOTE_ID, notePatchBody, noteTextChanged,
+         noteTitleChanged, noteEditText,
          undoToastHTML, addNoteButtonHTML, tagLabel, kindOf, pickBarHTML,
          noteStepChanged } from "./note-ui.js";
 import { pickerRows, filterRows, startCursor, moveCursor, stepRowsOf } from "./step-picker.js";
@@ -1297,9 +1298,15 @@ function stepPickText(text, isHeading) {
 // ⚠️ THE TITLE HAS ITS OWN DRAFT MAP, NOT A FIELD INSIDE THE TEXT ONE. `drafts` holds a STRING per
 // note id and a dozen places read it that way (noteDraft, noteTextChanged, the growNoteInput
 // handler), so widening it to an object would be a change to every one of them for one new field.
+// ⚠️ A NOTE THAT DOES NOT EXIST YET IS AN OPEN EDITOR LIKE ANY OTHER. "+ note" sets editingId
+// to NEW_NOTE_ID and newRow to the row the panel is drawn over, so the caret restore, the
+// click-away save, Enter, Escape, the type menu and the step picker are the SAME code they are for
+// a stored note. `newOn` says WHERE the box is drawn, which is still a separate question: the box
+// belongs to one step row or to the Notes section, and nothing else may draw it.
 const noteState = { editingId: null, editingPlace: null, drafts: new Map(),
                     titleDrafts: new Map(), focusField: "text", newOn: null,
-                    newText: "", savedId: null, savedBefore: null, kindMenuFor: null,
+                    newRow: null, savedId: null, savedBefore: null, savedNew: false,
+                    kindMenuFor: null,
                     stepMenuFor: null, undo: null, tapStep: null,
                     // the picker: what has been typed, where the arrows are, and which note is
                     // waiting for a step to be clicked on the page
@@ -1324,10 +1331,25 @@ function noteUndoHTML() {
   return u ? undoToastHTML(u.what, u.token, esc) : "";
 }
 
-// The "+ note" box, drawn where it was opened and nowhere else. `where` is a step id or "general".
+// The "+ note" panel, drawn where it was opened and nowhere else. `where` is a step id or
+// "general".
+// ⚠️ THE SAME OPTIONS noteOne PASSES, FROM THE SAME STATE. The panel carries a type menu and a
+//    step picker now, and those read noteState.kindMenuFor and noteState.stepMenuFor exactly as a
+//    stored note's do. Spelling them out differently here is how one of the two stops working.
+// ⚠️ AND step_no IS RESOLVED, NEVER STORED. The row has a step_id and no number, because a
+//    number is a position in the list the page is drawing right now.
 function noteNewBoxHTML(where) {
-  if (String(noteState.newOn) !== String(where)) return "";
-  return newNoteBoxHTML(where, esc, { text: noteState.newText });
+  if (String(noteState.newOn) !== String(where) || !noteState.newRow) return "";
+  const row = resolveNoteSteps([noteState.newRow], currentSteps())[0];
+  return newNoteBoxHTML(row, where, NOTE_KINDS.kinds, esc, {
+    place: `new:${where}`,
+    draft: noteDraft(NEW_NOTE_ID),
+    titleDraft: noteTitleDraft(NEW_NOTE_ID),
+    steps: currentSteps(),
+    kindMenu: noteState.kindMenuFor === NEW_NOTE_ID,
+    stepMenu: noteState.stepMenuFor === NEW_NOTE_ID,
+    pick: noteState.stepMenuFor === NEW_NOTE_ID ? pickState(row) : null,
+  });
 }
 
 // {step id -> the notes attached to it}. Built once per render so a step row does not scan the list.
@@ -3571,6 +3593,7 @@ function enterEditMode() {
   noteState.undo = null;
   noteState.savedId = null;
   noteState.savedBefore = null;
+  noteState.savedNew = false;
   view.draft = structuredClone(view.data);   // buffered copy — all edits mutate this, never view.data
   view.editMode = true;
   view.dirty = false;
@@ -4481,8 +4504,15 @@ function stepAreaOf(el) {
   }
   const pop = el.closest(".step-note-pop");
   if (pop) return pop.id.replace("note-pop-", "");
-  const box = el.closest("[data-new-note]");
-  if (box && box.dataset.newNote !== "general") return box.dataset.newNote;
+  // ⚠️ THE NEW-NOTE PANEL IS READ OFF ITS PLACE, NOT OFF ITS OWN ATTRIBUTE. It is the ordinary
+  //    editor now and carries data-note-place="new:<where>"; the [data-new-note] the bare box used
+  //    to carry is gone. Reaching here at all means the panel is not inside an li.step, which the
+  //    Notes section's own adder is not.
+  const box = el.closest('[data-note-place^="new:"]');
+  if (box) {
+    const where = String(box.dataset.notePlace).slice("new:".length);
+    return where === "general" ? null : where;
+  }
   return null;
 }
 
@@ -4652,10 +4682,12 @@ function restoreNoteFocus() {
     //    that landed in the text draft, which the next save then wrote.
     //    noteState.focusField records which one was last touched, so the question is answered from
     //    what happened rather than from a default.
+    //    ⚠️ AND THE NEW-NOTE PANEL NEEDS NO SECOND BRANCH. It is an open editor with
+    //    editingId = NEW_NOTE_ID and place "new:<where>", so the selector above finds it. The
+    //    branch that used to live here asked for [data-new-note-input], an attribute the bare box
+    //    carried and the panel does not.
     const want = noteState.focusField === "title" ? "[data-note-title]" : "[data-note-input]";
     el = row && (row.querySelector(want) || row.querySelector("[data-note-input]"));
-  } else if (noteState.newOn != null) {
-    el = document.querySelector(`[data-new-note-input="${noteState.newOn}"]`);
   }
   if (!el) return;
   growNoteInput(el);
@@ -4756,7 +4788,9 @@ function closeNoteEditors() {
   noteState.editingId = null;
   noteState.editingPlace = null;
   noteState.newOn = null;
-  noteState.newText = "";
+  // ⚠️ THE UNSAVED ROW GOES WITH THE DRAFTS. It holds the type and the step link the cook
+  //    picked, and leaving it behind would reopen the next "+ note" with the last one's answers.
+  noteState.newRow = null;
   noteState.kindMenuFor = null;
   noteState.stepMenuFor = null;
   noteState.drafts.clear();
@@ -4776,19 +4810,39 @@ function closePicker() {
 
 // ⚠️ THE SAVE IS UNDOABLE, SO THE TOAST HAS TO CARRY WHAT IT WOULD PUT BACK. `before` is the patch
 // that restores the note, taken from the row as it stood BEFORE the write.
-function flashSaved(id, before) {
+// ⚠️ AND UNDOING A CREATE IS A DELETE, NOT A PATCH. A new note has no `before`, so the toast drawn
+// after one offered an Undo that did NOTHING: undoNote returned early on a null `before` and the
+// offer simply disappeared. Pre-existing, and it became the obvious half of Andy's "same save rules
+// as editing" once "+ note" started going through the shared save. `created` is the one thing the
+// row cannot say for itself, since the server hands back an ordinary note either way.
+function flashSaved(id, before, { created = false } = {}) {
   noteState.savedId = id;
   noteState.savedBefore = before || null;
+  noteState.savedNew = !!created;
   setTimeout(() => {
     if (noteState.savedId === id) {
-      noteState.savedId = null; noteState.savedBefore = null; repaintNotes();
+      noteState.savedId = null; noteState.savedBefore = null; noteState.savedNew = false;
+      repaintNotes();
     }
   }, NOTE_TOAST_MS);
+}
+
+// ⚠️ THE NEW NOTE IS NOT IN noteRows() AND NEVER WILL BE until it is saved, so every path that
+// looks a note up by id asks here instead. Three of them did their own `.find`, and a new note put
+// in front of them is exactly the row that find cannot return.
+function noteRowFor(id) {
+  if (noteState.newRow && String(id) === String(NEW_NOTE_ID)) {
+    return resolveNoteSteps([noteState.newRow], currentSteps())[0];
+  }
+  return noteRows().find((n) => String(n.id) === String(id));
 }
 
 function saveOpenNote() {
   const id = noteState.editingId;
   if (id == null) return Promise.resolve();
+  // ⚠️ A NOTE WITH NO ROW BEHIND IT IS CREATED, NOT PATCHED, and that is the one difference
+  //    between the two. Everything above this line is shared, which is what "one panel" means.
+  if (String(id) === String(NEW_NOTE_ID)) return saveNewNote();
   const note = noteRows().find((n) => String(n.id) === String(id));
   const draft = noteState.drafts.get(id);
   const titleDraft = noteState.titleDrafts.get(id);
@@ -4836,21 +4890,37 @@ function saveOpenNote() {
     .catch((e) => { noteError(e.message); repaintNotes(); });
 }
 
+// ⚠️ IT READS THE PANEL, NOT A TEXT FIELD. The box carries a Title, a type and a step link now,
+// so the four answers travel together in one create rather than as a POST followed by three
+// PATCHes that a cook can see happening.
+// ⚠️ AN EMPTY NEW NOTE IS STILL DROPPED, which is what "+ note" has always done, and the title
+// does not change that: a title with no words under it is a heading over nothing, and the column's
+// own CHECK refuses a blank text anyway.
+// ⚠️ THE STEP LINK COMES OFF THE ROW, NOT OFF `where`. They start equal, because "+ note" on a
+// step opens linked to it, and they stop being equal the moment the cook uses the picker.
 function saveNewNote() {
   const where = noteState.newOn;
-  if (where == null) return Promise.resolve();
-  const text = String(noteState.newText || "").trim();
+  const row = noteState.newRow;
+  if (where == null || !row) return Promise.resolve();
+  const text = String(noteDraft(NEW_NOTE_ID) || "").trim();
   if (!text) { closeNoteEditors(); repaintNotes(); return Promise.resolve(); }
+  const title = String(noteTitleDraft(NEW_NOTE_ID) || "").trim();
+  const stepId = row.step_id == null ? null : +row.step_id;
   const body = { text };
-  // "general" is the Notes section's own adder: a note attached to no step. Anything else is a step id.
-  if (String(where) !== "general") body.step_id = +where;
+  if (title) body.title = title;
+  if (row.kind) body.kind = row.kind;
+  if (stepId != null) body.step_id = stepId;
   closeNoteEditors();
   if (noteHeld()) {
     return holdNotes(draftAdd(view.draft.notes,
-      { text, stepId: String(where) === "general" ? null : +where }));
+      { text, title: title || null, kind: row.kind, stepId }));
   }
-  return noteApi("/notes", { method: "POST", body })
-    .then((data) => { adoptNotes(data); if (data.note) flashSaved(data.note.id); repaintNotes(); })
+  return noteApi("/notes", { method: "POST", body: notePatchBody(body) })
+    .then((data) => {
+      adoptNotes(data);
+      if (data.note) flashSaved(data.note.id, null, { created: true });
+      repaintNotes();
+    })
     .catch((e) => { noteError(e.message); repaintNotes(); });
 }
 
@@ -4911,7 +4981,13 @@ function undoNote(token) {
   if (String(token).startsWith("s")) {
     const id = +String(token).slice(1);
     const before = noteState.savedBefore;
-    noteState.savedId = null; noteState.savedBefore = null;
+    const created = noteState.savedNew;
+    noteState.savedId = null; noteState.savedBefore = null; noteState.savedNew = false;
+    // ⚠️ UNDOING A CREATE IS A DELETE. There is no earlier version of a note that did not exist a
+    //    moment ago, so a PATCH has nothing to write and this used to return having done nothing.
+    //    It goes through deleteNote, which offers its own "Deleted · Undo" and so leaves a way
+    //    back from the way back.
+    if (created) { repaintNotes(); return deleteNote(id); }
     if (!before) { repaintNotes(); return Promise.resolve(); }
     // ⚠️ THE ONE WRITE PATH THAT HAD NO HELD BRANCH, and the offer can be on screen in Edit mode
     //    because enterEditMode used not to clear it. A PATCH from inside a held session writes
@@ -4945,7 +5021,15 @@ function undoNote(token) {
 
 function setNoteKind(id, kind) {
   noteState.kindMenuFor = null;
-  const was = noteRows().find((n) => String(n.id) === String(id));
+  // ⚠️ ON THE NEW NOTE IT IS A LOCAL CHANGE, NOT A WRITE. There is no row to patch, and
+  //    creating one here so the type could be stored would make "+ note" write the moment it was
+  //    opened, which is the one thing an empty new note must not do.
+  if (String(id) === String(NEW_NOTE_ID) && noteState.newRow) {
+    noteState.newRow = { ...noteState.newRow, kind: String(kind) };
+    repaintNotes();
+    return Promise.resolve();
+  }
+  const was = noteRowFor(id);
   const before = was ? { kind: was.kind } : null;
   if (noteHeld()) return holdNotes(draftSetKind(view.draft.notes, id, kind));
   return noteApi(`/notes/${id}`, { method: "PATCH", body: notePatchBody({ kind }) })
@@ -4958,7 +5042,13 @@ function setNoteKind(id, kind) {
 // omitted step_id means "leave the link alone" and a null one means "take it off".
 function setNoteStep(id, stepId) {
   noteState.stepMenuFor = null;
-  const was = noteRows().find((n) => String(n.id) === String(id));
+  if (String(id) === String(NEW_NOTE_ID) && noteState.newRow) {
+    noteState.newRow = { ...noteState.newRow, step_id: stepId == null ? null : +stepId };
+    closePicker();
+    repaintNotes();
+    return Promise.resolve();
+  }
+  const was = noteRowFor(id);
   // Picking the step it is already on is not a change, so it is not a write. The picker opens with
   // the current link under the cursor, which makes this the easiest key to press.
   if (was && !noteStepChanged(was, stepId)) { closePicker(); repaintNotes(); return Promise.resolve(); }
@@ -5000,8 +5090,19 @@ function handleNoteAction(e) {
     e.preventDefault();
     const where = add.dataset.addNote;
     saveOpenNote();
+    // ⚠️ IT OPENS AS AN EDITOR, which is what makes the Title box, the type menu and the step
+    //    picker work with no second set of handlers. The place is "new:<where>" so the box the
+    //    cook is looking at is the one the caret comes back to, exactly as (note, place) does for
+    //    a stored note drawn in two places at once.
     noteState.newOn = where;
-    noteState.newText = "";
+    noteState.newRow = newNoteRow(where, NOTE_KINDS.kinds);
+    noteState.editingId = NEW_NOTE_ID;
+    noteState.editingPlace = `new:${where}`;
+    noteState.drafts.set(NEW_NOTE_ID, "");
+    noteState.titleDrafts.set(NEW_NOTE_ID, "");
+    noteState.focusField = "text";
+    noteState.kindMenuFor = null;
+    noteState.stepMenuFor = null;
     repaintNotes();
     return true;
   }
@@ -5111,8 +5212,9 @@ function handleNoteAction(e) {
   }
   // ⚠️ CLICK-AWAY SAVES, which is the other half of "Enter saves". A click anywhere that is not the
   //    open editor and not one of the controls above commits what was typed.
+  // ⚠️ ONE BRANCH. A new note sets editingId, so the line below commits it exactly as it
+  //    commits a stored one, and saveOpenNote decides which of the two it is.
   if (noteState.editingId != null) { saveOpenNote(); return false; }
-  if (noteState.newOn != null) { saveNewNote(); return false; }
   if (noteState.tapStep != null && !t.closest(".step-add-note")) {
     noteState.tapStep = null;
     repaintNotes();
@@ -5135,7 +5237,10 @@ document.addEventListener("keydown", (e) => {
   const find = e.target && e.target.closest && e.target.closest("[data-note-pick-find]");
   if (!find) return;
   const id = +find.dataset.notePickFind;
-  const note = noteRows().find((n) => String(n.id) === String(id));
+  // ⚠️ noteRowFor, NOT noteRows().find. The picker opens on a NEW note too, and a row the
+  //    server has never seen is not in that list, so the arrows and Enter did nothing at all
+  //    inside the one panel where picking the step matters most.
+  const note = noteRowFor(id);
   if (!note) return;
   if (e.key === "ArrowDown" || e.key === "ArrowUp") {
     e.preventDefault();
@@ -5175,13 +5280,15 @@ document.addEventListener("keydown", (e) => {
   // ⚠️ THE TITLE BOX IS THE SAME EDITOR, SO IT TAKES THE SAME KEYSTROKES. Enter in a one-line
   //    field otherwise submits nothing and Escape otherwise closes the popover the panel sits in,
   //    which would lose the typed title with no way back.
+  // ⚠️ ONE PROBE, BECAUSE THERE IS ONE PANEL. The new-note box used to carry its own
+  //    [data-new-note-input] and its own save call on this line. It is the editor now, so Enter
+  //    goes through saveOpenNote, which is where "a note with no row behind it is created" lives.
   const open = e.target && e.target.closest
     && e.target.closest("[data-note-input], [data-note-title]");
-  const fresh = e.target && e.target.closest && e.target.closest("[data-new-note-input]");
-  if (!open && !fresh) return;
+  if (!open) return;
   if (e.key === "Enter" && !e.shiftKey) {
     e.preventDefault();
-    if (open) saveOpenNote(); else saveNewNote();
+    saveOpenNote();
     return;
   }
   if (e.key === "Escape") {
@@ -5208,8 +5315,6 @@ document.addEventListener("input", (e) => {
     noteState.titleDrafts.set(+title.dataset.noteTitle, title.value);
     return;
   }
-  const fresh = e.target && e.target.closest && e.target.closest("[data-new-note-input]");
-  if (fresh) { noteState.newText = fresh.value; growNoteInput(fresh); return; }
   // ⚠️ THE FILTER IS THE ONE FIELD THAT DOES REPAINT ON EVERY LETTER, because the list IS its
   //    output. restoreNoteFocus puts the caret back in it, which is why that function asks about
   //    the picker before it asks about the note.

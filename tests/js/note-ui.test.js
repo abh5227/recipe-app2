@@ -9,7 +9,8 @@ import path from "node:path";
 import { displayParts } from "../../static/note-blocks.js";
 import { tagLabel, kindOf, kindMenuHTML, noteBodyHTML, noteRowHTML, noteEditHTML, noteInputHTML,
          noteTitleInputHTML, noteTitleChanged,
-         stepMenuHTML, newNoteBoxHTML, addNoteButtonHTML, notePatchBody, noteTextChanged,
+         stepMenuHTML, newNoteBoxHTML, newNoteRow, NEW_NOTE_ID, addNoteButtonHTML,
+         notePatchBody, noteTextChanged,
          noteEditText, savedToastHTML, undoToastHTML, pickBarHTML,
          noteStepChanged } from "../../static/note-ui.js";
 import { pickerRows } from "../../static/step-picker.js";
@@ -173,11 +174,49 @@ test("the editing box shows the draft, not the stored text", () => {
   assert.doesNotMatch(html, />stored</);
 });
 
-test("the new-note box is keyed on its step, so it cannot collide with an open editor", () => {
-  const html = newNoteBoxHTML(30, esc);
-  assert.match(html, /data-new-note="30"/);
-  assert.match(html, /data-new-note-input="30"/);
-  assert.doesNotMatch(html, /note-tag/, "a new note has no type control either — Note until told otherwise");
+// ⚠️ "+ note" USED TO OPEN A BARE TEXTAREA, and this test used to assert that it carried no type
+// control. Andy's call, 2026-10-06: it opens the whole panel. The one thing a cook could not do to
+// a new note was give it a title, pick its type or choose its step, so they saved it, found it
+// again and reopened it to do any of that.
+test("+ note opens the editor, with a title, a type and a link", () => {
+  const row = newNoteRow(30, TABLE);
+  const html = newNoteBoxHTML(row, 30, TABLE, esc, { place: "new:30", steps: STEPS });
+  // it IS the editor: the same attributes every handler already probes
+  assert.match(html, /data-note="0"/);
+  assert.match(html, /data-note-place="new:30"/);
+  assert.match(html, /data-note-title="0"/);
+  assert.match(html, /data-note-input="0"/);
+  assert.match(html, /data-note-kind="0"/);
+  assert.match(html, /data-note-link-menu="0"/);
+  // and the placeholder still says where the note is going
+  assert.match(html, /placeholder="A note on this step…"/);
+});
+
+test("a new note is auto-linked to the step it was opened on, and the section's adder is not", () => {
+  assert.equal(newNoteRow(30, TABLE).step_id, 30);
+  assert.equal(newNoteRow("general", TABLE).step_id, null);
+  // the default type is the table's first, which is what kindOf falls back to anyway
+  assert.equal(newNoteRow("general", TABLE).kind, TABLE[0].kind);
+  assert.equal(newNoteRow("general", TABLE).title, null);
+  assert.equal(newNoteRow("general", TABLE).text, "");
+});
+
+test("the new-note panel carries no Delete, because there is nothing to delete", () => {
+  const row = newNoteRow("general", TABLE);
+  const fresh = newNoteBoxHTML(row, "general", TABLE, esc, { place: "new:general" });
+  assert.doesNotMatch(fresh, /data-note-del/);
+  assert.match(fresh, /placeholder="A note…"/);
+  // and a stored note still has one
+  assert.match(noteEditHTML(note({ text: "x" }), TABLE, esc, { place: "section" }),
+               /data-note-del/);
+});
+
+test("NEW_NOTE_ID is a number neither the server nor the draft can mint", () => {
+  // ⚠️ recipe_notes IS AUTOINCREMENT FROM 1 and nextDraftId counts DOWN from -1, so 0 is the
+  //    one id neither side produces. It has to be a number: every handler reads its id back with
+  //    `+`, and `+"new"` is NaN, which matches nothing, including itself.
+  assert.equal(NEW_NOTE_ID, 0);
+  assert.equal(typeof NEW_NOTE_ID, "number");
 });
 
 test("the step adder names the step it belongs to and says what it does", () => {

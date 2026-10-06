@@ -148,6 +148,27 @@ def test_create_from_a_step_links_that_step(kitchen):
     assert out["note"]["step_no"] == 2, "the number the page prints, not the position"
 
 
+def test_the_whole_new_note_panel_arrives_in_one_create(kitchen):
+    """⚠️ "+ note" OPENS THE EDITOR NOW, so the title, the type and the step link are all answered
+    before the note has ever been saved and they travel together. Andy's call, 2026-10-06. The
+    client used to POST the words and nothing else, so a cook who wanted any of the three saved the
+    note, found it again and reopened it."""
+    rid = _recipe(kitchen.client)
+    sid = _steps_of(kitchen.client, rid)[1]["id"]
+    out = kitchen.client.post(f"/api/recipes/{rid}/notes",
+                              json={"text": "chill it overnight", "title": "Resting",
+                                    "kind": "tips", "step_id": sid})
+    assert out.status_code == 201, out.get_json()
+    note = out.get_json()["note"]
+    assert (note["title"], note["kind"], note["step_id"], note["step_no"]) == (
+        "Resting", "tips", sid, 2)
+    # and the row itself carries all four, which is what a reopen has to find
+    with kitchen.conn() as c:
+        row = c.execute("SELECT title, kind, step_id FROM recipe_notes WHERE id = ?",
+                        (note["id"],)).fetchone()
+    assert tuple(row) == ("Resting", "tips", sid)
+
+
 def test_a_note_will_not_attach_to_a_heading(kitchen):
     rid = _recipe(kitchen.client, steps=[{"heading": "For the beans"}, {"text": "Rinse them"}])
     head = [s for s in _steps_of(kitchen.client, rid) if s["is_heading"]][0]

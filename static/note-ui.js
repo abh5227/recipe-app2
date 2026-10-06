@@ -159,7 +159,8 @@ export function noteRowHTML(note, table, esc, opts = {}) {
 // Notes section read as a form, which is the thing this design exists to avoid.
 export function noteEditHTML(note, table, esc, { draft = null, titleDraft = null, place = "",
                                                  steps = null, kindMenu = false, stepMenu = false,
-                                                 pick = null } = {}) {
+                                                 pick = null, isNew = false,
+                                                 placeholder = "A note…" } = {}) {
   const kind = kindOf(table, note.kind);
   // ⚠️ A LINKED NOTE CAN STILL OPEN THE LIST, AND THAT IS TWO CONTROLS RATHER THAN ONE. The whole
   //    chip used to be the unlink, so changing which step a note belonged to meant removing the
@@ -180,9 +181,17 @@ export function noteEditHTML(note, table, esc, { draft = null, titleDraft = null
   // ⚠️ EACH MENU HANGS OFF ITS OWN BUTTON, NOT OFF THE PANEL. Both were siblings of the footer,
   //    which anchored a 7-row step list to the panel's left edge rather than to the control that
   //    opened it. .note-anchor is the positioned parent and costs no layout.
-  return `<div class="note-edit" data-note="${note.id}" data-note-place="${esc(place)}">` +
+  // ⚠️ DELETE IS THE ONE CONTROL A NEW NOTE DOES NOT GET, because there is nothing to delete and
+  //    nothing to undo. An empty new note is dropped by closing it, which is what "+ note" has
+  //    always done: Escape cancels, and clicking away with an empty box writes nothing.
+  const del = isNew ? ""
+    : `<button type="button" class="note-tool note-tool-del" data-note-del="${note.id}"` +
+      ` aria-label="Delete this note">Delete</button>`;
+  return `<div class="note-edit${isNew ? " note-new" : ""}" data-note="${note.id}"` +
+    ` data-note-place="${esc(place)}">` +
     noteTitleInputHTML(note.id, titleDraft != null ? titleDraft : (note.title || ""), esc) +
-    noteInputHTML(note.id, draft != null ? draft : noteEditText(note, table), esc) +
+    noteInputHTML(note.id, draft != null ? draft : noteEditText(note, table), esc,
+                  { placeholder }) +
     `<div class="note-foot">` +
       `<span class="note-anchor">` +
       `<button type="button" class="note-tool" data-note-kind="${note.id}"` +
@@ -191,9 +200,7 @@ export function noteEditHTML(note, table, esc, { draft = null, titleDraft = null
       `${esc(tagLabel(kind))}<span class="note-caret" aria-hidden="true">&#9662;</span></button>` +
       (kindMenu ? kindMenuHTML(note, table, esc) : "") + `</span>` +
       `<span class="note-anchor">` + link +
-      (stepMenu ? stepMenuHTML(note, pick, esc) : "") + `</span>` +
-      `<button type="button" class="note-tool note-tool-del" data-note-del="${note.id}"` +
-      ` aria-label="Delete this note">Delete</button>` +
+      (stepMenu ? stepMenuHTML(note, pick, esc) : "") + `</span>` + del +
       `<span class="note-hint" aria-hidden="true">Enter saves &middot; Esc cancels</span>` +
     `</div></div>`;
 }
@@ -250,10 +257,10 @@ export function pickBarHTML(noteId, esc, { phone = false } = {}) {
 
 // ⚠️ A TEXTAREA, NOT AN INPUT, BECAUSE Shift+Enter HAS TO MAKE A LINE. Enter saves and Shift+Enter
 // breaks the line, which is only possible in a control that can hold one.
-export function noteInputHTML(id, text, esc) {
+export function noteInputHTML(id, text, esc, { placeholder = "A note…" } = {}) {
   return `<textarea class="note-input" data-note-input="${id}" rows="2"` +
     ` aria-label="Note text. Enter saves, Shift and Enter makes a new line, Escape cancels"` +
-    ` placeholder="A note…">${esc(text || "")}</textarea>`;
+    ` placeholder="${esc(placeholder)}">${esc(text || "")}</textarea>`;
 }
 
 // The optional Title, ABOVE the text, in the one editor both views draw.
@@ -271,15 +278,41 @@ export function noteTitleInputHTML(id, title, esc) {
 }
 
 // The box that opens for "+ note". `where` is a STEP's id, or "general" for the Notes section's own
-// adder, so the draft cannot collide with an open note editor.
-export function newNoteBoxHTML(where, esc, { text = "" } = {}) {
+// adder.
+//
+// ⚠️ IT IS THE EDITOR, NOT A BOX THAT LOOKS LIKE ONE. This was a bare textarea with a hint under
+// it, so the one thing a cook could not do to a new note was give it a title, pick its type or
+// choose the step it belongs to. They saved it, found it, and opened it again to do any of that.
+// A second editor is a second opinion about what a note is, which is the sentence at the top of
+// this file, and the new-note box was quietly the exception to it. Andy's call, 2026-10-06.
+//
+// ⚠️ A ROW THAT DOES NOT EXIST YET STILL NEEDS AN ID, because every control in the panel is
+// keyed on one and every handler reads it back with `+`. NEW_NOTE_ID is 0: recipe_notes is
+// AUTOINCREMENT from 1 and Edit mode's own draft ids count DOWN from -1 (note-draft.js::
+// nextDraftId), so 0 is the one number neither side can produce. `null` would have been the obvious
+// choice and it is the wrong one, since `+null` is 0 but `+"new"` is NaN and NaN matches nothing,
+// including itself.
+export const NEW_NOTE_ID = 0;
+
+// The row the panel is drawn over. The caller resolves step_no through resolveNoteSteps, for the
+// reason every other note rendering does: a number the server would have resolved is not available
+// to a row the server has never seen.
+export function newNoteRow(where, table) {
   const onStep = String(where) !== "general";
-  return `<div class="note-edit note-new" data-new-note="${esc(String(where))}">` +
-    `<textarea class="note-input" data-new-note-input="${esc(String(where))}" rows="2"` +
-    ` aria-label="A new note. Enter saves, Shift and Enter makes a new line, Escape cancels"` +
-    ` placeholder="${onStep ? "A note on this step…" : "A note…"}">${esc(text || "")}</textarea>` +
-    `<div class="note-foot"><span class="note-hint" aria-hidden="true">` +
-    `Enter saves &middot; Esc cancels</span></div></div>`;
+  return { id: NEW_NOTE_ID, title: null, text: "",
+           kind: ((table || [])[0] || {}).kind || "notes",
+           // ⚠️ AUTO-LINKED TO THE STEP IT WAS OPENED ON. "+ note" sits at the end of a step and
+           //    the note is about that step, so the link is the answer already given. The Notes
+           //    section's own adder opens with no link, which is what "a note about no step" is.
+           step_id: onStep ? +where : null, step_no: null, step_ok: true,
+           ingredient_row_id: null, position: null, refs: [] };
+}
+
+export function newNoteBoxHTML(row, where, table, esc, opts = {}) {
+  const onStep = String(where) !== "general";
+  return noteEditHTML(row, table, esc, {
+    ...opts, isNew: true,
+    placeholder: onStep ? "A note on this step…" : "A note…" });
 }
 
 // ⚠️ IT HANGS OFF A ZERO-WIDTH ANCHOR, AND THAT IS NOT A DETAIL. An inline button at the end of a

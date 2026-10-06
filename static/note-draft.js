@@ -109,9 +109,14 @@ export function draftSetStep(notes, id, stepId) {
 
 // A new note goes at the END of the list, which is where the adder is and where the server will put
 // it: write_notes assigns positions from the order it is given.
-export function draftAdd(notes, { text, stepId = null, kind = "notes" }) {
+// ⚠️ IT CARRIES THE TITLE NOW, because "+ note" opens the whole panel and a cook can type one
+// before the note has ever been saved. A blank one is stored as null, which is draftSetTitle's rule
+// and the only spelling of "no title" the column accepts, so the two doors agree.
+export function draftAdd(notes, { text, title = null, stepId = null, kind = "notes" }) {
   const list = notes || [];
-  const row = { id: nextDraftId(list), kind, text: String(text), step_id: stepId == null ? null : +stepId,
+  const row = { id: nextDraftId(list), kind, text: String(text),
+                title: title == null || !String(title).trim() ? null : String(title).trim(),
+                step_id: stepId == null ? null : +stepId,
                 ingredient_row_id: null, position: list.length, step_no: null, step_ok: true,
                 refs: carryRefs([], text) };
   return [...list, row];
