@@ -750,7 +750,17 @@ def test_cleanup_rule_table_has_the_shape_the_writer_expects():
         assert flag.startswith("cleaned_"), flag        # namespaced, so a queue can filter them
         assert hasattr(rx, "sub") and isinstance(repl, str)
         assert reason and isinstance(reason, str)
-    assert ic.CLEANUP_REASONS == {f: r for f, _p, _rp, r in ic.CLEANUP_RULES}
+    # ⚠️ EVERY RULE HAS A REASON, AND THE MAP MAY HOLD MORE THAN THE RULES. It did hold exactly the
+    #    rules, and the direction that matters is this one: a flag with no reason writes a queue row
+    #    saying nothing. `cleaned_emphasis_wrap` is the first entry that is not a regex substitution
+    #    (classify_line unwraps a whole-line emphasis run), so it is named here rather than letting
+    #    an equality assertion forbid the next one.
+    for flag, _p, _rp, reason in ic.CLEANUP_RULES:
+        assert ic.CLEANUP_REASONS.get(flag) == reason, flag
+    extra = set(ic.CLEANUP_REASONS) - {f for f, _p, _rp, _r in ic.CLEANUP_RULES}
+    assert extra == {"cleaned_emphasis_wrap"}, extra
+    assert all(f.startswith("cleaned_") for f in ic.CLEANUP_REASONS)
+    assert all(r and isinstance(r, str) for r in ic.CLEANUP_REASONS.values())
 
 
 def test_clean_source_text_reports_what_it_changed():

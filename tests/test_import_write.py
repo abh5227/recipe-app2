@@ -816,3 +816,90 @@ def test_an_ordinary_note_is_untouched_and_its_record_is_what_it_always_was(kitc
     #    the fixture's shape rather than about the rule.
     assert [f for f in flags if f["flag"].startswith("note_")] == [], flags
     assert [f for f in flags if f["flag"] == "step_heading_unwrapped"] == [], flags
+
+
+def test_an_imported_abbreviation_is_not_promoted_to_a_title(kitchen):
+    """⚠️ THE IMPORTER WAS THE DOOR THIS CAME THROUGH, so it is stated here as well as on the rule.
+    "Mrs. Smith gave me this recipe" came out as title "Mrs" over "Smith gave me this recipe",
+    which is a heading the author never wrote and a decapitated sentence."""
+    rows, flags, orig = _imported_notes(
+        kitchen, "Mrs. Smith gave me this recipe years ago in Kerala.",
+        "ABBREV-UID", "abbrev-import")
+    assert [r["title"] for r in rows] == [None]
+    assert [r["text"] for r in rows] == ["Mrs. Smith gave me this recipe years ago in Kerala."]
+    assert orig == ["Mrs. Smith gave me this recipe years ago in Kerala."]
+    assert [f for f in flags if f["flag"].startswith("note_title")] == [], flags
+
+
+def test_an_imported_parenthetical_dash_is_not_promoted_to_a_title(kitchen):
+    rows, flags, _orig = _imported_notes(
+        kitchen, "Salt — and this is important — goes in at the very end.",
+        "PAREN-UID", "paren-import")
+    assert [r["title"] for r in rows] == [None]
+    assert rows[0]["text"] == "Salt — and this is important — goes in at the very end."
+    assert [f for f in flags if f["flag"].startswith("note_title")] == [], flags
+
+
+def _imported_lines(kitchen, lines, uid, slug):
+    c = _cleaned(name=slug.replace("-", " ").title(), directions=["Mix."], uid=uid,
+                 ingredient_lines=lines)
+    with kitchen.session() as s:
+        assert iw.commit_plan(s, _plan(c)) is True
+        s.commit()
+    with kitchen.conn() as conn:
+        rows = [dict(r) for r in conn.execute(
+            "SELECT position, is_heading, raw_text, qty, label FROM recipe_ingredients "
+            "WHERE recipe_id=? ORDER BY position", (slug,)).fetchall()]
+        flags = [r["flag"] for r in conn.execute(
+            "SELECT flag FROM import_flags WHERE recipe_id=?", (slug,)).fetchall()]
+    assert rows, f"no ingredient rows were written for {slug}"   # a check that read nothing fails
+    return rows, flags
+
+
+def test_a_wrapped_ingredient_heading_loses_its_marks_on_import(kitchen):
+    """⚠️ CLAUSE (2) OF FIX BY RULE FOR THE ROUND'S OTHER TWO ROWS. The pass strips the wrapping
+    emphasis off brioche-cinnamon-rolls' ingredient headings 9213 and 9217, and nothing in the
+    importer did the same, so re-importing that recipe put both marks straight back. Measured in
+    review: "_Cinnamon Filling_" classified as a section WITH its underscores, and
+    "**Vanilla Cream Cheese Icing**" was not read as a section at all."""
+    rows, flags = _imported_lines(
+        kitchen, ["_Cinnamon Filling_", "200 g flour"], "IHEAD-UID", "ihead")
+    head = next(r for r in rows if r["is_heading"])
+    assert head["raw_text"] == "Cinnamon Filling", rows
+    assert "cleaned_emphasis_wrap" in flags, flags
+
+
+def test_a_wrapped_heading_the_classifier_cannot_place_reaches_the_queue_with_clean_words():
+    """The second of brioche-cinnamon-rolls' two rows, and it stops one step short of the first.
+
+    ⚠️ raw_text IS THE PUBLISHER'S BYTES FOR A LINE AND THE CLEAN NAME FOR A HEADING, which is the
+    writer's existing design and not something this round changed. So "_Cinnamon Filling_" is read
+    as a section and stored clean (the test above), while "**Vanilla Cream Cheese Icing**" is only
+    FLAGGED as an ambiguous section, and a flagged row's raw_text keeps the markup. What the unwrap
+    buys for the second one is that every parsed field a person reviews is clean, so the decision is
+    made about the words rather than about the markup. Stated as the limit it is."""
+    res = cleanup.classify_line("**Vanilla Cream Cheese Icing**")
+    assert res["kind"] == "flagged" and "ambiguous_section" in res["flags"], res
+    assert res["name"] == "Vanilla Cream Cheese Icing", res
+    assert "cleaned_emphasis_wrap" in res["flags"], res
+    # and the first one IS placed, which is the difference
+    assert cleanup.classify_line("_Cinnamon Filling_")["kind"] == "section"
+
+
+def test_a_footnote_marker_on_an_ingredient_line_is_left_alone_on_import(kitchen):
+    """The other side. 19 of the corpus's 30 marks are footnote markers and 10 of them sit on
+    ingredient rows, so the unwrap must not reach a single one."""
+    rows, flags = _imported_lines(
+        kitchen, ["\u00bc teaspoon salt*", "1/2 cup (113g) half-and-half*"],
+        "FOOT-UID", "footnoted")
+    assert len(rows) == 2, rows
+    assert all("*" in (r["raw_text"] or "") for r in rows), rows
+    assert "cleaned_emphasis_wrap" not in flags, flags
+
+
+def test_a_note_of_nothing_but_marks_does_not_abort_the_import(kitchen):
+    """⚠️ IT ABORTED THE WHOLE IMPORT. "*   *" stripped to "", note_title_plan handed back empty
+    text, and commit_plan died on recipe_notes' CHECK (length(trim(text)) > 0)."""
+    rows, _flags, _orig = _imported_notes(kitchen, "*   *", "EMPTY-UID", "empty-import")
+    assert [r["text"] for r in rows] == ["*   *"]
+    assert [r["title"] for r in rows] == [None]

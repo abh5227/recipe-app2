@@ -250,6 +250,12 @@ CLEANUP_RULES = (
 
 # flag -> reason, for the writer's flag-row builder (import_write._line_flag_rows).
 CLEANUP_REASONS = {flag: reason for flag, _rx, _repl, reason in CLEANUP_RULES}
+# ⚠️ ONE REASON THAT IS NOT A CLEANUP_RULES ROW, because it is not a regex substitution. The
+#    ingredient classifier unwraps a whole-line emphasis run at the top (see classify_line), and
+#    import_write reads this map to say WHY a line is in the review queue. Without an entry the row
+#    would carry the flag and no reason at all.
+CLEANUP_REASONS["cleaned_emphasis_wrap"] = (
+    "the line was wrapped in bold or italic marks; they were removed so the heading reads clean")
 
 
 def clean_source_text(text):
@@ -281,16 +287,58 @@ def is_section(text):
 # pair of leading+trailing markers around the entire line. Stripped so a bold/italic colon-heading
 # is DETECTED and STORED clean. Only a WRAPPING pair matches — a trailing-only footnote ("salt*") or
 # mid-line emphasis ("2 cups **sifted** flour") has no matched leading+trailing wrap, so it is left
-# untouched. Backreference \1 requires the SAME marker on both ends.
-_EMPHASIS_WRAP = re.compile(r"^(\*\*|__|\*|_)(.+?)\1$")
+# untouched.
+
+# The emphasis runs a whole line can be wrapped in, longest first so "**x**" is read as bold rather
+# than as italic around "*x*".
+_NOTE_EMPHASIS_RUNS = ("**", "__", "*", "_")
+
+
+def strip_wrapping_marks(line):
+    """(the line with its wrapping emphasis run removed, the run) or (line, None).
+
+    ⚠️ LOOSER THAN MARKDOWN, DELIBERATELY. CommonMark will not close emphasis on a delimiter with
+    whitespace in front of it, so key-lime-pie's note 89, "*Pie recipe for year 5 anniversary
+    3/14/25 : ) *", is not emphasis by the spec and the corpus survey's classifier filed it under
+    "unpaired marker, not emphasis". It is somebody wrapping a line all the same. The space goes
+    with the mark.
+
+    ⚠️ A SECOND RUN INSIDE THE LINE MEANS IT IS NOT A WRAP. "*a* and *b*" opens and closes twice,
+    which is in-sentence emphasis. The corpus has none of it, 19 of its 30 marks are footnote
+    markers, and stripping one would edit a sentence rather than lift a heading. Any occurrence of
+    the run's own character inside refuses the whole line.
+
+    ⚠️ IT REPLACED A BACKREFERENCE REGEX, AND THE REGEX MANGLED TEXT. That pattern matched a run,
+    anything, then the same run, with no inner guard, so a real step "**Season** well, then
+    **rest**" came out as "Season** well, then **rest" AND was promoted to a section heading,
+    "***Important***" came out as "*Important*", and "_a_b_" as "a_b". Measured over all 6,235 of
+    live's step, ingredient and note strings the two functions agree on every single one, so
+    unifying changes nothing that exists and refuses four shapes that would arrive on an import."""
+    s = (line or "").strip()
+    for run in _NOTE_EMPHASIS_RUNS:
+        if len(s) <= 2 * len(run) or not (s.startswith(run) and s.endswith(run)):
+            continue
+        inner = s[len(run):-len(run)]
+        if run[0] in inner:                 # "***x***" and "**a** and **b**" both land here
+            continue
+        # ⚠️ AN EMPTY INNER IS NOT A WRAP. "*   *" would otherwise return "", and a note left with
+        #    no text is an IntegrityError against recipe_notes' own CHECK, which aborted a whole
+        #    import. The marks stay and a person reads the line.
+        if not inner.strip():
+            continue
+        return inner.strip(), run
+    return line, None
 
 
 def strip_emphasis(text):
     """Strip a matched pair of leading+trailing emphasis markers (** __ * _) wrapping the ENTIRE
-    line and return the inner text; no wrapping pair -> the (whitespace-stripped) text unchanged."""
-    t = (text or "").strip()
-    m = _EMPHASIS_WRAP.match(t)
-    return m.group(2).strip() if m else t
+    line and return the inner text; no wrapping pair -> the (whitespace-stripped) text unchanged.
+
+    ⚠️ ONE RULE SET MEANS ONE FUNCTION. This is strip_wrapping_marks with the run thrown away, kept
+    as a name because the step planner and the ingredient classifier read it that way. It used to be
+    a second answer to the same question, and the two disagreed on exactly the cases the other
+    one's docstring says matter."""
+    return strip_wrapping_marks(text)[0].strip()
 
 
 # --- Extra amount-less section signals (section_signal, below) ---------------------------------- #
@@ -823,8 +871,9 @@ STEP_STRUCTURE_REASONS = {
     "note_title_lifted":
         "a note's leading label was lifted out of its text and became the note's title",
     "note_title_unclear":
-        "a note opens with something that may be a title and a rule could not decide; the words are "
-        "stored whole and a person decides",
+        "a note opens with something that may be a title and a rule could not decide, so no title "
+        "is lifted and a person decides. Where the line was wrapped in emphasis marks those are "
+        "still removed, and recipe_notes_original keeps the paragraph exactly as it arrived",
     "step_label_declined":
         "a lead-in label was found and NOT lifted, because a rule read it as a clause rather than "
         "a title; the step was left whole for a person to decide",
@@ -936,6 +985,26 @@ NOTE_TITLE_MAX_WORDS = 5
 #    words ("Flour", "Storing", "Reminder", "Kneading by hand"), and the two he refused are 4 and 5
 #    words AND carry clause words. So three refuses none of them, and a longer one goes to a person.
 NOTE_TITLE_PERIOD_MAX_WORDS = 3
+# ⚠️ AN ABBREVIATION'S FULL STOP IS NOT A SENTENCE END, AND THE FIRST VERSION OF THIS RULE PROMOTED
+#    SIX OF THEM. Measured through the real importer: "Mrs. Smith gave me this recipe years ago in
+#    Kerala." came out as title "Mrs" over "Smith gave me this recipe...", and the same for Dr., St.,
+#    No., Approx. and Vs. Every one passed the ceiling above on one word and an initial capital.
+#    THE PERIOD FORM NEEDED A SECOND PIECE OF EVIDENCE, which is the rule strip_author_numbers
+#    already states for a bare leading number, and it now has two:
+#      - the body has to OPEN A NEW SENTENCE (a capital letter). That alone refuses "Vs. the
+#        original, this uses...", "No. 5 flour..." and "Approx. 40 minutes...", because a lowercase
+#        word or a digit after the stop is proof the stop did not end a sentence.
+#      - and the label must not be an abbreviation, from the list below, which is what refuses
+#        "Mrs. Smith", "Dr. Chen" and "St. Louis", where the next word is a capitalized name.
+#    ⚠️ THE LIST IS MAINTAINED AND THE CORPUS IS NOT ITS AUTHORITY, which is the rule the ingredient
+#    capitalization pass states: the 300 recipes carry none of these, so "the corpus does not do it"
+#    is no evidence at all. Add to it rather than widening the shape test.
+#    Measured against Andy's own 4 period-form titles ("Flour" twice, "Kneading by hand" twice): both
+#    new tests refuse 0 of them. Their bodies open "This recipe works best..." and "Brioche...".
+NOTE_TITLE_ABBREVIATIONS = frozenset({
+    "mr", "mrs", "ms", "miss", "dr", "prof", "st", "sr", "jr", "rev", "fr", "no", "nos", "vs",
+    "approx", "etc", "eg", "ie", "cf", "vol", "pp", "ed", "est", "min", "max", "qty", "temp",
+    "oz", "lb", "lbs", "pt", "qt", "gal", "tsp", "tbsp", "ml", "cl", "kg", "pkg"})
 
 
 def note_lead(text):
@@ -1018,35 +1087,6 @@ def note_title_verdict(label, marked=False):
 #    soup's "also known as Cranberry bean, Roman bean"), then 9, then 13. So the gap the threshold
 #    sits in runs from 1 to 7, and two admits note 69 and refuses none of the 23 titles.
 NOTE_TITLE_TINY_BODY_WORDS = 2
-
-# The emphasis runs a whole line can be wrapped in, longest first so "**x**" is read as bold rather
-# than as italic around "*x*".
-_NOTE_EMPHASIS_RUNS = ("**", "__", "*", "_")
-
-
-def strip_wrapping_marks(line):
-    """(the line with its wrapping emphasis run removed, the run) or (line, None).
-
-    ⚠️ LOOSER THAN MARKDOWN, DELIBERATELY. CommonMark will not close emphasis on a delimiter with
-    whitespace in front of it, so key-lime-pie's note 89, "*Pie recipe for year 5 anniversary
-    3/14/25 : ) *", is not emphasis by the spec and the corpus survey's classifier filed it under
-    "unpaired marker, not emphasis". It is somebody wrapping a line all the same. The space goes
-    with the mark.
-
-    ⚠️ A SECOND RUN INSIDE THE LINE MEANS IT IS NOT A WRAP. "*a* and *b*" opens and closes twice,
-    which is in-sentence emphasis. The corpus has none of it, 19 of its 30 marks are footnote
-    markers, and stripping one would edit a sentence rather than lift a heading. Any occurrence of
-    the run's own character inside refuses the whole line."""
-    s = (line or "").strip()
-    for run in _NOTE_EMPHASIS_RUNS:
-        if len(s) <= 2 * len(run) or not (s.startswith(run) and s.endswith(run)):
-            continue
-        inner = s[len(run):-len(run)]
-        if run[0] in inner:                 # "***x***" and "**a** and **b**" both land here
-            continue
-        return inner.strip(), run
-    return line, None
-
 
 def note_lead_separator(text):
     """The separator character _NOTE_LEAD matched, read out of the SAME match it already made.
@@ -1154,6 +1194,29 @@ def note_title_plan(text):
     # A colon or a dash marks a heading. A full stop is how a sentence ends, so the period form has
     # to read as a name on its own and pasta-e-ceci's "You can use Canned Chickpeas." does not.
     sep = note_lead_separator(text_now)
+    # ⚠️ A DASH THAT CLOSES A PARENTHETICAL IS NOT A LABEL SEPARATOR, and the pair is what tells them
+    #    apart. "Salt - and this is important - goes in at the very end." read as a label "Salt" over
+    #    a body starting "and this is important", which decapitates the sentence and prints a heading
+    #    the author never wrote. The closing dash sits inside the SAME sentence as the opening one,
+    #    which is what separates it from a label whose body simply uses a dash later on.
+    #    Measured over the corpus: 8 notes carry a dash-form title and NONE of them is paired, so
+    #    this refuses none of Andy's. Two notes do have a second spaced dash in the body
+    #    (birria-tacos' Leftovers and french-fries' Freezing) and in both it falls after the first
+    #    full stop, so neither is read as a pair either.
+    if sep is not None and sep in "-\u2013\u2014":
+        first_sentence = re.split(r"[.!?]", body, maxsplit=1)[0]
+        if re.search(r"\s" + re.escape(sep) + r"\s", first_sentence):
+            return _plan("no title", f"the {sep!r} is one of a pair inside the sentence, so it "
+                                     f"encloses rather than labels", text_now, marks=marks)
+    if sep == ".":
+        # ⚠️ TWO PIECES OF EVIDENCE, BOTH ABOUT THE FULL STOP ACTUALLY ENDING A SENTENCE. See
+        #    NOTE_TITLE_ABBREVIATIONS above for the six cases that got through with one.
+        if _label_words(label) and _label_words(label)[-1] in NOTE_TITLE_ABBREVIATIONS:
+            return _plan("no title", f"{label!r} is an abbreviation, so the stop is not a sentence "
+                                     f"end", text_now, marks=marks)
+        if not body[:1].isupper():
+            return _plan("no title", "the words after the stop do not open a new sentence",
+                         text_now, marks=marks)
     shape, why = note_title_verdict(label, marked=(sep != "."))
     if shape == "title":
         title = _title_case(label)
@@ -2160,6 +2223,18 @@ def classify_line(raw, section_hints=None, has_stored_amount=False):
     # (amount parse, gram harvest, section detection) sees well-formed text rather than each having
     # to tolerate the malformation. `raw` keeps the original for raw_text — see CLEANUP_RULES.
     line, cleanup_flags = clean_source_text(raw.strip())
+    # ⚠️ A WRAPPED LINE IS UNWRAPPED HERE, AT THE TOP, AND THAT IS CLAUSE (2) OF FIX BY RULE. The
+    #    titles round strips the wrapping emphasis off brioche-cinnamon-rolls' ingredient headings
+    #    9213 and 9217, and nothing in the importer did the same, so re-importing that recipe put
+    #    both marks straight back: "_Cinnamon Filling_" classified as a section WITH its underscores
+    #    and "**Vanilla Cream Cheese Icing**" was not even read as a section (ambiguous_section).
+    #    Block 3 further down already stripped a wrap, and only for its own test, so a line that
+    #    reached block 3b or the flag path kept the marks. Stripping ONCE at the top means every
+    #    rule below reads well-formed text, which is the argument clean_source_text makes one line
+    #    above.
+    line, wrap_marks = strip_wrapping_marks(line)
+    if wrap_marks:
+        cleanup_flags = list(cleanup_flags) + ["cleaned_emphasis_wrap"]
     grams, grams_declined, gram_paren = harvest_grams(line)
     res = {
         "raw": raw, "kind": "ingredient", "amount": "", "value": None, "unit": "",

@@ -228,9 +228,12 @@ def _note_rows(notes_text):
                           "reason": f"{cleanup.STEP_STRUCTURE_REASONS['note_title_lifted']} "
                                     f"({title!r} on note {i + 1})"})
         elif plan.verdict == "unclear":
-            # ⚠️ DECLINE OVER GUESS. The words are stored exactly as the publisher wrote them and
-            #    the recipe is flagged. A title guessed here is a heading nothing on the page says
-            #    is wrong.
+            # ⚠️ DECLINE OVER GUESS. No title is lifted and the recipe is flagged, because a title
+            #    guessed here is a heading nothing on the page says is wrong.
+            # ⚠️ "STORED WHOLE" MEANS NO TITLE CAME OFF, NOT THAT NOTHING MOVED. A wrapped line
+            #    still loses its marks, which is reported by its own flag above, and `as_given`
+            #    below is what keeps the paragraph exactly as it arrived. The stated contract and
+            #    the code said different things until a review read both.
             flags.append({"position": None, "flag": "note_title_unclear",
                           "reason": f"{cleanup.STEP_STRUCTURE_REASONS['note_title_unclear']} "
                                     f"(note {i + 1}: {plan.reason})"})

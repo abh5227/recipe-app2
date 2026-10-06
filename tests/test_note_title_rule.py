@@ -380,7 +380,8 @@ def test_a_long_label_under_a_colon_is_the_one_shape_that_stays_unclear():
 # --- Andy's 36 decisions, read from the files rather than retyped ---------------------------------
 
 def _decisions():
-    """(where, row id, recipe, DECISION) for every row Andy decided a rule question on.
+    """(where, row id, recipe, DECISION, candidate_title) for every row Andy decided a rule
+    question on.
 
     `keep` and `derived` rows are not rule questions: `keep` is in-sentence emphasis or a footnote
     marker the rule must leave alone, and `derived` names the retired recipes.notes copy, which this
@@ -390,19 +391,26 @@ def _decisions():
     out = []
     with (d / "note-titles-2026-10-05.csv").open() as fh:
         for r in csv.DictReader(fh):
-            out.append(("note", int(r["note_id"]), r["recipe"], r["DECISION"].strip()))
+            out.append(("note", int(r["note_id"]), r["recipe"], r["DECISION"].strip(),
+                        (r.get("candidate_title") or "").strip()))
     with (d / "emphasis-marks-2026-10-05.csv").open() as fh:
         for r in csv.DictReader(fh):
             dec = r["DECISION"].strip()
             if dec == "derived" or dec.startswith("keep"):
                 continue
             out.append(("note" if r["where"] == "note" else "ing",
-                        int(r["id"]), r["recipe"], dec))
+                        int(r["id"]), r["recipe"], dec, ""))
     return out
 
 
-def _wanted(decision):
-    """Andy's DECISION -> (verdict the rule must reach, title or None, kind or None, strip)."""
+def _wanted(decision, candidate=""):
+    """Andy's DECISION -> (verdict the rule must reach, title or None, kind or None, strip).
+
+    ⚠️ A BARE `title` NAMES ITS TEXT THROUGH candidate_title, AND THAT COLUMN WAS NOT READ. 21 of
+    the 27 title decisions are bare, so `want_title` was None for them and the comparison below
+    skipped the title entirely. Proved by mutation: corrupting every lifted title to "Flour XX"
+    left this test GREEN while three literal tests went red. The review list's own reading of the
+    label is what a bare `title` means, and the pass already uses it the same way."""
     verbs, title, kind = set(), None, None
     for part in [p.strip() for p in decision.split(";")]:
         if part.startswith("title:"):
@@ -412,6 +420,8 @@ def _wanted(decision):
             kind = part[len("kind="):].strip()
         elif part:
             verbs.add(part)
+    if "title" in verbs and title is None and candidate:
+        title = ic._title_case(candidate)
     verdict = ("label" if "label" in verbs else
                "title" if "title" in verbs else
                # the rule cannot see the next row, so it declines and the decision answers
@@ -425,33 +435,37 @@ def test_every_decision_in_both_files_is_filled_in_and_parses():
     pass on an empty set of cases."""
     rows = _decisions()
     assert len(rows) == 36, f"{len(rows)} decided rows, expected 36"
-    blank = [(w, i) for w, i, _r, d in rows if not d]
+    blank = [(w, i) for w, i, _r, d, _c in rows if not d]
     assert blank == [], f"undecided rows: {blank}"
-    for w, i, _r, d in rows:
-        verdict, _t, _k, _s = _wanted(d)
+    for w, i, _r, d, c in rows:
+        verdict, _t, _k, _s = _wanted(d, c)
         assert verdict in ("title", "label", "no title", "unclear"), (i, d)
 
 
-@pytest.mark.live_catalog
+def _corpus_notes():
+    """{note id: text} for all 177 corpus notes, from the COMMITTED fixture.
+
+    ⚠️ IT WAS live_catalog AND SKIPPED IN CI, which is where the whole point of this test was lost.
+    That marker exists for the real 10,020-entry library, where a fixture database has the tables
+    and no rows; 177 short strings are small enough to commit, and scripts/gen_note_corpus.py is
+    what regenerates them. The two decision CSVs are read from the repo the same way, so the
+    comparison is against Andy's recorded decisions rather than against a copy of them."""
+    import json
+    got = json.loads((BASE / "tests" / "fixtures" / "note-corpus.json").read_text())["notes"]
+    assert len(got) == 177, f"the fixture holds {len(got)} notes, the measurements were over 177"
+    return {n["id"]: n["text"] for n in got}, {n["id"]: n["kind"] for n in got}
+
+
 def test_the_rule_reproduces_every_one_of_andys_decisions():
-    """⚠️ READ FROM THE DATABASE AND FROM THE DECISION FILES, NOT FROM A COPY OF EITHER. A rule
-    whose cases are retyped into its own test agrees with the test and with nothing else. The 36
-    rows are live's own text, so this is marked live_catalog and skips in CI exactly as the catalog
-    tests do. Every case it covers is also stated above against literal text, which is what keeps
-    the rule pinned where live is not available."""
-    import sqlite3
-    sys.path.insert(0, str(BASE / "scripts"))
-    import corpus_guard
-    live = corpus_guard.live_db()
-    if not live.exists():
-        pytest.skip("no live database here")
-    con = sqlite3.connect(f"file:{live}?mode=ro", uri=True)
-    notes = {r[0]: r[1] for r in con.execute("SELECT id, text FROM recipe_notes")}
-    ings = {r[0]: r[1] for r in con.execute("SELECT id, raw_text FROM recipe_ingredients")}
+    """⚠️ READ FROM THE CORPUS AND FROM THE DECISION FILES, NOT FROM A COPY OF EITHER. A rule whose
+    cases are retyped into its own test agrees with the test and with nothing else. Every case it
+    covers is also stated above against literal text, so the rule stays pinned either way."""
+    notes, _kinds = _corpus_notes()
+    ings = {9213: "_Cinnamon Filling_", 9217: "_Vanilla Cream Cheese Icing_"}
 
     differ = []
-    for where, rid, recipe, decision in _decisions():
-        want_verdict, want_title, want_kind, want_strip = _wanted(decision)
+    for where, rid, recipe, decision, candidate in _decisions():
+        want_verdict, want_title, want_kind, want_strip = _wanted(decision, candidate)
         if where == "ing":
             _text, marks = ic.strip_wrapping_marks(ings[rid])
             if bool(marks) != want_strip:
@@ -462,19 +476,45 @@ def test_the_rule_reproduces_every_one_of_andys_decisions():
                                 (bool(plan.marks), want_strip, "strip"),
                                 (plan.title, want_title, "title"),
                                 (plan.kind, want_kind, "kind")):
-            if what in ("title", "kind") and want is None:
-                continue                      # the decision is silent, so the rule may say anything
+            if what == "kind" and want is None:
+                continue                      # the decision is silent about the kind
+            if what == "title" and want is None and want_verdict == "title":
+                raise AssertionError(f"note {rid}: a title decision with no expected text, so the "
+                                     f"comparison would check nothing")
+            if what == "title" and want is None:
+                continue                      # a `no`, `label` or `strip` decision names no title
             if got != want:
                 differ.append(f"note {rid} ({recipe}) {decision!r}: {what} {got!r}, wanted {want!r}")
     assert differ == [], "\n".join(differ)
 
 
-@pytest.mark.live_catalog
 def test_the_rule_invents_nothing_on_a_row_nobody_reviewed():
     """⚠️ THE OTHER HALF, AND THE ONE THAT MATTERS FOR THE IMPORTER. The pass only applies recorded
     decisions, so a rule that over-reaches is invisible there. The importer runs the rule freely.
     Measured over all 177 corpus notes: it writes a title or asks a question on exactly the 34 rows
     Andy reviewed and on none of the other 143."""
+    notes, kinds = _corpus_notes()
+    reviewed = {rid for _w, rid, _r, _d, _c in _decisions()}
+
+    reached = []
+    for nid, text in sorted(notes.items()):
+        plan = ic.note_title_plan(text)
+        touched = (plan.verdict in ("title", "unclear") or plan.marks
+                   or (plan.kind is not None and plan.kind != kinds[nid]))
+        if touched and nid not in reviewed:
+            reached.append(f"note {nid}: {plan.verdict}, title={plan.title!r}, "
+                           f"kind={plan.kind!r}, marks={plan.marks!r}")
+    assert reached == [], "\n".join(reached)
+
+
+@pytest.mark.live_catalog
+def test_the_committed_note_corpus_still_matches_live():
+    """⚠️ A FIXTURE IS A MEASUREMENT WITH A DATE ON IT. The two tests above read the committed copy
+    so they run in CI, and this is the one that notices the copy going stale. It needs the real
+    database, so it keeps the live_catalog marker and skips in CI, which is the right split: the
+    rule's behaviour is checked everywhere and the fixture's freshness only where live exists.
+    ⚠️ AND IT COMPARES THE ROWS AS THEY WERE BEFORE THE TITLES PASS. Once that pass has run on live
+    the texts move, so this is expected to fail then and the answer is to regenerate."""
     import sqlite3
     sys.path.insert(0, str(BASE / "scripts"))
     import corpus_guard
@@ -482,19 +522,15 @@ def test_the_rule_invents_nothing_on_a_row_nobody_reviewed():
     if not live.exists():
         pytest.skip("no live database here")
     con = sqlite3.connect(f"file:{live}?mode=ro", uri=True)
-    rows = con.execute("SELECT id, recipe_id, kind, text FROM recipe_notes").fetchall()
-    assert len(rows) == 177, f"{len(rows)} notes, the measurement was taken over 177"
-    reviewed = {rid for _w, rid, _r, _d in _decisions()}
-
-    reached = []
-    for nid, recipe, kind, text in rows:
-        plan = ic.note_title_plan(text)
-        touched = (plan.verdict in ("title", "unclear") or plan.marks
-                   or (plan.kind is not None and plan.kind != kind))
-        if touched and nid not in reviewed:
-            reached.append(f"note {nid} ({recipe}): {plan.verdict}, title={plan.title!r}, "
-                           f"kind={plan.kind!r}, marks={plan.marks!r}")
-    assert reached == [], "\n".join(reached)
+    have = {r[0]: r[1] for r in con.execute("SELECT id, text FROM recipe_notes")}
+    if any(r[0] == "title" for r in con.execute("PRAGMA table_info(recipe_notes)")) and \
+            con.execute("SELECT COUNT(*) FROM recipe_notes "
+                        "WHERE title IS NOT NULL").fetchone()[0]:
+        pytest.skip("the titles pass has run on live, so the fixture is a record of what came "
+                    "before it; regenerate with scripts/gen_note_corpus.py")
+    notes, _kinds = _corpus_notes()
+    assert notes == have, ("tests/fixtures/note-corpus.json is stale; regenerate it with "
+                           "scripts/gen_note_corpus.py")
 
 
 # --- who may call the rule ------------------------------------------------------------------------
@@ -517,3 +553,113 @@ def test_the_rule_has_one_copy_and_the_client_does_not_read_it():
     js = subprocess.run(["git", "grep", "-l"] + names + ["--", "*.js"],
                         cwd=BASE, capture_output=True, text=True).stdout.split()
     assert not js, f"a second copy of the title rule reached the client: {js}"
+
+
+# --- what a fresh review broke, and the rule now refuses ------------------------------------------
+
+@pytest.mark.parametrize("text,label", [
+    ("Mrs. Smith gave me this recipe years ago in Kerala.", "Mrs"),
+    ("Dr. Chen's version uses less sugar than this one.", "Dr"),
+    ("St. Louis style ribs work here too, if you can get them.", "St"),
+    ("Prof. Alvarez wrote the book this comes from, years ago.", "Prof"),
+])
+def test_an_abbreviation_is_not_a_title_however_short_it_is(text, label):
+    """⚠️ SIX OF THESE GOT THROUGH, FOUND BY AN ADVERSARIAL REVIEW RATHER THAN BY THE CORPUS. The
+    period form needed only three words and an initial capital, which an abbreviation has, and the
+    label is then REMOVED from the front of the text: "Mrs. Smith gave me this recipe" became a
+    heading "Mrs" over "Smith gave me this recipe". The measurement behind the ceiling was the 9
+    period-form leads the 300 recipes carry, and abbreviations are absent from that sample, which
+    is docs/measuring-the-premise.md's own failure mode."""
+    plan = ic.note_title_plan(text)
+    assert plan.verdict == "no title", plan
+    assert plan.title is None
+    assert plan.text == text, "and not one word came off the front"
+    assert label.lower() in plan.reason.lower() or "abbreviation" in plan.reason
+
+
+@pytest.mark.parametrize("text", [
+    "No. 5 flour works best here, or anything close to it.",
+    "Approx. 40 minutes before serving, take it out of the fridge.",
+    "Vs. the original, this uses half the butter and no cream.",
+])
+def test_a_body_that_does_not_open_a_new_sentence_refuses_the_period_form(text):
+    """The second piece of evidence, and the one that needs no list: a lowercase word or a digit
+    after the stop is proof the stop did not end a sentence."""
+    plan = ic.note_title_plan(text)
+    assert plan.verdict == "no title", plan
+    assert plan.text == text
+
+
+def test_the_abbreviation_list_is_maintained_and_the_corpus_is_not_its_authority():
+    """⚠️ THE RULE THE INGREDIENT CAPITALIZATION PASS STATES, APPLIED HERE. The 300 recipes carry
+    none of these, so "the corpus does not do it" is no evidence at all. The list is the record of
+    a decision, so it is read back rather than taken on trust."""
+    for word in ("mrs", "dr", "st", "no", "vs", "approx", "etc", "tbsp"):
+        assert word in ic.NOTE_TITLE_ABBREVIATIONS, word
+    assert all(w == w.lower() and "." not in w for w in ic.NOTE_TITLE_ABBREVIATIONS)
+    # and a real title is not on it, which is what would make the list a bug rather than a fix
+    for word in ("flour", "storing", "measurements", "dashi", "mirin", "pekmez"):
+        assert word not in ic.NOTE_TITLE_ABBREVIATIONS, word
+
+
+@pytest.mark.parametrize("text,dash", [
+    ("Salt — and this is important — goes in at the very end.", "—"),
+    ("Chicken — or pork, if you prefer — works just as well here.", "—"),
+    ("Salt - and this is important - goes in at the end.", "-"),
+    ("Flour – the good kind – makes the difference here.", "–"),
+])
+def test_a_paired_dash_encloses_rather_than_labels(text, dash):
+    """⚠️ THE SAME REVIEW'S SECOND FINDING. The marked form skips the clause test, which is required
+    so that waffle's "For waffles that stay crisp:" is admitted, and that let an em dash used as a
+    parenthetical be read as a label: "Salt" over a body starting "and this is important".
+    Measured over the corpus: 8 notes carry a dash-form title and none is paired, and the two notes
+    that do have a second spaced dash are known labels whose second dash falls after a full stop."""
+    plan = ic.note_title_plan(text)
+    assert plan.verdict == "no title", plan
+    assert plan.title is None
+    assert plan.text == text
+    assert "pair" in plan.reason
+
+
+def test_a_dash_label_whose_body_uses_a_dash_LATER_is_still_a_title():
+    """The other side of the pair test. The closing dash of a parenthetical sits inside the same
+    sentence; a dash in a later sentence is just punctuation."""
+    plan = ic.note_title_plan("Pekmez - Available at Middle Eastern stores. Brush it on - it "
+                              "glazes well.")
+    assert (plan.verdict, plan.title) == ("title", "Pekmez")
+    # and the corpus's two real cases, which are known labels and never reach the dash rule
+    assert ic.note_title_plan(
+        "Leftovers – Best to pan fry fresh. Excellent for prepare ahead – keep the beef "
+        "separate.").verdict == "label"
+
+
+@pytest.mark.parametrize("line", ["**Season** well, then **rest**", "*Really* good *tip*",
+                                  "***Important***", "_a_b_", "*   *", "_ _", "**  **"])
+def test_strip_emphasis_is_strip_wrapping_marks_and_no_longer_mangles_text(line):
+    """⚠️ TWO FUNCTIONS ANSWERED ONE QUESTION AND THE OLDER ONE MANGLED TEXT. strip_emphasis used a
+    backreference regex with no inner guard, so a real step "**Season** well, then **rest**" became
+    a SECTION HEADING reading "Season** well, then **rest". Measured over all 6,235 of live's step,
+    ingredient and note strings the two agreed on every one, so unifying changed nothing that
+    exists. This is the shape CLAUDE.md shouts about: one rule set means one function."""
+    assert ic.strip_emphasis(line) == line
+    assert ic.strip_wrapping_marks(line) == (line, None)
+
+
+@pytest.mark.parametrize("line,inner", [
+    ("**Other Ingredients:**", "Other Ingredients:"),
+    ("**Day 1**", "Day 1"),
+    ("_Vanilla Cream Cheese Icing_", "Vanilla Cream Cheese Icing"),
+    ("__Bold Underscore:__", "Bold Underscore:"),
+])
+def test_and_it_still_strips_every_wrap_it_always_did(line, inner):
+    assert ic.strip_emphasis(line) == inner
+
+
+def test_a_note_of_nothing_but_marks_keeps_them_rather_than_emptying(tmp_path=None):
+    """⚠️ IT ABORTED A WHOLE IMPORT. "*   *" returned "" from the strip, note_title_plan handed back
+    an empty text, and commit_plan died on recipe_notes' own CHECK (length(trim(text)) > 0). An
+    empty inner is not a wrap."""
+    plan = ic.note_title_plan("*   *")
+    assert plan.text == "*   *"
+    assert plan.marks is None
+    assert plan.verdict == "no title"
