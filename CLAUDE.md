@@ -634,6 +634,19 @@ How this project is run:
   reads what the one before it left (`docs/data-repairs/README.md`). Every defect in this round's
   review was found by the first end-to-end run from a fresh copy of live, and none of them by the
   piecewise runs that preceded it.
+- **NEVER UNDO A CHANGE WITH `git checkout --` OR `git restore` ON A FILE THAT HAS UNCOMMITTED
+  WORK. Commit or stash first.** Those commands do not undo the last edit, they throw away every
+  uncommitted change in the file, and nothing warns you first.
+  *Why:* `import_cleanup.py` was mutated on purpose during this round to prove a test could fail,
+  and `git checkout -- import_cleanup.py` was used to put it back. That wiped **four unrelated
+  fixes** sitting uncommitted on the same file (the abbreviation list and its tests, the paired-dash
+  refusal, the unification of `strip_emphasis` with `strip_wrapping_marks` plus its empty-inner
+  guard, and `classify_line`'s unwrap with its `CLEANUP_REASONS` entry). All four had to be written
+  again from the transcript. The blast radius of a checkout is the FILE, and the work on a file is
+  usually several things at once.
+  **How to undo one deliberate mutation:** commit the real work first, or `git stash push <file>`
+  and pop it after, or keep the mutation in a scratch copy and never touch the tracked file. A
+  deliberate test mutation is itself a reason to commit the surrounding work BEFORE making it.
 - **Read-only inspection first.** Inspect and report before changing anything; see the real
   data before acting.
 - **Preview-first for visual/UX work.** Before building any visual or UI change for real, build a
