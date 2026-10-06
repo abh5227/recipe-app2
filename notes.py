@@ -99,10 +99,30 @@ def resolve(notes, steps):
     return notes
 
 
+def _field(row, name):
+    """One field off a dict OR an ORM row, absent reading as None.
+
+    ⚠️ .get, NOT [name]. Every caller of derived_text hands it a different shape: an ORM row, a
+    mapping read off the table, and a PLAN row built by a pass, and the plan rows carry no title at
+    all. Subscripting raised KeyError on ten of them."""
+    return row.get(name) if isinstance(row, dict) else getattr(row, name, None)
+
+
 def derived_text(rows, separator="\n\n"):
     """The note rows -> the text recipes.notes holds while the column is retired but not dropped.
 
     ⚠️ THE COLUMN IS A DERIVED COPY NOW, NOT THE SOURCE. It stays written so the previous deploy can
     still serve a recipe during the window, and a later migration drops it. Rebuilding it from the
-    rows rather than editing it in place is what keeps the two from disagreeing."""
-    return separator.join((r["text"] if isinstance(r, dict) else r.text).strip() for r in rows)
+    rows rather than editing it in place is what keeps the two from disagreeing.
+
+    ⚠️ A TITLE IS PUT BACK ON THE FRONT, BECAUSE THE TITLES ROUND TOOK IT OUT OF THE TEXT. The pass
+    leaves recipes.notes alone, so it still holds the whole paragraph, and _sync_notes_column
+    rebuilds that column on EVERY note write. Reading only `text` therefore made one unrelated note
+    edit on any of the 21 touched recipes silently drop the title words from the copy the previous
+    deploy serves: brioche-bread's column would have lost "Flour" and "Kneading by hand"."""
+    out = []
+    for r in rows:
+        text = (_field(r, "text") or "").strip()
+        title = (_field(r, "title") or "").strip()
+        out.append(f"{title}. {text}" if title else text)
+    return separator.join(out)

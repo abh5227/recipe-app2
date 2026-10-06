@@ -65,6 +65,16 @@ def _kitchen(tmp_path, notes=NOTES, name="beans"):
     return db
 
 
+def _recipe(client, name="Beans", notes=None):
+    """An owned app recipe through the ordinary create route, for the one test here that needs the
+    HTTP path rather than a hand-built database."""
+    body = {"name": name, "ingredients": [{"raw_text": "1 cup beans"}],
+            "steps": [{"text": "Rinse."}, {"text": "Simmer."}]}
+    if notes is not None:
+        body["notes"] = notes
+    return client.post("/api/recipes", json=body).get_json()["id"]
+
+
 def _rows(db, sql, args=()):
     c = sqlite3.connect(db)
     c.row_factory = sqlite3.Row
@@ -347,3 +357,37 @@ def test_the_lookalike_pass_reaches_every_content_column(tmp_path):
                  ("recipe_storage", "label"), ("recipe_ingredients", "note")):
         assert want in cols, f"{want} is not scanned"
     assert "author" in normalize_lookalikes.RECIPE_COLUMNS
+
+
+def test_the_derived_column_keeps_a_notes_title_words(tmp_path):
+    """⚠️ ONE UNRELATED NOTE EDIT WOULD HAVE MADE THE DERIVED COPY LOSSY. The titles pass leaves
+    recipes.notes alone, so it still holds the whole paragraph, and _sync_notes_column rebuilds that
+    column on EVERY note write. derived_text read only `text`, and the title words had been lifted
+    OUT of text, so brioche-bread's column would have lost "Flour" and "Kneading by hand" the next
+    time anything touched one of its notes. The previous deploy serves that column during the
+    window."""
+    import notes as notes_rules
+
+    rows = [{"text": "This recipe works best with 11% protein.", "title": "Flour"},
+            {"text": "An ordinary note.", "title": None},
+            {"text": "Another one.", "title": ""}]
+    out = notes_rules.derived_text(rows)
+    assert "Flour" in out
+    assert out.startswith("Flour. This recipe works best")
+    assert out.count("\n\n") == 2
+    # a blank or absent title adds nothing, not a stray full stop
+    assert "An ordinary note." in out and ". An ordinary note." not in out
+
+    # ⚠️ AND A PLAN ROW CARRIES NO TITLE KEY AT ALL, which is what made the first fix a KeyError on
+    #    ten tests. Every caller hands this a different shape.
+    assert notes_rules.derived_text([{"text": "No title key here."}]) == "No title key here."
+
+
+def test_the_derived_column_is_rebuilt_with_the_title_through_the_real_route(kitchen):
+    """The same thing, through the endpoint that rebuilds the column."""
+    rid = _recipe(kitchen.client, "Derived", notes=[{"text": "Use bread flour."}])
+    nid = kitchen.client.get(f"/api/recipes/{rid}").get_json()["notes"][0]["id"]
+    kitchen.client.patch(f"/api/recipes/{rid}/notes/{nid}", json={"title": "Flour"})
+    with kitchen.conn() as c:
+        got = c.execute("SELECT notes FROM recipes WHERE id=?", (rid,)).fetchone()[0]
+    assert got == "Flour. Use bread flour.", got
