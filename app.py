@@ -2750,8 +2750,14 @@ def delete_note(rid, note_id):
         me = next((m for m in stored if m["id"] == note_id), None)
         if me is None:
             return jsonify({"error": "note not found"}), 404
-        restore = {"text": me["text"], "kind": me["kind"], "position": me["position"],
-                   "step_id": me["step_id"]}
+        # ⚠️ THE TITLE IS IN IT, AND IT WAS NOT. This body is what Undo POSTs back verbatim, so a
+        #    field missing here is a field the restore invents as empty. Deleting a titled note and
+        #    pressing Undo brought it back untitled, and the title was then gone for good:
+        #    recipe_notes_original has no title column, and an app-authored note has no original row
+        #    at all. The Edit-mode delete keeps the whole row object and survived, so this was the
+        #    reading view only. Same shape as the restore's own four fields and as `heading_level`.
+        restore = {"text": me["text"], "title": me["title"], "kind": me["kind"],
+                   "position": me["position"], "step_id": me["step_id"]}
         s.execute(delete(rn).where(rn.c.id == note_id))      # refs cascade
         left = [m for m in stored if m["id"] != note_id]
         _apply_rows(s, rn, [(m, {"position": i}) for i, m in enumerate(left)], [])

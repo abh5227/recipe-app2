@@ -242,7 +242,12 @@ def test_delete_renumbers_and_hands_back_what_it_took(kitchen):
                                json={"text": "c", "kind": "tips", "step_id": sid}).get_json()["note"]
     out = kitchen.client.delete(f"/api/recipes/{rid}/notes/{gone['id']}").get_json()
     assert out["deleted"] == gone["id"]
-    assert out["restore"] == {"text": "c", "kind": "tips", "position": 2, "step_id": sid}
+    # ⚠️ THE TITLE IS IN IT, AND IT WAS NOT. This body is what Undo POSTs back verbatim, so a field
+    #    missing here is a field the restore invents as empty: deleting a TITLED note and pressing
+    #    Undo brought it back untitled, and the title was then gone for good, because
+    #    recipe_notes_original has no title column and an app-authored note has no original row.
+    assert out["restore"] == {"text": "c", "title": None, "kind": "tips", "position": 2,
+                              "step_id": sid}
     assert [r["text"] for r in _notes_of(kitchen.client, rid)] == ["a", "b"]
 
 
@@ -803,3 +808,41 @@ def test_a_title_mints_no_mark_and_costs_the_recipe_nothing(kitchen):
     kitchen.client.patch(f"/api/recipes/{rid}/notes/{nid}", json={"title": ""})
     with A.orm_session() as s:
         assert A._recipe_annotations(s, rid) == before == []
+
+
+def test_deleting_a_titled_note_and_undoing_brings_the_title_back(kitchen):
+    """⚠️ THE DEFECT, END TO END THROUGH BOTH ROUTES. The reading view's Undo is a re-create from
+    the `restore` body the DELETE handed back, and that body named four fields by hand with no
+    `title` in it. So the title was lost on an Undo and lost for good: recipe_notes_original has no
+    title column, and an app-authored note has no original row at all."""
+    rid, nid = _titled(kitchen, "Flour")
+    out = kitchen.client.delete(f"/api/recipes/{rid}/notes/{nid}").get_json()
+    assert out["restore"]["title"] == "Flour", out["restore"]
+
+    back = kitchen.client.post(f"/api/recipes/{rid}/notes", json=out["restore"])
+    assert back.status_code == 201, back.get_json()
+    assert back.get_json()["note"]["title"] == "Flour"
+    assert [n["title"] for n in _notes_of(kitchen.client, rid)] == ["Flour"]
+
+
+def test_an_untitled_note_comes_back_untitled_rather_than_with_an_empty_string(kitchen):
+    rid, nid = _titled(kitchen)
+    out = kitchen.client.delete(f"/api/recipes/{rid}/notes/{nid}").get_json()
+    assert out["restore"]["title"] is None
+    kitchen.client.post(f"/api/recipes/{rid}/notes", json=out["restore"])
+    with kitchen.conn() as c:
+        assert c.execute("SELECT COUNT(*) FROM recipe_notes WHERE title = ''").fetchone()[0] == 0
+
+
+def test_a_new_note_can_be_created_with_a_title(kitchen):
+    """create_note goes through the same validator, so the Undo above is a create that carries one.
+    Stated directly because nothing else in the suite posts a title to that route."""
+    rid = _recipe(kitchen.client, "Fresh")
+    r = kitchen.client.post(f"/api/recipes/{rid}/notes",
+                            json={"text": "Use bread flour.", "title": "  Flour  "})
+    assert r.status_code == 201, r.get_json()
+    assert r.get_json()["note"]["title"] == "Flour"
+    r = kitchen.client.post(f"/api/recipes/{rid}/notes",
+                            json={"text": "No heading on this one.", "title": "   "})
+    assert r.status_code == 201, r.get_json()
+    assert r.get_json()["note"]["title"] is None
