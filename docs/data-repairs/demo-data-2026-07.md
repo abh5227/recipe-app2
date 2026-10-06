@@ -38,27 +38,41 @@ owned: `users` 4 to 1, `cook_log` 137 to 133, `comments` 5 to 1, `friendships` 3
 the `comments.post_id` cascade when a demo account's post went, and the dry run named it before it
 happened.
 
-**Declared for `scripts/remove_demo_rows.py`**, round file
-`golive/rounds/2026-10-05-remove-demo-rows.json`. ⚠️ **This paragraph is the plan at the commit that
-carries it, not a record of a run.** A review of this round found it written in the past tense
-before the pass had been applied, which would have left the repo permanently asserting a change to
-live that might never have happened. It is updated with the measured result in the commit that
-follows the apply.
+**2026-10-05, `scripts/remove_demo_rows.py`**, round file
+`golive/rounds/2026-10-05-remove-demo-rows.json`. The 7 rows the first pass left, because they carry
+the owner's user id rather than a demo account's: `shared_posts` 2, 8 and 9, `comments` 3, and
+`cook_log` 211, 212 and 213. Measured on live: `shared_posts` 3 to 0, `comments` 1 to 0, `cook_log`
+133 to 130, every other table identical row for row, the short-circuit set 280 of 300 unchanged, the
+49 annotation entries over 20 recipes unchanged entry by entry, integrity ok and 0 foreign-key
+violations. Live went from `90256dc0…0998` to `41459596…6387`.
 
-The 7 rows the first pass left, because they carry the owner's user id rather than a demo account's:
-`shared_posts` 2, 8 and 9, `comments` 3, and `cook_log` 211, 212 and 213. Declared as
-`shared_posts` 3 to 0, `comments` 1 to 0, `cook_log` 133 to 130, with every other table identical
-row for row.
+After it, `cook_log` carries only `app` 14, `paprika-import` 9 and `rating-inferred` 107, so no
+`demo-*` source is left anywhere, and the 300 recipes, 177 notes, 135 cook photos, 120 ratings and
+132 queue entries are untouched.
 
-The three cooks carry source `demo-seed`, no rating, no caption and no photo, so no outcome data is
-inside them. That clause is a refusal in the script rather than a note here, because `edit_cook`
+⚠️ **This paragraph was written in the past tense before the pass had run, and a review caught it.**
+A record is what a future reader trusts, so committing one ahead of its run makes the repo assert a
+change to live that might never happen. The commit before the apply carried it as the plan, and this
+is the correction. `golive/README.md` now states the rule.
+
+The three cooks carried source `demo-seed`, no rating, no caption and no photo, so no outcome data
+was inside them. That clause is a refusal in the script rather than a note here, because `edit_cook`
 writes a rating onto an existing row and never rewrites `source`, so a demo-seeded cook somebody
 later rated would be machine-made by its source and a person's own work by its content.
 
-Each pass runs against the round gate, which holds it to exactly the counts it declared and requires
+Each pass ran against the round gate, which held it to exactly the counts it declared and required
 every other table to be identical row for row, the short-circuit set to stay at 280 of 300 and the
-49 annotation entries over 20 recipes to stay identical entry by entry. Each has a backup in
-`backups/` taken immediately before it.
+49 annotation entries over 20 recipes to stay identical entry by entry. Both printed THE ROUND DID
+EXACTLY WHAT IT DECLARED. The backups taken immediately before each are
+`backups/recipes-20261005-193914.db` for the accounts and `backups/recipes-20261005-214743.db` for
+the rows, both verified byte-identical to live at the time.
+
+⚠️ **The second pass also proved its own claim rather than asserting it.** A review found that the
+deletion order protected only the rows the script names, and that `recipe_snapshots.cook_log_id` is
+`ON DELETE CASCADE` with a snapshot written for every logged cook, so a cascade could have taken a
+row silently with 7 printed and exit 0. It now reads the cascade children out of the schema, refuses
+if anything unnamed points at the 7, and compares every table's row count before the commit.
+Measured on live: 0 unnamed dependents, and `recipe_snapshots` held at 306 across the run.
 
 ## What looked machine-made and is not
 
