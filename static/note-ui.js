@@ -116,6 +116,17 @@ export function noteRowHTML(note, table, esc, opts = {}) {
       ` data-note-edit="${note.id}" aria-label="Edit this note">&#9998;</button></span>`
     : "";
   const toast = saved ? savedToastHTML(note.id) : "";
+  // ⚠️ A TITLE IS A SUBHEADING, AND IT IS THE STEP SUBHEADING'S OWN RULE RATHER THAN A COPY OF ITS
+  //    VALUES. styles.css adds .note-title to the .steps li.group.h2 selector list, so the method
+  //    column and the notes column cannot drift on what a subheading looks like. The method already
+  //    learned this lesson twice: .notes-kind carried its own 12px mono block until it was folded
+  //    into the section rule, and the subheading's own size read 15px for a while, which is the
+  //    step's size, so nothing but the weight separated the two.
+  // ⚠️ IT IS DRAWN WHEREVER THE NOTE IS, INCLUDING A STEP'S POPOVER. A heading that appeared in one
+  //    of the three places a note is shown would make the same note read differently depending on
+  //    where you found it, which is what one renderer exists to prevent.
+  const titleHTML = note.title
+    ? `<h4 class="note-title">${esc(note.title)}</h4>` : "";
   // ⚠️ NO NEWLINES INSIDE THE PARAGRAPH. .notes-para is white-space: pre-wrap, so an indent in this
   //    template renders as visible dead space before the pencil.
   if (where === "pop") {
@@ -123,9 +134,17 @@ export function noteRowHTML(note, table, esc, opts = {}) {
     //    it, and two notes on one step are two different kinds of thing as often as not.
     const type = `<span class="note-type">${esc(tagLabel(kindOf(table, note.kind)))}</span>`;
     return `<span class="step-note-line" data-note="${note.id}" data-note-place="${esc(place)}">` +
-      `${type}<span class="note-words"${editable ? ` data-note-edit="${note.id}"` : ""}>${body}</span>${toast}${pencil}</span>`;
+      `${type}${titleHTML}<span class="note-words"${editable ? ` data-note-edit="${note.id}"` : ""}>${body}</span>${toast}${pencil}</span>`;
   }
-  return `<p class="notes-para" data-note="${note.id}" data-note-place="${esc(place)}">` +
+  // ⚠️ THE TITLE SITS OUTSIDE THE PARAGRAPH AND THE LEAD STAYS INSIDE IT. Under STEP NOTES a note
+  //    opens "Step 4 · Tip: " and that lead is part of the sentence, inline with the first words by
+  //    design, so a title above it is a heading over a sentence rather than a replacement for its
+  //    opening. Andy's call.
+  // ⚠️ AND A TITLED NOTE TAKES NO BULLET, which .titled is for. The bullet says "these belong
+  //    together and there are several", and a note that announces itself with a heading has already
+  //    said where it starts.
+  return titleHTML +
+    `<p class="notes-para${note.title ? " titled" : ""}" data-note="${note.id}" data-note-place="${esc(place)}">` +
     // ⚠️ THE PENCIL'S ANCHOR IS LAST, AFTER THE TOAST. It is zero-width and the pencil is
     //    positioned off it, so an anchor placed before the toast would put the pencil on top of the
     //    words "Saved · Undo" for the six seconds that offer is up.

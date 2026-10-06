@@ -1337,11 +1337,20 @@ a:hover { color: var(--berry-lift); }
    own size, so the only thing separating a subheading from the step under it was the weight. 12px
    against the step's 15px and the section's 13px puts it below both, which is the order Andy asked
    for: a subheading is never larger than the section it sits under. */
-.steps li.group.h2 {
+/* ⚠️ AND A NOTE'S TITLE IS THIS RULE, NOT A COPY OF IT. The same argument the .notes-kind fold
+   above rests on: a note's heading that took the family and the weight but not the size would be a
+   near-match, and a near-match is the thing one shared rule exists to make impossible. 28 notes
+   over 18 recipes carry one. */
+.steps li.group.h2,
+.note-title {
   font-family: var(--font-serif); font-size: var(--fs-step-sub); font-weight: 700;
   letter-spacing: normal; text-transform: none;
   margin: 16px 0 4px; padding: 0; border-bottom: none;
 }
+/* The notes column has no 16px row gap of its own, so a title's own margin is the whole break. The
+   first one under a group heading needs none, because the heading is already above it. */
+.note-title:first-child { margin-top: 0; }
+.note-type + .note-title { margin: 2px 0 2px; }
 
 /* Stage 1a: per-step TipTap editor host (edit mode only). Inherits step typography and borrows the
    .ie dashed-baseline affordance so an editable step reads like the other inline-edit fields. No chip
@@ -2965,6 +2974,17 @@ li.step.step-tapped .step-add-note,
 /* The 8px below a note belongs BETWEEN notes, and the wrapper is what is last in the group now, so
    :last-child has to be asked of the wrapper rather than of the paragraph inside it. */
 .ie-noterow:last-child > .notes-para { margin-bottom: 0; }
+/* ⚠️ A TITLED NOTE TAKES NO BULLET, IN EITHER VIEW, AND THE HANGING INDENT GOES WITH IT. A bullet
+   beside a heading marks the same boundary twice, and the indent exists only to make a wrapped
+   line start under its own words rather than under a bullet that is no longer there.
+   ⚠️ IT IS STATED HERE, AFTER .ie-note-block's OWN INDENT, because that selector carries the same
+   four classes and source order is what decides between them. */
+.notes-group.marked .notes-para.titled,
+.ie-note-block .notes-group.marked .notes-para.titled { padding-left: 0; text-indent: 0; }
+.notes-group.marked .notes-para.titled::before { content: none; }
+/* A title belongs to the note under it, so the row's own top margin would double the gap. */
+.ie-noterow > .note-title { margin-top: 10px; }
+.ie-noterow:first-child > .note-title { margin-top: 0; }
 
 /* ---------- saved / deleted, each with its undo ---------- */
 /* role="status", so it is announced without the focus moving. */

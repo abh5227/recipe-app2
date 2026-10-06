@@ -539,3 +539,65 @@ test("the whole row renders from the decorated shape the way app.js passes it", 
   assert.ok(/Keep it cold\./.test(html), html);
   assert.ok(/data-note="9"/.test(html));
 });
+
+// ---- a note's title -----------------------------------------------------------------------------
+
+test("a title renders as a subheading above the note, outside the paragraph", () => {
+  const html = noteRowHTML(decorated({ id: 4, kind: "notes", title: "Flour",
+                                       text: "This recipe works best with 11% protein." }),
+                           TABLE, esc, { editable: true, place: "ie" });
+  assert.ok(/<h4 class="note-title">Flour<\/h4>/.test(html), html);
+  assert.ok(html.indexOf('<h4 class="note-title">') < html.indexOf('<p class="notes-para'),
+    "the heading has to come before the paragraph it heads");
+  assert.ok(/This recipe works best/.test(html), html);
+});
+
+test("a titled note takes no bullet, which is a class the stylesheet reads", () => {
+  // ⚠️ THE BULLET SAYS "these belong together and there are several". A note that announces itself
+  //    with a heading has already said where it starts, so a bullet beside it marks the same
+  //    boundary twice. The group still gets .marked, so its untitled siblings keep theirs.
+  const titled = noteRowHTML(decorated({ id: 1, kind: "notes", title: "Buying", text: "Look for it." }),
+                             TABLE, esc, {});
+  assert.ok(/class="notes-para titled"/.test(titled), titled);
+  const plain = noteRowHTML(decorated({ id: 2, kind: "notes", text: "Look for it." }), TABLE, esc, {});
+  assert.ok(/class="notes-para"/.test(plain), plain);
+  assert.ok(!/titled/.test(plain), plain);
+});
+
+test("under STEP NOTES the title is the heading and the lead stays on the body", () => {
+  // Andy's call: "Step 4 · Tip: " is part of the sentence, inline with the first words by design,
+  // so a title above it is a heading over that sentence rather than a replacement for its opening.
+  const html = noteRowHTML(
+    decorated({ id: 5, kind: "tips", title: "Quick soak", text: "Cover with water." }),
+    TABLE, esc, { lead: { no: 4, type: "Tip" } });
+  assert.ok(/<h4 class="note-title">Quick soak<\/h4>/.test(html), html);
+  assert.ok(/class="note-lead"/.test(html), "the lead is still drawn");
+  assert.ok(/Step 4/.test(html) && /Tip: /.test(html), html);
+  assert.ok(html.indexOf("note-title") < html.indexOf("note-lead"),
+    "the heading is above the sentence the lead opens");
+});
+
+test("a step popover shows the title too, so one note does not read two ways", () => {
+  const html = noteRowHTML(
+    decorated({ id: 6, kind: "storage", title: "To Freeze the pie shell", text: "Wrap it." }),
+    TABLE, esc, { where: "pop", place: "pop:3" });
+  assert.ok(/note-type/.test(html), "the popover's own type label stays, it has no group heading");
+  assert.ok(/<h4 class="note-title">To Freeze the pie shell<\/h4>/.test(html), html);
+  assert.ok(html.indexOf("note-type") < html.indexOf("note-title"),
+    "the type names the group, the title names the note, so the type is above it");
+});
+
+test("a title is escaped like every other stored string", () => {
+  const html = noteRowHTML(decorated({ id: 8, kind: "notes", title: '<b>"x"</b> & y',
+                                       text: "Body." }), TABLE, esc, {});
+  assert.ok(/&lt;b&gt;&quot;x&quot;&lt;\/b&gt; &amp; y/.test(html), html);
+  assert.ok(!/<b>/.test(html), html);
+});
+
+test("no title means no heading element at all, not an empty one", () => {
+  for (const title of [null, undefined, ""]) {
+    const html = noteRowHTML(decorated({ id: 3, kind: "notes", title, text: "Body." }),
+                             TABLE, esc, {});
+    assert.ok(!/note-title/.test(html), `title=${JSON.stringify(title)}: ${html}`);
+  }
+});
