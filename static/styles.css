@@ -2759,8 +2759,20 @@ a.note-lead-step { color: inherit; }
 .note-tool-del { color: var(--ink-soft); }
 .note-tool-del:hover { color: var(--hand); }
 .note-caret, .note-x { margin-left: .25em; font-size: .9em; }
-/* The × sits against the step it removes, so the two read as one control with two jobs. */
-.note-unlink { margin-left: -10px; color: var(--ink-soft); }
+/* The × sits against the step it removes, so the two read as one control with two jobs.
+   ⚠️ IT USED TO READ `margin-left: -10px`, AND THAT IS AN OVERLAP RATHER THAN A GAP. Measured in
+   the browser on the real panel: the link box ends exactly where its last glyph ends (no trailing
+   padding), the × is 8px wide, and a -10px pull put it on top of the link's last 10px at EVERY
+   step number. At one digit the × covered a narrow "1" and read as a tight pairing. At two it
+   covered the second digit, so "step 13" printed "step 1✕" — the case Andy found.
+   ⚠️ THE GAP IS ON THE CONTAINER NOW, which is the property whose job this is. .note-anchor is
+   the inline-flex wrapper around the pair, so the link sizes to its number and the × takes its
+   place after it. A pull of any size can overlap; a gap cannot. .25em is the value .note-caret
+   above already uses for the same job, a small mark beside a label, so the footer has one
+   tight-gap value rather than two, and it scales with the 12px type instead of being pinned to it.
+   ⚠️ AND .note-x KEEPS ITS RESET, so the spacing has exactly one source. Without it the generic
+   .note-x rule would add its own .25em on top of the container's gap. */
+.note-unlink { color: var(--ink-soft); }
 .note-unlink:hover { color: var(--hand); }
 .note-unlink .note-x { margin-left: 0; font-size: 1em; }
 .note-hint {
@@ -2783,7 +2795,10 @@ a.note-lead-step { color: inherit; }
 /* ---------- "link a step": the short list ---------- */
 /* ⚠️ ANCHORED TO THE CONTROL THAT OPENED IT. .note-anchor is an inline span around one button and
    its menu, so the list hangs under "link a step" rather than under the panel's left edge. */
-.note-anchor { position: relative; display: inline-flex; }
+/* ⚠️ THE GAP IS WHAT KEEPS THE × OFF THE NUMBER. Only the step anchor holds two in-flow items
+   (the link and its ×); the type anchor holds one button plus an absolutely positioned menu, which
+   is not a flex item and takes no gap. See .note-unlink. */
+.note-anchor { position: relative; display: inline-flex; gap: .25em; }
 .note-step-menu {
   min-width: 260px; max-width: min(92vw, 420px); padding: 6px; gap: 6px;
 }
