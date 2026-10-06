@@ -58,6 +58,12 @@ COUNTS = {
     "recipe_notes_original": "SELECT COUNT(*) FROM recipe_notes_original",
     "recipe_note_step_refs": "SELECT COUNT(*) FROM recipe_note_step_refs",
     "snapshots_original": "SELECT COUNT(*) FROM recipe_snapshots WHERE reason = 'original'",
+    # ⚠️ THE TOTAL AS WELL AS THE BASELINES, because reason='original' is not the only kind. app.py
+    #    writes a reason='cook' snapshot for every logged cook, and recipe_snapshots.cook_log_id is
+    #    ON DELETE CASCADE, so a round that removes a cook can take one with it. Counting only the
+    #    baselines left the cheap half of the gate blind to exactly that. The table half caught it,
+    #    and a gate whose two halves disagree in coverage is one worth making agree.
+    "snapshots": "SELECT COUNT(*) FROM recipe_snapshots",
     "migrations": "SELECT COUNT(*) FROM schema_migrations",
     # ⚠️ THE ACCOUNT LAYER IS COUNTED TOO, because a round can move it and the gate has to see
     #    what it moved. All 13 foreign keys pointing at users are ON DELETE NO ACTION, so removing
@@ -81,7 +87,8 @@ _NEEDS = {
     "storage": "recipe_storage", "recipe_notes": "recipe_notes",
     "recipe_notes_recipes": "recipe_notes", "recipe_notes_original": "recipe_notes_original",
     "recipe_note_step_refs": "recipe_note_step_refs",
-    "snapshots_original": "recipe_snapshots", "migrations": "schema_migrations",
+    "snapshots_original": "recipe_snapshots", "snapshots": "recipe_snapshots",
+    "migrations": "schema_migrations",
     "users": "users", "cook_log": "cook_log", "ratings": "ratings", "comments": "comments",
     "friendships": "friendships", "shared_posts": "shared_posts", "invites": "invites",
     "cook_photos": "cook_photos",

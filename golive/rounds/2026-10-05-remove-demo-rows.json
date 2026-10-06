@@ -1,0 +1,12 @@
+{
+  "round": "2026-10-05-remove-demo-rows",
+  "why": "Remove the 7 demo rows two ad hoc seeding runs wrote under the real account's id on 2026-07-25 and 2026-07-26: shared_posts 2, 8 and 9, comments 3, and cook_log 211, 212 and 213. The three cooks carry source 'demo-seed' with no rating, no caption and no photo, so no outcome data is in them. No recipe, note, annotation, rating, photo or queue entry moves. docs/data-repairs/demo-data-2026-07.md is the record.",
+  "short_circuit": "unchanged",
+  "annotations": "unchanged",
+  "counts": {
+    "shared_posts": [3, 0],
+    "comments": [1, 0],
+    "cook_log": [133, 130]
+  },
+  "tables": { "except": ["shared_posts", "comments", "cook_log"] }
+}

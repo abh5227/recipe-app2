@@ -844,3 +844,26 @@ def test_a_missing_database_is_named_rather_than_a_traceback(tmp_path, capsys, w
     assert code == 2
     out = capsys.readouterr().out
     assert "NOT USABLE" in out and which in out and str(gone) in out
+
+
+# ---- the cheap half sees a cook snapshot too -----------------------------------------------------
+
+def test_the_reading_counts_every_snapshot_and_not_only_the_baselines(tmp_path):
+    """⚠️ reason='original' IS NOT THE ONLY KIND, AND THE OTHER KIND CAN BE CASCADED AWAY. app.py
+    writes a reason='cook' snapshot for every logged cook, and recipe_snapshots.cook_log_id is ON
+    DELETE CASCADE, so a round that removes a cook can take one with it. Counting only the baselines
+    left the counts half of the gate blind to exactly that. The table half caught it, which is why
+    this is defence in depth rather than a hole, and a gate whose two halves disagree in coverage is
+    one worth making agree."""
+    db = _corpus(tmp_path / "snaps")
+    con = sqlite3.connect(db)
+    con.execute("INSERT INTO cook_log (id, recipe_id, user_id, cooked_on, source) "
+                "VALUES (9, 'beans', 1, '2026-01-02', 'app')")
+    con.execute("INSERT INTO recipe_snapshots (recipe_id, user_id, cook_log_id, reason, content, "
+                "created_at) VALUES ('beans', 1, 9, 'cook', '{}', '2026-01-02T00:00:00Z')")
+    con.commit()
+    con.close()
+
+    reading = gstate.read_state(db)
+    assert reading["counts"]["snapshots_original"] == 3, "the baseline count moved, which it should not"
+    assert reading["counts"]["snapshots"] == 4, "the reading cannot see a reason='cook' snapshot"

@@ -154,6 +154,7 @@ surveys below are cited nowhere and stay untracked, which is what the category i
 | `total-time-unclear-2026-09-30.csv` | 10 | survey: recipes whose total does not add up | nothing | no |
 | `extension-step-links-2026-09-30.csv` | 7 | survey: waits whose alternative points at another step | nothing | no |
 | `step-heading-level-1-candidates-2026-09-30.csv` | 15 | survey: lifted labels with 2+ steps and no section above | nothing | no |
+| `demo-data-2026-07.md` | n/a | the record of the two ad hoc demo-seeding runs of 2026-07-25 and 2026-07-26, what each wrote, what the two removal passes took on 2026-10-05, and the batches that look machine-made and are the owner's own | nothing. It is a RECORD, not an input: the inputs are the two round files in `golive/rounds/` | yes, deliberately |
 
 ## Waiting in `reports/`, for the titles round
 
