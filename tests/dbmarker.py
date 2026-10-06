@@ -194,10 +194,14 @@ def _stamp_pg(conn):
 
 
 def _rows_anywhere(conn, content_tables):
-    """Every table that exists and is not empty, as (name, count). The proof a database is unused."""
+    """Every table that exists and is not empty, as (name, count). The proof a database is unused.
+
+    ⚠️ THE NAME IS CAST, NOT JUST BOUND. `to_regclass(:t)` leaves Postgres inferring the type of an
+    untyped placeholder, which is the kind of thing that works on one driver and fails on another,
+    and this file cannot be exercised against a real server from the machine it was written on."""
     found = []
     for name in content_tables:
-        if _scalar(conn, "SELECT to_regclass(:t)", t=name) is None:
+        if _scalar(conn, "SELECT to_regclass(CAST(:t AS text))", t=name) is None:
             continue
         n = _scalar(conn, f'SELECT count(*) FROM "{name}"')
         if n:
@@ -236,7 +240,7 @@ def claim_or_verify_pg(conn, expected_db, content_tables):
             f"and $DATABASE_URL resolves to {expected_db!r}.\n  What opened is not what the URL "
             f"appears to say, so nothing here can tell what would be truncated.\n")
 
-    if _scalar(conn, "SELECT to_regclass(:t)", t=MARKER_TABLE) is None:
+    if _scalar(conn, "SELECT to_regclass(CAST(:t AS text))", t=MARKER_TABLE) is None:
         held = _rows_anywhere(conn, content_tables)
         if held:
             shown = ", ".join(f"{name} {n}" for name, n in held[:6])

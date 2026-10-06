@@ -1168,18 +1168,30 @@ def test_the_marker_survives_the_truncate(pg):
 
 def test_a_postgres_database_the_harness_did_not_make_is_refused(pg):
     """The round's case, on the dialect that TRUNCATEs: a database carrying rows and no marker is
-    refused, and the rows are still there afterwards."""
+    refused, and the rows are still there afterwards.
+
+    ⚠️ IT PUTS THE MARKER BACK, AND THE FIRST VERSION DID NOT. That took CI red, which is how it
+    was found. The DROP below is committed in its own transaction and the refusal rolls back only
+    `reset_and_seed`'s transaction, so without the restore the database stays unmarked WITH rows,
+    every later `pg` fixture is refused in setup, and four tests error for a reason that has nothing
+    to do with what they check. A test that breaks the shared database on purpose restores it, the
+    way test_schema_parity.py's drift tests pair every break with its restore.
+    """
     import dbmarker
     with pg.engine.begin() as c:
         c.execute(text(f'DROP TABLE "{dbmarker.MARKER_TABLE}"'))
-    before = _count(pg.engine, "SELECT count(*) FROM recipes")
-    assert before, "the fixture seeded no recipes, so this test would prove nothing"
+    try:
+        before = _count(pg.engine, "SELECT count(*) FROM recipes")
+        assert before, "the fixture seeded no recipes, so this test would prove nothing"
 
-    with pytest.raises(dbmarker.Refused) as e:
-        pg_harness.reset_and_seed(pg.engine)
-    assert "NOT empty" in str(e.value)
-    assert _count(pg.engine, "SELECT count(*) FROM recipes") == before, \
-        "the harness truncated a database it was supposed to refuse"
+        with pytest.raises(dbmarker.Refused) as e:
+            pg_harness.reset_and_seed(pg.engine)
+        assert "NOT empty" in str(e.value)
+        assert _count(pg.engine, "SELECT count(*) FROM recipes") == before, \
+            "the harness truncated a database it was supposed to refuse"
+    finally:
+        with pg.engine.begin() as c:
+            dbmarker._stamp_pg(c)
 
 
 def test_an_empty_postgres_database_with_no_marker_is_claimed(pg):
@@ -1192,10 +1204,15 @@ def test_an_empty_postgres_database_with_no_marker_is_claimed(pg):
     with pg.engine.begin() as c:                          # emptied WITHOUT the harness
         c.execute(text(f'DROP TABLE "{dbmarker.MARKER_TABLE}"'))
         c.execute(text("TRUNCATE " + ", ".join(names) + " RESTART IDENTITY CASCADE"))
-
-    pg_harness.reset_and_seed(pg.engine)
-    with pg.engine.connect() as c:
-        assert c.execute(text(f'SELECT token FROM "{dbmarker.MARKER_TABLE}"')).scalar() == dbmarker.TOKEN
+    try:
+        pg_harness.reset_and_seed(pg.engine)
+        with pg.engine.connect() as c:
+            assert c.execute(
+                text(f'SELECT token FROM "{dbmarker.MARKER_TABLE}"')).scalar() == dbmarker.TOKEN
+    finally:
+        # Order-independent whatever happens above, for the reason the test before this one gives.
+        with pg.engine.begin() as c:
+            dbmarker._stamp_pg(c)
 
 
 def test_a_connection_that_is_not_the_url_s_database_is_refused(pg):
@@ -1217,9 +1234,14 @@ def test_a_marker_from_an_earlier_run_is_replaced_rather_than_refused(pg):
     import dbmarker
     with pg.engine.begin() as c:
         c.execute(text(f'UPDATE "{dbmarker.MARKER_TABLE}" SET token = :t'), {"t": "b" * 32})
-    pg_harness.reset_and_seed(pg.engine)
-    with pg.engine.connect() as c:
-        assert c.execute(text(f'SELECT token FROM "{dbmarker.MARKER_TABLE}"')).scalar() == dbmarker.TOKEN
+    try:
+        pg_harness.reset_and_seed(pg.engine)
+        with pg.engine.connect() as c:
+            assert c.execute(
+                text(f'SELECT token FROM "{dbmarker.MARKER_TABLE}"')).scalar() == dbmarker.TOKEN
+    finally:
+        with pg.engine.begin() as c:
+            dbmarker._stamp_pg(c)
 
 
 def test_an_unresolvable_database_url_refuses_the_truncate(pg):
@@ -1230,4 +1252,4 @@ def test_an_unresolvable_database_url_refuses_the_truncate(pg):
     with pg.engine.begin() as c:
         with pytest.raises(dbmarker.Refused) as e:
             dbmarker.claim_or_verify_pg(c, expected_db=None, content_tables=[])
-    assert "cannot say which database" in str(e.value)
+    assert "nothing here can say which database" in str(e.value)

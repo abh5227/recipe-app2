@@ -342,3 +342,103 @@ def test_an_unreadable_database_url_refuses_rather_than_skipping_the_comparison(
     assert guard != -1, "an unresolvable URL no longer refuses"
     assert guard < marker, "the refusal happens after the marker is read, so it is not the first word"
     assert "if expected_db and" not in body, "the permissive form is back"
+
+
+# ---- the Postgres decisions, where there is no Postgres ------------------------------------------
+# ⚠️ THE BRANCH LOGIC HAD NO COVERAGE OUTSIDE CI, AND THAT COST A RED RUN. current_database() and
+# to_regclass are Postgres's own, so the integration half belongs in tests/test_pg_integration.py
+# and runs in CI's Postgres leg. What was missing was any local check of WHICH BRANCH each state
+# leads to, and of the ORDER the questions are asked in, which is what makes a refusal meaningful.
+# This stands in for a server and proves the decisions, not the SQL. It says so rather than
+# pretending to be an integration test.
+
+_MISSING = object()
+
+
+class _Answer:
+    def __init__(self, value):
+        self._value = value
+
+    def scalar(self):
+        return self._value
+
+
+class _FakeServer:
+    """Answers the three questions claim_or_verify_pg asks, and records the order it asked them."""
+
+    def __init__(self, dbname="recipe_test", token=_MISSING, rows=None):
+        self.dbname, self.token, self.rows = dbname, token, dict(rows or {})
+        self.asked, self.wrote = [], []
+
+    def execute(self, clause, params=None):
+        sql = " ".join(str(clause).split())
+        self.asked.append(sql)
+        if "current_database()" in sql:
+            return _Answer(self.dbname)
+        if "to_regclass" in sql:
+            name = (params or {}).get("t")
+            if name == dbmarker.MARKER_TABLE:
+                return _Answer(None if self.token is _MISSING else name)
+            return _Answer(name if name in self.rows else None)
+        if f'SELECT token FROM "{dbmarker.MARKER_TABLE}"' in sql:
+            return _Answer(None if self.token is _MISSING else self.token)
+        if sql.lower().startswith("select count(*) from"):
+            return _Answer(self.rows.get(sql.split('"')[1], 0))
+        self.wrote.append(sql)                       # the CREATE / DELETE / INSERT of a stamp
+        return _Answer(None)
+
+    def stamped(self):
+        return any(w.startswith("CREATE TABLE") for w in self.wrote)
+
+    def asked_about_the_marker(self):
+        return any("to_regclass" in a for a in self.asked)
+
+
+def test_an_empty_database_with_no_marker_is_claimed_and_stamped():
+    srv = _FakeServer()
+    assert dbmarker.claim_or_verify_pg(srv, "recipe_test", ["recipes", "users"]) == "claimed"
+    assert srv.stamped()
+
+
+def test_this_run_s_own_marker_verifies_without_stamping_again():
+    srv = _FakeServer(token=dbmarker.TOKEN)
+    assert dbmarker.claim_or_verify_pg(srv, "recipe_test", ["recipes"]) == "verified"
+    assert not srv.wrote, "a database that already carries this run's token was written to"
+
+
+def test_an_earlier_run_s_marker_is_replaced():
+    """What a developer reusing one test database sees on their second run."""
+    srv = _FakeServer(token="a" * 32)
+    assert dbmarker.claim_or_verify_pg(srv, "recipe_test", ["recipes"]) == "reclaimed"
+    assert srv.stamped()
+
+
+def test_a_database_with_rows_and_no_marker_is_refused():
+    """The case the emptiness proof exists for. Nothing is written, and the message names the rows."""
+    srv = _FakeServer(rows={"recipes": 300, "users": 1})
+    with pytest.raises(dbmarker.Refused) as e:
+        dbmarker.claim_or_verify_pg(srv, "recipe_test", ["recipes", "users"])
+    assert "NOT empty" in str(e.value) and "recipes 300" in str(e.value)
+    assert not srv.wrote
+
+
+def test_a_connection_to_another_database_is_refused_before_anything_else():
+    """⚠️ THE ORDER IS PART OF THE RULE. If the connection is not the database the URL names, the
+    marker is beside the point, so that question is asked first."""
+    srv = _FakeServer(dbname="recipes_production", token=dbmarker.TOKEN)
+    with pytest.raises(dbmarker.Refused) as e:
+        dbmarker.claim_or_verify_pg(srv, "recipe_test", ["recipes"])
+    assert "not what the URL appears to say" in str(e.value)
+    assert not srv.asked_about_the_marker(), "it read the marker before checking where it was"
+    assert not srv.wrote
+
+
+def test_an_unreadable_url_is_refused_and_the_marker_is_never_consulted():
+    """Fail closed. The marker must not become the whole answer when nothing can say where the
+    connection went."""
+    srv = _FakeServer(token=dbmarker.TOKEN)
+    with pytest.raises(dbmarker.Refused) as e:
+        dbmarker.claim_or_verify_pg(srv, None, ["recipes"])
+    assert "nothing here can say which database" in str(e.value)
+    assert not srv.asked_about_the_marker()
+    assert not srv.wrote
