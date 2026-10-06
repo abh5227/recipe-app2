@@ -9,6 +9,8 @@ unique index is not enough, and the reason is a NULL-comparison rule that is eas
 zero and stays shape-only until the create path exists. Both facts are pinned below, by
 test_owner_is_read_ONLY_by_the_detail_route and test_concept_still_has_no_readers.
 """
+import ast
+import collections
 import sqlite3
 
 import pytest
@@ -141,9 +143,29 @@ def test_one_index_alone_would_not_be_enough(kitchen):
 
 # ---- inert ------------------------------------------------------------------------------------------
 
+def _names_the_column(node, column):
+    """Does this attribute access name Ingredient.<column>, in either spelling?
+
+    ⚠️ IT USED TO SEE ONLY ONE SPELLING, AND THE CHANGE THAT ADDED THE SECOND IS WHAT SHOWED IT.
+    `Ingredient.owner` is a Name followed by an attribute. `Ingredient.__table__.c.owner` is an
+    attribute chain, so `n.value` is an Attribute rather than a Name and the old test walked straight
+    past it. delete_ingredient's owner clause is written on the ORM class in its lookup and on the
+    Core table in its DELETE, and the pin reported 2 readers where the function names the column 4
+    times. A pin that cannot see a spelling is an invitation to use that spelling."""
+    if not (isinstance(node, ast.Attribute) and node.attr == column):
+        return False
+    inner = node.value
+    if isinstance(inner, ast.Name):                       # Ingredient.<column>
+        return inner.id == "Ingredient"
+    chain = []                                            # Ingredient.__table__.c.<column>
+    while isinstance(inner, ast.Attribute):
+        chain.append(inner.attr)
+        inner = inner.value
+    return isinstance(inner, ast.Name) and inner.id == "Ingredient" and chain == ["c", "__table__"]
+
+
 def _ingredient_column_readers(column):
-    """Every function in app.py that names Ingredient.<column>, by function name."""
-    import ast
+    """Every function in app.py that names Ingredient.<column>, by function name, once per mention."""
     from pathlib import Path
     import app
     tree = ast.parse(Path(app.__file__).read_text(encoding="utf-8"))
@@ -152,8 +174,7 @@ def _ingredient_column_readers(column):
         if not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         for n in ast.walk(fn):
-            if (isinstance(n, ast.Attribute) and n.attr == column
-                    and isinstance(n.value, ast.Name) and n.value.id == "Ingredient"):
+            if _names_the_column(n, column):
                 out.append(fn.name)
     return out
 
@@ -165,12 +186,20 @@ def test_concept_still_has_no_readers(kitchen):
         "app.py reads Ingredient.concept, but the create path is stage 3"
 
 
-def test_owner_is_read_ONLY_by_the_detail_route(kitchen):
-    """⚠️ THIS GUARD MOVED WITH STAGE 2a AND DID NOT GO AWAY. It used to say owner had no readers.
-    The privacy fix gave it exactly two, both inside get_ingredient, so the assertion tightened from
-    "none" to "these and no others" — a third reader appearing somewhere else still trips it. That is
-    the whole point of pinning the call sites rather than the count."""
-    assert _ingredient_column_readers("owner") == ["get_ingredient", "get_ingredient"]
+def test_owner_is_read_ONLY_by_the_detail_route_and_the_delete(kitchen):
+    """⚠️ THIS GUARD HAS MOVED TWICE AND DID NOT GO AWAY, AND IT CAUGHT THE CHANGE THAT MOVED IT.
+    It first said owner had no readers. Stage 2a's privacy fix gave it two, both inside
+    get_ingredient. The safety round's review then found that DELETE /api/ingredients/<iid> had no
+    owner clause at all while its sibling read did, so the delete gained the same rule and this
+    assertion tightened again. A reader appearing in a THIRD function still trips it, which is the
+    whole point of pinning the call sites rather than the count.
+
+    Four in delete_ingredient and not two: the clause is on the lookup AND on the DELETE statement,
+    because a read-then-write on a bare id is correct only while nothing changes in between."""
+    assert sorted(set(_ingredient_column_readers("owner"))) == \
+        ["delete_ingredient", "get_ingredient"]
+    assert collections.Counter(_ingredient_column_readers("owner")) == \
+        {"get_ingredient": 2, "delete_ingredient": 4}
 
 
 def test_both_new_columns_are_still_additive_in_the_drawer(kitchen):

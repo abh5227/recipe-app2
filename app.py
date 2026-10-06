@@ -2875,8 +2875,17 @@ def delete_ingredient(iid):
     allowlist, like every other write route."""
     with orm_session() as s:
         row = s.execute(
-            select(Ingredient.source, Ingredient.name).where(Ingredient.id == iid)).first()
-        if row is None:
+            select(Ingredient.source, Ingredient.name).where(
+                Ingredient.id == iid,
+                # ⚠️ OWNERSHIP IS PART OF THE LOOKUP, THE SAME WAY get_ingredient DOES IT. The read
+                # folded it in and this route never mentioned `owner`, so one account could delete
+                # another's personal, unlinked row by id and get a 200 for it. A library row is
+                # owner NULL and stays deletable by anyone, which is what keeps this the undo for
+                # the promote path, since that path leaves owner NULL on purpose. One refusal
+                # branch, so "no such ingredient" and "not yours" cannot drift apart later.
+                or_(Ingredient.owner.is_(None), Ingredient.owner == current_user.id),
+            )).first()
+        if row is None:                                  # not there, or not yours: same answer
             return jsonify({"error": "ingredient not found"}), 404
         if row.source not in DELETABLE_INGREDIENT_SOURCES:   # TIER first — see the docstring
             return jsonify({
@@ -2890,7 +2899,13 @@ def delete_ingredient(iid):
                 "error": f"{row.name} is still linked by {used} "
                          f"recipe{'s' if used != 1 else ''}, unlink it there first"
             }), 409
-        s.execute(delete(Ingredient.__table__).where(Ingredient.__table__.c.id == iid))
+        # ⚠️ THE CLAUSE IS ON THE DELETE TOO, NOT ONLY ON THE LOOKUP THAT AUTHORIZED IT. A check
+        # that reads and then writes on the bare id is correct only while nothing changes in
+        # between, and the whole point of this round is that a write path states what it may touch.
+        s.execute(delete(Ingredient.__table__).where(
+            Ingredient.__table__.c.id == iid,
+            or_(Ingredient.__table__.c.owner.is_(None),
+                Ingredient.__table__.c.owner == current_user.id)))
         s.commit()
     return jsonify({"deleted": iid})
 

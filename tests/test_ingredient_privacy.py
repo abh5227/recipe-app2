@@ -36,6 +36,11 @@ def _personal(kitchen, iid, name, owner):
         )
 
 
+def _row(kitchen, iid):
+    with kitchen.conn() as c:
+        return c.execute("SELECT id, owner, source FROM ingredients WHERE id=?", (iid,)).fetchone()
+
+
 # ---- behavior-neutral on today's data ------------------------------------------------------------
 
 def test_all_36_library_rows_still_serve_to_the_harness_user(kitchen):
@@ -160,3 +165,60 @@ def test_an_anonymous_request_is_still_401(kitchen_logged_out):
 def test_the_route_is_not_on_the_public_allowlist(kitchen):
     """Pins the gate at its source, not just its effect."""
     assert "get_ingredient" not in app.PUBLIC_ENDPOINTS
+
+
+# ---- the same gate on the DELETE, which did not have one -----------------------------------------
+# ⚠️ THE READ HAD THE CLAUSE AND THE WRITE DID NOT, which is the shape the safety round's review
+# found. 0 rows are affected today: every row in the app is owner NULL, so these tests build the
+# personal row they need rather than relying on one existing.
+
+def test_user_B_cannot_delete_user_A_s_personal_row(kitchen):
+    """The hole being closed. An unlinked personal row was deletable by id from any account."""
+    a = harness.ensure_test_user("del-owner-a@test.local")
+    _, b = _client("del-owner-b@test.local")
+    _personal(kitchen, "a-private-herb", "A Private Herb", a)
+
+    r = b.delete("/api/ingredients/a-private-herb")
+    assert r.status_code == 404, "another account's personal row answered something other than 404"
+    assert r.get_json() == {"error": "ingredient not found"}
+    assert _row(kitchen, "a-private-herb") is not None, "the row was deleted by a stranger"
+
+
+def test_user_A_can_still_delete_their_OWN_personal_row(kitchen):
+    """The gate is an ownership check, not a ban. The owner's own delete still works."""
+    a, ac = _client("del-owner-a2@test.local")
+    _personal(kitchen, "a-second-herb", "A Second Herb", a)
+
+    r = ac.delete("/api/ingredients/a-second-herb")
+    assert r.status_code == 200
+    assert r.get_json() == {"deleted": "a-second-herb"}
+    assert _row(kitchen, "a-second-herb") is None
+
+
+def test_a_library_row_is_still_deletable_by_anyone_who_can_reach_it(kitchen):
+    """⚠️ owner NULL MUST STAY DELETABLE OR THIS ROUTE STOPS BEING THE UNDO IT EXISTS TO BE. The
+    promote path creates its row with owner NULL on purpose, so restricting the delete to
+    `owner = me` would make a wrong promote permanent again."""
+    _, b = _client("del-owner-c@test.local")
+    with kitchen.conn() as c:
+        c.execute("INSERT INTO ingredients (id, name, concept, owner, source, created_at) "
+                  "VALUES ('a-shared-herb','A Shared Herb','a-shared-herb',NULL,'app',?)",
+                  (app.now_utc(),))
+    r = b.delete("/api/ingredients/a-shared-herb")
+    assert r.status_code == 200, "a library row stopped being deletable, which breaks the undo"
+    assert _row(kitchen, "a-shared-herb") is None
+
+
+def test_the_delete_statement_carries_the_clause_not_only_the_lookup(kitchen):
+    """⚠️ STATED ON THE WRITE, NOT ONLY ON THE READ THAT AUTHORIZED IT. Read-then-write on a bare
+    id is correct only while nothing changes in between, and a reviewer cannot see that from the
+    route's behaviour alone."""
+    import inspect
+    body = inspect.getsource(app.delete_ingredient)
+    stmt = body.split("delete(Ingredient.__table__)")[1]
+    assert "owner" in stmt.split("s.commit()")[0], \
+        "the DELETE no longer names owner, so the lookup is the only thing holding the line"
+
+
+def test_the_delete_route_is_not_on_the_public_allowlist(kitchen):
+    assert "delete_ingredient" not in app.PUBLIC_ENDPOINTS
