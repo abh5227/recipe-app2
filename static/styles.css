@@ -1341,10 +1341,18 @@ a:hover { color: var(--berry-lift); }
    above rests on: a note's heading that took the family and the weight but not the size would be a
    near-match, and a near-match is the thing one shared rule exists to make impossible. 28 notes
    over 18 recipes carry one. */
+/* ⚠️ AND IT STATES THE COLOUR, WHICH IT DID NOT. The shared rule shared the family, the size,
+   the weight, the case and the spacing, and the colour was the one thing each side took from its
+   own ancestor instead: a step subheading picked up var(--green) from .steps li.group above it, and
+   a note title is an <h4> inside .notes, so it picked up that card's var(--ink-soft). Measured
+   rgb(78,75,36) against rgb(110,88,66) on the same page. A near-match is exactly what one shared
+   rule exists to make impossible, which is the argument the two comments above this one both rest
+   on. Andy's call, 2026-10-06: both take the section headings' colour, read from the same variable
+   .steps li.group and .notes-kind read, never a copy of its value. Only the colour moves. */
 .steps li.group.h2,
 .note-title {
   font-family: var(--font-serif); font-size: var(--fs-step-sub); font-weight: 700;
-  letter-spacing: normal; text-transform: none;
+  letter-spacing: normal; text-transform: none; color: var(--green);
   margin: 16px 0 4px; padding: 0; border-bottom: none;
 }
 /* The notes column has no 16px row gap of its own, so a title's own margin is the whole break. The

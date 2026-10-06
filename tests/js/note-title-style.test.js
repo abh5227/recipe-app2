@@ -65,3 +65,33 @@ test("a titled note's bullet is suppressed after the Edit-mode indent, or source
   assert.ok(/\.notes-group\.marked \.notes-para\.titled::before \{ content: none; \}/.test(CSS),
     "the bullet itself is not switched off");
 });
+
+test("the shared subheading rule STATES the section headings' colour", () => {
+  // ⚠️ THE ONE DECLARATION THE SHARED RULE DID NOT SHARE WAS THE COLOUR, and each side then took it
+  //    from its own ancestor: a step subheading got var(--green) from .steps li.group above it, a
+  //    note title got var(--ink-soft) from the .notes card it sits in. Measured rgb(78,75,36)
+  //    against rgb(110,88,66) on one page. Andy's call, 2026-10-06.
+  const shared = rulesFor(".note-title").find((r) => r.selectors.includes(".steps li.group.h2"));
+  assert.ok(shared, "the shared subheading rule is gone");
+  const colour = /(?:^|;|\{|\s)color\s*:\s*([^;]+)/.exec(shared.body);
+  assert.ok(colour, `the shared block sets no colour: ${shared.body}`);
+  // the VARIABLE, never a copy of its value
+  assert.match(colour[1].trim(), /^var\(--[a-z-]+\)$/,
+    `the colour has to be a token, not a literal: ${colour[1]}`);
+
+  // and it is the SAME token the section headings read, so the two cannot drift
+  const section = rulesFor(".notes-kind").find((r) => r.selectors.includes(".steps li.group"));
+  assert.ok(section, "the section heading's own shared rule is gone");
+  const sectionColour = /(?:^|;|\{|\s)color\s*:\s*([^;]+)/.exec(section.body);
+  assert.ok(sectionColour, "the section rule sets no colour");
+  assert.equal(colour[1].trim(), sectionColour[1].trim(),
+    "a subheading and a section heading have to name one variable");
+});
+
+test("only the colour joined the shared rule, the rest of the look is unchanged", () => {
+  const shared = rulesFor(".note-title").find((r) => r.selectors.includes(".steps li.group.h2"));
+  assert.match(shared.body, /font-size\s*:\s*var\(--fs-step-sub\)/, "the size moved");
+  assert.match(shared.body, /font-weight\s*:\s*700/, "the weight moved");
+  assert.match(shared.body, /text-transform\s*:\s*none/, "the case moved");
+  assert.match(shared.body, /font-family\s*:\s*var\(--font-serif\)/, "the family moved");
+});
