@@ -1,0 +1,28 @@
+recipe,note_id,separator,candidate_title,rule_verdict,rule_reason,text_after_the_label,suggested_kind,DECISION,REASON
+french-baguette,69,:,If using fresh Yeast,unclear,reads as a clause (if),8g,,no,"Only an amount ('8g') follows the label, so a title over it reads oddly. Keep as one line. Later it could become a note on the yeast ingredient line."
+pasta-e-ceci,113,.,You can use Canned Chickpeas,unclear,"reads as a clause (can, you)",If you use them you’ll want to cut the water in half.,,no,"Ends in a period and makes a complete statement ('You can use...'), so it stays as text."
+waffle,173,.,Don’t over-mix the batter,unclear,reads as a clause (don't),"Once the wet and dry ingredients are just incorporated, the ",,no,"Ends in a period and is a complete instruction, so it stays as text. Note 174 in the same recipe is a title because it names a goal and ends in a colon."
+waffle,174,:,For waffles that stay crisp,unclear,reads as a clause (that),Place the cooked waffles on a wire rack when they’re ready. ,,title,Names a goal and ends in a colon.
+agedashi-tofu,7,:,DASHI,title,a 1-word name,Vegetarian Japanese stock is great to have on hand for enhan,,title: Dashi,"Short name ending in a colon. It's in all caps, so the heading case rule makes it 'Dashi'."
+all-butter-pie-crust,12,:,Form a Pie Shell,title,a 4-word name,"To form the pie shell, take a disk from the refrigerator and",,title,Names a procedure; ends in a colon.
+all-butter-pie-crust,13,:,To Freeze the pie shell,title,a 5-word name,Place the pie shell into the refrigerator to chill and set f,storage,title; kind=storage,"Freezing instructions, so it moves to Storage. The specific title is kept because it says what is frozen."
+all-butter-pie-crust,14,:,Blind Bake,title,a 2-word name,Place a piece of parchment paper or coffee filter into the c,,title,Names a procedure; ends in a colon.
+brioche-bread,27,.,Flour,title,a 1-word name,This recipe works best with flour with around 11% protein. A,,title,One-word topic.
+brioche-bread,28,.,Kneading by hand,title,a 3-word name,Brioche bread can be made without a stand mixer. It can be k,,title,"Names a topic (a noun phrase), so the period doesn't make it a sentence."
+brioche-cinnamon-rolls,30,-,Measurements,title,a 1-word name,Both grams and US cup sizes are provided. Use the toggle on ,,title,Short topic plus a dash. The body talks about a toggle on the original website; consider deleting this note later.
+brioche-cinnamon-rolls,31,-,More information,title,a 2-word name,See my brioche bread recipe post for more details on making ,,title,Short topic plus a dash. The body points to the author's website; consider deleting this note later.
+brioche-cinnamon-rolls,33,.,Flour,title,a 1-word name,This recipe works best with flour with around 11% protein. A,,title,One-word topic.
+brioche-cinnamon-rolls,34,.,Kneading by hand,title,a 3-word name,Brioche dough can be made without a stand mixer. It can be k,,title,Names a topic (a noun phrase).
+bulgogi-bowls,39,—,Mirin,title,a 1-word name,substitute Chinese cooking wine or cooking sake plus ½ tsp b,,title,An ingredient name; the body is a substitution.
+chipotle-black-beans,49,:,Quick soak,title,a 2-word name,"If you forgot to soak your beans the night before, use this ",,title,Names a method; ends in a colon.
+falafel-crackers,68,-,CHICKPEA FLOUR,title,a 2-word name,"Also known as garbanzo bean flour or gram flour, chickpea fl",,title: Chickpea flour,"Short topic plus a dash. It's in all caps, so the heading case rule makes it 'Chickpea flour'."
+french-fries,70,–,Freezing,title,a 1-word name,"Freezes 100% perfectly! After Fry #1, fully cool the fries t",,label; kind=storage,"'Freezing' is a type label, not a title: hide it as 'Storage:' is hidden, and move the note to Storage. Add 'Freezing' to the Storage labels."
+garlic-kale-salad-with-crispy-chickpeas,72,:,Tandoori Masala Blend,title,a 3-word name,"3 Tbsp cumin, 2 Tbsp garlic powder, 2 Tbsp paprika, 3 tsp gi",,title,Names a blend; the body is its recipe.
+italian-two-bean-soup,83,–,Cannellini,title,a 1-word name,"also known as White Italian Beans, white kidney beans.",,title,An ingredient name; the body gives other names for it.
+italian-two-bean-soup,84,–,Borlotti,title,a 1-word name,"also known as Cranberry bean, Roman bean",,title,An ingredient name; the body gives other names for it.
+mexican-rice,102,:,Tomato Sauce,title,a 2-word name,"I used this because it’s fast and easy, but for a more authe",,title,An ingredient name.
+mexican-rice,103,:,Tomato Bouillon,title,a 2-word name,"granules or cubes, found in the Mexican aisle or online. Thi",,title,An ingredient name.
+pumpkin-scones,122,:,Fresh pumpkin,title,a 2-word name,Blot the pumpkin puree to remove moisture. Pumpkin puree has,,title,Names a variant ingredient.
+pumpkin-scones,124,:,To prevent sticking,title,a 3-word name,Flour the sharp knife or bench scraper to help keep the doug,,title,Names a goal; ends in a colon.
+turkish-simit,170,-,Pekmez,title,a 1-word name,"Available at Middle Eastern stores, pekmez is grape molasses",,title,An ingredient name.
+vietnamese-caramel-ginger-chicken,171,–,Chicken,title,a 1-word name,"I cut most into 4, some into 3. You want them quite large so",,title,An ingredient name.

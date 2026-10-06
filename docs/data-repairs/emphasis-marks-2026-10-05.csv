@@ -1,0 +1,79 @@
+recipe,where,id,field,marks,classification,text,proposed_fix,DECISION,REASON
+1-2-3-4-5-tofu,note,1,recipe_notes.text,**Chinese black vinegar**,wrapping emphasis,"**Chinese black vinegar**
+Chinese black vinegar (zhènjiāng xiāngcù, 镇江香醋) is made from fermented black sticky rice or regular glutinous rice. It can also be made using rice in combination with sorghum and/or wheat.","Chinese black vinegar
+Chinese black vinegar (zhènjiāng xiāngcù, 镇江香醋) is made from fermented black sticky rice or regular glutinous rice. It can also be made using rice in combination with sorghum and/or wheat.",strip; title: Chinese black vinegar,A title line on its own over the body. Notes 2-3 continue the topic and stay untitled.
+1-2-3-4-5-tofu,note,4,recipe_notes.text,_Buying_,wrapping emphasis,"_Buying_
+Look for bottles with yellow labels marked Chinkiang Vinegar or Zhenjiang Vinegar at your local Chinese grocery store.","Buying
+Look for bottles with yellow labels marked Chinkiang Vinegar or Zhenjiang Vinegar at your local Chinese grocery store.",strip; title: Buying,A title line on its own over the body.
+baked-zucchini-needs-a-redemption,note,19,recipe_notes.text,"**Note for next time: Oven couldn't hold the temperature, so turned out soggy!**",wrapping emphasis,"**Note for next time: Oven couldn't hold the temperature, so turned out soggy!**","Note for next time: Oven couldn't hold the temperature, so turned out soggy!",strip; label,"The whole note is wrapped. With the marks removed, 'Note for next time:' is already a known type label, so it's hidden as a label rather than becoming a title."
+chicken-broth,note,45,recipe_notes.text,**Enriched Chicken and Pork Broth**,wrapping emphasis,"**Enriched Chicken and Pork Broth**
+Substitute 2 pounds pork necks for 2 pounds of chicken wings.","Enriched Chicken and Pork Broth
+Substitute 2 pounds pork necks for 2 pounds of chicken wings.",strip; title: Enriched Chicken and Pork Broth,A title line over a substitution. Consider making its type Variations.
+dan-dan-noodles,note,64,recipe_notes.text,**Sui mi ya cai**,wrapping emphasis,**Sui mi ya cai**,Sui mi ya cai,strip; merge-title-into-next,"This row holds only the title. Its body ('Sui mi ya cai is a type of preserved vegetable...') was split into the next note row, so make the title that note's title and remove this row."
+smashed-cucumber-salad,note,143,recipe_notes.text,**After 3/3 version**,wrapping emphasis,"**After 3/3 version**
+AH - Go light on the salt, maybe even a little less than what this has.
+AH - Make sure to use the long ones or cut the big ones into smaller pieces","After 3/3 version
+AH - Go light on the salt, maybe even a little less than what this has.
+AH - Make sure to use the long ones or cut the big ones into smaller pieces",strip; title: After 3/3 version,Your own cooking notes; keep the 'AH -' lines exactly as written.
+brioche-cinnamon-rolls,ingredient heading,9213,recipe_ingredients.raw_text,_Cinnamon Filling_,wrapping emphasis,_Cinnamon Filling_,Cinnamon Filling,strip,Ingredient section heading; lockstep with its baseline.
+brioche-cinnamon-rolls,ingredient heading,9217,recipe_ingredients.raw_text,_Vanilla Cream Cheese Icing_,wrapping emphasis,_Vanilla Cream Cheese Icing_,Vanilla Cream Cheese Icing,strip,Ingredient section heading; lockstep with its baseline.
+1-2-3-4-5-tofu,recipe notes,1-2-3-4-5-tofu,recipes.notes,**Chinese black vinegar** _Buying_,"wrapping emphasis, derived copy of the note rows","**Chinese black vinegar**
+Chinese black vinegar (zhènjiāng xiāngcù, 镇江香醋) is made from fermented black sticky rice or regular glutinous rice. It can also be made using rice in combination with sorghum and/or wheat.
+
+Originating in the city of Zhenjiang in Jiangsu province, it is quite literally black in color and has a full bodied, malty, complex taste. It is mildly acidic, less so than a regular distilled white vinegar, with a faintly sweet flavor.
+
+Chinese black vinegar is widely used in Chinese cooking for all types of cold appetizers, braised meats and fish, noodles and as a dipping condiment for dumplings.
+
+_Buying_
+Look for bottles with yellow labels marked Chinkiang Vinegar or Zhenjiang Vinegar at your local Chinese grocery store.","Chinese black vinegar
+Chinese black vinegar (zhènjiāng xiāngcù, 镇江香醋) is made from fermented black sticky rice or regular glutinous rice. It can also be made using rice in combination with sorghum and/or wheat.
+
+Originating in the city of Zhenjiang in Jiangsu province, it is quite literally black in color and has a full bodied, malty, complex taste. It is mildly acidic, less so than a regular distilled white vinegar, with a faintly sweet flavor.
+
+Chinese black vinegar is widely used in Chinese cooking for all types of cold appetizers, braised meats and fish, noodles and as a dipping condiment for dumplings.
+
+Buying
+Look for bottles with yellow labels marked Chinkiang Vinegar or Zhenjiang Vinegar at your local Chinese grocery store.",derived,Copy of the note rows in the retired recipes.notes column. It follows whatever the note rows get; no separate decision.
+baked-zucchini-needs-a-redemption,recipe notes,baked-zucchini-needs-a-redemption,recipes.notes,"**Note for next time: Oven couldn't hold the temperature, so turned out soggy!**","wrapping emphasis, derived copy of the note rows","**Note for next time: Oven couldn't hold the temperature, so turned out soggy!**","Note for next time: Oven couldn't hold the temperature, so turned out soggy!",derived,Copy of the note rows in the retired recipes.notes column. It follows whatever the note rows get; no separate decision.
+chicken-broth,recipe notes,chicken-broth,recipes.notes,**Enriched Chicken and Pork Broth**,"wrapping emphasis, derived copy of the note rows","Cooled broth can be refrigerated for up to 4 days or frozen for up to 1 month
+
+**Enriched Chicken and Pork Broth**
+Substitute 2 pounds pork necks for 2 pounds of chicken wings.","Cooled broth can be refrigerated for up to 4 days or frozen for up to 1 month
+
+Enriched Chicken and Pork Broth
+Substitute 2 pounds pork necks for 2 pounds of chicken wings.",derived,Copy of the note rows in the retired recipes.notes column. It follows whatever the note rows get; no separate decision.
+dan-dan-noodles,recipe notes,dan-dan-noodles,recipes.notes,**Sui mi ya cai**,"wrapping emphasis, derived copy of the note rows","**Sui mi ya cai**
+
+Sui mi ya cai is a type of preserved vegetable from Sichuan Province. Made with mustard greens, it is dried, seasoned, and fermented, resulting in a salty, savory product. Suggest using it within a week or two of opening.","Sui mi ya cai
+
+Sui mi ya cai is a type of preserved vegetable from Sichuan Province. Made with mustard greens, it is dried, seasoned, and fermented, resulting in a salty, savory product. Suggest using it within a week or two of opening.",derived,Copy of the note rows in the retired recipes.notes column. It follows whatever the note rows get; no separate decision.
+smashed-cucumber-salad,recipe notes,smashed-cucumber-salad,recipes.notes,**After 3/3 version**,"wrapping emphasis, derived copy of the note rows","**After 3/3 version**
+AH - Go light on the salt, maybe even a little less than what this has.
+AH - Make sure to use the long ones or cut the big ones into smaller pieces","After 3/3 version
+AH - Go light on the salt, maybe even a little less than what this has.
+AH - Make sure to use the long ones or cut the big ones into smaller pieces",derived,Copy of the note rows in the retired recipes.notes column. It follows whatever the note rows get; no separate decision.
+stir-fried-green-beans-with-pork,step,3650,recipe_steps.text,*,"unpaired marker, not emphasis","Then stir and repeat the spreading step several times until the green beans are slightly charred, wilted, and cooked through. It takes about 5-8 minutes to cook the green beans this way*. Transfer the cooked green beans to a dish and set aside.","Then stir and repeat the spreading step several times until the green beans are slightly charred, wilted, and cooked through. It takes about 5-8 minutes to cook the green beans this way*. Transfer the cooked green beans to a dish and set aside.",keep,A footnote marker. Its footnote is step 3651.
+stir-fried-green-beans-with-pork,step,3651,recipe_steps.text,*,"unpaired marker, not emphasis","*Turn the heat lower if needed to avoid burning. To speed up the cooking, add a few drops of water each you stir, to create some steam. Transfer the cooked green beans to a dish and set aside.","*Turn the heat lower if needed to avoid burning. To speed up the cooking, add a few drops of water each you stir, to create some steam. Transfer the cooked green beans to a dish and set aside.",keep; flag split-footnote,This step is really the footnote for step 3650 (it starts with *). Candidate to become a Step note on 3650 in the merged/split sweep. Not part of this round.
+vanilla-mug-cake,step,3853,recipe_steps.text,*,"unpaired marker, not emphasis","Cook in microwave for 70-90 seconds* (until cake is just set, but still barely shiny on top). Allow to rest in microwave for 1 minute before consuming.","Cook in microwave for 70-90 seconds* (until cake is just set, but still barely shiny on top). Allow to rest in microwave for 1 minute before consuming.",keep,A footnote marker.
+coconut-curried-golden-lentils,note,62,recipe_notes.text,*,"unpaired marker, not emphasis","*To improve digestibility and slightly speed cooking time, you can soak lentils by covering with cool water and soaking overnight or for 6-8 hours. Then rinse, drain, and proceed with recipe as instructed.","*To improve digestibility and slightly speed cooking time, you can soak lentils by covering with cool water and soaking overnight or for 6-8 hours. Then rinse, drain, and proceed with recipe as instructed.",keep,This note is the footnote text; the * links it to its marker.
+key-lime-pie,note,89,recipe_notes.text,**,"unpaired marker, not emphasis",*Pie recipe for year 5 anniversary 3/14/25 : ) *,*Pie recipe for year 5 anniversary 3/14/25 : ) *,strip,The marks wrap the whole note. The classifier missed it because of the space before the last *. Result: 'Pie recipe for year 5 anniversary 3/14/25 : )'.
+cinnamon-scones,ingredient,7383,recipe_ingredients.raw_text,*,"unpaired marker, not emphasis",¼ teaspoon salt*,¼ teaspoon salt*,keep,A footnote marker.
+cinnamon-scones,ingredient,7383,recipe_ingredients.label,*,"unpaired marker, not emphasis",salt*,salt*,keep,A footnote marker.
+fluffy-pancakes-with-regular-yogurt,ingredient,9104,recipe_ingredients.raw_text,*,"unpaired marker, not emphasis",regular yogurt (any flavor*),regular yogurt (any flavor*),keep,A footnote marker.
+fluffy-pancakes-with-regular-yogurt,ingredient,9104,recipe_ingredients.label,*,"unpaired marker, not emphasis",regular yogurt (any flavor*),regular yogurt (any flavor*),keep,A footnote marker.
+king-arthur-s-original-cake-pan-cake,ingredient,4248,recipe_ingredients.raw_text,*,"unpaired marker, not emphasis","1/4 cup (21g) unsweetened cocoa, Dutch-process or natural*","1/4 cup (21g) unsweetened cocoa, Dutch-process or natural*",keep,A footnote marker.
+king-arthur-s-original-cake-pan-cake,ingredient,4248,recipe_ingredients.label,*,"unpaired marker, not emphasis","unsweetened cocoa, Dutch-process or natural*","unsweetened cocoa, Dutch-process or natural*",keep,A footnote marker.
+king-arthur-s-original-cake-pan-cake,ingredient,4257,recipe_ingredients.raw_text,*,"unpaired marker, not emphasis",1/2 cup (113g) half-and-half*,1/2 cup (113g) half-and-half*,keep,A footnote marker.
+king-arthur-s-original-cake-pan-cake,ingredient,4257,recipe_ingredients.label,*,"unpaired marker, not emphasis",half-and-half*,half-and-half*,keep,A footnote marker.
+mexican-rice,ingredient,4605,recipe_ingredients.raw_text,*,"unpaired marker, not emphasis","2 teaspoons tomato bouillon granulated, or cubes*","2 teaspoons tomato bouillon granulated, or cubes*",keep,A footnote marker.
+mexican-rice,ingredient,4605,recipe_ingredients.label,*,"unpaired marker, not emphasis","tomato bouillon granulated, or cubes*","tomato bouillon granulated, or cubes*",keep,A footnote marker.
+coconut-curried-golden-lentils,recipe notes,coconut-curried-golden-lentils,recipes.notes,*,"unpaired marker, not emphasis, derived copy of the note rows","*To improve digestibility and slightly speed cooking time, you can soak lentils by covering with cool water and soaking overnight or for 6-8 hours. Then rinse, drain, and proceed with recipe as instructed.
+
+Note: Soaking lentils is optional but can improve digestibility and speed cook time.","*To improve digestibility and slightly speed cooking time, you can soak lentils by covering with cool water and soaking overnight or for 6-8 hours. Then rinse, drain, and proceed with recipe as instructed.
+
+Note: Soaking lentils is optional but can improve digestibility and speed cook time.",derived,Copy of the note rows in the retired recipes.notes column. It follows whatever the note rows get; no separate decision.
+key-lime-pie,recipe notes,key-lime-pie,recipes.notes,**,"unpaired marker, not emphasis, derived copy of the note rows","Any leftover pie will keep, covered with plastic, for several days in the refrigerator (the crust will soften over time).
+
+*Pie recipe for year 5 anniversary 3/14/25 : ) *","Any leftover pie will keep, covered with plastic, for several days in the refrigerator (the crust will soften over time).
+
+*Pie recipe for year 5 anniversary 3/14/25 : ) *",derived,Copy of the note rows in the retired recipes.notes column. It follows whatever the note rows get; no separate decision.

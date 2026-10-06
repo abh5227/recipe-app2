@@ -154,23 +154,25 @@ surveys below are cited nowhere and stay untracked, which is what the category i
 | `total-time-unclear-2026-09-30.csv` | 10 | survey: recipes whose total does not add up | nothing | no |
 | `extension-step-links-2026-09-30.csv` | 7 | survey: waits whose alternative points at another step | nothing | no |
 | `step-heading-level-1-candidates-2026-09-30.csv` | 15 | survey: lifted labels with 2+ steps and no section above | nothing | no |
+| `note-titles-2026-10-05.csv` | 27 | Andy's DECISION for every note carrying a leading label, one of `title`, `title: <text>`, `no` or `label`, each optionally naming a kind | the titles pass | yes |
+| `emphasis-marks-2026-10-05.csv` | 30 | Andy's DECISION for every wrapping emphasis mark in the corpus, one of `strip`, `keep`, `derived` or `merge-title-into-next`, with a title where the line carries one | the titles pass | yes |
 | `demo-data-2026-07.md` | n/a | the record of the two ad hoc demo-seeding runs of 2026-07-25 and 2026-07-26, what each wrote, what the two removal passes took on 2026-10-05, and the batches that look machine-made and are the owner's own | nothing. It is a RECORD, not an input: the inputs are the two round files in `golive/rounds/` | yes, deliberately |
 
-## Waiting in `reports/`, for the titles round
+## The titles round's two decision files
 
-Two review lists sit in gitignored `reports/` rather than here, because nothing opens either of them
-and Andy has not recorded a decision in either yet. **They move into this folder and get committed in
-the same change that makes a pass read them,** which is the titles round.
+Both sat in gitignored `reports/` while Andy filled in their DECISION column. They moved into this
+folder on 2026-10-05, which is what the rule above requires of a file a pass reads.
 
-| file | rows | what it holds | what will read it |
-|---|---|---|---|
-| `reports/note-titles-candidates.csv` | 27 | a note's leading label, the parked rule's verdict and reason, and a `suggested_kind` filled only where the title opens with a phrase the kind table already knows (1 of 27, `To Freeze the pie shell` -> storage) | the titles round |
-| `reports/emphasis-marks.csv` | 30 | every wrapping emphasis mark in the corpus (8 over 8 rows: 6 notes, 2 ingredient headings, 0 step headings, 0 steps) plus the 19 unpaired asterisks that are footnote markers and not emphasis | the titles round, which has the lockstep pass |
+`note-titles-2026-10-05.csv` holds 27 notes that open with a short label, with the parked rule's
+verdict and reason beside Andy's DECISION and his REASON. `emphasis-marks-2026-10-05.csv` holds all
+30 wrapping emphasis marks the corpus survey found, 7 notes and 2 ingredient headings that need a
+rule decision, 13 inline marks Andy kept, 7 that live only in the retired `recipes.notes` copy, and
+one split footnote flagged for later.
 
-⚠️ **THE EMPHASIS MARKS ARE TITLES IN MARKDOWN CLOTHING, which is what decides the rule.** All six
-note cases are a bold or italic line of their own followed by the body, and there is not one
-in-sentence emphasis in the 300. So the proposal is to STRIP rather than render italic, and to have
-the importer flag rather than strip wherever a mark is not a title line. Nothing is applied yet.
+⚠️ **THE EMPHASIS MARKS ARE TITLES IN MARKDOWN CLOTHING, which is what decides the rule.** Every
+note case is a bold or italic line of its own, and there is not one in-sentence emphasis among the
+300 recipes. So the rule STRIPS the marks and reads the line as a title, rather than rendering it
+italic, and the importer flags a mark that is not a title line instead of stripping it.
 
-⚠️ **A survey becomes a decision the moment a pass reads it.** Commit it in the same change that
-makes the pass read it, or the next clone cannot run the pass.
+⚠️ **A survey becomes a decision the moment a pass reads it.** The pass reads the DECISION column
+and refuses a blank or unparseable value, so a clone that cannot open these two files cannot run it.
