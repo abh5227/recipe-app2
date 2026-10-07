@@ -676,10 +676,21 @@ to a copy of the 300-recipe corpus. The numbers below are measured, not estimate
   rather than from new fields a person has to fill in.
 - **Totals.** ✅ A computed total that is a range or open-ended shows the **shortest time and a plus**
   (butter chicken `3 hr 35 min+`, miso tofu `40 min+`, brioche `10 hr 30 min+`). The Plan ahead line
-  keeps full ranges, and a publisher's stated total is never rewritten. Migration 058 adds
-  `recipes.total_includes_waits`, three states on one nullable column, for the recipe whose stated
-  total already covers its waiting. A shared fixture (`tests/fixtures/total-cases.json`) keeps the
-  client and the server reading the same cases.
+  keeps full ranges, and a publisher's stated total is **never rewritten except where it is
+  arithmetically impossible**. `planahead.stated_total_verdict` is that one exception and the whole
+  of it: a stated total shorter than the waits that always apply cannot contain them, so the page
+  adds them, labels the Total "(incl. plan ahead)" like any computed one, and keeps the author's own
+  figure on a lighter line below ("Author's total: 1 hr, before the waits"). A total long enough to
+  hold the waits **might** have counted them and nothing on the page can tell, so that case is left
+  alone and listed in `reports/total-vs-waits.csv` for a person. Measured over the 300: **1 excludes
+  (earl-grey-tea-cake), 1 includes (no-knead-bread), 2 settled by hand, and 296 with no question.**
+  Migration 058 adds `recipes.total_includes_waits`, three states on one nullable column, and it is
+  where a person's answer to exactly that question is recorded. Two rulings exist: miso-tofu-recipe
+  carries 0 (the author did not count the 15 to 20 min marinade, so the page adds it) and
+  all-butter-pie-crust carries 1 (15 min hands-on plus a 1 hr chill IS the stated 1 hr 15 min). The
+  second was flagged by the rule and could not be settled by it, the recipe having no cook time to
+  put an upper bound on. A shared fixture (`tests/fixtures/total-cases.json`) keeps the client and
+  the server reading the same cases.
 - **Step headings are a section or a subheading.** ✅ Migration 059 adds `heading_level`. A **section**
   takes the ingredient column's label treatment and the two columns read one size token. A
   **subheading** is a label lifted off one step, bold and smaller. 243 headings today, **137 sections

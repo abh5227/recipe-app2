@@ -9,8 +9,9 @@ ANSWERS AND NOT TWO. A stated total long enough to hold the waits may or may not
 them, and nothing on the page can tell. The author's figure stands there and the recipe goes on a
 list for a person. A rule that guessed would silently rewrite a figure the author got right.
 
-Measured over live's 300, read only: 1 excludes, 1 unclear, 1 includes, 1 already decided by
-recipes.total_includes_waits, and 296 with no question to answer.
+Measured over live's 300, read only, after Andy's ruling on all-butter-pie-crust: 1 excludes,
+0 unclear, 1 includes, 2 decided by recipes.total_includes_waits, and 296 with no stated total or
+no waits that always apply. The survey finds nothing to review and writes no list.
 """
 import pathlib
 import sys
@@ -208,3 +209,49 @@ def test_the_survey_writes_nothing_to_the_recipe_data(tmp_path):
     assert [tuple(r) for r in con.execute("SELECT * FROM recipes")] == before
     con.close()
 
+
+# ---- the two recorded decisions ----------------------------------------------------------------
+
+def test_the_recorded_rulings_are_the_two_a_person_actually_made():
+    """⚠️ A RULING IS DATA, AND scripts/add_missed_waits.py IS THE ONE PLACE IT LIVES.
+
+    Pinned so a third entry has to be deliberate. Each of these is a recipe a RULE put on a review
+    list and a person then answered, which is the only shape a one-off row write takes here. A
+    ruling invented to make a page look right would be a hand edit wearing a dict's clothes.
+    """
+    sys.path.insert(0, str(BASE / "scripts"))
+    import add_missed_waits
+    assert add_missed_waits.TOTAL_RULINGS == {"miso-tofu-recipe": 0, "all-butter-pie-crust": 1}
+
+
+@pytest.mark.parametrize("ruling,total,prep,cook,wait,expect_total,expect_note", [
+    # miso-tofu's shape: the author did not count the wait, so the page adds it.
+    # "+" because _w leaves the wait open-ended, which is what live's miso-tofu shows: "40 min+".
+    (0, "25 min", "15 min", "10 min", 15, "40 min+", planahead.INCLUDES_WAITS_NOTE),
+    # all-butter-pie-crust's shape: the author DID count it, so the page leaves the figure alone.
+    # ⚠️ cook is None, which is why the rule could not settle this one for itself. It has no
+    #    prep + cook + waits upper bound to compare 1 hr 15 min against, so it said "unclear"
+    #    rather than guessing, and Andy read the recipe and answered it.
+    (1, "1 hr 15 min", "15 min", None, 60, "1 hr 15 min", None),
+])
+def test_a_ruling_ends_the_question_in_the_direction_it_states(
+        ruling, total, prep, cook, wait, expect_total, expect_note):
+    recipe = _r(total_time=total, prep_time=prep, cook_time=cook, total_includes_waits=ruling)
+    waits = [_w(wait)]
+    assert planahead.stated_total_verdict(recipe, waits)[0] == planahead.STATED_NO_QUESTION
+    assert planahead.recipe_total(recipe, waits) == (expect_total, expect_note)
+    assert planahead.author_total_note(recipe, waits) is None
+
+
+def test_the_pie_crusts_ruling_changes_no_figure_and_only_ends_the_question():
+    """⚠️ THE WHOLE POINT OF THAT ONE. The Total reads the same either way, so the go-live writes a
+    cell that moves no pixel. What it buys is that the recipe stops being asked about on every
+    survey. A reviewer who checks only the rendered page would see nothing and conclude the write
+    was pointless, so the difference is stated here instead."""
+    shape = dict(total_time="1 hr 15 min", prep_time="15 min", cook_time=None)
+    waits = [_w(60)]
+    undecided = _r(**shape)
+    decided = _r(**shape, total_includes_waits=1)
+    assert planahead.recipe_total(undecided, waits) == planahead.recipe_total(decided, waits)
+    assert planahead.stated_total_verdict(undecided, waits)[0] == planahead.STATED_UNCLEAR
+    assert planahead.stated_total_verdict(decided, waits)[0] == planahead.STATED_NO_QUESTION

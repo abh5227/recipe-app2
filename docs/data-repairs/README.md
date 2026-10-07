@@ -16,8 +16,8 @@ gate BEFORE it commits so an abort leaves the recipe as it found it.
     migrate.py --db <path>                      056 to 059, additive, before anything reads them
     scripts/apply_plan_ahead_proposals.py       the v3 waits and storage rows
     scripts/add_missed_waits.py                 the waits a step stated and the import missed,
-                                                the ext and alongside step links, and the one
-                                                total_includes_waits ruling
+                                                the ext and alongside step links, and the two
+                                                total_includes_waits rulings
     scripts/convert_step_headings.py            steps become headings, lead-in labels are lifted,
                                                 Note and Tip steps move to the recipe's notes
     scripts/apply_label_rules.py                the rules Andy's click-through produced, over the

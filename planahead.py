@@ -296,9 +296,15 @@ def stated_total_verdict(recipe, waits):
     is the unclear answer, never the settled one, which is the direction every other guard here
     fails in.
 
-    Measured over live's 300, read only: 1 excludes (earl-grey-tea-cake), 2 unclear
-    (miso-tofu-recipe and all-butter-pie-crust), 1 includes (no-knead-bread), and 296 with no
-    question to answer.
+    Measured over live's 300, read only, 2026-10-07: 1 excludes (earl-grey-tea-cake), 0 unclear,
+    1 includes (no-knead-bread), 298 no question. Two of that 298 are the recipes a person
+    ANSWERED, which is the state the two paragraphs above are written to produce: miso-tofu-recipe
+    carries a 0 and all-butter-pie-crust a 1. Both would read "unclear" with their rulings removed,
+    and both are named there because the question they were asked is the one this function asks.
+
+    ⚠️ AN EARLIER VERSION OF THIS LINE COUNTED THEM AS UNCLEAR, which this function has never
+    returned for either. The ruling is read before the arithmetic and ends the question, so a
+    docstring reporting the pre-ruling verdict was describing a call nobody makes.
     """
     get = (lambda k: recipe.get(k)) if isinstance(recipe, dict) else (
         lambda k: getattr(recipe, k, None))

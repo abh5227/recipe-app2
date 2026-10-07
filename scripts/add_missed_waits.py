@@ -64,11 +64,23 @@ EXT_LINKS = {
     "brioche-bread": 1874,    # "If you want to skip the overnight proof..."
 }
 
-# ⚠️ THE ONE RECIPE WHOSE TOTAL NEEDS A RULING. miso-tofu states a 25 min total and marinates for a
-#    further 15 to 20, so the total EXCLUDES the wait and the waits are added to it. The other nine
-#    recipes flagged as unclear want exactly what the rule already does, so they stay NULL.
+# ⚠️ THE TWO RECIPES WHOSE TOTAL NEEDS A RULING, AND THIS IS THE ONE PLACE A RULING LIVES. Each is a
+#    recipe a rule put on a review list and a person then answered, which is the only shape a
+#    one-off row write takes here. miso-tofu states a 25 min total and marinates for a further 15 to
+#    20, so the total EXCLUDES the wait and the waits are added to it. The other nine recipes flagged
+#    as unclear want exactly what the rule already does, so they stay NULL.
+#    all-butter-pie-crust was flagged by planahead.stated_total_verdict on 2026-10-07, which could
+#    not settle it: the recipe states 1 hr 15 min with a 1 hr chill and NO cook time, so the rule has
+#    no upper bound to compare against and says "unclear" rather than guessing. Andy read the recipe
+#    and answered it. 15 min hands-on plus the 1 hr chill is the stated 1 hr 15 min, so the author
+#    counted the wait. The crust alone is never baked, which is why cook_time is empty and why the
+#    arithmetic the rule wanted was unavailable to it.
+#    ⚠️ A 1 CHANGES NO FIGURE ON THE PAGE HERE, and that is the point. recipe_total already shows a
+#    stated total unchanged, so the Total stays "1 hr 15 min" either way. What the ruling does is end
+#    the question, so the recipe leaves reports/total-vs-waits.csv instead of being asked again every
+#    time the survey runs.
 #    total_includes_waits is not in SNAPSHOT_RECIPE_FIELDS, so this needs no baseline patch.
-TOTAL_RULINGS = {"miso-tofu-recipe": 0}
+TOTAL_RULINGS = {"miso-tofu-recipe": 0, "all-butter-pie-crust": 1}
 
 
 def _patch_baseline_waits(stored, waits):
