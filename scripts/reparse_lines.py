@@ -51,7 +51,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))   # for corpus_
 from corpus_guard import refuse_live, report_target               # noqa: E402
 
 import resplit                                   # noqa: E402  THE shared re-split path
-from snapshot_serialize import content_blob      # noqa: E402
+from snapshot_serialize import rewrite_baseline  # noqa: E402
 
 CSV_OUT = REPO / "previews" / "reparse2-dryrun.csv"
 HAND = REPO / "hand_repoints.csv"
@@ -146,7 +146,7 @@ def apply_catchup(conn, plan):
             at[pos].update(cols)
             n += 1
         conn.execute("UPDATE recipe_snapshots SET content = ? WHERE id = ?",
-                     (content_blob(doc["recipe"], doc["ingredients"], doc["steps"]), snap_id))
+                     (rewrite_baseline(doc, ingredients=doc["ingredients"]), snap_id))
     return n
 
 

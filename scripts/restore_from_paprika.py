@@ -60,7 +60,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))            # for corpus
 from corpus_guard import refuse_live, report_target               # noqa: E402
 
 import paprika_native_reader as pr                    # noqa: E402
-from snapshot_serialize import content_blob           # noqa: E402  THE snapshot format, single-sourced
+from snapshot_serialize import rewrite_baseline      # noqa: E402  THE snapshot format, single-sourced
 
 ARCHIVE = REPO / "My Recipes.paprikarecipes"
 CSV_DIR = REPO / "docs" / "data-repairs"
@@ -278,7 +278,7 @@ def apply_plans(conn, live_plan, snap_plan):
                 x["label"], x["raw_text"] = p["new_label"], p["new_raw"]
             # re-serialized through THE format module, so an untouched field cannot drift
             conn.execute("UPDATE recipe_snapshots SET content = ? WHERE id = ?",
-                         (content_blob(doc["recipe"], doc["ingredients"], doc["steps"]), snap_id))
+                         (rewrite_baseline(doc, ingredients=doc["ingredients"]), snap_id))
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")

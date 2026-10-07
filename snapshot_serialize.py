@@ -180,6 +180,35 @@ SNAPSHOT_STORAGE_FIELDS = (
     "id", "position", "where_kept", "applies_to", "label", "min_minutes", "max_minutes",
 )
 
+def rewrite_baseline(old, recipe=None, ingredients=None, steps=None):
+    """Re-serialize a STORED baseline, carrying every key the caller did not set.
+
+    ⚠️ content_blob OMITS waits AND storage WHEN THEY ARE FALSY, AND THAT MAKES ITS THREE-ARGUMENT
+    FORM A DELETE. A pass that loads a baseline, edits an ingredient row in place and re-serializes
+    with three arguments drops both keys from a baseline that had them. Measured on the round-3
+    preview copy: one save on morning-buns left its baseline with no waits key, and all six of that
+    recipe's waits then reported as "added" under "your changes" for good. That is a machine repair
+    minting a mark, which is the one thing LOCKSTEP exists to prevent.
+
+    It was found and fixed once, in snapshot_headsync, and three other callers had the identical
+    line: scripts/reparse_lines.apply_catchup, resplit.write_lockstep and
+    scripts/restore_from_paprika. Measured on live, read-only: 85 of the 300 reason='original'
+    baselines carry a waits key and 28 carry storage, and panang-curry, which is named in
+    relink_pass.NAMED_REPAIRS, is one of the 85.
+
+    So the rewrite is stated as "change these, keep the rest" rather than as a fresh serialization.
+    A key added to the format tomorrow is carried by default, which is the rule copy_recipe follows
+    for the same reason. tests/test_baseline_rewrite.py states it over the folder.
+    """
+    return content_blob(
+        old.get("recipe") or {} if recipe is None else recipe,
+        old.get("ingredients") or [] if ingredients is None else ingredients,
+        old.get("steps") or [] if steps is None else steps,
+        old.get("waits") or None,
+        old.get("storage") or None,
+    )
+
+
 def content_blob(recipe, ingredients, steps, waits=None, storage=None):
     """The stable JSON snapshot of a recipe's content. `recipe` is one row-like; the rest are lists of
     row-likes (steps carry 'text'). Projects the content fields, sorts keys, compact + ascii-safe

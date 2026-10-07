@@ -34,7 +34,7 @@ paren the old save already stripped out would come back empty). Never lose infor
 import json
 
 import import_cleanup as ic
-from snapshot_serialize import content_blob
+from snapshot_serialize import rewrite_baseline
 
 SPLIT_COLUMNS = ("qty", "quantity", "unit", "label")
 # what plan_row may propose. `note` is not re-derived from the line, it is only ever cleared.
@@ -150,7 +150,7 @@ def write_lockstep(conn, recipe_id, changes, hints=None):
         n_base += 1
     if n_base:
         conn.execute("UPDATE recipe_snapshots SET content = ? WHERE id = ?",
-                     (content_blob(doc["recipe"], doc["ingredients"], doc["steps"]), snap_id))
+                     (rewrite_baseline(doc, ingredients=doc["ingredients"]), snap_id))
     return n_live, n_base
 
 
