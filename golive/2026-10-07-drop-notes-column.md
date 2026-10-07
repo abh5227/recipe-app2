@@ -9,7 +9,7 @@ of the titles round's order and for a stated reason: 063 is DESTRUCTIVE.
 > the column. The old code still declares it on `Recipe`, so it cannot serve one without it. The
 > version that can serve BOTH schemas is the new one, and that is the one that runs in the middle.
 
-Measured both ways on copies, not reasoned out. See section 7.
+Measured both ways on copies, not reasoned out. See section 8a.
 
 ## 0. Before anything
 
@@ -171,19 +171,33 @@ NAME = "baked-cauliflower-with-red-onions-feta-and-dill-firinda-karnabahar-mucve
 root = pathlib.Path(images.IMAGES_DIR)
 orphan, twin = root / NAME, root / "adventist-gumbo.jpg"
 ok = True
-if not list(pathlib.Path("backups").glob(f"orphan-*-{NAME}")):
-    print("REFUSING: no copy of it in backups/"); ok = False
+if not orphan.is_file():
+    print(f"REFUSING: {NAME} is not there to check. If a previous run deleted it, this step is "
+          f"already done and the backup is the thing to verify.")
+    sys.exit(1)
 a, b = (hashlib.sha256(p.read_bytes()).hexdigest() for p in (orphan, twin))
 print(f"orphan {a[:16]}…\ntwin   {b[:16]}…")
 if a != b:
     print("REFUSING: it is no longer byte-identical to adventist-gumbo.jpg, so it is not the "
           "file this round described"); ok = False
+# ⚠️ THE BACKUP IS CHECKED BY ITS BYTES, NOT BY ITS NAME. A glob matches a zero-byte file, which
+#    is what an interrupted cp or a full disk leaves behind, and the whole point of this condition
+#    is that the photo has a way back.
+saved = [q for q in pathlib.Path("backups").glob(f"orphan-*-{NAME}")
+         if hashlib.sha256(q.read_bytes()).hexdigest() == a]
+print(f"backups holding those exact bytes: {[q.name for q in saved] or 'none'}")
+if not saved:
+    print("REFUSING: no copy of it in backups/ with matching bytes"); ok = False
 con = sqlite3.connect(f"file:{corpus_guard.live_db()}?mode=ro", uri=True)
 hits = []
+# ⚠️ recipe_snapshots.content IS IN HERE BECAUSE AN IMAGE FILENAME DEMONSTRABLY LIVES THERE.
+#    Measured over all 59 tables and every text column of live: 0 rows name the orphan, and
+#    adventist-gumbo.jpg is named by cook_photos AND by recipe_snapshots. The condition says "no
+#    row names it", so the check reads every place a row can.
 for t, c in (("recipes", "image"), ("cook_photos", "path"),
-             ("library_sourced_content", "sourced_image")):
-    for (v,) in con.execute(f'SELECT "{c}" FROM "{t}" WHERE "{c}" LIKE ?', ("%" + NAME,)):
-        hits.append(f"{t}.{c} = {v!r}")
+             ("library_sourced_content", "sourced_image"), ("recipe_snapshots", "content")):
+    for (v,) in con.execute(f'SELECT "{c}" FROM "{t}" WHERE "{c}" LIKE ?', ("%" + NAME + "%",)):
+        hits.append(f"{t}.{c} = {str(v)[:80]!r}")
 con.close()
 print(f"references: {hits or 'none'}")
 if hits:
