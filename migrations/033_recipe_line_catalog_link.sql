@@ -35,6 +35,19 @@
 -- rather than picked: measured, 25 lines over 9 names, and all 9 are canonical collisions already
 -- queued for the Phase C merges, so those refusals resolve themselves later.
 -- The Alembic revision mirrors this for Postgres.
+--
+-- ⚠️ ONE TRANSACTION, BECAUSE executescript OPENS NONE. migrate.py applies each file with
+-- sqlite3's executescript, which auto-commits every statement on its own, so an interrupted run
+-- left some of the statements below applied with the filename UNRECORDED, and the retry then died
+-- forever on "duplicate column name". Wrapped 2026-10-08, in the same shape as the seven wrapped
+-- on 2026-10-07 and for the same reason. These six were MISSED by that round: the rule that was
+-- meant to find them split the file on ";" and dropped any fragment beginning with "--", and every
+-- statement in this folder has a comment above it, so the rule counted 0 or 1 statements here and
+-- reported nothing missing. Found by an independent review. See tests/test_migration_atomicity.py,
+-- which now strips the comments before it counts.
+-- Every database past this file is unaffected (migrate.py tracks by filename and never by
+-- checksum), so this protects a FRESH INSTALL, which is the only thing that still runs it.
+BEGIN;
 
 ALTER TABLE recipe_ingredients ADD COLUMN catalog_id      TEXT;   -- library_names.library_id, NOT an FK
 ALTER TABLE recipe_ingredients ADD COLUMN link_confidence TEXT;   -- 'exact' | 'form_strip'
@@ -42,3 +55,5 @@ ALTER TABLE recipe_ingredients ADD COLUMN link_rule       TEXT;   -- what produc
 ALTER TABLE recipe_ingredients ADD COLUMN link_matched    TEXT;   -- the canonical matched, for audit
 
 CREATE INDEX idx_ri_catalog ON recipe_ingredients(catalog_id);
+
+COMMIT;

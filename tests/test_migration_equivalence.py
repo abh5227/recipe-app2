@@ -27,11 +27,16 @@ import sys
 REPO = pathlib.Path(__file__).resolve().parent.parent
 MIGRATIONS = REPO / "migrations"
 
-# the seven wrapped in the safety round, kept by name so the test says what it was written for
+# The thirteen wrapped in the safety round, kept by name so the test says what it was written for.
+# ⚠️ THE SECOND SIX WERE MISSED BY THE FIRST PASS AND FOUND BY REVIEW. The rule that was supposed to
+# list them could not see a statement with a comment above it, which is every statement in this
+# folder. They are the same shape as the first seven, additive and multi-statement.
 WRAPPED_2026_10_07 = [
     "009_recipe_import_uid.sql", "013_ingredient_weight_convert_flag.sql",
     "015_recipe_ingredient_qty_unit.sql", "018_ownership_user_columns.sql",
     "027_cook_photo_position.sql", "031_ingredient_identity.sql", "048_ratings_cluster.sql",
+    "003_add_timestamps.sql", "004_app_authoring.sql", "030_ingredient_provenance.sql",
+    "033_recipe_line_catalog_link.sql", "047_alias_source_slug.sql", "050_wait_when.sql",
 ]
 
 _BUILD = """
@@ -103,7 +108,7 @@ def test_a_fresh_install_is_identical_with_and_without_the_transactions(tmp_path
     stripped = _copy_migrations(bare, strip_transactions=True)
 
     assert set(WRAPPED_2026_10_07) <= set(stripped), (
-        "the seven wrapped in the safety round no longer carry a transaction: "
+        "a migration wrapped in the safety round no longer carries a transaction: "
         f"{sorted(set(WRAPPED_2026_10_07) - set(stripped))}")
 
     a = _dump(_build(plain, tmp_path / "with.db"))
@@ -136,5 +141,12 @@ def test_the_fresh_install_the_comparison_runs_on_is_not_empty(tmp_path):
         con.close()
     assert counts["schema_migrations"] == len(list(MIGRATIONS.glob("*.sql")))
     assert counts["ingredient_weights"] >= 100, counts["ingredient_weights"]
-    assert counts["library_names"] >= 1000, counts["library_names"]
+    # ⚠️ GUARDED, BECAUSE THE FILE IS NOT IN THE REPO. build_db.seed_library_names reads a
+    #    SERVER-SIDE csv that .gitignore excludes, and its own docstring says a fresh clone and CI
+    #    get an EMPTY table. Asserting a thousand rows passes only on the machine that holds the
+    #    410 KB file, and takes CI red on the first push. The other three counts carry the
+    #    anti-vacuity weight on their own and all three are reachable from a bare checkout.
+    import build_db
+    if pathlib.Path(build_db.LIBRARY_NAMES_CSV).exists():
+        assert counts["library_names"] >= 1000, counts["library_names"]
     assert counts["note_kinds"] >= 5, counts["note_kinds"]

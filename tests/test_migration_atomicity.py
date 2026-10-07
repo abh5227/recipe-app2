@@ -198,6 +198,34 @@ def test_a_migration_interrupted_inside_its_transaction_leaves_nothing_behind(
     assert name in recorded, f"{name} did not apply after the interrupted run"
 
 
+def statements_of(sql):
+    """The SQL statements in a migration, with comments removed first.
+
+    ⚠️ COMMENTS WERE EATING THE STATEMENTS THEY SAT ABOVE, AND THAT IS WHY THE RULE SAW NOTHING.
+    The old counter split on ";" and then dropped any fragment starting with "--". Every migration
+    in this folder opens with a `-- NNN_name.sql - ...` header, and house style puts a comment block
+    above each later statement, so the header and the first statement were ONE fragment and the
+    whole fragment was thrown away. Measured over the real folder with the old rule:
+    030_ingredient_provenance.sql counted 0 statements where it has two ADD COLUMNs, and
+    033_recipe_line_catalog_link.sql counted 0 where it has four ADD COLUMNs and a CREATE INDEX.
+    The rule reported "nothing missing" while six unwrapped multi-statement additive migrations sat
+    in the folder, and the next one written in house style would have joined them in silence.
+
+    ⚠️ A `--` INSIDE A STRING IS NOT A COMMENT. Cut at the first `--` with an EVEN number of single
+    quotes before it on that line, so a DEFAULT '--' survives.
+    """
+    out = []
+    for line in sql.splitlines():
+        cut = None
+        for m in re.finditer("--", line):
+            if line[:m.start()].count("'") % 2 == 0:
+                cut = m.start()
+                break
+        out.append(line if cut is None else line[:cut])
+    joined = "\n".join(out)
+    return [x for x in (t.strip() for t in joined.split(";")) if x]
+
+
 # ⚠️ THE EXEMPTION LIST IS EMPTY, AND IT STAYS A SET RATHER THAN BECOMING NOTHING. Seven older
 # additive migrations (009, 013, 015, 018, 027, 031, 048) ran for months with no transaction. Each
 # adds two or more statements under one `executescript`, which auto-commits every one of them, so an
@@ -214,6 +242,8 @@ def test_a_migration_interrupted_inside_its_transaction_leaves_nothing_behind(
 #
 # ⚠️ ANYTHING ADDED HERE NEEDS A REASON NEXT TO IT AND A DECISION BEHIND IT. An empty list means the
 # rule below holds over every migration in the folder with nothing excused.
+# ⚠️ AND THE SENTENCE ABOVE WAS FALSE WHEN IT WAS WRITTEN. The rule could not see a statement with a
+# comment above it, which is every statement in this folder. See statements_of.
 UNWRAPPED_ADDITIVE = set()
 
 
@@ -226,18 +256,19 @@ def test_an_additive_column_migration_carries_its_own_transaction():
     missing = []
     for p in sorted(MIGRATIONS.glob("*.sql")):
         s = p.read_text()
-        if not re.search(r"\bADD\s+COLUMN\b", s, re.I):
+        # ⚠️ `ADD COLUMN` AND `ADD`. SQLite accepts the COLUMN keyword as optional, confirmed in a
+        #    :memory: database, so a file written "ALTER TABLE recipes ADD alpha TEXT;" twice slid
+        #    past a \bADD\s+COLUMN\b gate entirely.
+        if not re.search(r"\bALTER\s+TABLE\b[^;]*?\bADD\b", s, re.I | re.S):
             continue
+        body = statements_of(s)
         # one bare ALTER and nothing else is atomic by itself, which is what SQLite guarantees
-        statements = [x for x in (t.strip() for t in s.split(";"))
-                      if x and not x.startswith("--")]
-        body = [x for x in statements
-                if not re.match(r"^(BEGIN|COMMIT|PRAGMA)\b", x, re.I)
-                and not x.lstrip().startswith("--")]
         if len(body) <= 1:
             continue
-        if not (re.search(r"^\s*BEGIN\s*;", s, re.I | re.M)
-                and re.search(r"^\s*COMMIT\s*;", s, re.I | re.M)):
+        # ⚠️ THE COMMIT HAS TO BE LAST, NOT MERELY PRESENT. A file reading BEGIN; … COMMIT; then two
+        #    more statements satisfies "has a BEGIN and has a COMMIT" while auto-committing the
+        #    tail, which is the whole defect wearing the fix as a disguise.
+        if not (re.match(r"^BEGIN\b", body[0], re.I) and re.match(r"^COMMIT\b", body[-1], re.I)):
             missing.append(p.name)
     assert set(missing) <= UNWRAPPED_ADDITIVE, (
         "a migration with more than one statement auto-commits each of them under executescript, "
