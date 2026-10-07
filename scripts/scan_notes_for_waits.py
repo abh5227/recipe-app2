@@ -86,27 +86,29 @@ def _covered(cand_kind, lo, waits):
 def run(db, record=False):
     import app
     import models
-    import notes as notes_rules
     import planahead
     import sqlalchemy
     app.DB = models.DB = pathlib.Path(db)
 
     rows = []
     with app.orm_session() as s:
-        recipes = s.execute(sqlalchemy.text(
-            "SELECT id, notes FROM recipes WHERE notes IS NOT NULL AND notes != '' ORDER BY id")).all()
-        for rid, text in recipes:
+        # ⚠️ DRIVEN BY THE ROWS, BECAUSE THE COLUMN IS GONE. This read
+        #    "SELECT id, notes FROM recipes WHERE notes IS NOT NULL", which migration 063 turned
+        #    into `no such column: notes`, and that query is the whole loop: the script was dead
+        #    rather than degraded. A recipe's notes are recipe_notes rows now, so the rows are what
+        #    says which recipes have any.
+        recipes = [r[0] for r in s.execute(sqlalchemy.text(
+            "SELECT DISTINCT recipe_id FROM recipe_notes ORDER BY recipe_id")).all()]
+        for rid in recipes:
             waits = [dict(w) for w in s.execute(sqlalchemy.text(
                 "SELECT kind, min_minutes, max_minutes FROM recipe_waits WHERE recipe_id=:r"),
                 {"r": rid}).mappings()]
-            # ⚠️ ROWS OR COLUMN, DECIDED PER RECIPE. This read one COUNT over the whole table and
-            #    applied the answer to all 300, so once any recipe had rows every recipe was read
-            #    from rows, and a recipe whose notes are still only in the column was counted as
-            #    having notes and scanned as empty. That is the state every imported recipe was in.
-            rows_here = [r[0] for r in s.execute(sqlalchemy.text(
+            # ⚠️ THE FALLBACK TO notes_rules.paragraphs(column) IS GONE WITH THE COLUMN. It
+            #    existed for recipes whose notes had not been moved to rows yet, and after the
+            #    corpus move and migration 063 there are none: a recipe with no rows has no notes.
+            paras = [r[0] for r in s.execute(sqlalchemy.text(
                 "SELECT text FROM recipe_notes WHERE recipe_id=:r ORDER BY position"),
                 {"r": rid}).all()]
-            paras = rows_here if rows_here else notes_rules.paragraphs(text)
             for i, para in enumerate(paras):
                 for m in DURATION.finditer(para):
                     lo, hi = planahead.read_duration(m.group(0))

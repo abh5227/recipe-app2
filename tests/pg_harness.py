@@ -134,7 +134,14 @@ def seed_all(conn):
             id=r["id"], name=r["name"], author=r.get("author"), source_url=r.get("source_url"),
             category=r.get("category"), servings=r.get("servings"), prep_time=r.get("prep_time"),
             cook_time=r.get("cook_time"), total_time=r.get("total_time"), descr=r.get("descr"),
-            notes=r.get("notes"), image=r.get("image"), uid=r.get("uid"), created_at=now, source="seed"))
+            # ⚠️ NO notes= HERE. Migration 063 dropped recipes.notes, so Recipe.__table__ no longer
+            #    carries the column and insert().values(notes=…) fails at COMPILE time with
+            #    "Unconsumed column names: notes", before any SQL is sent. That took out every test
+            #    using the pg fixture, and this file is skipped on a run without $DATABASE_URL, so
+            #    the whole Postgres leg of CI would have gone red on a suite that is green locally.
+            #    The SQLite harness seeds no notes either (build_db never wrote the column), so the
+            #    two fixtures still agree. TEST_RECIPES keeps its two notes strings as fixture data.
+            image=r.get("image"), uid=r.get("uid"), created_at=now, source="seed"))
         _insert_lines_and_steps(conn, r)
     _seed_weights(conn)
 

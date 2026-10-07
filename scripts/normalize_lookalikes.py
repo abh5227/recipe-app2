@@ -50,7 +50,11 @@ _TEXT_COLUMNS = {
     "recipe_storage": ("storage", ("label", "applies_to")),
     "recipe_notes": (None, ("text",)),           # a note is a playground: not in the baseline
 }
-RECIPE_COLUMNS = ("name", "author", "descr", "notes")
+# ⚠️ notes IS NOT HERE, AND recipe_notes.text ABOVE IS WHY. Migration 063 dropped recipes.notes,
+#    so naming it here is `no such column: notes` and the whole pass dies on its first recipe. The
+#    note TEXT is not lost from the sweep: _TEXT_COLUMNS scans recipe_notes.text, which is where a
+#    note lives now.
+RECIPE_COLUMNS = ("name", "author", "descr")
 
 
 def _surfaces():

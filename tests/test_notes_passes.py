@@ -283,22 +283,35 @@ def test_a_decision_that_no_longer_matches_stops_the_pass(tmp_path, monkeypatch)
 
 # ---- scan_notes_for_waits ----------------------------------------------------------------------
 
-def test_the_survey_reads_the_column_for_a_recipe_that_has_no_rows_yet(tmp_path):
-    """⚠️ DECIDED PER RECIPE, NOT ONCE FOR THE CORPUS. It read one COUNT over recipe_notes and
-    applied the answer to all 300, so the moment any recipe had rows a recipe whose notes are still
-    only in the column was scanned as empty. That is the state every imported recipe is in."""
+def test_the_survey_reads_the_note_rows_and_is_driven_by_them(tmp_path):
+    """⚠️ RETIRED AND REPLACED. This used to be
+    test_the_survey_reads_the_column_for_a_recipe_that_has_no_rows_yet, and it pinned a rule that no
+    longer has anything to decide: the survey chose between the note ROWS and the recipes.notes
+    COLUMN per recipe, because an imported recipe could have notes in the column and no rows yet.
+    Migration 063 dropped that column, so "a recipe whose notes are only in the column" is a state
+    that cannot exist.
+
+    ⚠️ AND THE SCRIPT WAS DEAD, NOT MERELY DEGRADED, WHICH IS WHY THIS TEST IS NOT SIMPLY DELETED.
+    Its driving query was "SELECT id, notes FROM recipes WHERE notes IS NOT NULL", which after 063
+    is `no such column: notes`, so every run of the survey raised on its first statement. Found by
+    an independent review of the 2026-10-07 round, not by this file, because this file re-created
+    the column by hand for the archived pass beside it. The survey reads recipe_notes now, and what
+    is worth pinning is that it finds a recipe through its rows."""
     notes_to_rows = _archived("notes_to_rows")
     import scan_notes_for_waits
 
     db = _kitchen(tmp_path)
-    notes_to_rows.run(str(db), apply=True)          # 'beans' now has rows
-    with sqlite3.connect(db) as c:                   # a second recipe with notes in the column only
-        c.execute("INSERT INTO recipes (id, name, source, notes) VALUES "
-                  "('late', 'Late', 'app', 'Soak the chickpeas overnight, at least 10 hours.')")
+    notes_to_rows.run(str(db), apply=True)          # 'beans' now has note ROWS
+    with sqlite3.connect(db) as c:
+        c.execute("INSERT INTO recipes (id, name, source) VALUES ('late', 'Late', 'app')")
+        c.execute("INSERT INTO recipes (id, name, source) VALUES ('quiet', 'Quiet', 'app')")
+        c.execute("INSERT INTO recipe_notes (recipe_id, position, kind, text) VALUES "
+                  "('late', 0, 'notes', 'Soak the chickpeas overnight, at least 10 hours.')")
 
     rows = scan_notes_for_waits.run(str(db))
-    assert any(r["recipe_id"] == "late" for r in rows), \
-        f"the column-only recipe was skipped: {[r['recipe_id'] for r in rows]}"
+    found = {r["recipe_id"] for r in rows}
+    assert "late" in found, f"a recipe with a note row was skipped: {sorted(found)}"
+    assert "quiet" not in found, "a recipe with no notes at all was scanned"
 
 
 def test_the_survey_writes_nothing_to_the_recipe_data(tmp_path):
