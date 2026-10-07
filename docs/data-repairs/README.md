@@ -159,6 +159,7 @@ surveys below are cited nowhere and stay untracked, which is what the category i
 | `step-leadin-labels-2026-09-30.csv` | 56 | colon lead-in labels approved for lifting | `convert_step_headings.py`, `apply_label_rules.py` | yes |
 | `step-dash-labels-2026-09-30.csv` | 60 | dash lead-in labels approved for lifting | both, same code path | yes |
 | `round-a-fix-decisions-2026-10-01.csv` | 4 | the cases a rule could not decide, one row each | `apply_label_rules.py` | yes |
+| `safety-and-time-block-2026-10-07.md` | - | the record of the 2026-10-07 go-live: the safety round, the time block, migration 063 and the one ruling | nothing reads it | yes |
 | `waits-missed-multi-duration-2026-09-30.csv` | 265 | the survey the missed-waits table was read off | named in `add_missed_waits.py`, whose table is written out in the file | yes |
 | `baseline-row-ids-2026-09-29.csv` | 178 | the baselines that gained step row ids | `backfill_baseline_row_ids.py` | yes |
 | `import-flags-archived-2026-09-30.csv` | 562 | the import review queue as archived | `archive_import_flags.py` | yes |
