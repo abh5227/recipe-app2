@@ -22,6 +22,7 @@ BASE = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(BASE))
 
 import planahead                                                               # noqa: E402
+from sqlalchemy import text as _sa_text                                        # noqa: E402
 
 
 def _w(minutes, **kw):
@@ -68,12 +69,70 @@ def test_the_author_s_line_appears_in_no_other_case():
         assert planahead.author_total_note(recipe, waits) is None, (recipe, waits)
 
 
-def test_an_open_ended_stated_total_keeps_its_open_end():
-    """⚠️ A TRAILING "+" IS THE OPEN END AND clock_minutes CANNOT SEE IT, which is the rule the
-    second Total already follows. Reading the label back has to preserve it or the new figure
-    states a ceiling the recipe never had."""
-    label, note = planahead.recipe_total(_r(total_time="1 hr+"), [_w(90)])
-    assert label == "2 hr 30 min+" and note == planahead.INCLUDES_WAITS_NOTE
+def test_clock_minutes_reads_an_open_end_as_a_ceiling_and_stated_minutes_does_not():
+    """⚠️ THE PARSE THE WHOLE RULE RESTS ON, AND THE DEFECT IT HID.
+
+    normalize_time rewrites a trailing "+" into " (+)", so clock_minutes answers "1 hr+" with
+    (60, 60) and the one shape that says "at least" comes back claiming "exactly". A rule that
+    overrules an author on the strength of an upper bound cannot be handed a made-up one.
+
+    The first version read the "+" off the ALREADY NORMALIZED text, where it is no longer a "+",
+    so the test was False for every form there is and the branch behind it never ran. This asserts
+    the two answers differ, which is the thing a reader would otherwise have to rediscover.
+    """
+    assert planahead.clock_minutes(planahead.normalize_time("1 hr+")) == (60, 60)
+    assert planahead.stated_minutes("1 hr+") == (60, None)
+    assert planahead.stated_minutes("1 hr") == (60, 60)
+    assert planahead.stated_minutes("1 to 2 hr") == (60, 120)
+    assert planahead.stated_minutes("about an hour") == (None, None)
+    assert planahead.stated_minutes("") == (None, None)
+    assert planahead.stated_minutes(None) == (None, None)
+
+
+def test_an_open_ended_stated_total_is_never_declared_impossible():
+    """⚠️ "AT LEAST 1 HR" CAN HOLD ANYTHING, SO THE ARITHMETIC PROVES NOTHING. The page may
+    overrule an author only where the total CANNOT contain the waits, and an open end has no
+    ceiling to be below them. So this is the middle case: the author's figure stands and the recipe
+    goes on the list for a person.
+
+    This used to read EXCLUDES and print "2 hr 30 min+", a figure built by adding waits to a total
+    that may already have counted them.
+    """
+    recipe, waits = _r(total_time="1 hr+"), [_w(90, max_minutes=90)]
+    assert planahead.stated_total_verdict(recipe, waits)[0] == planahead.STATED_UNCLEAR
+    assert planahead.recipe_total(recipe, waits) == ("1 hr", "+")
+    assert planahead.author_total_note(recipe, waits) is None
+
+
+def test_a_range_is_judged_by_its_own_upper_end():
+    """⚠️ THE SAME DEFECT IN THE SHAPE NOBODY LOOKED AT. The rule read the FLOOR of the stated
+    total, so "1 to 2 hr" was declared unable to hold 2 hr of waits, which its own upper end holds
+    exactly. A range only becomes impossible when the top of it is still short."""
+    can_hold = _r(total_time="1 to 2 hr")
+    assert planahead.stated_total_verdict(can_hold, [_w(120, max_minutes=120)])[0] \
+        == planahead.STATED_UNCLEAR
+    cannot = _r(total_time="1 to 2 hr")
+    assert planahead.stated_total_verdict(cannot, [_w(150, max_minutes=150)])[0] \
+        == planahead.STATED_EXCLUDES
+    # Both ends carried through: 60 + 150 to 120 + 150, printed as the floor and a "+".
+    assert planahead.recipe_total(cannot, [_w(150, max_minutes=150)]) \
+        == ("3 hr 30 min+", planahead.INCLUDES_WAITS_NOTE)
+
+
+def test_a_closed_total_and_a_closed_wait_add_up_to_a_closed_figure():
+    """⚠️ THE ANTI-VACUITY CASE, AND THE REASON IT IS WRITTEN THIS WAY. The test that used to sit
+    here asserted a "+" while passing a wait whose max_minutes was None, so the "+" came from the
+    WAIT's open end and the assertion held with the stated total's handling deleted outright.
+    Measured: both lines of it removed, test still green.
+
+    Every end here is closed, so a "+" could only come from the stated total, and there must not be
+    one. The open-ended wait is the line below, where the "+" can only come from the wait.
+    """
+    recipe = _r(total_time="1 hr")
+    assert planahead.recipe_total(recipe, [_w(90, max_minutes=90)]) \
+        == ("2 hr 30 min", planahead.INCLUDES_WAITS_NOTE)
+    assert planahead.recipe_total(recipe, [_w(90)]) \
+        == ("2 hr 30 min+", planahead.INCLUDES_WAITS_NOTE)
 
 
 def test_only_the_waits_that_always_apply_are_added():
@@ -255,3 +314,67 @@ def test_the_pie_crusts_ruling_changes_no_figure_and_only_ends_the_question():
     assert planahead.recipe_total(undecided, waits) == planahead.recipe_total(decided, waits)
     assert planahead.stated_total_verdict(undecided, waits)[0] == planahead.STATED_UNCLEAR
     assert planahead.stated_total_verdict(decided, waits)[0] == planahead.STATED_NO_QUESTION
+
+
+# ---- the key the client reads --------------------------------------------------------------------
+
+def test_the_payload_key_and_the_client_that_reads_it_are_the_same_string():
+    """⚠️ NOTHING ELSE TIES THESE TWO TOGETHER. app.py emits "author_total" and static/app.js reads
+    `(view.data || {}).author_total`. The Python tests exercise author_total_note directly and the
+    JS tests render from a hand-written `author_total:` in their own harness, so renaming the key on
+    either side leaves BOTH suites green while the author's figure silently stops printing.
+
+    Same shape as tests/js/factor-sync.test.js, which exists because scaler.js mirrors weights.py
+    and nothing but a comparison keeps them agreeing.
+    """
+    key = "author_total"
+    server = (BASE / "app.py").read_text()
+    client = (BASE / "static" / "app.js").read_text()
+    harness = (BASE / "tests" / "js" / "time-block-harness.js").read_text()
+    assert f'"{key}": planahead.author_total_note' in server, \
+        f"app.py no longer emits {key!r} from planahead.author_total_note"
+    assert f".{key}" in client, f"static/app.js no longer reads {key!r}"
+    assert key in harness, f"the JS harness no longer feeds {key!r}, so its tests prove nothing"
+
+
+def test_the_route_actually_sends_the_authors_figure(kitchen):
+    """And the end to end half, because the pin above only compares strings.
+
+    A recipe stating 1 hr with a 1 hr 30 min rest that always applies is earl-grey-tea-cake's
+    shape, which is the one recipe of the 300 this rule changes.
+    """
+    import json as _json
+    rid = "stated-short"
+    with kitchen.session() as s:
+        s.execute(_sa_text(
+            "INSERT INTO recipes (id, name, source, total_time) VALUES (:i,:n,'app','1 hr')"),
+            {"i": rid, "n": "Stated Short"})
+        s.execute(_sa_text(
+            "INSERT INTO recipe_waits (recipe_id, position, kind, label, min_minutes, max_minutes,"
+            " when_kind) VALUES (:i, 0, 'resting', '1 hr 30 min', 90, NULL, 'always')"), {"i": rid})
+        s.commit()
+
+    r = kitchen.client.get(f"/api/recipes/{rid}")
+    assert r.status_code == 200, r.data[:400]
+    body = _json.loads(r.data)
+    assert body["author_total"] == "Author's total: 1 hr, before the waits", body.get("author_total")
+    assert body["total"] == {"label": "2 hr 30 min+", "note": planahead.INCLUDES_WAITS_NOTE}, \
+        body.get("total")
+
+
+def test_a_stated_total_that_carries_its_own_note_is_never_declared_impossible():
+    """⚠️ THE AUTHOR ANSWERED IT IN WORDS, SO THE ARITHMETIC DOES NOT GET TO DISAGREE.
+    "35 min (plus 1 hr soaking)" parses to 35 minutes, which is shorter than a 1 hr soak, and the
+    old rule therefore printed "Author's total: 35 min, before the waits" against an author who
+    had just written that the soaking is on top. That is not information dropped, it is a
+    contradiction attributed to them. 0 of live's 14 stated totals carry a parenthetical today.
+    """
+    recipe = _r(total_time="35 min (plus 1 hr soaking)")
+    waits = [_w(60, kind="soaking", max_minutes=60)]
+    assert planahead.stated_total_verdict(recipe, waits)[0] == planahead.STATED_UNCLEAR
+    assert planahead.recipe_total(recipe, waits) == ("35 min", "plus 1 hr soaking")
+    assert planahead.author_total_note(recipe, waits) is None
+    # The bare form of the same figures still reaches the arithmetic, so this is the note doing the
+    # work rather than the parse quietly failing.
+    bare = _r(total_time="35 min")
+    assert planahead.stated_total_verdict(bare, waits)[0] == planahead.STATED_EXCLUDES

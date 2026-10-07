@@ -273,6 +273,32 @@ STATED_INCLUDES = "includes"      # prep + cook + the waits fits inside it
 STATED_NO_QUESTION = "no question"   # no stated total, or no waits that always apply
 
 
+def stated_minutes(stated):
+    """An author's stated total -> (low, high) minutes, with None for an end that is not stated.
+
+    ⚠️ clock_minutes CANNOT SEE AN OPEN END, AND IT READS ONE AS A CEILING. normalize_time rewrites
+    a trailing "+" into " (+)", a parenthetical note, and clock_minutes then answers "1 hr+" with
+    (60, 60). So the one shape that says "at least" comes back claiming "exactly", which is the
+    worst direction for a rule that overrules an author on the strength of an upper bound.
+
+    ⚠️ AND THE "+" IS READ OFF THE RAW TEXT, BEFORE normalize_time TOUCHES IT. The previous attempt
+    did `normalize_time(stated).rstrip("+")` and then tested the result for a trailing "+", which
+    normalize_time has by then turned into "(+)". Measured: the test was False for every "+" form
+    there is, so the branch behind it never ran once. A guard that cannot fire is worse than none,
+    because the test written for it passes.
+
+    One function, because `recipe_total` and `stated_total_verdict` both need this and the parse is
+    precisely the thing that was wrong when it was written twice.
+    """
+    text = (stated or "").strip()
+    if not text:
+        return None, None
+    lo, hi = clock_minutes(normalize_time(text))
+    if lo is None:
+        return None, None
+    return (lo, None) if text.rstrip().endswith("+") else (lo, hi)
+
+
 def stated_total_verdict(recipe, waits):
     """Does the author's stated total already include the waits that always apply?
 
@@ -295,6 +321,15 @@ def stated_total_verdict(recipe, waits):
     with a 1 hr chill and no cook time, so the upper bound cannot be computed at all. Unanswerable
     is the unclear answer, never the settled one, which is the direction every other guard here
     fails in.
+
+    ⚠️ AND SO DO THE TWO SHAPES THAT ARE NOT A BARE NUMBER, for the same reason stated twice.
+      * An OPEN END ("1 hr+") has no ceiling to be below the waits. "At least an hour" holds a
+        90 minute rest perfectly well, so the arithmetic proves nothing.
+      * A total carrying its OWN NOTE ("35 min (plus 1 hr soaking)") has already answered this in
+        words. The figure is not the whole of what the author wrote, and overruling it would print
+        "Author's total: 35 min, before the waits" against an author who said the opposite.
+    Both reached EXCLUDES before, both by reading the FLOOR of the stated total as though it were
+    the whole of it. 0 of live's 14 stated totals are either shape, so no page moved.
 
     Measured over live's 300, read only, 2026-10-07: 1 excludes (earl-grey-tea-cake), 0 unclear,
     1 includes (no-knead-bread), 298 no question. Two of that 298 are the recipes a person
@@ -320,10 +355,29 @@ def stated_total_verdict(recipe, waits):
     #    land in the unclear bucket and be put on a list asking for a decision that exists.
     if get("total_includes_waits") is not None:
         return STATED_NO_QUESTION, None, None
-    slo, _shi = clock_minutes(normalize_time(stated).rstrip("+"))
+    slo, shi = stated_minutes(stated)
     if slo is None:
         return STATED_NO_QUESTION, None, None
-    if slo < alo:
+    # ⚠️ A TOTAL THAT CARRIES ITS OWN NOTE HAS ALREADY ANSWERED THIS, IN WORDS. "35 min (plus 1 hr
+    #    soaking)" parses to 35 minutes, and the figure is not the whole of what the author said.
+    #    Declaring it impossible would print "Author's total: 35 min, before the waits" against an
+    #    author whose own text says the soaking is on top, which is not dropping information, it is
+    #    contradicting them. The arithmetic cannot read the note, so this is the middle case and a
+    #    person reads it. The "(" is tested on the RAW text: normalize_time turns a trailing "+"
+    #    into "(+)", and that case is already the middle one for its own reason.
+    #    Measured over live's 300: 0 of the 14 stated totals carry a parenthetical, so no page moves.
+    if "(" in stated:
+        return STATED_UNCLEAR, slo, alo
+    # ⚠️ THE CEILING ANSWERS THIS, NOT THE FLOOR. The claim being made is that the author's total
+    #    CANNOT contain these waits, and that is only proved when the longest the total could be is
+    #    still shorter than the waits alone. This read the floor, so "1 to 2 hr" with 2 hr of waits
+    #    was declared impossible when the author's own upper end holds it exactly, and "1 hr+" was
+    #    declared impossible when "at least 1 hr" holds anything at all. Both overruled a figure the
+    #    author may have got right, which is the one thing the middle case exists to refuse.
+    #    An open end is shi None, which can never be below alo, so it falls through to "can't tell"
+    #    and the recipe goes on the list for a person. Measured over live's 300: all 14 stated
+    #    totals are a single closed figure, so this changes no page today.
+    if shi is not None and shi < alo:
         return STATED_EXCLUDES, slo, alo
     plo, _phi = clock_minutes(get("prep_time"))
     clo, _chi = clock_minutes(get("cook_time"))
@@ -381,10 +435,12 @@ def recipe_total(recipe, waits):
         #    of it. ruling == 1 says "the author counted the waits" explicitly, and it is read
         #    BEFORE this, so an explicit ruling still wins.
         if stated_total_verdict(recipe, waits)[0] == STATED_EXCLUDES:
-            slo, shi = clock_minutes(normalize_time(stated).rstrip("+"))
-            if normalize_time(stated).rstrip().endswith("+"):
-                shi = None
-            return _range_label(slo + wlo, None if whi is None or shi is None else shi + whi), \
+            # ⚠️ shi CANNOT BE None HERE. A verdict of EXCLUDES needs a stated ceiling below the
+            #    waits, so an open-ended total never reaches this line. The branch that used to
+            #    blank shi for a "+" has gone with it: it never ran, and it was guarding a case
+            #    that is now answered one level up by not being EXCLUDES at all.
+            slo, shi = stated_minutes(stated)
+            return _range_label(slo + wlo, None if whi is None else shi + whi), \
                 INCLUDES_WAITS_NOTE
         # The author's own figure, untouched. ruling == 1 says the same thing explicitly.
         return _stated_parts(stated)

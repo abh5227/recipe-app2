@@ -678,11 +678,13 @@ to a copy of the 300-recipe corpus. The numbers below are measured, not estimate
   (butter chicken `3 hr 35 min+`, miso tofu `40 min+`, brioche `10 hr 30 min+`). The Plan ahead line
   keeps full ranges, and a publisher's stated total is **never rewritten except where it is
   arithmetically impossible**. `planahead.stated_total_verdict` is that one exception and the whole
-  of it: a stated total shorter than the waits that always apply cannot contain them, so the page
-  adds them, labels the Total "(incl. plan ahead)" like any computed one, and keeps the author's own
-  figure on a lighter line below ("Author's total: 1 hr, before the waits"). A total long enough to
-  hold the waits **might** have counted them and nothing on the page can tell, so that case is left
-  alone and listed in `reports/total-vs-waits.csv` for a person. Measured over the 300: **1 excludes
+  of it: a stated total **whose own upper end** is below the waits that always apply cannot contain
+  them, so the page adds them, labels the Total "(incl. plan ahead)" like any computed one, and keeps
+  the author's own figure on a lighter line below ("Author's total: 1 hr, before the waits"). The
+  upper end is the whole of it, which rules three shapes out of the arithmetic: a total long enough
+  to hold the waits **might** have counted them, an open end ("1 hr+") has no ceiling at all, and a
+  total carrying its own note ("35 min (plus 1 hr soaking)") has already answered in words. All
+  three are left alone and listed in `reports/total-vs-waits.csv` for a person. Measured over the 300: **1 excludes
   (earl-grey-tea-cake), 1 includes (no-knead-bread), 2 settled by hand, and 296 with no question.**
   Migration 058 adds `recipes.total_includes_waits`, three states on one nullable column, and it is
   where a person's answer to exactly that question is recorded. Two rulings exist: miso-tofu-recipe
