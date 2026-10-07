@@ -177,6 +177,7 @@ surveys below are cited nowhere and stay untracked, which is what the category i
 | `step-heading-level-1-candidates-2026-09-30.csv` | 15 | survey: lifted labels with 2+ steps and no section above | nothing | no |
 | `note-titles-2026-10-05.csv` | 27 | Andy's DECISION for every note carrying a leading label, one of `title`, `title: <text>`, `no` or `label`, each optionally naming a kind | `apply_note_titles.py` | yes |
 | `emphasis-marks-2026-10-05.csv` | 30 | Andy's DECISION for every wrapping emphasis mark in the corpus, one of `strip`, `keep`, `derived` or `merge-title-into-next`, with a title where the line carries one | `apply_note_titles.py` | yes |
+| `note-titles-2026-10-06.md` | n/a | the record of the titles round as it was RUN on live: migration 062, the 33 writes over 21 recipes, the gate's figures and both rollbacks | nothing. It is a RECORD, not an input: the inputs are the two CSVs above and `golive/rounds/2026-10-06-note-titles.json` | yes, deliberately |
 | `demo-data-2026-07.md` | n/a | the record of the two ad hoc demo-seeding runs of 2026-07-25 and 2026-07-26, what each wrote, what the two removal passes took on 2026-10-05, and the batches that look machine-made and are the owner's own | nothing. It is a RECORD, not an input: the inputs are the two round files in `golive/rounds/` | yes, deliberately |
 
 ## The titles round's two decision files
