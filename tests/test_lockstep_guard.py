@@ -72,7 +72,8 @@ LOCKSTEP_ALLOWED = {}
 # set was invisible in the direction that REMOVES coverage.
 NOT_A_PASS = {"corpus_guard.py", "serve_live.py", "serve_rehearsal.py", "create_admin.py",
               "cold_start_check.py", "gen_note_lead_cases.py", "plan_ahead_short_rests.py",
-              "plan_ahead_proposals_v3.py", "gen_note_corpus.py", "scan_notes_for_waits.py"}
+              "plan_ahead_proposals_v3.py", "gen_note_corpus.py", "scan_notes_for_waits.py",
+              "scan_total_vs_waits.py"}
 PASSES = sorted(p.name for p in (REPO / "scripts").glob("*.py")
                 if p.name not in NOT_A_PASS and "--apply" in p.read_text())
 
@@ -350,7 +351,7 @@ def test_the_pass_list_is_a_real_partition():
     so a pass that spells its write flag --write or --yes, or a move to scripts/passes/, drops out
     of the sweep with no complaint at all."""
     on_disk = {p.name for p in (REPO / "scripts").glob("*.py")}
-    assert len(on_disk) == 27, f"scripts/ changed shape: {len(on_disk)} files"
+    assert len(on_disk) == 28, f"scripts/ changed shape: {len(on_disk)} files"
     missing = NOT_A_PASS - on_disk
     assert not missing, f"NOT_A_PASS names files that are not in scripts/: {sorted(missing)}"
     unclassified = on_disk - set(PASSES) - NOT_A_PASS

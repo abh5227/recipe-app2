@@ -364,6 +364,9 @@ _NO_DRY_RUN = {
                                "it refuses a duplicate email rather than writing twice",
     "scan_notes_for_waits.py": "not a pass. A survey that writes a CSV and never touches recipe "
                                "data, which the test below asserts",
+    "scan_total_vs_waits.py":  "not a pass. A survey that writes a CSV and opens the database "
+                               "mode=ro, so SQLite itself refuses a write. Both are read back "
+                               "below rather than taken on trust",
     "migrate.py":              "not a pass. Applying the pending migrations IS its job, it is "
                                "idempotent by the schema_migrations ledger, and the chain's own "
                                "rehearsal calls it first",
@@ -393,6 +396,10 @@ def test_the_no_dry_run_exemptions_are_still_what_they_say_they_are():
     survey = (REPO / "scripts" / "scan_notes_for_waits.py").read_text(encoding="utf-8")
     for write in ("INSERT INTO", "UPDATE recipe", "DELETE FROM"):
         assert write not in survey, f"the survey script now runs {write}"
+    totals = (REPO / "scripts" / "scan_total_vs_waits.py").read_text(encoding="utf-8")
+    for write in ("INSERT INTO", "UPDATE recipe", "DELETE FROM"):
+        assert write not in totals, f"the totals survey now runs {write}"
+    assert "?mode=ro" in totals, "the totals survey stopped opening the database read-only"
     # ⚠️ THE REHEARSAL SERVER'S REASON IS TWO REFUSALS, so both are read back here rather than
     #    taken on trust. Without them it is a server that can write the owner's photo library and
     #    serve a bundle from a different commit than its own code.

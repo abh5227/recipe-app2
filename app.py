@@ -1963,6 +1963,14 @@ def get_recipe(rid):
             #    wait and one carries two. Computed here for the same reason the Total is, so the
             #    client prints what it is handed.
             "conditional_totals": planahead.conditional_totals(r, waits),
+            # ⚠️ THE AUTHOR'S OWN FIGURE, WHERE THE PAGE HAS OVERRULED IT, AND NULL ON 299 OF 300.
+            #    A total cannot contain waits that alone take longer than it, so earl-grey-tea-cake's
+            #    stated 1 hr against a 1 hr 30 min rest that always applies is the one arithmetic
+            #    impossibility the page may settle on its own. The Total above then says
+            #    "(incl. plan ahead)" like any computed one, and this line keeps the author's number
+            #    on the page so a cook holding the source card finds it. planahead.author_total_note
+            #    is the whole rule. See stated_total_verdict for the two cases it refuses to decide.
+            "author_total": planahead.author_total_note(r, waits),
         }
     )
 

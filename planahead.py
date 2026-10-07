@@ -265,6 +265,85 @@ def clock_minutes(text):
 INCLUDES_WAITS_NOTE = "incl. plan ahead"
 
 
+# The three answers to "does the author's stated total already include the waits that always
+# apply?". Named rather than returned as bare strings, so a caller cannot invent a fourth.
+STATED_EXCLUDES = "excludes"      # the total is SHORTER than those waits, so it cannot contain them
+STATED_UNCLEAR = "unclear"        # long enough to hold them, short enough that it might not
+STATED_INCLUDES = "includes"      # prep + cook + the waits fits inside it
+STATED_NO_QUESTION = "no question"   # no stated total, or no waits that always apply
+
+
+def stated_total_verdict(recipe, waits):
+    """Does the author's stated total already include the waits that always apply?
+
+    -> (verdict, stated_minutes, always_wait_minutes). The minutes are None where there is no
+    question to answer.
+
+    ⚠️ THE ONE THING THE PAGE CAN KNOW FOR CERTAIN IS ARITHMETIC. A total cannot contain waits that
+    alone take longer than it. earl-grey-tea-cake states 1 hr and carries a 1 hr 30 min rest that
+    always applies, so "Total 1 hr" with "Plan ahead 1 hr 30 min+" under it is two figures that
+    cannot both describe the same recipe. That is the ONLY case where the page may add the waits
+    on top of an author's own figure, and it is decided by a comparison rather than by a guess.
+
+    ⚠️ AND THE MIDDLE CASE IS "CAN'T TELL", WHICH IS NOT "INCLUDES". A stated total long enough to
+    hold the waits may or may not have counted them. miso-tofu states 25 min with 15 min of resting
+    and 25 minutes of prep and cook, so either reading fits. Nothing on the page can settle it, so
+    the author's figure stands and the recipe goes on a list for a person to decide. Guessing here
+    would silently rewrite a figure the author got right.
+
+    ⚠️ MISSING prep OR cook LANDS IN THE SAME "CAN'T TELL". all-butter-pie-crust states 1 hr 15 min
+    with a 1 hr chill and no cook time, so the upper bound cannot be computed at all. Unanswerable
+    is the unclear answer, never the settled one, which is the direction every other guard here
+    fails in.
+
+    Measured over live's 300, read only: 1 excludes (earl-grey-tea-cake), 2 unclear
+    (miso-tofu-recipe and all-butter-pie-crust), 1 includes (no-knead-bread), and 296 with no
+    question to answer.
+    """
+    get = (lambda k: recipe.get(k)) if isinstance(recipe, dict) else (
+        lambda k: getattr(recipe, k, None))
+    stated = (get("total_time") or "").strip()
+    always = [w for w in (waits or []) if counts(w)]
+    alo, _ahi = total(always)
+    if not stated or not always or alo is None:
+        return STATED_NO_QUESTION, None, None
+    # ⚠️ A RECORDED DECISION ENDS THE QUESTION, IN BOTH DIRECTIONS. total_includes_waits is a
+    #    person's answer to exactly this, and the page has no business re-deriving it or asking for
+    #    it again. miso-tofu-recipe carries a 0 ("the author did not count them"), which is why its
+    #    Total has read "40 min+ (incl. plan ahead)" since migration 058, and it would otherwise
+    #    land in the unclear bucket and be put on a list asking for a decision that exists.
+    if get("total_includes_waits") is not None:
+        return STATED_NO_QUESTION, None, None
+    slo, _shi = clock_minutes(normalize_time(stated).rstrip("+"))
+    if slo is None:
+        return STATED_NO_QUESTION, None, None
+    if slo < alo:
+        return STATED_EXCLUDES, slo, alo
+    plo, _phi = clock_minutes(get("prep_time"))
+    clo, _chi = clock_minutes(get("cook_time"))
+    if plo is None or clo is None or slo < plo + clo + alo:
+        return STATED_UNCLEAR, slo, alo
+    return STATED_INCLUDES, slo, alo
+
+
+def author_total_note(recipe, waits):
+    """The lighter line under a Total the page has added the waits to -> text, or None.
+
+    ⚠️ THE AUTHOR'S OWN FIGURE IS NEVER DELETED, ONLY MOVED DOWN A LINE. The Total above it is the
+    page's arithmetic and says so with "(incl. plan ahead)". This says what the author wrote, so a
+    cook comparing the page against the source card finds their number rather than wondering where
+    it went. Same rule as the second Total: one figure the recipe costs, one line saying which path
+    it describes.
+    """
+    verdict, _slo, _alo = stated_total_verdict(recipe, waits)
+    if verdict != STATED_EXCLUDES:
+        return None
+    get = (lambda k: recipe.get(k)) if isinstance(recipe, dict) else (
+        lambda k: getattr(recipe, k, None))
+    figure, _note = _stated_parts((get("total_time") or "").strip())
+    return f"Author's total: {figure}, before the waits"
+
+
 def recipe_total(recipe, waits):
     """The Total the recipe page prints -> (label, note) or (None, None).
 
@@ -290,6 +369,17 @@ def recipe_total(recipe, waits):
     has_waits = wlo is not None
 
     if stated and ruling != 0:
+        # ⚠️ UNTOUCHED UNLESS IT IS ARITHMETICALLY IMPOSSIBLE. The author's figure is the answer,
+        #    and the one thing that can overrule it is a total shorter than the waits it would have
+        #    to contain. stated_total_verdict is the whole of that rule and there is no second copy
+        #    of it. ruling == 1 says "the author counted the waits" explicitly, and it is read
+        #    BEFORE this, so an explicit ruling still wins.
+        if stated_total_verdict(recipe, waits)[0] == STATED_EXCLUDES:
+            slo, shi = clock_minutes(normalize_time(stated).rstrip("+"))
+            if normalize_time(stated).rstrip().endswith("+"):
+                shi = None
+            return _range_label(slo + wlo, None if whi is None or shi is None else shi + whi), \
+                INCLUDES_WAITS_NOTE
         # The author's own figure, untouched. ruling == 1 says the same thing explicitly.
         return _stated_parts(stated)
     plo, phi = clock_minutes(get("prep_time"))
