@@ -10,7 +10,7 @@
 // globals it reads. Nothing is retyped: a change to the function changes what this test executes.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CSS, renderTimeBlock as render } from "./time-block-harness.js";
+import { CSS, groupsOf, renderTimeBlock as render } from "./time-block-harness.js";
 
 const WAIT = { kind: "chilling", label_text: "4 hr", label_text_raw: "4 hr", step_no: 5,
                when_kind: "always", in_total: true };
@@ -132,4 +132,88 @@ test("the alternative does not run into the qualifier before it", () => {
   const text = html.replace(/<[^>]*>/g, "");
   assert.ok(text.includes(") or a 90\u00a0minute quick soak"),
             `the alternative ran into the line before it: ${JSON.stringify(text)}`);
+});
+
+
+// ---- one fixed order, every case ---------------------------------------------------------------
+// ⚠️ ANDY'S RULE: times, Serves, Plan ahead, Keeps, and the same sentence read down one column or
+// across two. It had Keeps ABOVE Serves on a recipe with no waits and BELOW it on one with waits,
+// which is two orders for the same two lines decided by a third thing.
+//
+// ⚠️ DOM ORDER IS READING ORDER IN BOTH LAYOUTS, which is why one assertion covers the phone and
+// the desktop. The 680px rule collapses the grid in source order, and the two desktop columns are
+// a FOLD in that one order rather than a different one.
+
+const ORDER = ["Prep", "Cook", "Total", "Author", "2nd", "Serves", "Plan ahead", "Keeps"];
+const AUTHOR = "Author's total: 1 hr, before the waits";
+const COND = { label: "6 hr", when: "if you soak" };
+
+const CASES = {
+  "times + waits": [{ waits: [WAIT], total: { label: "4 hr 30 min" } },
+                    ["Prep", "Cook", "Total", "Serves", "Plan ahead"]],
+  "times only": [{ total: { label: "30 min" } },
+                 ["Prep", "Cook", "Total", "Serves"]],
+  "waits only": [{ waits: [WAIT], prep: "", cook: "", servings: "", total: {} },
+                 ["Plan ahead"]],
+  "waits + Keeps, no times": [{ waits: [WAIT], storage: [KEEP], prep: "", cook: "", servings: "",
+                                total: {} },
+                              ["Plan ahead", "Keeps"]],
+  "Keeps only": [{ storage: [KEEP], prep: "", cook: "", servings: "", total: {} },
+                 ["Keeps"]],
+  "Serves only": [{ prep: "", cook: "", total: {} },
+                  ["Serves"]],
+  "times + Keeps, no waits": [{ storage: [KEEP], total: { label: "30 min" } },
+                              ["Prep", "Cook", "Total", "Serves", "Keeps"]],
+  "everything": [{ waits: [WAIT], storage: [KEEP], total: { label: "4 hr 30 min" },
+                   conds: [COND], authorTotal: AUTHOR },
+                 ["Prep", "Cook", "Total", "Author", "2nd", "Serves", "Plan ahead", "Keeps"]],
+};
+
+for (const [name, [opts, expected]] of Object.entries(CASES)) {
+  test(`the order holds: ${name}`, () => {
+    assert.deepEqual(groupsOf(render(opts)), expected);
+  });
+}
+
+test("every combination reads in the one order, with nothing out of place", () => {
+  // ⚠️ STATED OVER THE COMBINATIONS, NOT OVER THE EIGHT ABOVE. The named cases are the ones worth
+  //    reading; this is the one that cannot be satisfied by getting eight examples right.
+  const bits = [[WAIT], []].flatMap((waits) =>
+    [[KEEP], []].flatMap((storage) =>
+      ["4", ""].flatMap((servings) =>
+        [{ label: "30 min" }, {}].flatMap((total) =>
+          [[COND], []].flatMap((conds) =>
+            [AUTHOR, null].map((authorTotal) =>
+              ({ waits, storage, servings, total, conds, authorTotal,
+                 prep: total.label ? "10 min" : "", cook: total.label ? "20 min" : "" })))))));
+  assert.equal(bits.length, 64);
+  let seen = 0;
+  for (const opts of bits) {
+    const got = groupsOf(render(opts));
+    seen += got.length;
+    let at = -1;
+    for (const g of got) {
+      const i = ORDER.indexOf(g, at + 1);
+      assert.ok(i > at, `${JSON.stringify(got)} is not in the one order, for ${JSON.stringify(opts)}`);
+      at = i;
+    }
+  }
+  // ⚠️ ANTI-VACUITY. A groupsOf that matched nothing would make every sequence above trivially
+  //    ordered, which is exactly how the non-breaking space nearly made this test meaningless.
+  assert.ok(seen > 150, `the combinations rendered only ${seen} groups in total`);
+});
+
+test("the author's own total sits directly under the Total it replaced", () => {
+  const html = render({ waits: [WAIT], total: { label: "2 hr 30 min+", note: "incl. plan ahead" },
+                        authorTotal: AUTHOR });
+  const groups = groupsOf(html);
+  assert.equal(groups[groups.indexOf("Total") + 1], "Author", groups.join(" > "));
+  assert.ok(html.includes("incl. plan ahead"), "the Total lost its note");
+  assert.ok(html.replace(/<[^>]*>/g, "").includes("Author's total: 1\u00a0hr, before the waits"),
+            "the author's figure is not on the page");
+});
+
+test("no author line is drawn when the server does not send one", () => {
+  const html = render({ waits: [WAIT], total: { label: "4 hr 30 min" } });
+  assert.ok(!html.includes("tb-author"), "an empty author line was drawn");
 });

@@ -49,16 +49,39 @@ const STORE_PLACE = { fridge: "fridge", freezer: "freezer", "room temp": "room t
 /** The block's markup for one made-up recipe. */
 export function renderTimeBlock({ waits = [], storage = [], total = {}, conds = [],
                                   servings = "4", prep = "10 min", cook = "20 min",
-                                  waitTotal = null } = {}) {
+                                  waitTotal = null, authorTotal = null } = {}) {
   const recipe = { prep_time: prep, cook_time: cook, servings };
   const view = {
     scale: 1, waits, storage,
     waitTotal: waitTotal || { label: waits.length ? "8 hr+" : "" },
-    data: { recipe, total, conditional_totals: conds },
+    data: { recipe, total, conditional_totals: conds, author_total: authorTotal },
   };
   const fn = build(view, esc, (raw) => ({ value: raw, note: "" }), bindUnits,
                    (n) => String(n), () => (servings ? 4 : null),
                    () => "<div class='scale'></div>", WAIT_VERBS, STORE_PLACE,
                    "<svg id=clock>", "<svg id=hg>", "<svg id=jar>", "<svg id=fig>");
   return fn(recipe);
+}
+
+/** The groups the block renders, in DOM order. ⚠️ DOM ORDER IS READING ORDER IN BOTH LAYOUTS: the
+ *  phone collapses the grid to one column in source order, and the two desktop columns are a FOLD
+ *  in that same order rather than a different one. So one assertion covers both. */
+export function groupsOf(html) {
+  // ⚠️ THE SEPARATOR IS WRITTEN BOTH WAYS IN THE SAME BLOCK, so it is matched both ways.
+  //    "Prep" is held to its figure with a non-breaking space (a0) and "Serves" is not (20).
+  //    A helper that assumed one of them silently reported the other group as absent, which is
+  //    the direction that makes an order assertion pass over a shorter list than it thinks.
+  const SP = "[ \\u00a0]";
+  const MARKS = [[`>Prep${SP}`, "Prep"], [`>Cook${SP}`, "Cook"], [`>Total${SP}`, "Total"],
+                 ["tb-author", "Author"],
+                 ["meta-conditional(?![\"' ]*tb-author)", "2nd"],
+                 [`>Serves${SP}`, "Serves"], ["Plan\\u00a0ahead", "Plan ahead"],
+                 [">Keeps<", "Keeps"]];
+  const found = [];
+  for (const [src, name] of MARKS) {
+    const g = new RegExp(src, "g");
+    let m;
+    while ((m = g.exec(html)) !== null) found.push([m.index, name]);
+  }
+  return found.sort((a, b) => a[0] - b[0]).map(([, name]) => name);
 }

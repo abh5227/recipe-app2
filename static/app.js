@@ -1622,9 +1622,16 @@ function scaleMetaBlock(r) {
   //    computes both (planahead.conditional_totals) and writes the wording
   //    (planahead._conditional_phrase, "if you soak"), for the reason it computes the Total: one
   //    implementation, and the client prints what it is handed.
-  const second = conds.filter((c) => c && c.label).map((c) =>
-    row("", `<span class="meta-val">${esc(bindUnits(c.label))}</span>`
-            + (c.when ? ` ${esc(c.when)}` : ""), "meta-conditional")).join("");
+  // ⚠️ THE AUTHOR'S OWN FIGURE COMES FIRST, BECAUSE IT BELONGS TO THE TOTAL DIRECTLY ABOVE IT.
+  //    It is present only where the page has overruled a stated total that cannot contain its own
+  //    waits (planahead.stated_total_verdict), which is 1 of the 300. Same lighter treatment as the
+  //    second Total, and no figure span: it is a sentence, not an arithmetic result.
+  const authorTotal = (view.data || {}).author_total;
+  const second = (authorTotal
+      ? row("", `${esc(bindUnits(authorTotal))}`, "meta-conditional tb-author") : "")
+    + conds.filter((c) => c && c.label).map((c) =>
+      row("", `<span class="meta-val">${esc(bindUnits(c.label))}</span>`
+              + (c.when ? ` ${esc(c.when)}` : ""), "meta-conditional")).join("");
 
   // ⚠️ THE KIND READS AS A VERB AND IT LEADS. "Chill 4 hr" is an instruction. "4 hr chilling" is a
   //    label with the verb tacked on the end. Mirrors planahead.VERBS.
@@ -1708,10 +1715,15 @@ function scaleMetaBlock(r) {
   //    300 do: beans, hummus, key-lime-pie, chocolate-chip-cookies among them. Those drew the grid
   //    with a 277px EMPTY left half and the dividing rule hanging in it, which is the half-empty
   //    row this split exists to avoid, mirrored. Measured on the rendered page, not reasoned about.
+  // ⚠️ ONE ORDER, EVERY TIME: times, Serves, Plan ahead, Keeps. Andy's rule, and it is the same
+  //    sentence read down a column or across two. The two columns are a FOLD in that one order,
+  //    not a different order: the left cell holds the first two groups and the right cell the last
+  //    two, so collapsing the grid on a phone puts them back into the order they came from.
+  //    It had Keeps reading ABOVE Serves on a recipe with no waits and BELOW it on one with waits,
+  //    which is two orders for the same two lines decided by a third thing.
   const leftBody = times + second + serves;
   const twoCol = waits.length > 0 && leftBody.trim() !== "";
-  // One column takes everything, waits included, in the order the phone reads them.
-  const left = twoCol ? leftBody : times + second + planAhead + keeps + serves;
+  const left = twoCol ? leftBody : leftBody + planAhead + keeps;
   const right = twoCol ? planAhead + keeps : "";
   const block = (left + right).trim()
     ? `<div class="time-block${twoCol ? " two-col" : ""}">`
