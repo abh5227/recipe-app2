@@ -84,6 +84,30 @@ def _no_outbound_network(request):
     netguard.set_allowed(False)
 
 
+@pytest.fixture(autouse=True)
+def _no_repo_reports(tmp_path, monkeypatch):
+    """Every test writes its reports into its own temp folder, never into the repo's.
+
+    ⚠️ THE SUITE WAS REWRITING THE WORKING TREE ON EVERY RUN. Measured 2026-10-07: one plain
+    `pytest` replaced six files in `reports/` with fixture output under the real names, and
+    `total-vs-waits.csv` ended up listing two recipes called `nocook` and `unclear` where live's
+    survey had put a real recipe id. A person reading that file to see what the survey found was
+    reading test fixtures.
+
+    ⚠️ AND ONE TEST ALREADY SET `$RECIPE_APP_REPORTS` BY HAND, WHICH NOTHING READ. That is the
+    worse half: a redirect that is not wired reads as proof the test cannot reach the working tree,
+    while it rewrites a file in it. `corpus_guard.report_target` reads both variables now, so the
+    wall is one fixture rather than an argument every caller has to remember, the same way
+    `_no_live_database` sits behind `make_kitchen`'s redirect rather than beside it.
+
+    `RECIPE_APP_REPAIRS` is here too. `--record` already refuses to overwrite a non-empty record,
+    so nothing committed was ever at risk, but a test may still CREATE a file there and that is the
+    folder holding the record of what was done to the data.
+    """
+    monkeypatch.setenv("RECIPE_APP_REPORTS", str(tmp_path / "reports"))
+    monkeypatch.setenv("RECIPE_APP_REPAIRS", str(tmp_path / "data-repairs"))
+
+
 @pytest.fixture
 def kitchen(tmp_path):
     return make_kitchen(tmp_path)

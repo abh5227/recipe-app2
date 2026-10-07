@@ -193,9 +193,22 @@ def report_target(filename, record, repairs=None, reports=None):
 
     Decision files the passes READ are untouched by any of this: they are inputs, they stay
     committed, and nothing here writes to them.
+
+    ⚠️ AND BOTH FOLDERS ARE REDIRECTABLE, BECAUSE THE TEST SUITE WAS WRITING INTO THE REAL ONE.
+    `$RECIPE_APP_REPORTS` and `$RECIPE_APP_REPAIRS` move them, the same way `$RECIPE_APP_LIVE_DB`
+    moves the database. Measured 2026-10-07: one plain `pytest` run replaced SIX files in the repo's
+    `reports/` with fixture output, under the real names. `total-vs-waits.csv` is the one that made
+    it visible: the file a person is told to read listed two recipes called `nocook` and `unclear`,
+    which are fixture rows, where live's survey had put a real recipe id. Nothing committed was at
+    risk, because the `--record` half refuses to overwrite a non-empty record. The damage is to the
+    thing the folder is FOR, which is telling a person what a survey found.
+
+    ⚠️ THE TEST THAT FOUND IT HAD A monkeypatch.setenv FOR `$RECIPE_APP_REPORTS` ALREADY, AND
+    NOTHING READ IT. A redirect nobody reads is worse than no redirect, because it reads as a test
+    that cannot touch the working tree while it rewrites a file in it on every run.
     """
-    repairs = pathlib.Path(repairs or REPAIRS)
-    reports = pathlib.Path(reports or REPORTS)
+    repairs = pathlib.Path(repairs or os.environ.get("RECIPE_APP_REPAIRS") or REPAIRS)
+    reports = pathlib.Path(reports or os.environ.get("RECIPE_APP_REPORTS") or REPORTS)
     if not record:
         reports.mkdir(parents=True, exist_ok=True)
         return reports / filename

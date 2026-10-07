@@ -174,8 +174,13 @@ def test_the_survey_lists_the_unclear_case_and_nothing_else(tmp_path, monkeypatc
     con.commit()
     con.close()
 
+    # ⚠️ THIS LINE USED TO BE DECORATIVE. corpus_guard.report_target had never heard of
+    #    $RECIPE_APP_REPORTS, so the list below was written into the REPO's reports/ on every run,
+    #    under the real name, listing these fixture ids. It reads the variable now, conftest sets it
+    #    for every test, and the assertion two lines down is what keeps this honest.
     monkeypatch.setenv("RECIPE_APP_REPORTS", str(tmp_path))
     got = scan_total_vs_waits.run(str(db))
+    assert (tmp_path / "total-vs-waits.csv").is_file(), "the list did not land where it was sent"
     assert sorted(r["recipe_id"] for r in got) == ["nocook", "unclear"], got
     assert {r["why"] for r in got} == {
         "prep or cook is missing, so the upper bound cannot be computed",
@@ -202,3 +207,4 @@ def test_the_survey_writes_nothing_to_the_recipe_data(tmp_path):
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     assert [tuple(r) for r in con.execute("SELECT * FROM recipes")] == before
     con.close()
+
