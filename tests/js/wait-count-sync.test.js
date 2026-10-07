@@ -13,9 +13,12 @@ import { readFileSync } from "node:fs";
 
 const APP = readFileSync(new URL("../../static/app.js", import.meta.url), "utf8");
 const CASES = JSON.parse(readFileSync(new URL("../fixtures/wait-count-cases.json", import.meta.url), "utf8"));
-// The wait block of scaleMetaBlock — where the figure, the breakdown and the one-line case live.
-const WAITS = APP.slice(APP.indexOf("const waits = (view.waits || [])"),
-                        APP.indexOf("// ⚠️ STORAGE IS NOT A WAIT"));
+// The wait half of scaleMetaBlock: the verb, the step link, the qualifier, the lines and the
+// figure. ⚠️ THE ANCHORS ARE THE READS THEMSELVES, not a layout comment. The first anchor was
+// `const waits = (view.waits || [])`, whose parentheses went when the block was rebuilt in two
+// columns, and the slice then started at -1 and asserted over the whole file.
+const WAITS = APP.slice(APP.indexOf("const waits = view.waits"),
+                        APP.indexOf("const twoCol ="));
 // The same block with its comments removed. The notes in there NAME the fields they are warning
 // about ("resolved from alongside_step_id"), so a doesNotMatch over the raw text would fire on the
 // explanation rather than on a rule.
@@ -30,14 +33,21 @@ test("the fixture is the shared table both sides read", () => {
   }
 });
 
-test("the client filters on the server's in_total", () => {
-  assert.match(WAITS, /const counted = waits\.filter\(\(w\) => w\.in_total\);/,
-    "the counted set is the server's answer");
+test("the client prints the server's figure and counts nothing itself", () => {
+  // ⚠️ THIS ASSERTED A FILTER, AND THE FILTER IS GONE. The client used to split the waits into
+  //    counted and not, because a single counted wait printed inline and everything else printed a
+  //    summed figure with a breakdown under it. Round 3's block gives every wait its own line, so
+  //    the only figure is the one the server computed (view.waitTotal.label) and there is nothing
+  //    left for the client to count. That is the same rule arrived at from the other side: the
+  //    strongest version of "the client must not decide which waits count" is a client that cannot.
+  assert.match(WAITS, /view\.waitTotal\.label/, "the client no longer prints the server's figure");
+  assert.doesNotMatch(CODE, /filter\([^)]*in_total/,
+    "the client is filtering on in_total again instead of printing what it was handed");
 });
 
 test("the client does not decide for itself which waits count", () => {
-  // The filter is the only thing that may read when_kind for this purpose. qual() still reads it to
-  // choose a QUALIFIER, which is a different question, so the assertion is scoped to the filter.
+  // qual() still reads when_kind to choose a QUALIFIER, which is a different question, so the
+  // assertion is scoped to anything that looks like a counted set.
   assert.doesNotMatch(CODE, /filter\([^)]*when_kind/,
     "a second copy of planahead.counts grew back in the wait filter");
   assert.doesNotMatch(CODE, /alongside_step_id/,

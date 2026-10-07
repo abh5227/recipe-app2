@@ -11,9 +11,9 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 
+import { APP, CSS, renderTimeBlock as render } from "./time-block-harness.js";
+
 const ROOT = path.join(import.meta.dirname, "../..");
-const APP = fs.readFileSync(path.join(ROOT, "static/app.js"), "utf8");
-const CSS = fs.readFileSync(path.join(ROOT, "static/styles.css"), "utf8");
 const FIX = JSON.parse(fs.readFileSync(
   path.join(ROOT, "tests/fixtures/conditional-total-cases.json"), "utf8"));
 
@@ -34,16 +34,30 @@ test("the fixture carries the shapes the feature was asked for", () => {
 });
 
 test("the client reads conditional_totals and prints one line for each", () => {
-  // the source is the contract: a loop over view.data.conditional_totals pushing a meta item each
-  assert.ok(/view\.data\.conditional_totals/.test(APP),
-    "app.js does not read conditional_totals");
-  const block = APP.slice(APP.indexOf("const conds ="), APP.indexOf("const conds =") + 700);
-  assert.ok(/for \(const c of conds\)/.test(block), "the lines are not rendered one per entry");
-  assert.ok(/meta-conditional/.test(block), "the line carries no class of its own");
-  assert.ok(/esc\(bindUnits\(c\.label\)\)/.test(block), "the figure is not escaped");
-  assert.ok(/esc\(c\.when\)/.test(block), "the condition is not escaped");
-  assert.ok(/if \(!c \|\| !c\.label\) continue;/.test(block),
-    "an entry with no figure is not skipped");
+  // ⚠️ IT RUNS THE RENDERER RATHER THAN READING IT. This asserted the SHAPE of the loop
+  //    ("for (const c of conds)", "if (!c || !c.label) continue;"), which pinned one spelling of
+  //    the rule and broke the day the block was rebuilt in two columns without the behaviour
+  //    changing at all. What the feature promises is one line per entry, both halves escaped, and
+  //    an entry with no figure skipped, so that is what is checked.
+  assert.ok(/view\.data\.conditional_totals/.test(APP), "app.js does not read conditional_totals");
+
+  const html = render({
+    total: { label: "1 hr 20 min" },
+    conds: [{ label: "9 hr 20 min+", when: "if you soak" },
+            { label: "3 hr 30 min+", when: "if chilled" }],
+  });
+  const lines = html.split("meta-conditional").length - 1;
+  assert.equal(lines, 2, "the lines are not rendered one per entry");
+  assert.ok(html.includes("9\u00a0hr 20\u00a0min+") && html.includes("if you soak"), html);
+  assert.ok(html.includes("3\u00a0hr 30\u00a0min+") && html.includes("if chilled"), html);
+
+  // an entry with no figure says nothing rather than printing an empty line
+  const bare = render({ conds: [{ label: "", when: "if you soak" }, null] });
+  assert.equal(bare.split("meta-conditional").length - 1, 0, bare);
+
+  // and both halves are escaped
+  const nasty = render({ conds: [{ label: "<b>1 hr</b>", when: "if <i>you</i> soak" }] });
+  assert.ok(!nasty.includes("<b>") && !nasty.includes("<i>"), nasty);
 });
 
 test("the second Total is quieter and sits under the first", () => {

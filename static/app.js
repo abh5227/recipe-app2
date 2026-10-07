@@ -12,7 +12,7 @@ import { removedInsertIndex } from "./annotation-place.js";
 import { annotationIndex } from "./annotation-index.js";
 import { wordDiffParts } from "./word-diff.js";
 import { editedAmountParts, removedAmountText, stepSpanTexts } from "./annotation-amount.js";
-import { timeParts } from "./timefmt.js";
+import { timeParts, bindUnits } from "./timefmt.js";
 import { ingToPayload, stepToPayload } from "./save-payload.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
 import { isToMake } from "./tomake.js";
@@ -1564,173 +1564,153 @@ const WAIT_VERBS = { marinating: "Marinate", chilling: "Chill", rising: "Rise", 
 const STORE_PLACE = { fridge: "fridge", freezer: "freezer", "room temp": "room temperature", other: "" };
 const META_CLOCK = `<svg class="meta-ico clk" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="13" r="7.5"/><path d="M12 9 V13 L15 15"/><path d="M9.5 3 H14.5"/></svg>`;
 
-// The control block above the Ingredients heading: cook time (top) + serves (bottom) STACKED on the
-// left, the scale control on the right — circular ½×/1×/2× pills, vertically centered against the
-// two-line stack. Time, serves, AND the scaler all live here now, none in the vitals strip. The
-// serving count stays scaled to the factor (rerenderServings queries .serves-count); #scaler-host is
-// the rerenderScaler target.
+// The time block above the Ingredients heading: the times on the left, what has to be planned
+// ahead on the right, the scaler underneath. Round 3's layout (Andy picked B off the preview).
+//
+// ⚠️ THE SECOND COLUMN EXISTS ONLY WHEN SOMETHING IS IN IT. A recipe with no waits reads as one
+//    column at full width rather than as a half-empty row, which is the whole reason the split is
+//    conditional rather than a grid every recipe pays for. Keeps is the one that moves: on its own
+//    it belongs with the times, and beside Plan ahead it belongs with the waits, because that is
+//    where a cook reads "this needs tomorrow" and "this will last".
+//
+// ⚠️ AND EACH TIME GETS ITS OWN LINE. They were one line joined by middots, which fits in a
+//    581px column and wraps into three ragged lines in a 245px one. A column that can wrap a value
+//    away from its label is a column that cannot hold a value, so the line break is stated.
+//
+// ⚠️ THE ROW NEVER SCALES. It lives here beside the times, which the scaler already passes through
+//    untouched: doubling a recipe does not double a rise.
 function scaleMetaBlock(r) {
-  const stack = [];
-  // All three times are STORED and all three were being thrown away in favor of one, by a
-  // `total_time || cook_time || prep_time` chain. That was worse than sparse: total_time is set on
-  // only 14 of 300 recipes, so most recipes showed their COOK time under a clock icon that reads as
-  // a total. Labeled parts instead, joined the way the editor's vitals line already joins them, so
-  // reading and editing finally say the same thing. Measured: 112 of 300 show a time line at all,
-  // 92 of those carry exactly two of the three.
-  // ⚠️ WHERE THIS LINE IS ALLOWED TO BREAK, which is the whole reason it reads badly otherwise.
-  // A time value is several words ("2 hr 45 min"), so the only thing stopping the wrap landing
-  // between a number and its unit is saying so. Two rules:
-  //   - a digit followed by a word is joined with a non-breaking space, so "45 min" and "2 hr" can
-  //     never split, and neither can the label from the value it labels.
-  //   - the separator carries REAL spaces. It used to get its spacing from a margin, which looks the
-  //     same and offers the browser no break opportunity at all, so the only place left to wrap was
-  //     inside a value. That is exactly how "min" ended up alone on its own line.
-  // The segments themselves stay breakable, so a long one ("Cook 2 hr 25 min · plus cooling")
-  // still wraps at its separator instead of overflowing.
-  // ⚠️ NORMALIZED HERE, ON THE WAY OUT, AND THE STORED TEXT IS NEVER REWRITTEN. 40 of the 63
-  // distinct stored spellings are some other way of writing the same duration ("10 min", "10 mins",
-  // "10 minutes"), and normalizing on save would edit a cook's own words on their behalf. The
-  // editor below deliberately shows the raw value for the same reason. See static/timefmt.js.
-  const bindUnits = (v) => v.replace(/(\d)\s+(?=[A-Za-z])/g, "$1\u00a0");
   // ⚠️ TOTAL IS THE SERVER'S ANSWER, NOT r.total_time. A recipe with no stated total still gets one,
   //    computed from prep + cook + the counted waits, and a recipe whose prep already swallowed its
   //    marinade can be ruled the other way. That decision needs the waits and a per-recipe ruling, so
   //    it is made once in planahead.recipe_total and printed here. r.total_time is still what the
   //    EDITOR shows, because a field being edited must show what is stored.
-  //    The computed label arrives already normalized, so timeParts is a no-op on it and is left in
-  //    place rather than special-cased.
-  const totals = view.data && view.data.total ? view.data.total : {};
+  const totals = (view.data && view.data.total) || {};
+  const conds = (view.data && view.data.conditional_totals) || [];
+  const waits = view.waits || [];
+  const storage = view.storage || [];
+
+  // One row of the stack: the 26px icon column, then the text. Only the first row of a group
+  // carries an icon, so Prep / Cook / Total read as one thing rather than as three clocks.
+  const row = (icon, body, cls) =>
+    `<span class="meta-item${cls ? " " + cls : ""}">${icon || `<span aria-hidden="true"></span>`}`
+    + `<span>${body}</span></span>`;
+
+  // ⚠️ THE TOTAL IS NOT RE-SPLIT HERE. Prep and Cook are raw stored strings and need timeParts. The
+  //    Total arrives from the server already normalized and already split, and running timeParts
+  //    over it TRUNCATED A RANGE: the segment reader stops at the en dash, so "40 min – 45 min" came
+  //    back as "40 min". Measured on miso-tofu, butter-chicken and brioche-bread.
+  // ⚠️ NORMALIZED ON THE WAY OUT, AND THE STORED TEXT IS NEVER REWRITTEN. 40 of the 63 distinct
+  //    stored spellings are another way of writing the same duration ("10 min", "10 mins",
+  //    "10 minutes"), and normalizing on save would edit a cook's own words for them.
   const times = [["Prep", r.prep_time, ""], ["Cook", r.cook_time, ""],
                  ["Total", totals.label || "", totals.note || ""]]
     .filter(([, v]) => (v || "").trim())
-    .map(([label, v, serverNote]) => {
-      // The note is its own span so it can stay at the inherited 400 while .meta-val carries the
-      // 600 that makes the figure land. The parentheses and the weight then say the same thing.
-      // ⚠️ THE TOTAL IS NOT RE-SPLIT HERE. Prep and Cook are raw stored strings and need timeParts.
-      //    The Total arrives from the server already normalized and already split, and running
-      //    timeParts over it TRUNCATED A RANGE: the segment reader stops at the en dash, so
-      //    "40 min – 45 min" came back as "40 min" and the upper end vanished. Measured on
-      //    miso-tofu, butter-chicken and brioche-bread.
+    .map(([label, v, serverNote], i) => {
       const isTotal = label === "Total";
       const { value, note } = isTotal ? { value: v, note: serverNote } : timeParts(v);
+      // The note is its own span so it can stay at the inherited 400 while .meta-val carries the
+      // 600 that makes the figure land. The parentheses and the weight then say the same thing.
       const tail = note ? `<span class="meta-note"> (${esc(bindUnits(note))})</span>` : "";
-      return `${label}\u00a0<span class="meta-val">${esc(bindUnits(value))}</span>${tail}`;
-    })
-    .join(`<span class="meta-sep"> · </span>`);
-  if (times) stack.push(`<span class="meta-item">${META_CLOCK}<span>${times}</span></span>`);
-  // ⚠️ THE SECOND TOTAL SITS UNDER THE FIRST AND IS SMALLER. One line per conditional wait, each
+      return row(i === 0 ? META_CLOCK : "",
+                 `${label} <span class="meta-val">${esc(bindUnits(value))}</span>${tail}`);
+    }).join("");
+
+  // ⚠️ THE SECOND TOTAL SITS UNDER THE TOTAL AND IS SMALLER. One line per conditional wait, each
   //    naming its own condition, so a cook who is going to take that path reads the figure instead
   //    of working it out from the Total and a bullet. The main Total is unchanged. The server
-  //    computes both (planahead.conditional_totals) for the reason it computes the Total: one
+  //    computes both (planahead.conditional_totals) and writes the wording
+  //    (planahead._conditional_phrase, "if you soak"), for the reason it computes the Total: one
   //    implementation, and the client prints what it is handed.
-  const conds = (view.data && view.data.conditional_totals) || [];
-  for (const c of conds) {
-    if (!c || !c.label) continue;
-    // The empty first cell keeps it in the same column as the Total above it: .meta-stack lays
-    // each item out as [icon, text] and this line has no icon of its own.
-    stack.push(`<span class="meta-item meta-conditional">`
-      + `<span aria-hidden="true"></span>`
-      + `<span><span class="meta-val">${esc(bindUnits(c.label))}</span>`
-      + `${c.when ? ` ${esc(c.when)}` : ""}</span></span>`);
-  }
-  // ⚠️ THE WAIT ROW NEVER SCALES, and it gets that for free by living in scaleMetaBlock beside the
-  // times rather than in the ledger. Doubling a recipe does not double a rise.
-  const waits = (view.waits || []);
-  if (waits.length) {
-    const tot = view.waitTotal || {};
-    // One wait prints its own words, so "overnight" survives. Several print the summed figure and
-    // each wait gets its own smaller line beneath, which is what keeps the row readable on a phone.
-    // ⚠️ THE SERVER SAYS WHICH WAITS ARE IN THE FIGURE, AND THIS USED TO DECIDE FOR ITSELF. It read
-    //    `(w.when_kind || "always") === "always"`, which is planahead.counts written out a second
-    //    time, and the two had drifted: the server also counted an 'alongside' wait whose pointer
-    //    had gone null, so on a one-wait recipe it put that wait in the head figure while this left
-    //    `counted` empty and printed a bullet repeating the same line. in_total is the one answer.
-    //    A conditional wait still reads in the breakdown, carrying the qualifier that says why it is
-    //    not in the total.
-    const counted = waits.filter((w) => w.in_total);
-    const qual = (w) => {
-      const k = w.when_kind || "always";
-      if (k === "optional") return `<span class="meta-when">(optional)</span>`;
-      if (k === "only_if") return `<span class="meta-when">if ${esc(w.when_label || "")}</span>`;
-      // ⚠️ "alongside step N" IS A QUALIFIER, NOT A SECOND STEP LINK. It says why this wait is not in
-      //    the total: it happens during another one. N is the printed number the server resolved from
-      //    alongside_step_id, so it agrees with what the page shows. A pointer the server could not
-      //    resolve leaves alongside_no null and the wait reads without the phrase rather than with a
-      //    wrong number.
-      if (k === "alongside") return w.alongside_no
-        ? `<span class="meta-when">alongside step ${w.alongside_no}</span>` : "";
-      return "";
-    };
-    // ⚠️ THE KIND READS AS A VERB. "Chill 4 hr – overnight" is an instruction. "4 hr – overnight
-    //    chilling" is a label with the verb tacked on the end. Mirrors planahead.VERBS.
-    const verb = (w) => WAIT_VERBS[w.kind] || WAIT_VERBS.other;
-    // ⚠️ THE STEP NUMBER LINKS ONLY WHEN THE SERVER SAYS THE POINTER STILL HOLDS. step_no comes
-    //    back null when the stored snippet no longer matches the step at that position, and the
-    //    bullet then reads with no step number rather than scrolling to the wrong step.
-    const stepTag = (w) => (w.step_no
-      ? `<a class="meta-step" href="#" data-wait-step="${w.step_no}">Step ${w.step_no}</a>: ` : "");
-    // ⚠️ ONE FORMAT FOR THE ALTERNATIVE, AND IT USED TO BE TWO. The bullet path wrote it inline in
-    //    parentheses and the single-wait path wrote it bare on its own line, so the same fact read
-    //    two ways on two recipes. It is its own line in lighter text in both places now.
-    // ⚠️ THE LEADING SPACE IS NOT DECORATION. Without it the markup ran
-    //    "(soak, step 2)or a 90 minute quick soak" with nothing between the two spans. On screen
-    //    the block display hid that, and a copy of the line showed it. A block element is one CSS
-    //    line away from not being one, and the text should read correctly either way.
-    // ⚠️ THE ALTERNATIVE CAN CARRY ITS OWN STEP LINK. beans soaks overnight at step 2 and describes
-    //    its 90 minute quick soak at step 3, so the alternative has somewhere to send the cook that
-    //    the wait's own link does not. ext_no is null for the 5 extensions stated in the wait's own
-    //    step, and those read without a link rather than repeating the one above them.
-    const extHTML = (w) => (w.ext_label
-      ? ` <span class="meta-ext">${esc(bindUnits(w.ext_label))}`
-        // Parenthesized, so it reads the way the wait's own link above it already does
-        // ("(soak, step 2)"). Bare, it ran on as "…quick soak instead step 3".
-        + (w.ext_no ? ` (<a class="meta-step" href="#" data-wait-step="${w.ext_no}">step ${w.ext_no}</a>)` : "")
-        + `</span>` : "");
-    const bullet = (w) =>
-      `<li class="meta-bullet">${stepTag(w)}<span class="meta-do">${esc(verb(w))}</span> `
-      // ⚠️ label_text, NOT label. The server decides what a wait PRINTS (planahead.display_label),
-      //    so "overnight" arrives as "8 hr+ (overnight)" and there is no second copy of that rule
-      //    here. label is still the stored text and is what the editor shows.
-      + `${esc(bindUnits(w.label_text || w.label || ""))}`
-      + ((w.when_kind || "always") !== "always" ? " " + qual(w) : "")
-      + extHTML(w)
-      + `</li>`;
-    // ⚠️ ONE WAIT ON ITS OWN STAYS ON ONE LINE. Everything else is a list, because a summed figure
-    //    is a figure nobody wrote and each wait has to be readable on its own.
-    const one = waits.length === 1 && counted.length === 1 ? waits[0] : null;
-    const head = tot.label
-      ? `Plan\u00a0ahead\u00a0<span class="meta-val">${esc(bindUnits(tot.label || ""))}</span>`
-        + (one ? `<span class="meta-note"> (${esc(verb(one).toLowerCase())}${one.step_no
-              ? `, <a class="meta-step" href="#" data-wait-step="${one.step_no}">step ${one.step_no}</a>`
-              : ""})</span>` : "")
-      : "";
-    const ext = one ? extHTML(one) : "";
-    const rows = one ? [] : waits;
-    const breakdown = rows.length
-      ? `<ul class="meta-break${head ? "" : " bare"}">${rows.map(bullet).join("")}</ul>` : "";
-    stack.push(`<span class="meta-item wait">${META_HOURGLASS}<span>${head}${ext}${breakdown}</span></span>`);
-  }
+  const second = conds.filter((c) => c && c.label).map((c) =>
+    row("", `<span class="meta-val">${esc(bindUnits(c.label))}</span>`
+            + (c.when ? ` ${esc(c.when)}` : ""), "meta-conditional")).join("");
+
+  // ⚠️ THE KIND READS AS A VERB AND IT LEADS. "Chill 4 hr" is an instruction. "4 hr chilling" is a
+  //    label with the verb tacked on the end. Mirrors planahead.VERBS.
+  const verb = (w) => WAIT_VERBS[w.kind] || WAIT_VERBS.other;
+  // ⚠️ THE STEP NUMBER LINKS ONLY WHEN THE SERVER SAYS THE POINTER STILL HOLDS. step_no comes back
+  //    null when the stored pointer names no numbered step, and the line then reads with no step
+  //    number rather than scrolling to the wrong one.
+  const stepTag = (no, label) => (no
+    ? `<a class="meta-step" href="#" data-wait-step="${no}">${label || "step " + no}</a>` : "");
+  // ⚠️ "alongside step N" IS A QUALIFIER, NOT A SECOND STEP LINK. It says why this wait is not in
+  //    the total: it happens during another one. A pointer the server could not resolve leaves
+  //    alongside_no null and the wait reads without the phrase rather than with a wrong number.
+  const qual = (w) => {
+    const k = w.when_kind || "always";
+    if (k === "optional") return `<span class="meta-when">(optional)</span>`;
+    if (k === "only_if") return `<span class="meta-when">if ${esc(w.when_label || "")}</span>`;
+    if (k === "alongside") return w.alongside_no
+      ? `<span class="meta-when">alongside step ${w.alongside_no}</span>` : "";
+    return "";
+  };
+  // ⚠️ THE ALTERNATIVE TAKES ITS OWN LINE, IN BOTH PLACES IT CAN APPEAR. It is an INVITATION rather
+  //    than part of the range, so it reads quieter than the figure it qualifies. beans soaks
+  //    overnight at step 2 and describes its 90 minute quick soak at step 3, so the alternative can
+  //    carry its own step link that the wait's own does not.
+  const ext = (w) => (w.ext_label
+    ? `<span class="meta-ext">${esc(bindUnits(w.ext_label))}`
+      + (w.ext_no ? ` (${stepTag(w.ext_no)})` : "") + `</span>` : "");
+  const DOT = `<span class="meta-sep"> · </span>`;
+  // ⚠️ label_text, NOT label. The server decides what a wait PRINTS (planahead.display_label), so
+  //    "overnight" arrives as "8 hr+ (overnight)" and there is no second copy of that rule here.
+  //    label is still the stored text and is what the editor shows.
+  const waitLine = (w) => {
+    const bits = [`<span class="meta-do">${esc(verb(w))}</span> `
+                  + `${esc(bindUnits(w.label_text || w.label || ""))}`];
+    if (w.step_no) bits.push(stepTag(w.step_no));
+    const q = (w.when_kind || "always") !== "always" ? qual(w) : "";
+    if (q) bits.push(q);
+    return `<li class="meta-bullet">${bits.join(DOT)}${ext(w)}</li>`;
+  };
+
+  // ⚠️ THE LABEL SHOWS WHENEVER THERE ARE WAITS, which it did not. `head` was empty when no wait
+  //    counted toward a figure, so a recipe whose only wait is optional (coconut-curried-golden-
+  //    lentils, beans) printed an hourglass and a bullet with nothing naming what they were.
+  // ⚠️ AND THE SUMMED FIGURE ONLY WHEN THERE IS MORE THAN ONE WAIT. With one wait the figure IS
+  //    that wait's own label, so printing both reads as two facts where there is one.
+  const planAhead = waits.length
+    ? row(META_HOURGLASS,
+          `<span class="meta-lead">Plan ahead</span>`
+          + (waits.length > 1 && (view.waitTotal || {}).label
+             ? ` <span class="meta-val">${esc(bindUnits(view.waitTotal.label))}</span>` : "")
+          + `<ul class="meta-break">${waits.map(waitLine).join("")}</ul>`, "wait")
+    : "";
+
   // ⚠️ STORAGE IS NOT A WAIT. It reaches no total and no filter, and it says WHERE.
-  const storage = (view.storage || []);
-  // ⚠️ STORAGE GETS THE SAME BULLET, minus the step number it has nothing to carry.
-  //    "Dough: fridge, up to 1 week", and with no subject just "fridge, up to 1 week".
   //    ⚠️ THE PLACE IS NAMED, NOT PREPOSITIONED. 11 of the 30 proposals keep at room temperature
   //       and 3 say "other", so "in the ___" was wrong for 14 of them.
-  if (storage.length) {
-    const sBullet = (st) => {
-      const bits = [STORE_PLACE[st.where_kept] ?? "", bindUnits(st.label || "")]
-        .filter(Boolean).map(esc).join(", ");
-      return `<li class="meta-bullet">`
-        + (st.applies_to ? `<span class="meta-do">${esc(st.applies_to)}</span>: ` : "")
-        + bits + `</li>`;
-    };
-    stack.push(`<span class="meta-item wait">${META_JAR}<span><span class="meta-keeps">Keeps</span>`
-      + `<ul class="meta-break">${storage.map(sBullet).join("")}</ul></span></span>`);
-  }
+  const keeps = storage.length
+    ? row(META_JAR, `<span class="meta-lead">Keeps</span><ul class="meta-break">`
+          + storage.map((st) => `<li class="meta-bullet">`
+              + (st.applies_to ? `<span class="meta-do">${esc(st.applies_to)}</span>: ` : "")
+              + [STORE_PLACE[st.where_kept] ?? "", bindUnits(st.label || "")]
+                  .filter(Boolean).map(esc).join(", ") + `</li>`).join("")
+          + `</ul>`, "wait")
+    : "";
+
   const base = servingsBase();
-  if (base) stack.push(`<span class="meta-item">${META_FIG}<span>Serves <span class="serves-count meta-val">${formatAmount(base * view.scale)}</span></span></span>`);
-  const metaStack = stack.length ? `<div class="meta-stack">${stack.join("")}</div>` : "";
-  return `<div class="above-ing">${metaStack}<div class="scaler-col" id="scaler-host">${scaleControl()}</div></div>`;
+  const serves = base
+    ? row(META_FIG, `Serves <span class="serves-count meta-val">${formatAmount(base * view.scale)}</span>`)
+    : "";
+
+  // ⚠️ TWO COLUMNS ONLY WHEN THE RIGHT ONE HAS WAITS IN IT. Keeps on its own does not earn a
+  //    column: it is one short line, and a lone Keeps opposite three times reads as a layout the
+  //    page fell into rather than one it chose.
+  const twoCol = waits.length > 0;
+  const left = times + second + (twoCol ? "" : keeps) + serves;
+  const right = twoCol ? planAhead + keeps : "";
+  const block = `<div class="time-block${twoCol ? " two-col" : ""}">`
+    + `<div class="meta-stack tb-col">${left}</div>`
+    + (twoCol ? `<div class="meta-stack tb-col tb-right">${right}</div>` : "")
+    + `</div>`;
+  if (!left.trim() && !right.trim()) return "";
+  // The scaler sits BELOW the block now rather than beside it. At the reading width the two columns
+  // and a 195px row of fixed controls cannot share a line without the text wrapping, which is what
+  // the preview showed.
+  return `<div class="above-ing">${block}`
+    + `<div class="scaler-col" id="scaler-host">${scaleControl()}</div></div>`;
 }
 
 // Take A brass clip (ported verbatim from the approved preview). Gem proportions; three stacked
@@ -5059,11 +5039,12 @@ function setNoteStep(id, stepId) {
     .catch((e) => { noteError(e.message); repaintNotes(); });
 }
 
-function unlinkNoteRef(id, refIndex) {
-  return noteApi(`/notes/${id}/refs/${refIndex}`, { method: "PATCH", body: { step_id: null } })
-    .then((data) => { adoptNotes(data); repaintNotes(); })
-    .catch((e) => noteError(e.message));
-}
+// ⚠️ unlinkNoteRef WAS HERE AND NOTHING CALLED IT. It was the client half of
+//    PATCH /notes/<id>/refs/<i>, which unlinks ONE "step N" mention in a note's words. The page
+//    has no affordance that reaches it: the × beside a note's step link is data-note-unlink-step,
+//    which clears the note's own step_id through setNoteStep, a different thing. The endpoint stays
+//    (see app.py::update_note_ref) because it is the only way a stored null ref is made, and
+//    "a stored null is a decision" is what lets an unlink survive a later text edit.
 
 // The click dispatcher, in the same shape handleInlineEdit and handleRowMenuAction already have:
 // probe the attributes this concern owns, return true when one of them answered.

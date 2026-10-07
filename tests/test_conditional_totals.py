@@ -49,7 +49,7 @@ def test_the_main_total_does_not_move():
 def test_an_optional_wait_is_named_by_its_kind():
     got = planahead.conditional_totals(RECIPE, [
         _w(kind="soaking", min_minutes=480, max_minutes=600, when_kind="optional")])
-    assert got == [{"label": "9 hr 20 min+", "when": "with the optional soak"}]
+    assert got == [{"label": "9 hr 20 min+", "when": "if you soak"}]
 
 
 def test_an_only_if_wait_is_named_by_the_author_s_own_words():
@@ -75,7 +75,7 @@ def test_two_conditionals_give_two_lines_not_four_combinations():
         _w(kind="soaking", min_minutes=480, max_minutes=480, when_kind="optional"),
         _w(kind="resting", min_minutes=30, max_minutes=30, when_kind="only_if",
            when_label="chilled")])
-    assert [g["when"] for g in got] == ["with the optional soak", "if chilled"]
+    assert [g["when"] for g in got] == ["if you soak", "if chilled"]
 
 
 def test_an_alongside_wait_is_not_a_conditional_path():
@@ -90,7 +90,7 @@ def test_a_counted_wait_is_in_the_base_the_conditional_is_added_to():
              _w(kind="resting", min_minutes=60, max_minutes=60, when_kind="optional")]
     got = planahead.conditional_totals({"prep_time": "10 min", "cook_time": "2 hr",
                                         "total_time": None}, waits)
-    assert got == [{"label": "11 hr 10 min+", "when": "with the optional rest"}]
+    assert got == [{"label": "11 hr 10 min+", "when": "if you rest"}]
 
 
 def test_a_zero_floor_conditional_gets_no_line():

@@ -1951,8 +1951,42 @@ a:hover { color: var(--berry-lift); }
    the slack: .scaler-col never shrinks, .meta-stack (min-width:0 below) absorbs and wraps.
    flex-wrap here is the narrow-viewport escape: under roughly 195px of leftover width the scaler
    drops BELOW the meta rather than crushing it. */
-.above-ing { display: flex; align-items: center; gap: 22px; margin: 0 0 20px; flex-wrap: wrap; }
+/* ⚠️ THE BLOCK IS A COLUMN AND THE SCALER IS UNDER IT (round 3, treatment B). The scaler is a row
+   of FIXED-SIZE controls (4 x 42px + 3 x 9px gaps = 195px at rest, 215px once the custom pill is
+   committed), and the reading column is 581.6px at desktop. Two text columns and that row cannot
+   share a line: measured in the preview, each text column came out at 136px and "Prep 30 min"
+   wrapped. Nothing else on the page moves, because .above-ing is rendered in one place and holds
+   only these two things. */
+.above-ing { display: flex; flex-direction: column; align-items: flex-start; gap: 14px;
+             margin: 0 0 20px; }
 .scaler-col { flex: none; }
+/* ⚠️ TWO COLUMNS ONLY WHEN THE RIGHT ONE HAS SOMETHING IN IT. A recipe with no waits carries no
+   .two-col and reads at full width, rather than paying for a half-empty grid. */
+.time-block { width: 100%; }
+/* ⚠️ A FIGURE AND ITS QUALIFIER MOVE WHOLE OR NOT AT ALL. In a 245px column "Total 10 hr 30 min+
+   (incl. plan ahead)" broke after "plan" and left "ahead)" alone, and "Plan ahead 9 hr 30 min –
+   14 hr" broke after the en dash. Neither is a value splitting (bindUnits already holds a number to
+   its unit), but both read as the ragged wrap Andy asked to be rid of. nowrap on the two spans
+   means a long one drops to the next line in one piece and a short one still sits inline, which is
+   the behaviour wanted without a second rule about when to break. */
+.time-block .meta-val, .time-block .meta-note { white-space: nowrap; }
+.time-block.two-col {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 10px 26px;
+  /* ⚠️ BOTH COLUMNS START AT THE TOP. A grid cell stretches and .meta-stack centres its content, so
+     a short left column floated to the middle of a tall right one: morning-buns states no times at
+     all, and its "Serves 12" sat halfway down the card opposite six wait lines. */
+  align-items: start;
+}
+.time-block .tb-col { justify-content: flex-start; }
+/* The rule between them is the app's own --rule-soft, so the split reads as a split rather than as
+   two things that drifted apart. */
+.time-block.two-col .tb-right { border-left: 1px solid var(--rule-soft); padding-left: 24px; }
+/* ⚠️ ONE COLUMN ON A PHONE, ALWAYS. 680px is the breakpoint the detail card already uses. At 390px
+   the reading column is 302px, which is narrower than one of the desktop halves. */
+@media (max-width: 680px) {
+  .time-block.two-col { grid-template-columns: 1fr; gap: 12px; }
+  .time-block.two-col .tb-right { border-left: 0; padding-left: 0; }
+}
 .meta-stack { display: flex; flex-direction: column; justify-content: center; gap: 3px; padding: 2px 0; min-width: 0; }
 /* This stack is quiet metadata beside the title and it was inheriting --fs-body, the same size as
    the method text it sits above. One step down the existing scale, to --fs-headnote. BOTH rows move
@@ -2538,8 +2572,10 @@ a.meta-step { color: inherit; text-decoration: none; cursor: pointer; }
 a.meta-step:hover { color: var(--berry); text-decoration: underline;
                     text-decoration-style: dotted; text-underline-offset: 2px; }
 a.meta-step:focus-visible { color: var(--berry); outline: 1px dotted currentColor; outline-offset: 2px; }
-/* "Keeps" heads the storage list the way "Plan ahead" heads the waits. */
-.meta-keeps { display: block; }
+/* "Keeps" and "Plan ahead" are the two group labels, and they are ONE rule. Both name what the
+   lines under them are, and both carry the weight .meta-do already uses for the verb that leads a
+   line. .meta-keeps is kept as an alias for the older markup in the editor preview. */
+.meta-lead, .meta-keeps { display: inline; font-weight: 600; color: var(--ink); }
 /* The step the reader was sent to, marked just long enough to find it. Fades rather than blinks,
    because the page has already scrolled and the eye only needs to be told where it landed. */
 /* ⚠️ IT HOLDS BEFORE IT FADES, AND THE HOLD IS THE POINT. The highlight started fading the instant

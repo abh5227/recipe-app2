@@ -22,7 +22,7 @@
    "expected": [
     {
      "label": "9 hr 20 min+",
-     "when": "with the optional soak"
+     "when": "if you soak"
     }
    ]
   },
@@ -115,7 +115,7 @@
    "expected": [
     {
      "label": "11 hr 10 min+",
-     "when": "with the optional rest"
+     "when": "if you rest"
     }
    ]
   },

@@ -16,6 +16,7 @@ A wrap that changed a result would show up as a difference in the dump.
 thing being checked is that a DEFAULT, a backfilling UPDATE or an index is unaffected by the
 transaction around it. The dump carries the schema, every row of every table, and the indexes.
 """
+import os
 import pathlib
 import re
 import shutil
@@ -48,18 +49,34 @@ def _build(folder, db):
 
     ⚠️ A CHILD PROCESS, NOT AN IMPORT. build_db and migrate hold module-global paths, and the suite's
     own guards watch them. Rebinding them twice inside one test run leaves whichever ran last
-    pointing somewhere unexpected for everything after it."""
+    pointing somewhere unexpected for everything after it.
+
+    ⚠️ AND THE CHILD GETS A CLEAN ENVIRONMENT, which it did not. A child inherits os.environ, and
+    app.orm_session() prefers $DATABASE_URL over the path it is handed, so one earlier test leaving
+    that variable set pointed this build at Postgres and compared two databases that were never
+    written. It passed on its own and failed in a full run, which is the signature. The same applies
+    to $RECIPE_APP_LIVE_DB, which decides what corpus_guard calls live."""
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("DATABASE_URL", "RECIPE_APP_LIVE_DB")}
     r = subprocess.run([sys.executable, "-c",
                         _BUILD.format(repo=str(REPO), folder=str(folder), db=str(db))],
-                       capture_output=True, text=True)
+                       capture_output=True, text=True, env=env)
     assert r.returncode == 0, f"fresh install failed with {folder}:\n{r.stdout[-3000:]}\n{r.stderr[-3000:]}"
     return db
+
+
+# ⚠️ ONE NORMALIZATION, NAMED, AND IT IS NOT THE THING UNDER TEST. migrate.py stamps every applied
+# file with an applied_at to the SECOND, so two fresh installs a fraction of a second apart differ
+# whenever they straddle a second boundary. The test passed on its own and failed inside a full suite
+# run, which is that signature exactly. The filenames and their ORDER still have to match, so the
+# stamp is replaced rather than the row dropped.
+_STAMP = re.compile("(INSERT INTO \"schema_migrations\" VALUES\\('[^']+',)'[^']*'\\)")
 
 
 def _dump(db):
     con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
     try:
-        return "\n".join(con.iterdump())
+        return _STAMP.sub("\\1'<applied_at>')", "\n".join(con.iterdump()))
     finally:
         con.close()
 
@@ -91,8 +108,14 @@ def test_a_fresh_install_is_identical_with_and_without_the_transactions(tmp_path
 
     a = _dump(_build(plain, tmp_path / "with.db"))
     b = _dump(_build(bare, tmp_path / "without.db"))
-    assert a == b, (
-        "a migration's transaction changed the RESULT of a fresh install, not just when it commits")
+    if a != b:
+        import difflib
+        diff = list(difflib.unified_diff(a.splitlines(), b.splitlines(),
+                                         "with the transactions", "without them", lineterm="", n=0))
+        raise AssertionError(
+            "a migration's transaction changed the RESULT of a fresh install, not just when it "
+            "commits:\n" + "\n".join(d[:120] for d in diff[:40]))
+    assert "'<applied_at>'" in a, "the applied_at normalization stopped matching anything"
     assert "schema_migrations" in a and "ingredient_weights" in a, "the dump looks empty"
 
 

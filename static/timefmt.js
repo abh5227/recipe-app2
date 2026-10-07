@@ -73,3 +73,17 @@ export function normalizeTime(raw) {
   const { value, note } = timeParts(raw);
   return note ? `${value} (${note})` : value;
 }
+
+
+// ⚠️ WHERE A TIME IS ALLOWED TO BREAK, AND IT LIVES HERE BECAUSE SEVERAL CALLERS NEED IT. A time
+// value is several words ("2 hr 45 min"), so the only thing stopping a wrap landing between a
+// number and its unit is saying so. A digit followed by a word is joined with a non-breaking space,
+// which holds "45 min" and "2 hr" together and holds a label to the value it labels. The segments
+// themselves stay breakable, so a long line still wraps at its separator.
+//
+// It was a local inside app.js's scaleMetaBlock, which was fine while one function printed every
+// time on the page. The time block's columns print them in three places now, and a rule copied into
+// three closures is the shape this repository has a standing rule against.
+export function bindUnits(value) {
+  return String(value == null ? "" : value).replace(/(\d)\s+(?=[A-Za-z])/g, "$1 ");
+}

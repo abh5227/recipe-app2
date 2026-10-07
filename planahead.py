@@ -382,14 +382,25 @@ def _conditional_phrase(w):
 
     ⚠️ THE AUTHOR'S WORDS WHERE THERE ARE ANY. only_if carries a when_label written for this exact
     recipe ("the dough was refrigerated ahead"), and nothing a rule invents will beat it. An
-    optional wait has no condition to state, so it is named by what it IS."""
+    optional wait has no condition to state, so it is named by what it IS.
+
+    ⚠️ "if you soak", NOT "with the optional soak". Andy's wording, chosen off the preview. The
+    second total is read as a path the cook may take, and the condition for taking it is something
+    they DO, so the line says so in the second person the rest of the app's microcopy uses. It is
+    built here rather than in the client for the reason everything else about the Total is: one
+    implementation, and the page prints what it is handed.
+
+    ⚠️ AND IT READS THE VERB, NOT THE KIND NOUN. _kind_noun answers "marinade" where VERBS answers
+    "Marinate", and "if you marinade" is not a sentence. The verb table is the same one the
+    breakdown line leads with, so the two halves of the block name the wait the same way."""
     when = _when(w)
     label = (w.get("when_label") or "").strip()
     if when == "only_if":
         return f"if {label}" if label else "on that path"
     if label:
         return f"with {label}"
-    return f"with the optional {_kind_noun(w)}" if _kind_noun(w) else "with the optional step"
+    verb = VERBS.get((w.get("kind") or "").strip().lower())
+    return f"if you {verb.lower()}" if verb else "if you take it"
 
 
 def _kind_noun(w):
