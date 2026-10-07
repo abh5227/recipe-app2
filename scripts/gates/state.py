@@ -79,15 +79,22 @@ COUNTS = {
     "cook_photos": "SELECT COUNT(*) FROM cook_photos",
 }
 
-# Which table each count needs, so a missing one is reported rather than raised.
+# What each count needs, so a database too old to answer it reports None rather than raising. A
+# plain name is a TABLE. A pair is a table and a COLUMN that arrived later than the table did, which
+# is the same story one step down: recipe_steps exists from the first migration and heading_level
+# only from 059, so a reading taken before 059 can count the steps and not the subheadings.
+# ⚠️ DECLARED, NOT CAUGHT. Wrapping the counts in `except OperationalError` would also swallow a
+# typo in a query, and a gate that quietly reports None where it should report a number is worse
+# than one that raises.
 _NEEDS = {
-    "recipes": "recipes", "steps": "recipe_steps", "headings": "recipe_steps",
-    "headings_l1": "recipe_steps", "headings_l2": "recipe_steps",
+    "recipes": "recipes", "steps": "recipe_steps",
+    "headings": ("recipe_steps", "is_heading"),
+    "headings_l1": ("recipe_steps", "heading_level"), "headings_l2": ("recipe_steps", "heading_level"),
     "ingredient_lines": "recipe_ingredients", "waits": "recipe_waits",
     "storage": "recipe_storage", "recipe_notes": "recipe_notes",
     "recipe_notes_recipes": "recipe_notes", "recipe_notes_original": "recipe_notes_original",
     "recipe_note_step_refs": "recipe_note_step_refs",
-    "snapshots_original": "recipe_snapshots", "snapshots": "recipe_snapshots",
+    "snapshots_original": ("recipe_snapshots", "reason"), "snapshots": "recipe_snapshots",
     "migrations": "schema_migrations",
     "users": "users", "cook_log": "cook_log", "ratings": "ratings", "comments": "comments",
     "friendships": "friendships", "shared_posts": "shared_posts", "invites": "invites",
@@ -110,16 +117,27 @@ def entry_key(e):
             str(e.get("from") or "")[:80], str(e.get("to") or "")[:80]]
 
 
-def current_blob(con, rid):
-    """A recipe's content as the app would serialize it RIGHT NOW, through the app's own function."""
-    rows = lambda sql: [dict(x) for x in con.execute(sql, (rid,))]
+def current_blob(con, rid, have=None):
+    """A recipe's content as the app would serialize it RIGHT NOW, through the app's own function.
+
+    ⚠️ A TABLE THE SCHEMA DOES NOT HAVE YET READS AS EMPTY, which is the same answer the counts
+    above already give for one. A database older than migration 049 has no recipe_waits and no
+    recipe_storage, and that is a legitimate BEFORE side: tests/test_lockstep_guard.py reads this
+    state at every point in the folder's history. It costs nothing in the blob either, because
+    content_blob omits both keys when the list is empty, so a schema without the tables serializes
+    byte-identically to one that has them and no rows."""
+    if have is None:
+        have = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    rows = lambda table, sql: ([dict(x) for x in con.execute(sql, (rid,))] if table in have else [])
     recipe = dict(con.execute("SELECT * FROM recipes WHERE id = ?", (rid,)).fetchone())
     return ss.content_blob(
         recipe,
-        rows("SELECT * FROM recipe_ingredients WHERE recipe_id = ? ORDER BY position, id"),
-        rows("SELECT * FROM recipe_steps WHERE recipe_id = ? ORDER BY position, id"),
-        rows("SELECT * FROM recipe_waits WHERE recipe_id = ? ORDER BY position, id"),
-        rows("SELECT * FROM recipe_storage WHERE recipe_id = ? ORDER BY position, id"),
+        rows("recipe_ingredients",
+             "SELECT * FROM recipe_ingredients WHERE recipe_id = ? ORDER BY position, id"),
+        rows("recipe_steps", "SELECT * FROM recipe_steps WHERE recipe_id = ? ORDER BY position, id"),
+        rows("recipe_waits", "SELECT * FROM recipe_waits WHERE recipe_id = ? ORDER BY position, id"),
+        rows("recipe_storage",
+             "SELECT * FROM recipe_storage WHERE recipe_id = ? ORDER BY position, id"),
     )
 
 
@@ -133,16 +151,29 @@ def read_state(db):
             stored = {r["recipe_id"]: r["content"] for r in con.execute(
                 "SELECT recipe_id, content FROM recipe_snapshots WHERE reason = 'original'")}
             for rid, baseline in sorted(stored.items()):
-                cur = current_blob(con, rid)
+                cur = current_blob(con, rid, have)
                 if cur == baseline:
                     short.append(rid)
                     continue
                 entries = snapshot_diff.diff_snapshots(baseline, cur)
                 if entries:
                     anns[rid] = sorted(entry_key(e) for e in entries)
+        cols = {}
+
+        def answerable(need):
+            """Does this database have what the count needs: the table, and the column if named."""
+            table, column = (need, None) if isinstance(need, str) else need
+            if table not in have:
+                return False
+            if column is None:
+                return True
+            if table not in cols:
+                cols[table] = {r[1] for r in con.execute(f'PRAGMA table_info("{table}")')}
+            return column in cols[table]
+
         counts = {}
         for name, sql in COUNTS.items():
-            counts[name] = con.execute(sql).fetchone()[0] if _NEEDS[name] in have else None
+            counts[name] = con.execute(sql).fetchone()[0] if answerable(_NEEDS[name]) else None
         return {
             "db": str(db),
             "short_circuit": sorted(short),
