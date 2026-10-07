@@ -188,20 +188,61 @@ test("every combination reads in the one order, with nothing out of place", () =
                  prep: total.label ? "10 min" : "", cook: total.label ? "20 min" : "" })))))));
   assert.equal(bits.length, 64);
   let seen = 0;
+  const perGroup = Object.fromEntries(ORDER.map((g) => [g, 0]));
   for (const opts of bits) {
     const got = groupsOf(render(opts));
     seen += got.length;
-    let at = -1;
+    let at = 0;
     for (const g of got) {
-      const i = ORDER.indexOf(g, at + 1);
-      assert.ok(i > at, `${JSON.stringify(got)} is not in the one order, for ${JSON.stringify(opts)}`);
+      assert.ok(ORDER.includes(g), `${g} is not one of the groups this order is stated over`);
+      perGroup[g] += 1;
+      // ⚠️ NOT STRICTLY INCREASING, AND THE DIFFERENCE IS A REAL RENDERING. Two conditional
+      //    totals are two "2nd" rows in a row, which the project supports and has a fixture case
+      //    for ("two conditionals, one line each (no-knead-bread's shape)"). `indexOf(g, at + 1)`
+      //    with `i > at` rejected that, so the day a second line appears this test fails on a
+      //    correct page. 0 of the 300 render two today, because no-knead-bread's second wait has a
+      //    floor of 0 and is skipped, which is the only reason it never fired.
+      const i = ORDER.indexOf(g, at);
+      assert.ok(i >= at,
+                `${JSON.stringify(got)} is not in the one order, for ${JSON.stringify(opts)}`);
       at = i;
     }
   }
-  // ⚠️ ANTI-VACUITY. A groupsOf that matched nothing would make every sequence above trivially
-  //    ordered, which is exactly how the non-breaking space nearly made this test meaningless.
-  assert.ok(seen > 150, `the combinations rendered only ${seen} groups in total`);
+  // ⚠️ ANTI-VACUITY, PER GROUP. A groupsOf that matched nothing would make every sequence above
+  //    trivially ordered, which is how the non-breaking space nearly made this test meaningless.
+  //    A total floor cannot catch that: measured, the 64 combinations render exactly 32 of each of
+  //    the 8 groups, so `seen > 150` tolerated THREE of the eight marks going dead, and
+  //    re-introducing the NBSP bug left seen at 224 with this assertion still green. The per-group
+  //    count is what actually fails, and the exact total catches anything else that stops matching.
+  for (const g of ORDER) {
+    assert.equal(perGroup[g], 32,
+                 `${g} was found ${perGroup[g]} times over the 64 combinations, expected 32. `
+                 + `A mark that stops matching makes every order assertion above vacuous.`);
+  }
+  assert.equal(seen, 256, `the combinations rendered ${seen} groups in total, expected 256`);
 });
+
+test("two conditional totals are two rows in a row, and that is in order", () => {
+  // ⚠️ THE CASE THE ORDER CHECK USED TO REJECT. tests/fixtures/conditional-total-cases.json has
+  //    "two conditionals, one line each (no-knead-bread's shape)", so the page supports it, and
+  //    the combination test's `indexOf(g, at + 1)` made two "2nd" rows a failure. 0 of the 300
+  //    render two today: no-knead-bread's second wait has a floor of 0 and is skipped, which is
+  //    the only reason a correct page was never declared out of order.
+  const second = { label: "9 hr 45 min", when: "if you soak the beans" };
+  const html = render({ prep: "10 min", cook: "20 min", total: { label: "30 min" },
+                        conds: [COND, second], servings: "4", waits: [WAIT] });
+  const groups = groupsOf(html);
+  assert.deepEqual(groups,
+                   ["Prep", "Cook", "Total", "2nd", "2nd", "Serves", "Plan ahead"],
+                   groups.join(" > "));
+  let at = 0;
+  for (const g of groups) {
+    const i = ORDER.indexOf(g, at);
+    assert.ok(i >= at, `${groups.join(" > ")} is not in the one order`);
+    at = i;
+  }
+});
+
 
 test("the author's own total sits directly under the Total it replaced", () => {
   const html = render({ waits: [WAIT], total: { label: "2 hr 30 min+", note: "incl. plan ahead" },

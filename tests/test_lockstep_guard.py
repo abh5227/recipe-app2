@@ -101,8 +101,17 @@ DECLINES_ON_THE_FIXTURE = {
                        "it expects the 2026-09-25 reparse to have run first"),
     "remove_demo_rows.py": ("REFUSING: there is no account",
                             "the fixture has no owner account to keep rows for"),
-    "restore_from_paprika.py": ("the plan no longer matches the reviewed counts",
-                                "the fixture is not the corpus the plan was reviewed against"),
+    # ⚠️ TWO DECLINES, BECAUSE THIS ONE READS A 235 MB FILE THAT IS NOT IN THE REPO. With the
+    #    Paprika archive present, the pass gets as far as comparing the plan against the fixture and
+    #    declines on the counts. Without it, it declines one step earlier and says so. Both are
+    #    refusals before any write, which is the property this sweep is about, and which one you
+    #    get depends only on whose machine it is. Declaring one of them made the test pass on the
+    #    owner's laptop and fail in CI, where the archive has never existed. Found by running the
+    #    suite in a fresh clone, which is the CI condition and the standing guard for exactly this.
+    "restore_from_paprika.py": (("the plan no longer matches the reviewed counts",
+                                 "the Paprika archive is not here"),
+                                "the fixture is not the corpus the plan was reviewed against, and "
+                                "in a checkout without the archive it cannot even look"),
     "restore_notes.py": ("no line at 'aloo-gobhi' position 6",
                          "the fixture has no line at the position the decision names"),
 }
@@ -366,6 +375,10 @@ def test_every_declared_decline_is_still_a_decline():
     crash would hide behind the same entry."""
     for name, entry in DECLINES_ON_THE_FIXTURE.items():
         assert isinstance(entry, tuple) and len(entry) == 2 and all(entry), name
+        markers, why = entry
+        assert isinstance(why, str) and why, name
+        for m in (markers if isinstance(markers, tuple) else (markers,)):
+            assert isinstance(m, str) and m, f"{name}: a marker must be a non-empty string"
     stale = set(DECLINES_ON_THE_FIXTURE) - set(PASSES)
     assert not stale, f"DECLINES_ON_THE_FIXTURE names passes the sweep no longer runs: {sorted(stale)}"
     assert WRITES_TO_THE_FIXTURE <= set(PASSES), WRITES_TO_THE_FIXTURE
@@ -419,9 +432,14 @@ def test_a_corpus_pass_moves_neither_the_annotations_nor_the_byte_equal_set(tmp_
         + ".\n  An unexpected exit means this case compared a database the pass never opened."
         + f"\n{r.stdout[-800:]}\n{r.stderr[-1500:]}")
     if declared:
-        assert declared[0] in (r.stdout + r.stderr), (
-            f"{script} exited 1 without saying {declared[0]!r}, so this is not the decline this "
-            f"test declared. A guard refusal and a crash both land here.\n"
+        # A marker may be a tuple where one pass legitimately declines for different reasons in
+        # different checkouts. At least one has to appear: "exited 1" alone is a guard refusal, a
+        # deliberate abort and a crash all at once.
+        markers = declared[0] if isinstance(declared[0], tuple) else (declared[0],)
+        said = (r.stdout + r.stderr)
+        assert any(m in said for m in markers), (
+            f"{script} exited 1 without saying any of {list(markers)!r}, so this is not the "
+            f"decline this test declared. A guard refusal and a crash both land here.\n"
             f"{r.stdout[-800:]}\n{r.stderr[-1500:]}")
     after = gate_state.read_state(db)
 
