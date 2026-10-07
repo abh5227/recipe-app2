@@ -7,7 +7,17 @@
 -- DROP NOT NULL; ADDing a column has no such limit). NO data change IN this migration (the backfill is
 -- separate + gated). A composite (recipe_id, position) index backs the album read (WHERE recipe_id = ?
 -- ORDER BY position). SQLite half of the dual schema source; an Alembic revision mirrors it for Postgres.
+--
+-- ⚠️ ONE TRANSACTION, BECAUSE executescript OPENS NONE. migrate.py applies each file with
+-- sqlite3's executescript, which auto-commits every statement on its own, so an interrupted run
+-- left some of the statements below applied with the filename UNRECORDED, and the retry then died
+-- forever on "duplicate column name". Wrapped 2026-10-07. Every database past this file is
+-- unaffected (migrate.py tracks by filename and never by checksum), so this protects a FRESH
+-- INSTALL, which is the only thing that still runs it. See tests/test_migration_atomicity.py.
+BEGIN;
 
 ALTER TABLE cook_photos ADD COLUMN position INTEGER;   -- nullable: the backfill seeds existing rows; the app sets new rows on insert (append)
 
 CREATE INDEX idx_cook_photos_recipe_position ON cook_photos(recipe_id, position);   -- per-recipe album order
+
+COMMIT;

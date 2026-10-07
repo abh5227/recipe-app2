@@ -11,5 +11,16 @@
 -- SQL-ONLY (migrate.py runs executescript, which cannot call Python): this migration ONLY adds the
 -- columns. The data transform of the 3,300 persistent app rows is a separate Python backfill
 -- (scripts/backfill_qty_unit.py), because the split needs parse_amount and can't be done in SQL.
+--
+-- ⚠️ ONE TRANSACTION, BECAUSE executescript OPENS NONE. migrate.py applies each file with
+-- sqlite3's executescript, which auto-commits every statement on its own, so an interrupted run
+-- left some of the statements below applied with the filename UNRECORDED, and the retry then died
+-- forever on "duplicate column name". Wrapped 2026-10-07. Every database past this file is
+-- unaffected (migrate.py tracks by filename and never by checksum), so this protects a FRESH
+-- INSTALL, which is the only thing that still runs it. See tests/test_migration_atomicity.py.
+BEGIN;
+
 ALTER TABLE recipe_ingredients ADD COLUMN quantity TEXT;
 ALTER TABLE recipe_ingredients ADD COLUMN unit TEXT;
+
+COMMIT;

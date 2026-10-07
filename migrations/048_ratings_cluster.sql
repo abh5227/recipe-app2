@@ -31,6 +31,14 @@
 -- the ratings rows onto their cooks by a 5-clause rule), which stamps THIS migration as applied there
 -- so build_db does not run it twice. On a fresh build cook_log is empty and the columns start NULL.
 -- An Alembic revision mirrors this for Postgres.
+--
+-- ⚠️ ONE TRANSACTION, BECAUSE executescript OPENS NONE. migrate.py applies each file with
+-- sqlite3's executescript, which auto-commits every statement on its own, so an interrupted run
+-- left some of the statements below applied with the filename UNRECORDED, and the retry then died
+-- forever on "duplicate column name". Wrapped 2026-10-07. Every database past this file is
+-- unaffected (migrate.py tracks by filename and never by checksum), so this protects a FRESH
+-- INSTALL, which is the only thing that still runs it. See tests/test_migration_atomicity.py.
+BEGIN;
 
 ALTER TABLE cook_log ADD COLUMN rating REAL
     CHECK (rating IS NULL OR rating IN (0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5));
@@ -69,3 +77,5 @@ CREATE TABLE recipe_source_ratings (
 );
 
 CREATE INDEX idx_recipe_source_ratings_recipe ON recipe_source_ratings(recipe_id);
+
+COMMIT;

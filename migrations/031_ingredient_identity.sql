@@ -34,6 +34,14 @@
 -- INERT. Nothing reads concept or owner yet. The effective-library read is stage 2 and the create path
 -- is stage 3. This migration adds the shape and nothing else.
 -- The Alembic revision mirrors this for Postgres.
+--
+-- ⚠️ ONE TRANSACTION, BECAUSE executescript OPENS NONE. migrate.py applies each file with
+-- sqlite3's executescript, which auto-commits every statement on its own, so an interrupted run
+-- left some of the statements below applied with the filename UNRECORDED, and the retry then died
+-- forever on "duplicate column name". Wrapped 2026-10-07. Every database past this file is
+-- unaffected (migrate.py tracks by filename and never by checksum), so this protects a FRESH
+-- INSTALL, which is the only thing that still runs it. See tests/test_migration_atomicity.py.
+BEGIN;
 
 ALTER TABLE ingredients ADD COLUMN concept TEXT NOT NULL DEFAULT '';   -- '' is transient, see above
 ALTER TABLE ingredients ADD COLUMN owner   INTEGER REFERENCES users(id);   -- NULL = shared
@@ -42,3 +50,5 @@ UPDATE ingredients SET concept = id WHERE concept = '';
 
 CREATE UNIQUE INDEX idx_ingredients_owner_concept  ON ingredients(owner, concept);
 CREATE UNIQUE INDEX idx_ingredients_shared_concept ON ingredients(concept) WHERE owner IS NULL;
+
+COMMIT;

@@ -198,25 +198,23 @@ def test_a_migration_interrupted_inside_its_transaction_leaves_nothing_behind(
     assert name in recorded, f"{name} did not apply after the interrupted run"
 
 
-# ⚠️ SEVEN OLDER ADDITIVE MIGRATIONS HAVE NO TRANSACTION, AND THAT IS A RECORDED GAP RATHER THAN A
-# PASS. Measured 2026-10-06 while proving 062 all-or-nothing for the titles round. Each adds two or
-# more columns under one `executescript`, which auto-commits every statement on its own, so an
-# interrupted run leaves some columns added and the filename unrecorded. The retry then dies forever
-# on "duplicate column name", which is the same permanent-drift shape the five rebuilds had.
-# 031 is the worst of them: two ADD COLUMNs followed by two UPDATEs, so a backfill can be missing
-# with the columns in place and nothing saying so. 048 adds four columns, a table and two indexes.
+# ⚠️ THE EXEMPTION LIST IS EMPTY, AND IT STAYS A SET RATHER THAN BECOMING NOTHING. Seven older
+# additive migrations (009, 013, 015, 018, 027, 031, 048) ran for months with no transaction. Each
+# adds two or more statements under one `executescript`, which auto-commits every one of them, so an
+# interrupted run left columns added with the filename unrecorded and the retry died forever on
+# "duplicate column name". 031 was the worst: two ADD COLUMNs then two UPDATEs, so the backfill could
+# be missing with the columns in place and nothing saying so.
 #
-# They are NOT fixed here. All seven ran on live long ago and wrapping them changes nothing for any
-# database past them (migrate.py tracks by filename, never by checksum), so it is a safe edit of the
-# kind CLAUDE.md allows, exactly as the five rebuilds were. It is a FRESH CLONE that is still
-# exposed, and that is a decision for Andy rather than a change to smuggle into a round about note
-# titles. ⚠️ A NEW ONE IS NOT ADMITTED: the list is closed, so the next additive migration written
-# has to carry its own BEGIN/COMMIT or this test fails.
-UNWRAPPED_ADDITIVE = {
-    "009_recipe_import_uid.sql", "013_ingredient_weight_convert_flag.sql",
-    "015_recipe_ingredient_qty_unit.sql", "018_ownership_user_columns.sql",
-    "027_cook_photo_position.sql", "031_ingredient_identity.sql", "048_ratings_cluster.sql",
-}
+# All seven were wrapped on 2026-10-07. Live and every other database past them is untouched by that
+# edit, because migrate.py tracks by filename and never by checksum, and a fresh install's schema and
+# seeded data were proved byte-identical before and after
+# (tests/test_migration_equivalence.py). The forced-failure proof for each one is
+# test_a_migration_interrupted_inside_its_transaction_leaves_nothing_behind above, which reads the
+# folder and so picked all seven up the moment they carried a BEGIN.
+#
+# ⚠️ ANYTHING ADDED HERE NEEDS A REASON NEXT TO IT AND A DECISION BEHIND IT. An empty list means the
+# rule below holds over every migration in the folder with nothing excused.
+UNWRAPPED_ADDITIVE = set()
 
 
 def test_an_additive_column_migration_carries_its_own_transaction():
