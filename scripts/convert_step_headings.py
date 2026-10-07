@@ -14,7 +14,9 @@ Four passes over the step rows, each driven by a DECISION column in docs/data-re
 
   3  A Note: OR Tip: STEP MOVES TO THE RECIPE'S NOTES.
      Same CSV, DECISION == "no (note/tip)". The step row goes away and its words are appended to
-     recipes.notes.
+     the recipe's notes. ⚠️ SPENT, AND NOT RE-RUNNABLE AS WRITTEN: it appended to recipes.notes,
+     which migration 063 dropped. It ran once over the 300 in the 2026-09-30 chain and a note is a
+     recipe_notes row now. See the note on pass 3 further down.
 
   4  A DASH LEAD-IN LABEL IS LIFTED THE SAME WAY.
      step-dash-labels-*.csv, DECISION_make_heading_yes_no == yes. 58 rows over 14 recipes.
@@ -42,8 +44,11 @@ Four passes over the step rows, each driven by a DECISION column in docs/data-re
    annotations that drift represents. Each pass applies its OWN edit to the baseline row with the
    matching id and leaves every other byte alone.
 
-⚠️ notes IS IN SNAPSHOT_RECIPE_FIELDS. Pass 3 changes a recipe header field, so the baseline's
-   recipe.notes has to move with it or the cook is told they edited a note they never touched.
+⚠️ notes WAS IN SNAPSHOT_RECIPE_FIELDS AND IS NOT ANY MORE, AND THE OLD SENTENCE IS KEPT HERE
+   BECAUSE IT WAS TRUE WHEN PASS 3 RAN. It read: "Pass 3 changes a recipe header field, so the
+   baseline's recipe.notes has to move with it." A note became a playground afterwards, so notes
+   left the snapshot entirely and migration 063 dropped the column. Passes 3 and 5 are spent and
+   are not re-runnable. See the ⚠️ beside pass 3 below.
 
 Usage:  convert_step_headings.py <db> [--apply]      (default is a dry run)
 """
@@ -64,7 +69,7 @@ import snapshot_serialize                                        # noqa: E402
 #    next recipe someone imports. Two copies would mean a corpus repaired to one shape and an
 #    importer producing another, with nothing to say so.
 from import_cleanup import (NOTE_SEPARATOR, SECTION, SUBHEADING,  # noqa: E402
-                            capitalize_first_visible, clean_notes, is_caps, label_level,
+                            capitalize_first_visible, is_caps, label_level,
                             move_link_out_of_label, sentence_case, split_lead_label,
                             strip_emphasis)
 

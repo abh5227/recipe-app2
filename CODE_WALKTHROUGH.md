@@ -411,8 +411,10 @@ order the passes run in and why they are not independent.
 ## Notes as rows, and the two write doors
 
 Migration 060 turned a recipe's notes from one text column into `recipe_notes`: words, a kind, an
-optional step link and an optional ingredient-line link. `recipes.notes` is still written as a
-derived copy so the previous deploy can serve, and `snapshot_diff` does not compare it.
+optional step link and an optional ingredient-line link. `recipes.notes` was kept for one deploy as a
+derived copy and migration 063 dropped it, following the 054 rule: a destructive migration runs
+AFTER the code that stopped naming the column. Notes are outside `recipe_snapshots.content`
+entirely, so `snapshot_diff` has nothing to compare.
 
 **The shared brain is `notes.py`**, the way `planahead.py` is for waits, and it restates nothing:
 `kind_of` delegates to `import_cleanup.note_kind`, which reads `static/note-kinds.json`, the same

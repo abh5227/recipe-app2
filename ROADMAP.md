@@ -1156,9 +1156,11 @@ mark looks like is a design call, and the preview-first rule says it is not mine
 
 ### Notes as rows, with step links · ✅ BUILT AND REHEARSED (held, not yet pushed or run on live)
 
-A note is a row since migration 060: 177 of them over 95 recipes, each with its own id, kind, text,
-step link and (written by nothing yet) ingredient-line link. `recipes.notes` is a derived copy kept
-only so the previous deploy can serve during the window, and a later migration drops it.
+A note is a row since migration 060: 176 of them over 95 recipes, each with its own id, kind, text,
+step link and (written by nothing yet) ingredient-line link. `recipes.notes` was the derived copy
+kept for one deploy window, and migration 063 dropped it. 19 of the 95 recipes had a column that no
+longer agreed with their rows by the time it went, which is what a derived copy nothing re-derives
+does.
 
 - **The rules are the ones that already shipped.** `notes.py` delegates the split to
   `note-blocks.js::noteParagraphs`'s Python side and the kind to `import_cleanup.note_kind`, which
@@ -2285,12 +2287,18 @@ worth knowing before they bite. None of the *data* limitations occur in the curr
   Fix shape: wrap each file in its own `BEGIN;`/`COMMIT;`, exactly as the five table rebuilds (005,
   019, 026, 041, 045) were wrapped for the same reason. Editing an applied migration is safe here for
   that same filename-tracking reason, and `045` is the precedent for keeping a `PRAGMA foreign_keys`
-  outside the transaction. **Deferred to a later safety round, on purpose**, rather than widened into
-  a round about note titles. The seven are named in `UNWRAPPED_ADDITIVE` in
-  `tests/test_migration_atomicity.py` and the list is CLOSED, so the next additive migration written
-  has to carry its own wrap.
+  outside the transaction. **✅ DONE, 2026-10-07.** All seven are wrapped and `UNWRAPPED_ADDITIVE`
+  is empty.
+  ⚠️ **AND THE RULE THAT WAS MEANT TO LIST THEM COULD NOT SEE SIX MORE.** It split each file on `;`
+  and dropped any fragment starting with `--`, and every statement in that folder has a comment
+  above it, so the header and the first statement were one fragment and the whole fragment was
+  thrown away: `030` counted 0 statements where it has two ADD COLUMNs, `033` counted 0 where it has
+  four and an index. `003`, `004`, `030`, `033`, `047` and `050` were wrapped too, once the counter
+  stripped comments before counting. Found by an independent review, not by the rule. A fresh
+  install built both ways is byte-identical (`tests/test_migration_equivalence.py`).
 
-- **The retired `recipes.notes` column should be DROPPED, not repaired.** Migration 060 made the note
+- **The retired `recipes.notes` column should be DROPPED, not repaired.** · ✅ DONE, migration 063,
+  2026-10-07 (built and rehearsed, not yet run on live). Migration 060 made the note
   rows the source and left the column as a derived copy, written on every note write so the previous
   deploy could still serve a recipe during the window. The titles round then lifted a label out of a
   note's text into `recipe_notes.title`, so `notes.py::derived_text` puts it back on the front with a
@@ -2299,9 +2307,12 @@ worth knowing before they bite. None of the *data* limitations occur in the curr
   string nothing on the page reads and the running deploy does not read either.
   **The answer is to drop the column rather than to tune the separator.** A second opinion about how
   a note's words are assembled is exactly the thing one shared rule exists to prevent, and the column
-  is the last place that opinion lives. Deferred to a later cleanup round: it is a destructive
-  migration, so it runs AFTER its deploy (the 053/054 rule), and the retirement commit that stops
-  writing it has to ship first.
+  is the last place that opinion lives. It is a destructive migration, so it runs AFTER its deploy
+  (the 053/054 rule), and both halves are in one round: the code stops naming the column and 063
+  drops it afterwards. `golive/2026-10-07-drop-notes-column.md` holds the order and both rollbacks,
+  measured on copies. The rollback after 063 is `ALTER TABLE recipes ADD COLUMN notes TEXT`
+  (0.003 s) and a repin, not a restore from backup: the old code's pages are pixel-identical against
+  an empty column on all 18 comparisons, because nothing on the client ever read it.
 
 - **`field-sizing: content` is Chromium-only — long ingredient names are unreadable while editing on
   Safari and Firefox.** `styles.css` sets `field-sizing: content` on `.ie-ov textarea.ie`, and the

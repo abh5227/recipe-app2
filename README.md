@@ -373,8 +373,9 @@ brackets would have printed.
 ## Notes, and the two places you edit them
 
 A note is a row (`recipe_notes`, migration 060), not a paragraph in a text box. Each one has words,
-a kind, and optionally a step it belongs to. `recipes.notes` is still written as a derived copy so a
-previous deploy can serve, and nothing reads it on the page.
+a kind, and optionally a step it belongs to. The old `recipes.notes` column was kept for one deploy
+as a derived copy and is gone: migration 063 dropped it. The author's own words live in
+`recipe_notes_original`, which nothing on the page reads and no save touches.
 
 **On the recipe page** the Notes section groups what it has. A note attached to a step reads under
 STEP NOTES, in step order, opening `Step 4 · Tip: `; everything else reads under a heading named for

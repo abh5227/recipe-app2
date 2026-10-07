@@ -58,11 +58,13 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))      # f
 from corpus_guard import refuse_live, report_target                          # noqa: E402
 
 CSV_NAME = "baseline-realign.csv"
-# ⚠️ notes IS ONE OF THESE SINCE MIGRATION 060. It was missing, so a machine drift inside a note
-#    row (a row id, a released link, an empty string where a null belongs) fell through to the raw
-#    comparison and the recipe was reported as differing in something real, which this script is
-#    then unable to realign. It failed safe rather than mis-writing, and it failed on exactly the
-#    rows this round added.
+# ⚠️ notes IS LISTED AND IS NO LONGER REACHABLE, AND THAT IS DELIBERATE RATHER THAN STALE. It was
+#    added for migration 060, when a note was in the baseline: without it a machine drift inside a
+#    note row fell through to the raw comparison and the recipe was reported as differing in
+#    something real. A note became a playground afterwards, so content_blob stopped emitting the key
+#    and scripts/applied/notes_to_rows.py stripped it from all 300 stored baselines. _normalize only
+#    touches keys that are PRESENT, so the entry costs nothing, and a baseline written before that
+#    strip (a restored backup, an old copy) still carries the key and still needs this.
 ROW_LISTS = ("ingredients", "steps", "waits", "storage", "notes")
 EMPTYISH = (None, "")
 

@@ -1,0 +1,18 @@
+{
+  "round": "2026-10-07-safety-and-time-block",
+  "why": "Two rounds going out together. The SAFETY round is almost entirely invisible: thirteen older additive migrations become all-or-nothing (no result change, proved by a full iterdump comparison of a fresh install built both ways), a standing lockstep check over the migrations and the corpus passes, the baseline catch-up compares every column it writes, three passes stop deleting waits and storage from a baseline they rewrite, owner filters on the ingredient list and the seasonal list, one shared has-an-image helper, the suite's per-run marker now asks the session's own connection instead of a path, and an app-created recipe records its notes in recipe_notes_original the way an imported one does. The TIME BLOCK round is the one visible change: the block above the ingredients reads in two columns when it has waits, the scaler moves below it, and a conditional second total reads \"if you soak\". The one database change is migration 063, which drops the retired recipes.notes column. That column has been a derived copy since migration 060, it is outside recipe_snapshots.content, and nothing reads it: the notes themselves are recipe_notes rows and the author's words are in recipe_notes_original. Measured on live read-only: 300 recipes, 95 carrying note rows, 95 carrying originals, and 19 whose derived column no longer agreed with their rows. No row changes, so the byte-equal set and the annotation set both hold still.",
+  "short_circuit": "unchanged",
+  "annotations": "unchanged",
+  "counts": {
+    "migrations": [
+      62,
+      63
+    ]
+  },
+  "tables": {
+    "except": [
+      "schema_migrations",
+      "recipes"
+    ]
+  }
+}
