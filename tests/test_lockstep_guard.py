@@ -39,6 +39,18 @@ import migrate as migrate_mod                                                  #
 import snapshot_serialize as ss                                                # noqa: E402
 from gates import state as gate_state                                          # noqa: E402
 
+# ⚠️ RESTORED AFTER EVERY TEST IN THIS FILE. build_up_to and apply_one assign
+#    migrate.MIGRATIONS_DIR bare, and a truncated folder left behind leaks into every later test
+#    file that calls migrate.migrate() directly, of which there are eleven. It passes today only
+#    because the last case in this file happens to build the complete chain.
+_REAL_MIGRATIONS_DIR = migrate_mod.MIGRATIONS_DIR
+
+
+@pytest.fixture(autouse=True)
+def _put_the_migrations_folder_back():
+    yield
+    migrate_mod.MIGRATIONS_DIR = _REAL_MIGRATIONS_DIR
+
 ALL = sorted(p.name for p in MIGRATIONS.glob("*.sql"))
 
 # recipe_snapshots is created by 028, so nothing before it can hold a baseline to compare. Those
@@ -55,12 +67,49 @@ LOCKSTEP_ALLOWED = {}
 
 # The passes that can write. Taken from the folder rather than from a list, so the next one written
 # is covered. The archive (scripts/applied/) refuses to run and is excluded by living there.
+# ⚠️ EVERY NAME HERE HAS TO EXIST, AND test_the_pass_list_is_a_real_partition CHECKS IT. This held
+# "time-block-lift.py", which lives in gitignored previews/ and never in scripts/, so a typo in this
+# set was invisible in the direction that REMOVES coverage.
 NOT_A_PASS = {"corpus_guard.py", "serve_live.py", "serve_rehearsal.py", "create_admin.py",
               "cold_start_check.py", "gen_note_lead_cases.py", "plan_ahead_short_rests.py",
-              "plan_ahead_proposals_v3.py", "gen_note_corpus.py", "scan_notes_for_waits.py",
-              "time-block-lift.py"}
+              "plan_ahead_proposals_v3.py", "gen_note_corpus.py", "scan_notes_for_waits.py"}
 PASSES = sorted(p.name for p in (REPO / "scripts").glob("*.py")
                 if p.name not in NOT_A_PASS and "--apply" in p.read_text())
+
+# ⚠️ A PASS THAT DECLINES IS NOT A PASS THAT CRASHED, AND exit 1 WAS BOTH. The check used to assert
+# only `returncode != 2`, so a traceback, a guard refusal and a deliberate abort were all a pass,
+# and the comparison then ran over a database nothing had opened. Measured: with
+# $RECIPE_APP_LIVE_DB pointed at the fixture, corpus_guard refused all 17 and all 17 cases stayed
+# green. normalize_lookalikes was separately dying inside SQLAlchemy on `no such column: notes` and
+# that was green too.
+#
+# So the expected exit is DECLARED per script. Anything not named here must exit 0. An entry is a
+# pass that refuses this fixture for a reason it prints, which is correct behaviour and worth
+# recording, and a changed reason is a changed script.
+# ⚠️ AND THE EXIT CODE IS NOT ENOUGH ON ITS OWN, SO EACH ONE NAMES THE SENTENCE IT PRINTS. Under
+# the reviewer's scenario (RECIPE_APP_LIVE_DB pointed at the fixture, so corpus_guard refuses every
+# script) the exit assertion alone caught 11 of the 17 and these 6 slipped through, because a guard
+# refusal and their own abort are both exit 1. Matching the pass's OWN words tells the two apart.
+# {script: (the sentence it prints, why it declines)}
+DECLINES_ON_THE_FIXTURE = {
+    "apply_note_decisions.py": ("ABORT: a recorded decision no longer matches the note",
+                                "a recorded decision no longer matches the note it was about"),
+    "apply_note_titles.py": ("ABORT: a recorded decision no longer matches the row",
+                             "a recorded decision no longer matches the row it was about"),
+    "relink_pass.py": ("the reparse is not settled",
+                       "it expects the 2026-09-25 reparse to have run first"),
+    "remove_demo_rows.py": ("REFUSING: there is no account",
+                            "the fixture has no owner account to keep rows for"),
+    "restore_from_paprika.py": ("the plan no longer matches the reviewed counts",
+                                "the fixture is not the corpus the plan was reviewed against"),
+    "restore_notes.py": ("no line at 'aloo-gobhi' position 6",
+                         "the fixture has no line at the position the decision names"),
+}
+
+# The one pass that has real work to do on this fixture. ⚠️ WITHOUT THIS THE WHOLE HALF IS A
+# TAUTOLOGY: 16 of the 17 write nothing, and "a pass that wrote nothing moved nothing" is true of a
+# pass that never ran.
+WRITES_TO_THE_FIXTURE = {"reparse_lines.py"}
 
 
 # ---------------------------------------------------------------------------- the fixture --------
@@ -295,6 +344,54 @@ def _argv_for(script, db):
     return [str(db), "--apply"]
 
 
+def test_the_pass_list_is_a_real_partition():
+    """⚠️ AN EMPTY parametrize IS A SKIP, AND A SKIP IS A PASS. The migration half pins its own
+    counts; this half had nothing. PASSES is built by a glob plus the literal substring "--apply",
+    so a pass that spells its write flag --write or --yes, or a move to scripts/passes/, drops out
+    of the sweep with no complaint at all."""
+    on_disk = {p.name for p in (REPO / "scripts").glob("*.py")}
+    assert len(on_disk) == 27, f"scripts/ changed shape: {len(on_disk)} files"
+    missing = NOT_A_PASS - on_disk
+    assert not missing, f"NOT_A_PASS names files that are not in scripts/: {sorted(missing)}"
+    unclassified = on_disk - set(PASSES) - NOT_A_PASS
+    assert not unclassified, (
+        "a script in scripts/ is neither swept as a pass nor declared not to be one. If it can "
+        f"write, give it --apply; if it cannot, name it in NOT_A_PASS: {sorted(unclassified)}")
+    assert len(PASSES) == 17, f"the sweep covers {len(PASSES)} passes: {PASSES}"
+
+
+def test_every_declared_decline_is_still_a_decline():
+    """An allowance nobody is using is a licence left lying around, and a decline that became a
+    crash would hide behind the same entry."""
+    for name, entry in DECLINES_ON_THE_FIXTURE.items():
+        assert isinstance(entry, tuple) and len(entry) == 2 and all(entry), name
+    stale = set(DECLINES_ON_THE_FIXTURE) - set(PASSES)
+    assert not stale, f"DECLINES_ON_THE_FIXTURE names passes the sweep no longer runs: {sorted(stale)}"
+    assert WRITES_TO_THE_FIXTURE <= set(PASSES), WRITES_TO_THE_FIXTURE
+
+
+def test_at_least_one_pass_actually_writes_to_the_fixture(tmp_path):
+    """⚠️ THE ANTI-TAUTOLOGY HALF, AND IT IS THE ONE THE SWEEP WAS MISSING. 16 of the 17 passes find
+    nothing to do on this fixture, so "it moved neither set" is true of a pass that never opened the
+    database. Unless at least one of them genuinely writes, the whole sweep proves only that the
+    subprocess exited."""
+    import hashlib
+    wrote = set()
+    for script in sorted(WRITES_TO_THE_FIXTURE):
+        here = tmp_path / script.replace(".py", "")
+        here.mkdir(parents=True, exist_ok=True)
+        db, _ = build_up_to(here, "zzz")
+        before = hashlib.sha256(pathlib.Path(db).read_bytes()).hexdigest()
+        r = subprocess.run([sys.executable, str(REPO / "scripts" / script)] + _argv_for(script, db),
+                           capture_output=True, text=True, cwd=str(REPO), timeout=300)
+        assert r.returncode == 0, f"{script}: exit {r.returncode}\n{r.stderr[-800:]}"
+        if hashlib.sha256(pathlib.Path(db).read_bytes()).hexdigest() != before:
+            wrote.add(script)
+    assert wrote == WRITES_TO_THE_FIXTURE, (
+        "the fixture stopped giving these passes anything to do, so the sweep around it is now a "
+        f"tautology: expected {sorted(WRITES_TO_THE_FIXTURE)}, wrote {sorted(wrote)}")
+
+
 @pytest.mark.parametrize("script", PASSES)
 def test_a_corpus_pass_moves_neither_the_annotations_nor_the_byte_equal_set(tmp_path, script):
     """Every pass that can write, run with --apply against the fixture.
@@ -309,13 +406,22 @@ def test_a_corpus_pass_moves_neither_the_annotations_nor_the_byte_equal_set(tmp_
 
     r = subprocess.run([sys.executable, str(REPO / "scripts" / script)] + _argv_for(script, db),
                        capture_output=True, text=True, cwd=str(REPO), timeout=300)
-    # ⚠️ AN ARGPARSE ERROR IS A VACUOUS PASS, AND THIS IS HOW THE CHECK NEARLY WENT QUIET. Six of
-    #    the passes take --db where the other twelve take the path as a positional, so invoking all
-    #    eighteen the same way meant six of them exited 2 without opening anything, and the
-    #    comparison below compared a database nothing had touched. Exit 2 is argparse's own code for
-    #    "I could not read that command line".
-    assert r.returncode != 2, (
-        f"{script} refused the command line, so this test ran nothing:\n{r.stderr[-800:]}")
+    # ⚠️ THE EXIT IS COMPARED AGAINST A DECLARED VALUE, NOT MERELY AGAINST 2. Exit 2 is argparse's
+    #    "I could not read that command line", which is how six of the passes went quiet once: they
+    #    take --db where the rest take a positional. But exit 1 is a crash, a guard refusal and a
+    #    deliberate abort all at once, and all three leave the two sets equal because nothing ran.
+    declared = DECLINES_ON_THE_FIXTURE.get(script)
+    expected = 1 if declared else 0
+    assert r.returncode == expected, (
+        f"{script} exited {r.returncode}, expected {expected}"
+        + (f" ({declared[1]})" if declared else "")
+        + ".\n  An unexpected exit means this case compared a database the pass never opened."
+        + f"\n{r.stdout[-800:]}\n{r.stderr[-1500:]}")
+    if declared:
+        assert declared[0] in (r.stdout + r.stderr), (
+            f"{script} exited 1 without saying {declared[0]!r}, so this is not the decline this "
+            f"test declared. A guard refusal and a crash both land here.\n"
+            f"{r.stdout[-800:]}\n{r.stderr[-1500:]}")
     after = gate_state.read_state(db)
 
     assert before["short_circuit"] == after["short_circuit"], (
