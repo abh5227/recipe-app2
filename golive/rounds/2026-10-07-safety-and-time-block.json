@@ -1,6 +1,6 @@
 {
   "round": "2026-10-07-safety-and-time-block",
-  "why": "Two rounds going out together. The SAFETY round is almost entirely invisible: thirteen older additive migrations become all-or-nothing (no result change, proved by a full iterdump comparison of a fresh install built both ways), a standing lockstep check over the migrations and the corpus passes, the baseline catch-up compares every column it writes, three passes stop deleting waits and storage from a baseline they rewrite, owner filters on the ingredient list and the seasonal list, one shared has-an-image helper, the suite's per-run marker now asks the session's own connection instead of a path, and an app-created recipe records its notes in recipe_notes_original the way an imported one does. The TIME BLOCK round is the one visible change: the block above the ingredients reads in two columns when it has waits, the scaler moves below it, and a conditional second total reads \"if you soak\". The one database change is migration 063, which drops the retired recipes.notes column. That column has been a derived copy since migration 060, it is outside recipe_snapshots.content, and nothing reads it: the notes themselves are recipe_notes rows and the author's words are in recipe_notes_original. Measured on live read-only: 300 recipes, 95 carrying note rows, 95 carrying originals, and 19 whose derived column no longer agreed with their rows. No row changes, so the byte-equal set and the annotation set both hold still.",
+  "why": "Two rounds going out together. The SAFETY round is almost entirely invisible: thirteen older additive migrations become all-or-nothing (no result change, proved by a full iterdump comparison of a fresh install built both ways), a standing lockstep check over the migrations and the corpus passes, the baseline catch-up compares every column it writes, three passes stop deleting waits and storage from a baseline they rewrite, owner filters on the ingredient list and the seasonal list, one shared has-an-image helper, the suite's per-run marker now asks the session's own connection instead of a path, and an app-created recipe records its notes in recipe_notes_original the way an imported one does. The TIME BLOCK round is the one visible change: the block above the ingredients reads in two columns when it has waits, the scaler moves below it, and a conditional second total reads \"if you soak\". The one database change is migration 063, which drops the retired recipes.notes column. That column has been a derived copy since migration 060, it is outside recipe_snapshots.content, and nothing reads it: the notes themselves are recipe_notes rows and the author's words are in recipe_notes_original. Measured on live read-only: 300 recipes, 95 carrying note rows, 95 carrying originals, and 19 whose derived column no longer agreed with their rows. No row changes, so the byte-equal set and the annotation set both hold still. Three later changes from Andy's click-through: the time block reads in ONE fixed order everywhere (times, Serves, Plan ahead, Keeps); a stated total that is shorter than the waits that always apply has those waits added to it and keeps the author's own figure on a line below, which is 1 recipe of the 300 (earl-grey-tea-cake); and one unreferenced photo is deleted, declared below. The totals change is display only and writes nothing: the rule is planahead.stated_total_verdict, computed at display like every other total.",
   "short_circuit": "unchanged",
   "annotations": "unchanged",
   "counts": {
@@ -14,5 +14,17 @@
       "schema_migrations",
       "recipes"
     ]
+  },
+  "files": {
+    "delete": [
+      "static/images/baked-cauliflower-with-red-onions-feta-and-dill-firinda-karnabahar-mucveri-copy-copy.jpg"
+    ],
+    "why": "The only unreferenced file in the photo library besides README.txt. 119,394 bytes, 768 x 1024, created 2026-07-31 11:42, and byte-identical to adventist-gumbo.jpg, which IS referenced (cook_photos.path). So its name is one recipe and its content is another recipe's cook photo. The cauliflower recipe has image NULL in live and in all 12 backups, the oldest from 2026-09-29, and no backup references the file.",
+    "conditions": [
+      "a copy is in backups/ before anything is deleted",
+      "its sha256 still equals static/images/adventist-gumbo.jpg's, read from live's own folder",
+      "no row of recipes.image, cook_photos.path or library_sourced_content.sourced_image names it"
+    ],
+    "checked_by": "the command block in golive/2026-10-07-drop-notes-column.md section 4, which exits non-zero unless all three hold. WARNING: scripts/gates/rounds.py does NOT read this key. It compares databases, and a photo is a file. The declaration is here so the round's record names exactly one file, and the checking is a command a person runs and reads."
   }
 }

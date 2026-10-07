@@ -74,14 +74,76 @@ The gate must print **THE ROUND DID EXACTLY WHAT IT DECLARED**. It did, on the r
 
 Measured on a 344 MB copy: migration 063 took **0.08 s**.
 
-## 4. Confirm, and record
+## 4. The ORPHAN PHOTO
+
+One file, named in the round's own declaration and nowhere else:
+`static/images/baked-cauliflower-...-copy-copy.jpg`.
+
+⚠️ **THE BACKUP COMES FIRST, AND IT IS NOT THE DATABASE BACKUP.** `backup.py` copies
+`recipes.db`. It does not touch `static/images/`, so a deleted photo has no way back from step 0.
+
+```sh
+IMG="static/images/baked-cauliflower-with-red-onions-feta-and-dill-firinda-karnabahar-mucveri-copy-copy.jpg"
+cp "$IMG" "backups/orphan-$(date +%Y%m%d-%H%M%S)-$(basename "$IMG")"
+ls -l backups/orphan-*                                  # the copy exists before anything else
+```
+
+Then the three conditions, re-read against live rather than taken from this document. The block
+exits non-zero unless all three hold.
+
+```sh
+python3.13 - <<'EOF'
+import hashlib, pathlib, sqlite3, sys
+sys.path.insert(0, "scripts")
+import corpus_guard, images
+NAME = "baked-cauliflower-with-red-onions-feta-and-dill-firinda-karnabahar-mucveri-copy-copy.jpg"
+root = pathlib.Path(images.IMAGES_DIR)
+orphan, twin = root / NAME, root / "adventist-gumbo.jpg"
+ok = True
+if not list(pathlib.Path("backups").glob(f"orphan-*-{NAME}")):
+    print("REFUSING: no copy of it in backups/"); ok = False
+a, b = (hashlib.sha256(p.read_bytes()).hexdigest() for p in (orphan, twin))
+print(f"orphan {a[:16]}…\ntwin   {b[:16]}…")
+if a != b:
+    print("REFUSING: it is no longer byte-identical to adventist-gumbo.jpg, so it is not the "
+          "file this round described"); ok = False
+con = sqlite3.connect(f"file:{corpus_guard.live_db()}?mode=ro", uri=True)
+hits = []
+for t, c in (("recipes", "image"), ("cook_photos", "path"),
+             ("library_sourced_content", "sourced_image")):
+    for (v,) in con.execute(f'SELECT "{c}" FROM "{t}" WHERE "{c}" LIKE ?', ("%" + NAME,)):
+        hits.append(f"{t}.{c} = {v!r}")
+con.close()
+print(f"references: {hits or 'none'}")
+if hits:
+    print("REFUSING: something names it now"); ok = False
+print("ALL THREE HOLD" if ok else "DO NOT DELETE")
+sys.exit(0 if ok else 1)
+EOF
+```
+
+Only on `ALL THREE HOLD`:
+
+```sh
+rm "$IMG"
+```
+
+⚠️ **THE GATE DOES NOT CHECK THIS, AND THE ROUND FILE SAYS SO.** `scripts/gates/rounds.py` compares
+databases, and a photo is a file. The declaration names exactly one path so the record is specific,
+and the block above is the check.
+
+## 5. Confirm, and record
 
 - A recipe page, a save, the notes still there, the time block in two columns.
+- **earl-grey-tea-cake reads "Total 2 hr 30 min+ (incl. plan ahead)"** with "Author's total: 1 hr,
+  before the waits" under it. It is the one recipe of the 300 whose Total this round changes, and
+  nothing is written to do it: the figure is computed at display like every other total.
+- The photo is gone and `backups/orphan-*` holds it.
 - Live's new sha256, recorded.
 - The commit serving :8000.
 - A record in `docs/data-repairs/`, in the past tense, **after** the run.
 
-## 5. Rollback
+## 6. Rollback
 
 There are two, and which one you need depends on whether 063 has run.
 
@@ -124,14 +186,14 @@ nohup python3.13 scripts/serve_live.py > /tmp/serve8000.log 2>&1 & disown
 ```
 
 Measured: the re-add took **0.003 s** on the 344 MB copy, and the old code then answers 200 on every
-recipe page. Section 7c is the proof that an empty column costs the page nothing.
+recipe page. Section 8c is the proof that an empty column costs the page nothing.
 
 ⚠️ **A FULL RESTORE FROM THE BACKUP IS THE HEAVIER OPTION AND IT IS NOT THE ONE TO REACH FOR FIRST.**
 It is correct, but it discards everything written to live since step 0, and the thing that broke is a
 column nothing reads. Re-adding it empty is a 3 ms, lossless repair. Restore from the backup only if
 something OTHER than the column is wrong.
 
-## 6. What was rehearsed, and on what
+## 7. What was rehearsed, and on what
 
 Everything below ran on copies made with `scratchpad/make_copy.py`, which refuses a destination that
 is live by resolved path or by device and inode and refuses one outside the session scratchpad.
@@ -144,13 +206,13 @@ Three servers, all from pinned worktrees, none of them `:8000` or `:8002`:
 | 8006 | `7d703b7` | `rollback063.db`, 063 applied |
 | 8007 | `7d703b7` | `rollback063_readded.db`, 063 applied then the column re-added empty |
 
-## 7. What was proven on a copy
+## 8. What was proven on a copy
 
-### 7a. The deploy order, forwards
+### 8a. The deploy order, forwards
 
 The new code against a database that still HAS the column: `:8005` served all 300 recipes.
 
-### 7b. The page outside the time block is live's page, to the pixel
+### 8b. The page outside the time block is live's page, to the pixel
 
 `:8004` against `:8005`, the same copy, 9 recipes at 1400px and at 390px, 18 comparisons. With
 `.above-ing` (the time block and the scaler) hidden on BOTH sides, every page matched in height and
@@ -167,7 +229,7 @@ The block's own height, before to after, at 1400px: brioche-bread 212 to 190, mo
 195, apple-pie 194 to 171, earl-grey-tea-cake 181 to 180, waffle 58 to 171, beans 52 to 126. Every
 page's total height moved by that amount and by nothing else, within a pixel of rounding.
 
-### 7c. The rollback loses nothing on the page
+### 8c. The rollback loses nothing on the page
 
 `:8004` (column populated) against `:8007` (column re-added empty), same code, 9 recipes at both
 widths, nothing hidden: **18 of 18 pixel-identical, 0 pixels differing**.
@@ -177,13 +239,13 @@ The only difference anywhere is in the API payload: `recipe.notes` echoes the ra
 top-level `notes` key, which is what the page renders, is the `recipe_notes` ROWS and is byte-equal
 on all 300.
 
-### 7d. Nothing is lost by the drop
+### 8d. Nothing is lost by the drop
 
 Measured on live, read-only: 300 recipes, 95 carrying note rows, 95 carrying `recipe_notes_original`,
 **0 needing a backfill**. 19 of the 95 already had a derived column that no longer agreed with their
 rows, which is what a derived copy that nothing re-derives does.
 
-### 7e. The thirteen migration wraps change nothing
+### 8e. The thirteen migration wraps change nothing
 
 A fresh install built from `migrations/` as it stands, and again with every `BEGIN;`/`COMMIT;`
 stripped out, compared as a full `iterdump()`. Identical. `tests/test_migration_equivalence.py`.
