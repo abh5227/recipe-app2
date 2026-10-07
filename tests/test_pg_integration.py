@@ -397,7 +397,7 @@ def _fetch(engine, sql, **params):
 
 
 def test_import_commit_plan_writes_all_six_tables_pg(pg):
-    """commit_plan end-to-end on Postgres, asserted across all six tables it writes. Mirrors the SQLite
+    """commit_plan end-to-end on Postgres, asserted across all eight tables it writes. Mirrors the SQLite
     characterisation set (every recipe column, the ingredient qty split, step text/heading/order, the
     snapshot's owner + timestamp, the rating row, the flag rows' position semantics) — the reference for
     correct behaviour — so a dialect divergence in any of them shows up here as a difference from it."""
@@ -422,11 +422,29 @@ def test_import_commit_plan_writes_all_six_tables_pg(pg):
     assert r["category"] == "Fish · Weeknight"            # list joined with the ' · ' convention
     assert r["servings"] == "4"
     assert (r["prep_time"], r["cook_time"], r["total_time"]) == ("10 min", "25 min", "35 min")
-    assert r["descr"] == "A description." and r["notes"] == "Some notes."
+    assert r["descr"] == "A description."
+    # ⚠️ recipes.notes IS GONE (migration 063, alembic a7c4e81b9d35), AND IT WAS THE ONLY THING
+    #    COVERING NOTES ON THIS LEG. This read `r["notes"] == "Some notes."`, a derived column
+    #    nothing had read since migration 060, and the real rows were asserted nowhere in this
+    #    file's import path. Section 7 is where that assertion went.
+    assert "notes" not in r, "recipes.notes is back on the Postgres schema"
     assert r["image"] is None
     assert (r["uid"], r["hash"]) == ("PG-FULL-UID", "PG-FULL-HASH")
     assert r["source"] == "app"                                # imports are app-owned, never seed
     assert r["created_at"] == plan["recipe"]["created_at"]
+
+    # 7. recipe_notes and recipe_notes_original — a note is a ROW, and the publisher's own words
+    #    have a second home that the cook's edits never touch. Numbered 7 because it was added
+    #    after the six, and asserted here because the Postgres leg is the only place a dialect
+    #    divergence in these two tables can show up at all.
+    notes_rows = _fetch(pg.engine, "SELECT position, kind, text FROM recipe_notes "
+                                   "WHERE recipe_id=:r ORDER BY position", r=rid)
+    assert [(n["position"], n["text"]) for n in notes_rows] == [(0, "Some notes.")], notes_rows
+    assert notes_rows[0]["kind"] == "notes"
+    originals = _fetch(pg.engine, "SELECT position, kind, text FROM recipe_notes_original "
+                                  "WHERE recipe_id=:r ORDER BY position", r=rid)
+    assert [(o["position"], o["kind"], o["text"]) for o in originals] == [(0, "notes", "Some notes.")], \
+        originals
 
     # 2. recipe_ingredients — the additive quantity/unit split, headings, dense positions
     ings = _fetch(pg.engine, "SELECT * FROM recipe_ingredients WHERE recipe_id=:r ORDER BY position", r=rid)
