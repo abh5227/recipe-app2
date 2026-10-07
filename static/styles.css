@@ -93,6 +93,18 @@
   --fs-section-label: 13px;   /* the uppercase section label, ingredient column and method column */
   --fs-step-sub:      12px;   /* a label lifted off one step, bold and normal case */
 
+  /* ⚠️ THE SMALL MONO LABEL, WHICH WAS FIVE HARDCODED NUMBERS FOR ONE TREATMENT. Mono, 600,
+     uppercase, tracked, --green: the same label at .note-lead, .note-type, .pk-sect,
+     .step-note-marker and .rc-uncooked, written out five times at three different sizes. Nothing
+     tied them together, so each was free to drift on its own, which is how 10px and 10.5px came to
+     sit beside each other doing the same job.
+     ⚠️ THE THREE VALUES ARE KEPT, NOT UNIFIED, AND THAT IS ANDY'S CALL RATHER THAN MINE. Collapsing
+     them to one number is the obvious next move and it moves pixels on four elements, which this
+     round is not allowed to do. What moves today is WHERE the numbers live. */
+  --fs-label-sm:  11px;      /* .note-lead */
+  --fs-label-xs:  10.5px;    /* .pk-sect, .rc-uncooked */
+  --fs-label-xxs: 10px;      /* .note-type, .step-note-marker */
+
   /* ⚠️ 62px IS A DECIDED VALUE AND IT IS NOW ONE VALUE FOR TWO ROW TYPES. The whole derivation is
      recorded above .steps li.step-edit (four measured cluster widths, 62px chosen against all of
      them). An Edit-mode note row carries the SAME grip + ⋯ cluster, so it reads the same token
@@ -1140,7 +1152,7 @@ a:hover { color: var(--berry-lift); }
    idiom (cf. .cat-tag.status) tinted muted-olive (--green), at the lightest legible weight. */
 .rc-uncooked {
   display: inline-block; margin: 0;
-  font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.09em; text-transform: uppercase;
+  font-family: var(--font-mono); font-size: var(--fs-label-xs); letter-spacing: 0.09em; text-transform: uppercase;
   color: var(--green); opacity: 0.72;
   background: transparent; border: 1px dashed color-mix(in srgb, var(--green) 46%, var(--rule));
   border-radius: 3px; padding: 1px 7px;
@@ -2707,7 +2719,7 @@ a.meta-step.note-step { font-size: .92em; color: var(--ink-soft); }
    same mono the group headings use one size down. It is INLINE with the note's first words on
    purpose: a lead on its own line is the floating "(step 1)" line that round 1 was rejected for. */
 .note-lead {
-  font-family: var(--font-mono); font-size: 11px; font-weight: 600; letter-spacing: .07em;
+  font-family: var(--font-mono); font-size: var(--fs-label-sm); font-weight: 600; letter-spacing: .07em;
   text-transform: uppercase; color: var(--green);
 }
 /* The number is a link with the same promise a wait's link makes, and it takes the lead's colour
@@ -2742,7 +2754,7 @@ a.note-lead-step { color: inherit; }
    Same treatment as .notes-kind, one size down. */
 .note-type {
   display: block; margin-bottom: 1px;
-  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  font-family: var(--font-mono); font-size: var(--fs-label-xxs); font-weight: 600;
   letter-spacing: .09em; text-transform: uppercase; color: var(--green);
 }
 
@@ -2864,7 +2876,7 @@ a.note-lead-step { color: inherit; }
 }
 .pk-sect {
   flex: 0 0 auto; padding: 7px 7px 3px;
-  font-family: var(--font-mono); font-size: 10.5px; font-weight: 600; letter-spacing: .09em;
+  font-family: var(--font-mono); font-size: var(--fs-label-xs); font-weight: 600; letter-spacing: .09em;
   text-transform: uppercase; color: var(--green);
 }
 .pk-row {
@@ -3090,7 +3102,7 @@ li.step.step-tapped .step-add-note,
 .step-note-marker {
   display: inline; margin-left: .3em; padding: 1px 4px;
   border: 1px solid var(--rule); border-radius: 3px; background: var(--fill-surface);
-  font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+  font-family: var(--font-mono); font-size: var(--fs-label-xxs); font-weight: 600;
   letter-spacing: .07em; text-transform: uppercase; line-height: 1;
   color: var(--green); cursor: pointer; vertical-align: .08em;
 }
