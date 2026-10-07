@@ -215,9 +215,15 @@ def test_the_delete_statement_carries_the_clause_not_only_the_lookup(kitchen):
     route's behaviour alone."""
     import inspect
     body = inspect.getsource(app.delete_ingredient)
-    stmt = body.split("delete(Ingredient.__table__)")[1]
-    assert "owner" in stmt.split("s.commit()")[0], \
-        "the DELETE no longer names owner, so the lookup is the only thing holding the line"
+    stmt = body.split("delete(Ingredient.__table__)")[1].split("s.commit()")[0]
+    # ⚠️ IT LOOKS FOR THE SHARED CLAUSE, NOT FOR THE WORD "owner". The rule was written out at each
+    #    call site and missing from two of them (list_ingredients, in_season), so it became one
+    #    function. Naming the column here again would make this test pass only while the duplication
+    #    it was written against came back.
+    assert "mine_or_shared()" in stmt, \
+        "the DELETE no longer carries the ownership clause, so the lookup is the only thing holding "\
+        "the line"
+    assert "owner" in inspect.getsource(app.mine_or_shared)
 
 
 def test_the_delete_route_is_not_on_the_public_allowlist(kitchen):

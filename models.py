@@ -51,7 +51,11 @@ class Recipe(Base):
     # the byte-equal short-circuit for all 300 at once. Same trap the row id shipped a backfill for.
     total_includes_waits = Column(Integer)
     descr = Column(Text)
-    notes = Column(Text)
+    # ⚠️ `notes` IS NOT HERE. The column was a derived copy of recipe_notes, kept written
+    #    through the notes round so the previous deploy could still serve a recipe during
+    #    the window. Migration 063 drops it. The model stops declaring it FIRST, because a
+    #    select() that names a column the table no longer has fails every recipe page (the
+    #    054 rule, in the same direction).
     image = Column(Text)
     created_at = Column(Text)
     source = Column(Text, nullable=False, server_default=text("'seed'"))

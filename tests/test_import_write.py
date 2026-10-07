@@ -341,7 +341,9 @@ def test_commit_writes_every_recipe_column(kitchen):
     assert r["servings"] == "4"                          # parsed to an int, stored as text
     assert (r["prep_time"], r["cook_time"], r["total_time"]) == ("10 min", "25 min", "35 min")
     assert r["descr"] == "A description."                # `description` -> the descr column
-    assert r["notes"] == "Some notes."
+    # ⚠️ THE NOTES ARE NOT A RECIPE COLUMN. They were until migration 060 made a note a row, and the
+    #    derived copy lasted until 063 dropped it. The rows are checked below and in the notes
+    #    section of this file.
     assert r["image"] is None                            # image storage is a separate pass
     assert (r["uid"], r["hash"]) == ("FULL-UID", "FULL-HASH")
     assert r["source"] == "app"                          # imports are app-owned, never seed
@@ -412,7 +414,11 @@ def test_an_imported_note_step_moves_into_the_notes(kitchen):
     plan = _plan(c)
     # ⚠️ THE LABEL COMES WITH IT. It is what the kind headers group on, and stripping it meant a
     #    "Tip:" step imported as bare prose and printed under Notes with no way back.
-    assert plan["recipe"]["notes"] == "Keeps 3 days.\n\nNote: Check your brand of yeast."
+    # ⚠️ AND IT IS READ OFF THE ROWS, NOT OFF plan["recipe"]["notes"], which went with the column
+    #    migration 063 dropped. The publisher's own text is row 0 and the moved step is row 1, which
+    #    is the blank-line separation the old single blob spelled with "\n\n".
+    assert [n["text"] for n in plan["notes"]] == ["Keeps 3 days.",
+                                                  "Note: Check your brand of yeast."]
     assert [r["text"] for r in plan["steps"]] == ["Mix it."]
     moved = [f for f in plan["review_flags"] if f["flag"] == "step_note_moved"]
     assert len(moved) == 1 and "Check your brand of yeast" in moved[0]["reason"]

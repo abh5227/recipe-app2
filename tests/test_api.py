@@ -541,8 +541,12 @@ def test_copy_carries_content_and_resets_accruing(kitchen):
     d = kitchen.client.get(f"/api/recipes/{new_id}").get_json()
     r = d["recipe"]
     assert r["name"] == "Copy Source (copy)"
-    assert (r["author"], r["source_url"], r["category"], r["servings"], r["cook_time"], r["descr"], r["notes"]) == \
-        ("Chef A", "http://ex.com", "Dinner · Quick", "4", "20 min", "a desc", "a note")
+    assert (r["author"], r["source_url"], r["category"], r["servings"], r["cook_time"], r["descr"]) == \
+        ("Chef A", "http://ex.com", "Dinner · Quick", "4", "20 min", "a desc")
+    # ⚠️ THE NOTE IS A ROW, SO IT IS CHECKED AS ONE. `notes` was a recipe column until migration 060
+    #    and a derived copy of the rows until 063 dropped it. copy_recipe builds its row inserts from
+    #    the table itself, so the note comes with the copy without anything naming it.
+    assert [n["text"] for n in d["notes"]] == ["a note"]
     assert d["is_test"] is False and d["is_editable"] is True and d["is_seed"] is False
 
     ings = d["ingredients"]

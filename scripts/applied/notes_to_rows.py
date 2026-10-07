@@ -40,6 +40,29 @@ from corpus_guard import refuse_live, report_target                          # n
 CSV_NAME = "notes-to-rows.csv"
 
 
+# ⚠️ THE DERIVED-COPY RULE, KEPT HERE FOR THE RECORD. notes.derived_text was the shared version
+# while recipes.notes still existed. Migration 063 dropped the column, so the rule left notes.py
+# with it and this copy is what the pass below was actually run with.
+def _field(row, name):
+    """One field off a dict OR an ORM row, absent reading as None."""
+    return row.get(name) if isinstance(row, dict) else getattr(row, name, None)
+
+
+def derived_text(rows, separator="\n\n"):
+    """The note rows -> the text recipes.notes held while the column was retired but not dropped.
+
+    ⚠️ A TITLE IS PUT BACK ON THE FRONT, BECAUSE THE TITLES ROUND TOOK IT OUT OF THE TEXT. Reading
+    only `text` made one unrelated note edit silently drop the title words from the copy the
+    previous deploy served: brioche-bread's column would have lost "Flour" and "Kneading by hand".
+    """
+    out = []
+    for r in rows:
+        text = (_field(r, "text") or "").strip()
+        title = (_field(r, "title") or "").strip()
+        out.append(f"{title}. {text}" if title else text)
+    return separator.join(out)
+
+
 def strip_notes(doc):
     """Take both notes keys out of a stored baseline, in place. The other half of the lockstep.
 
@@ -150,7 +173,7 @@ def run(db, apply=False, record=False):
                     {"r": rid, "p": i, "k": k, "t": p, "w": app.now_utc()})
             if paras:
                 s.execute(sqlalchemy.text("UPDATE recipes SET notes=:n WHERE id=:r"),
-                          {"n": notes_rules.derived_text([{"text": p} for p, _k in paras]),
+                          {"n": derived_text([{"text": p} for p, _k in paras]),
                            "r": rid})
             # ⚠️ THE OTHER HALF, IN THE SAME TRANSACTION, AND IT STRIPS RATHER THAN ADDS. Notes are
             #    a playground, so the baseline holds neither the rows nor the derived column. Both
@@ -225,4 +248,16 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    main()
+    # ⚠️ SPENT. See scripts/applied/_spent.py — this refuses rather than running. It moved live's
+    #    177 note paragraphs over 95 recipes into recipe_notes rows, wrote recipe_notes_original,
+    #    and stripped the `notes` key from all 300 stored baselines in lockstep, on 2026-10-04.
+    #    Migration 063 then dropped recipes.notes, which was this pass's only input, so there is
+    #    nothing left for it to read even if it were wanted.
+    import pathlib as _pathlib
+    import sys as _sys
+    _sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent))
+    from _spent import refuse_spent
+    refuse_spent(__file__,
+                 "moved recipes.notes into recipe_notes rows (177 paragraphs over 95 recipes), "
+                 "wrote recipe_notes_original, and stripped the notes key from 300 baselines",
+                 "2026-10-04")

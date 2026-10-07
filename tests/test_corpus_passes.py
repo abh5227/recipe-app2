@@ -228,7 +228,10 @@ def test_no_spent_backfill_is_left_runnable_in_scripts():
     """A spent one-off names live with no --db and its work is already done, so running it again is
     risk with no upside. They are archived in scripts/applied/, not deleted, and they refuse."""
     archived = sorted(p.name for p in (SCRIPTS / "applied").glob("*.py") if p.name != "_spent.py")
-    assert len(archived) == 16, f"the archive changed size: {len(archived)}"
+    # 17 since 2026-10-07: notes_to_rows joined them when migration 063 dropped recipes.notes, the
+    # column that pass read. Its own tests recreate the column by hand, which is what the archive is
+    # for: the record of what was done to the data.
+    assert len(archived) == 17, f"the archive changed size: {len(archived)}"
     for name in archived:
         src = (SCRIPTS / "applied" / name).read_text()
         assert "refuse_spent(" in src, f"{name} is archived and would still run"

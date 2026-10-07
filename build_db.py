@@ -188,17 +188,17 @@ def seed_content(conn):
         conn.execute(
             """INSERT INTO recipes
                (id, name, author, source_url, category, servings, prep_time,
-                cook_time, total_time, descr, notes, image, uid, created_at, source)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'seed')
+                cook_time, total_time, descr, image, uid, created_at, source)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, 'seed')
                ON CONFLICT(id) DO UPDATE SET
                    name=excluded.name, author=excluded.author, source_url=excluded.source_url,
                    category=excluded.category, servings=excluded.servings, prep_time=excluded.prep_time,
                    cook_time=excluded.cook_time, total_time=excluded.total_time, descr=excluded.descr,
-                   notes=excluded.notes, image=excluded.image, uid=excluded.uid, source='seed'""",
+                   image=excluded.image, uid=excluded.uid, source='seed'""",
             (
                 r["id"], r["name"], r.get("author"), r.get("source_url"),
                 r.get("category"), r.get("servings"), r.get("prep_time"),
-                r.get("cook_time"), r.get("total_time"), r.get("descr"), r.get("notes"),
+                r.get("cook_time"), r.get("total_time"), r.get("descr"),
                 r.get("image"), r.get("uid"), recipe_created.get(r["id"]) or now,
             ),
         )

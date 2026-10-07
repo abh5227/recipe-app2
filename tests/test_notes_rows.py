@@ -77,10 +77,10 @@ def test_a_note_becomes_a_row_with_its_kind(dish, kitchen):
     assert [r["position"] for r in rows] == [0, 1]
 
 
-def test_the_old_column_is_a_derived_copy(dish, kitchen):
-    with kitchen.conn() as c:
-        col = c.execute("SELECT notes FROM recipes WHERE id=?", (dish,)).fetchone()[0]
-    assert col == "Soaking is optional.\n\nKeeps three days."
+# ⚠️ test_the_old_column_is_a_derived_copy WAS HERE AND WENT WITH THE COLUMN. It asserted that
+# recipes.notes held the rows' text joined by a blank line, which was true while the column was a
+# derived copy kept for the previous deploy. Migration 063 dropped it. What it was really protecting,
+# that a save keeps the rows it was given, is tested on the rows themselves below.
 
 
 def test_an_unchanged_save_keeps_every_note_id(dish, kitchen):
@@ -172,8 +172,7 @@ def test_an_explicit_empty_list_clears_the_rows(dish, kitchen):
     d = _get(kitchen, dish)
     _save(kitchen, dish, d, notes=[])
     assert _notes(kitchen, dish) == []
-    with kitchen.conn() as c:
-        assert c.execute("SELECT notes FROM recipes WHERE id=?", (dish,)).fetchone()[0] is None
+    assert kitchen.client.get(f"/api/recipes/{dish}").get_json()["notes"] == []
 
 
 def test_a_notes_string_from_an_old_client_still_works(dish, kitchen):

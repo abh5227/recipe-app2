@@ -216,18 +216,10 @@ def run(db, apply=False, record=False):
                 for entry in doc.get(key) or []:
                     if entry.get("id") == r["row_id"] and entry.get(col) == r["was"]:
                         entry[col] = r["now"]
-            # ⚠️ recipes.notes IS A DERIVED COPY OF THE NOTE ROWS, so a pass that rewrites a row
-            #    has to rebuild it. Nothing catches this on its own: notes left the snapshot when
-            #    they became a playground, so the column drifting away from its rows moves no
-            #    bytes and mints no mark. Measured before this line existed: 4 recipes ended the
-            #    chain with "tip: As soon as…" in the column and "Tip: As soon as…" in the rows.
-            if any(t == "recipe_notes" for t, _c, r in writes if r["recipe_id"] == rid):
-                rows = s.execute(sqlalchemy.text(
-                    "SELECT text FROM recipe_notes WHERE recipe_id=:r ORDER BY position"),
-                    {"r": rid}).all()
-                s.execute(sqlalchemy.text("UPDATE recipes SET notes=:n WHERE id=:r"),
-                          {"n": notes_rules.derived_text([{"text": x[0]} for x in rows]) or None,
-                           "r": rid})
+            # ⚠️ THERE IS NO DERIVED COPY TO REBUILD ANY MORE. This pass used to rewrite
+            #    recipes.notes whenever it capitalized a note row, because the column was a copy of
+            #    those rows and nothing would have caught the two drifting apart. Migration 063
+            #    drops the column, so the rows are the only place a note lives.
             if doc is not None:
                 s.execute(sqlalchemy.text(
                     "UPDATE recipe_snapshots SET content=:c WHERE recipe_id=:r "

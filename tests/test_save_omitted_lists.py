@@ -46,10 +46,13 @@ def _note_rows(kitchen, rid):
 
 
 def _state(client, rid):
+    """⚠️ THE HEADNOTE IS READ FROM THE ROWS, NOT FROM A RECIPE FIELD. This read
+    d["recipe"]["notes"] while recipes.notes was a derived copy of those rows. Migration 063 drops
+    the column, so the rows are the only answer and the payload no longer carries the key."""
     d = client.get(f"/api/recipes/{rid}").get_json()
     return ([w["label"] for w in d["waits"]], [x["label"] for x in d["storage"]],
-            d["recipe"]["notes"], d["recipe"]["descr"], [s["text"] for s in d["steps"]],
-            [i["label"] for i in d["ingredients"]])
+            "\n\n".join(n["text"] for n in d["notes"]), d["recipe"]["descr"],
+            [s["text"] for s in d["steps"]], [i["label"] for i in d["ingredients"]])
 
 
 def _bare(client, rid):

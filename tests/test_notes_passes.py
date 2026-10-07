@@ -30,12 +30,30 @@ sys.path.insert(0, str(BASE / "scripts"))
 
 import migrate  # noqa: E402
 
+
+def _archived(name):
+    """Load a module out of scripts/applied/. ⚠️ The archive refuses at RUN time, not import time,
+    exactly so these tests can still pin the transform it applied."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(name, BASE / "scripts" / "applied" / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 NOTES = "Soak the beans overnight, at least 8 hours.\n\nTip: see step 2 before you start."
 
 
 def _kitchen(tmp_path, notes=NOTES, name="beans"):
     """A database on the real schema, one recipe with notes in the COLUMN, and a baseline the real
-    serializer produced, so the recipe starts byte-equal to its own origin."""
+    serializer produced, so the recipe starts byte-equal to its own origin.
+
+    ⚠️ THE COLUMN IS PUT BACK BY HAND, BECAUSE MIGRATION 063 DROPPED IT. notes_to_rows is the pass
+    that moved recipes.notes into rows, and it is archived now (scripts/applied/), so the schema it
+    ran against no longer exists in a fresh build. Recreating the column here is what keeps its
+    tests meaningful: they pin the transform that was applied to live, and that is the record the
+    archive exists for. Nothing in the app reads this column any more.
+    """
     import app
     import models
 
@@ -43,6 +61,7 @@ def _kitchen(tmp_path, notes=NOTES, name="beans"):
     migrate.DB = db
     migrate.migrate(verbose=False)
     c = sqlite3.connect(db)
+    c.execute("ALTER TABLE recipes ADD COLUMN notes TEXT")      # the retired column, for the record
     c.execute("INSERT INTO users (id, email, password_hash, is_admin, created_at) "
               "VALUES (1, 'x@example.com', 'x', 1, '2026-01-01T00:00:00Z')")
     c.execute("INSERT INTO recipes (id, name, source, notes) VALUES (?,?, 'app', ?)",
@@ -94,7 +113,7 @@ def _marks(db, rid="beans"):
 # ---- notes_to_rows ------------------------------------------------------------------------------
 
 def test_the_notes_move_into_rows_in_lockstep_and_mint_no_mark(tmp_path):
-    import notes_to_rows
+    notes_to_rows = _archived("notes_to_rows")
 
     db = _kitchen(tmp_path)
     assert _marks(db) == [], "the fixture did not start byte-equal to its baseline"
@@ -121,7 +140,7 @@ def test_the_notes_move_into_rows_in_lockstep_and_mint_no_mark(tmp_path):
 
 
 def test_a_second_run_moves_nothing(tmp_path):
-    import notes_to_rows
+    notes_to_rows = _archived("notes_to_rows")
 
     db = _kitchen(tmp_path)
     notes_to_rows.run(str(db), apply=True)
@@ -138,7 +157,7 @@ def test_a_lockstep_failure_writes_nothing_at_all(tmp_path, monkeypatch):
     The recipe here carries a note in its BASELINE that its rows do not have, which is a real
     annotation the cook can see. Moving the notes into rows would make that mark disappear, so the
     pass must refuse the recipe and leave it exactly as it found it."""
-    import notes_to_rows
+    notes_to_rows = _archived("notes_to_rows")
 
     db = _kitchen(tmp_path)
     assert _marks(db) == [], "the fixture did not start byte-equal to its baseline"
@@ -176,7 +195,7 @@ def _decisions(tmp_path, monkeypatch, **kw):
 
 
 def test_a_recorded_link_is_applied_in_lockstep(tmp_path, monkeypatch):
-    import notes_to_rows
+    notes_to_rows = _archived("notes_to_rows")
 
     db = _kitchen(tmp_path)
     notes_to_rows.run(str(db), apply=True)
@@ -195,7 +214,7 @@ def test_a_second_apply_is_a_no_op_and_not_an_integrity_error(tmp_path, monkeypa
     """⚠️ BOTH WRITES WERE BARE INSERTS. Re-running the pass on an applied database died on
     UNIQUE (note_id, ref_index) with earlier recipes already committed, and the dry run before it
     reported every decision as pending."""
-    import notes_to_rows
+    notes_to_rows = _archived("notes_to_rows")
 
     db = _kitchen(tmp_path)
     notes_to_rows.run(str(db), apply=True)
@@ -225,7 +244,7 @@ def test_a_cooks_own_edit_survives_the_pass(tmp_path, monkeypatch):
     from current content, which declares the recipe born in its edited state: a recipe with one real
     cook edit came out of it with 0 marks and the cook's words sitting in the baseline as though
     they had always been there."""
-    import notes_to_rows
+    notes_to_rows = _archived("notes_to_rows")
 
     db = _kitchen(tmp_path)
     notes_to_rows.run(str(db), apply=True)
@@ -250,7 +269,7 @@ def test_a_cooks_own_edit_survives_the_pass(tmp_path, monkeypatch):
 
 
 def test_a_decision_that_no_longer_matches_stops_the_pass(tmp_path, monkeypatch):
-    import notes_to_rows
+    notes_to_rows = _archived("notes_to_rows")
 
     db = _kitchen(tmp_path)
     notes_to_rows.run(str(db), apply=True)
@@ -268,7 +287,7 @@ def test_the_survey_reads_the_column_for_a_recipe_that_has_no_rows_yet(tmp_path)
     """⚠️ DECIDED PER RECIPE, NOT ONCE FOR THE CORPUS. It read one COUNT over recipe_notes and
     applied the answer to all 300, so the moment any recipe had rows a recipe whose notes are still
     only in the column was scanned as empty. That is the state every imported recipe is in."""
-    import notes_to_rows
+    notes_to_rows = _archived("notes_to_rows")
     import scan_notes_for_waits
 
     db = _kitchen(tmp_path)
@@ -293,14 +312,18 @@ def test_the_survey_writes_nothing_to_the_recipe_data(tmp_path):
 
 # ---- apply_capitalization, and the invariants it must not break --------------------------------
 
-def test_capitalization_keeps_the_derived_notes_column_in_step(tmp_path):
-    """⚠️ recipes.notes IS A DERIVED COPY OF THE NOTE ROWS. A pass that rewrites a row has to
-    rebuild it, and nothing else catches the drift: notes left the snapshot when they became a
-    playground, so the column disagreeing with its rows moves no bytes and mints no mark. Measured
-    before the fix: 4 recipes ended the chain with "tip: As soon as…" in the column and
-    "Tip: As soon as…" in the rows."""
+def test_capitalization_reaches_a_note_row(tmp_path):
+    """The pass capitalizes a note's own words, label and all.
+
+    ⚠️ THIS TEST ALSO WATCHED THE DERIVED COPY, AND THAT HALF WENT WITH THE COLUMN. recipes.notes
+    was a copy of these rows, so a pass that rewrote a row had to rebuild it, and nothing else
+    caught the drift: notes left the snapshot when they became a playground, so the column
+    disagreeing with its rows moved no bytes and minted no mark. Measured before that fix, 4 recipes
+    ended the chain with "tip: As soon as…" in the column and "Tip: As soon as…" in the rows.
+    Migration 063 dropped the column, so the rows are the only answer and there is nothing to keep
+    in step."""
     import apply_capitalization
-    import notes_to_rows
+    notes_to_rows = _archived("notes_to_rows")
 
     db = _kitchen(tmp_path, notes="tip: warm the plates first.\n\nkeeps three days.")
     notes_to_rows.run(str(db), apply=True)
@@ -308,8 +331,6 @@ def test_capitalization_keeps_the_derived_notes_column_in_step(tmp_path):
 
     rows = [r["text"] for r in _rows(db, "SELECT text FROM recipe_notes ORDER BY position")]
     assert rows == ["Tip: warm the plates first.", "Keeps three days."]
-    col = _rows(db, "SELECT notes FROM recipes WHERE id='beans'")[0]["notes"]
-    assert col == "\n\n".join(rows), "the derived column drifted away from its rows"
 
 
 def test_capitalization_leaves_a_continuation_line_alone(tmp_path):
@@ -332,7 +353,7 @@ def test_capitalization_leaves_a_continuation_line_alone(tmp_path):
 
 def test_capitalization_is_a_no_op_on_a_second_run(tmp_path):
     import apply_capitalization
-    import notes_to_rows
+    notes_to_rows = _archived("notes_to_rows")
 
     db = _kitchen(tmp_path, notes="tip: warm the plates first.")
     notes_to_rows.run(str(db), apply=True)
@@ -359,14 +380,14 @@ def test_the_lookalike_pass_reaches_every_content_column(tmp_path):
     assert "author" in normalize_lookalikes.RECIPE_COLUMNS
 
 
-def test_the_derived_column_keeps_a_notes_title_words(tmp_path):
+def test_the_archived_passs_derived_text_keeps_a_notes_title_words(tmp_path):
     """⚠️ ONE UNRELATED NOTE EDIT WOULD HAVE MADE THE DERIVED COPY LOSSY. The titles pass leaves
     recipes.notes alone, so it still holds the whole paragraph, and _sync_notes_column rebuilds that
     column on EVERY note write. derived_text read only `text`, and the title words had been lifted
     OUT of text, so brioche-bread's column would have lost "Flour" and "Kneading by hand" the next
     time anything touched one of its notes. The previous deploy serves that column during the
     window."""
-    import notes as notes_rules
+    notes_rules = _archived("notes_to_rows")
 
     rows = [{"text": "This recipe works best with 11% protein.", "title": "Flour"},
             {"text": "An ordinary note.", "title": None},
@@ -383,11 +404,7 @@ def test_the_derived_column_keeps_a_notes_title_words(tmp_path):
     assert notes_rules.derived_text([{"text": "No title key here."}]) == "No title key here."
 
 
-def test_the_derived_column_is_rebuilt_with_the_title_through_the_real_route(kitchen):
-    """The same thing, through the endpoint that rebuilds the column."""
-    rid = _recipe(kitchen.client, "Derived", notes=[{"text": "Use bread flour."}])
-    nid = kitchen.client.get(f"/api/recipes/{rid}").get_json()["notes"][0]["id"]
-    kitchen.client.patch(f"/api/recipes/{rid}/notes/{nid}", json={"title": "Flour"})
-    with kitchen.conn() as c:
-        got = c.execute("SELECT notes FROM recipes WHERE id=?", (rid,)).fetchone()[0]
-    assert got == "Flour. Use bread flour.", got
+# ⚠️ test_the_derived_column_is_rebuilt_with_the_title_through_the_real_route WAS HERE. It drove
+# PATCH /notes/<id> and read recipes.notes back, which is the half of the title rule that only
+# existed to keep the derived copy honest for the previous deploy. Migration 063 dropped the column
+# and the route no longer writes anything but the rows.

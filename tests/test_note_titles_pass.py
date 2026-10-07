@@ -278,25 +278,25 @@ def test_a_missing_row_is_refused_rather_than_skipped(monkeypatch, tmp_path):
 
 # ---- what it leaves alone, which the brief states explicitly -------------------------------------
 
-def test_the_authors_words_and_the_retired_column_are_not_touched(monkeypatch, tmp_path):
-    """recipe_notes_original is the only record of the author's own words, and recipes.notes is a
-    derived copy whose 7 marks Andy decided as `derived`. A playground is only safe if there is a
-    way back."""
+def test_the_authors_words_are_not_touched(monkeypatch, tmp_path):
+    """recipe_notes_original is the only record of the author's own words. A playground is only safe
+    if there is a way back.
+
+    ⚠️ THE OTHER HALF OF THIS TEST WENT WITH THE COLUMN. It also asserted that the pass left the
+    retired recipes.notes copy alone, which is what Andy's 7 `derived` decisions were about.
+    Migration 063 dropped that column."""
     db = _kitchen(tmp_path)
     with sqlite3.connect(db) as c:
-        c.execute("UPDATE recipes SET notes=? WHERE id='rolls'", (TITLE_NOTE,))
         for nid, pos, text in ((27, 0, TITLE_NOTE), (70, 1, LABEL_NOTE)):
             c.execute("INSERT INTO recipe_notes_original (recipe_id, position, kind, text, "
                       "recorded_at) VALUES ('rolls', ?, 'notes', ?, '2026-01-01T00:00:00Z')",
                       (pos, text))
     before_orig = _rows(db, "SELECT * FROM recipe_notes_original ORDER BY position")
-    before_col = _rows(db, "SELECT notes FROM recipes WHERE id='rolls'")
 
     pass_ = _files(monkeypatch, tmp_path, [(27, "Flour", "title"), (70, "Freezing", "label; kind=storage")])
     pass_.run(str(db), apply=True)
 
     assert _rows(db, "SELECT * FROM recipe_notes_original ORDER BY position") == before_orig
-    assert _rows(db, "SELECT notes FROM recipes WHERE id='rolls'") == before_col
 
 
 def test_a_keep_or_derived_row_is_named_and_not_written(monkeypatch, tmp_path):

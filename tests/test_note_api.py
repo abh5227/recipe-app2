@@ -267,8 +267,11 @@ def test_delete_renumbers_and_hands_back_what_it_took(kitchen):
     #    missing here is a field the restore invents as empty: deleting a TITLED note and pressing
     #    Undo brought it back untitled, and the title was then gone for good, because
     #    recipe_notes_original has no title column and an app-authored note has no original row.
+    # ⚠️ AND THE REFERENCES ARE IN IT, FOR THE SAME REASON. A note with no "step N" mention carries
+    #    an empty list rather than nothing, so the restore says "this note had no links" instead of
+    #    leaving the re-create to guess, which is what re-linked an unlinked mention.
     assert out["restore"] == {"text": "c", "title": None, "kind": "tips", "position": 2,
-                              "step_id": sid}
+                              "step_id": sid, "refs": []}
     assert [r["text"] for r in _notes_of(kitchen.client, rid)] == ["a", "b"]
 
 
@@ -399,14 +402,24 @@ def test_the_no_marks_check_can_fail(kitchen, monkeypatch):
     which is where it was for one round, and the same sequence must now MOVE the bytes. That proves
     the comparison is live and that leaving notes out is what makes the guarantee.
     """
-    import snapshot_serialize as ss
     rid = _recipe(kitchen.client)
-    monkeypatch.setattr(ss, "SNAPSHOT_RECIPE_FIELDS",
-                        tuple(ss.SNAPSHOT_RECIPE_FIELDS) + ("notes",))
     before = _content_bytes(kitchen, rid)
     kitchen.client.post(f"/api/recipes/{rid}/notes", json={"text": "a note"})
+    assert _content_bytes(kitchen, rid) == before, "a note write moved the content bytes"
+
+    # ⚠️ AND NOW SOMETHING THAT MUST MOVE THEM. This used to put `notes` back into
+    #    SNAPSHOT_RECIPE_FIELDS and watch the note write move the bytes, which stopped being
+    #    possible when migration 063 dropped the column the serializer would have read. An ordinary
+    #    content edit answers the same question and does not depend on a column that no longer
+    #    exists: if THIS does not move the bytes, the comparison above is measuring nothing.
+    d = kitchen.client.get(f"/api/recipes/{rid}").get_json()
+    body = {"name": d["recipe"]["name"],
+            "ingredients": [{"id": i["id"], "quantity": i["quantity"] or "",
+                             "unit": i["unit"] or "", "text": i["label"]} for i in d["ingredients"]],
+            "steps": [{"id": st["id"], "text": st["text"] + " Reworded."} for st in d["steps"]]}
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
     assert _content_bytes(kitchen, rid) != before, (
-        "with notes in the blob a note write MUST move the bytes, so the check above is inert")
+        "a reworded step did not move the content bytes, so the check above is inert")
 
 
 def test_a_note_write_never_touches_steps_or_ingredients(kitchen):
@@ -422,19 +435,10 @@ def test_a_note_write_never_touches_steps_or_ingredients(kitchen):
     assert [(i["id"], i.get("label"), i.get("raw_text")) for i in rec2["ingredients"]] == before_ings
 
 
-def test_the_derived_column_follows_the_rows(kitchen):
-    """recipes.notes is a derived copy, and nothing but the rows may decide what it says."""
-    import sqlite3
-    rid = _recipe(kitchen.client)
-    kitchen.client.post(f"/api/recipes/{rid}/notes", json={"text": "one"})
-    n = kitchen.client.post(f"/api/recipes/{rid}/notes", json={"text": "two"}).get_json()["note"]
-    con = sqlite3.connect(str(kitchen.db))
-    col = con.execute("SELECT notes FROM recipes WHERE id=?", (rid,)).fetchone()[0]
-    assert col == "one\n\ntwo"
-    kitchen.client.delete(f"/api/recipes/{rid}/notes/{n['id']}")
-    con = sqlite3.connect(str(kitchen.db))
-    assert con.execute("SELECT notes FROM recipes WHERE id=?", (rid,)).fetchone()[0] == "one"
-
+# ⚠️ test_the_derived_column_follows_the_rows WAS HERE AND WENT WITH THE COLUMN. It proved that
+# recipes.notes was rebuilt from the rows on every note write, which was the whole job of the
+# derived copy while the previous deploy still read it. Migration 063 dropped the column, so the
+# rows are the only place a note lives and there is nothing left to keep in step.
 
 def test_last_write_wins_and_costs_only_the_wording(kitchen):
     """Two tabs, two PATCHes. The second wins, and the row, its place and its links survive."""
@@ -867,3 +871,58 @@ def test_a_new_note_can_be_created_with_a_title(kitchen):
                             json={"text": "No heading on this one.", "title": "   "})
     assert r.status_code == 201, r.get_json()
     assert r.get_json()["note"]["title"] is None
+
+
+# ---- the undo of a delete restores the links it was deleted with ---------------------------------
+
+def test_delete_then_undo_does_not_relink_a_mention_the_cook_unlinked(kitchen):
+    """⚠️ AN UNDO THAT UNDOES MORE THAN THE DELETE IS NOT AN UNDO. The undo of a delete is a
+    re-create: delete_note hands back `restore` and the client posts it to /notes. That path ran the
+    auto-link over the words with nothing carried, so every "step N" mention came back LINKED. A
+    cook who had unlinked one, deleted the note and pressed Undo got the link they had removed, and
+    nothing on the page said so."""
+    rid = _recipe(kitchen.client, "Relink", steps=["Soak them.", "Simmer until tender."])
+    made = kitchen.client.post(f"/api/recipes/{rid}/notes",
+                               json={"text": "See step 2 before you start."}).get_json()["note"]
+    assert made["refs"][0]["step_id"] is not None, "the mention should auto-link when it is new"
+
+    # the cook unlinks that mention
+    unlinked = kitchen.client.patch(f"/api/recipes/{rid}/notes/{made['id']}/refs/0",
+                                    json={"step_id": None}).get_json()["note"]
+    assert unlinked["refs"][0]["step_id"] is None
+
+    gone = kitchen.client.delete(f"/api/recipes/{rid}/notes/{made['id']}").get_json()
+    assert [r["step_id"] for r in gone["restore"]["refs"]] == [None], gone["restore"]
+
+    back = kitchen.client.post(f"/api/recipes/{rid}/notes", json=gone["restore"]).get_json()["note"]
+    assert back["text"] == made["text"]
+    assert [r["step_id"] for r in back["refs"]] == [None], (
+        "the undo re-linked a mention the cook had unlinked")
+
+
+def test_an_ordinary_new_note_still_auto_links_its_mention(kitchen):
+    """The control. Carrying the refs must not stop a mention with no history linking itself."""
+    rid = _recipe(kitchen.client, "Fresh", steps=["Soak them.", "Simmer until tender."])
+    made = kitchen.client.post(f"/api/recipes/{rid}/notes",
+                               json={"text": "See step 2 first."}).get_json()["note"]
+    assert made["refs"][0]["step_id"] is not None
+
+
+def test_a_restore_carrying_a_ref_that_still_points_somewhere_keeps_it(kitchen):
+    """A deleted note that WAS linked comes back linked to the same step."""
+    rid = _recipe(kitchen.client, "Keeps", steps=["Soak them.", "Simmer until tender."])
+    made = kitchen.client.post(f"/api/recipes/{rid}/notes",
+                               json={"text": "See step 2 before you start."}).get_json()["note"]
+    target = made["refs"][0]["step_id"]
+    gone = kitchen.client.delete(f"/api/recipes/{rid}/notes/{made['id']}").get_json()
+    back = kitchen.client.post(f"/api/recipes/{rid}/notes", json=gone["restore"]).get_json()["note"]
+    assert [r["step_id"] for r in back["refs"]] == [target]
+
+
+def test_a_refs_value_that_is_not_a_list_is_refused(kitchen):
+    """The same door resolve_recipe_payload closes for waits, storage and notes."""
+    rid = _recipe(kitchen.client, "Refused", steps=["Soak them."])
+    for bad in ({"a": 1}, 7, "refs", [1, 2], [{"ref_index": "0"}]):
+        r = kitchen.client.post(f"/api/recipes/{rid}/notes",
+                                json={"text": "See step 1.", "refs": bad})
+        assert r.status_code == 400, (bad, r.get_json())

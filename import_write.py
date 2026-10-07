@@ -322,13 +322,6 @@ def plan_recipe(cleaned, uid_index, taken_slugs, now=None):
         "cook_time": cleaned["times"]["cook"] or None,
         "total_time": cleaned["times"]["total"] or None,
         "descr": cleaned["description"] or None,
-        # ⚠️ step_notes, NOT cleaned["notes"]: a Note step moved out of the directions is appended
-        #    to whatever the publisher already put in the notes field (see _step_rows).
-        # ⚠️ AND IT IS THE DERIVED FORM OF THE ROWS, NOT THE RAW BLOB. The column is a derived copy
-        #    of recipe_notes from migration 060 on, so the two have to agree the day the recipe
-        #    lands or the first save renormalizes it and the recipe silently leaves the byte-equal
-        #    short-circuit.
-        "notes": notes_rules.derived_text(note_rows) or None,
         # ALWAYS NULL AT INSERT, and for the URL path that is the design rather than a gap: the hero
         # is fetched AFTER this row is committed (app._attach_imported_hero -> url_image), so a dead
         # or refused image url cannot take a good import down with it. Paprika's photos[] is still

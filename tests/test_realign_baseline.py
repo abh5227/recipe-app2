@@ -147,9 +147,12 @@ def test_whitespace_is_not_folded(dish, kitchen):
     """⚠️ ONLY None AGAINST "", NEVER WHITESPACE. units.compare_text folds a re-wrap and this must
     not: a cook who re-wrapped a headnote made a real edit."""
     with kitchen.conn() as c:
-        c.execute("UPDATE recipes SET notes='one line' WHERE id=?", (dish,))
+        c.execute("UPDATE recipes SET descr='one line' WHERE id=?", (dish,))
         c.commit()
-    bent = _bend(_current(dish), lambda d: d["recipe"].update(notes="one  line"))
+    # ⚠️ descr, NOT notes. This bent the retired recipes.notes copy until migration 063 dropped it.
+    #    The question is the same for any text field the baseline carries: a baseline that differs
+    #    from the row only by whitespace is still a difference and must not be folded away.
+    bent = _bend(_current(dish), lambda d: d["recipe"].update(descr="one  line"))
     _set_baseline(kitchen, dish, bent)
     rl.run(str(kitchen.db), apply=True)
     assert _baseline(kitchen, dish) == bent, "a re-wrap was folded away"

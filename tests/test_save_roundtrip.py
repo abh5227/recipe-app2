@@ -967,8 +967,12 @@ def test_an_id_less_step_whose_text_changed_is_still_a_new_row(kitchen):
 
 # ---- option C commit 4: a no-edit save writes nothing to the recipe row ---------------------------
 
+# ⚠️ `notes` LEFT THIS TUPLE WITH THE COLUMN. It was a header field until migration 060 made a note
+# a row, a derived copy until migration 063 dropped it, and the keep rule below governs the other
+# nine exactly as it did. A note's own round-trip is tested against the ROWS, in test_note_api.py
+# and test_save_omitted_lists.py.
 HEADER = ("author", "source_url", "category", "servings", "prep_time", "cook_time",
-          "total_time", "descr", "notes", "image")
+          "total_time", "descr", "image")
 
 
 def _header(kitchen, rid):
@@ -1001,14 +1005,14 @@ def test_a_header_field_holding_empty_string_is_left_alone_too(kitchen):
     quietly converted to NULL either. The point is that nothing is written, not that NULL wins."""
     rid = _seed(kitchen, name="Empty Header")
     with kitchen.conn() as c:
-        c.execute("UPDATE recipes SET descr='', notes=NULL WHERE id=?", (rid,))
+        c.execute("UPDATE recipes SET descr='', author=NULL WHERE id=?", (rid,))
         c.commit()
-    payload = {"name": "Empty Header", "descr": "", "notes": "",
+    payload = {"name": "Empty Header", "descr": "", "author": "",
                "ingredients": [r["payload"] for r in FIX["rows"]],
                "steps": [s["payload"] for s in FIX["steps"]]}
     assert kitchen.client.put(f"/api/recipes/{rid}", json=payload).status_code == 200
     got = _header(kitchen, rid)
-    assert got["descr"] == "" and got["notes"] is None
+    assert got["descr"] == "" and got["author"] is None
 
 
 def test_a_real_header_edit_is_still_written(kitchen):

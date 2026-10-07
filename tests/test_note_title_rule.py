@@ -523,7 +523,12 @@ def test_the_committed_note_corpus_still_matches_live():
         pytest.skip("no live database here")
     con = sqlite3.connect(f"file:{live}?mode=ro", uri=True)
     have = {r[0]: r[1] for r in con.execute("SELECT id, text FROM recipe_notes")}
-    if any(r[0] == "title" for r in con.execute("PRAGMA table_info(recipe_notes)")) and \
+    # ⚠️ r[1] IS THE COLUMN NAME. PRAGMA table_info returns (cid, name, type, notnull, dflt, pk),
+    #    so `r[0] == "title"` compared an integer against a string and could never be true. The skip
+    #    below was written for exactly the state live has been in since the titles round ran on
+    #    2026-10-06, and it never fired: the test failed instead, telling the reader to regenerate a
+    #    fixture that is deliberately a record of what came BEFORE that round.
+    if any(r[1] == "title" for r in con.execute("PRAGMA table_info(recipe_notes)")) and \
             con.execute("SELECT COUNT(*) FROM recipe_notes "
                         "WHERE title IS NOT NULL").fetchone()[0]:
         pytest.skip("the titles pass has run on live, so the fixture is a record of what came "

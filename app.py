@@ -19,7 +19,7 @@ from urllib.parse import parse_qsl, urlencode, urlsplit
 
 from flask import Flask, jsonify, request, send_from_directory
 from flask_login import LoginManager, current_user
-from sqlalchemy import create_engine, delete, event, func, insert, or_, select, text, update
+from sqlalchemy import and_, create_engine, delete, event, func, insert, or_, select, text, update
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert       # dialect-agnostic upserts (2b-2):
 from sqlalchemy.dialects.postgresql import insert as pg_insert       # pick per engine dialect at runtime
 from sqlalchemy.orm import Session
@@ -1129,11 +1129,9 @@ def write_notes(s, rid, payload):
         for r in refs:
             s.execute(insert(rnr).values(note_id=note_id, **r))
 
-    # ⚠️ THE OLD COLUMN IS A DERIVED COPY NOW. It keeps being written so the previous deploy can
-    #    still serve a recipe during the window, and a later migration drops it. snapshot_diff no
-    #    longer compares it, so rebuilding it cannot mint a second mark for one note edit.
-    s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rid)
-              .values(notes=notes_rules.derived_text(written) or None))
+    # ⚠️ THE DERIVED COPY IS GONE. recipes.notes was kept written through the notes round so the
+    #    previous deploy could still serve a recipe during the window. That window closed, and
+    #    migration 063 drops the column. The rows are the only place a note lives.
 
 
 def read_notes(s, rid, steps=None):
@@ -1748,10 +1746,7 @@ def create_recipe():
             id=slug, name=clean["name"], author=payload.get("author"), source_url=payload.get("source_url"),
             category=payload.get("category"), servings=payload.get("servings"), prep_time=payload.get("prep_time"),
             cook_time=payload.get("cook_time"), total_time=payload.get("total_time"), descr=payload.get("descr"),
-            # ⚠️ THE COLUMN GOES IN EMPTY AND write_notes FILLS IT FROM THE ROWS. A create payload
-            #    may carry notes as a list (the new client) or as prose (the old one), and neither
-            #    belongs in a text column written before the rows exist.
-            notes=None, image=payload.get("image"), created_at=now_utc(), source=source,
+            image=payload.get("image"), created_at=now_utc(), source=source,
             owner=current_user.id,   # R4: a created recipe lands in the creator's box
         ))
         write_recipe_rows(s, slug, clean)
@@ -2063,6 +2058,24 @@ def update_recipe(rid):
 
 
 # ---- POINT/linked-hero cleanup helpers (Stage 4 build 2c) ---------------------------------------
+# ⚠️ ONE QUESTION, TWO SPELLINGS, BECAUSE THE TWO DELETE PATHS ASKED IT DIFFERENTLY. "Does this
+# recipe have a hero photo" was `if row.image:` in delete_recipe (Python truthiness, so "" and NULL
+# both mean no) and `Recipe.image.isnot(None)` in the test-recipe sweep (SQL, so "" means YES and an
+# empty string was gathered as a file to unlink). Live carries 16 recipes whose image is "" against
+# 163 that are NULL, so the two spellings disagree about a sixth of the corpus. Nothing was lost,
+# because unlink_unreferenced drops falsy paths before it reaches the filesystem, but a rule stated
+# twice in two different ways is one edit away from mattering.
+def has_image():
+    """The SQL half: a recipe row whose hero names a file."""
+    return and_(Recipe.image.isnot(None), func.trim(Recipe.image) != "")
+
+
+def image_file(row):
+    """The Python half: the file a row's hero names, or None when it names nothing."""
+    value = row if isinstance(row, (str, bytes, type(None))) else getattr(row, "image", None)
+    return (value or "").strip() or None
+
+
 # The hero (recipes.image) may POINT at a cook photo's own file (promote / auto-promote), so removing a
 # cook photo — by explicit delete OR by cascade (undo_cook / delete_recipe) — must not leave the hero
 # dangling or the file orphaned. "Is this the hero?" is a PATH comparison (recipes.image == photo.path),
@@ -2128,8 +2141,9 @@ def delete_recipe(rid):
         if row.owner != current_user.id:                      # default-deny: only the owner may delete
             return jsonify({"error": "not your recipe"}), 403
         files = list(s.scalars(select(CookPhoto.path).where(CookPhoto.recipe_id == rid)))   # all album files
-        if row.image:
-            files.append(row.image)                          # + the hero's own file (the orphan fix)
+        hero = image_file(row)
+        if hero:
+            files.append(hero)                               # + the hero's own file (the orphan fix)
         s.execute(delete(Recipe.__table__).where(Recipe.__table__.c.id == rid))   # cascades cook_photos ROWS
         s.commit()
     unlink_unreferenced(files)                               # AFTER commit: unlink files no surviving recipe uses
@@ -2481,6 +2495,35 @@ def _note_step_ids(s, rid):
         .where(RecipeStep.__table__.c.recipe_id == rid)).mappings()}
 
 
+def _carried_refs(value):
+    """The references a restore is handing back -> {(ref_index, match_text): step_id}, or an error.
+
+    ⚠️ A STORED NULL IN HERE IS AN ANSWER, which is the whole point. delete_note hands the client
+    the note's references as they stood, Undo posts them straight back, and a mention the cook had
+    deliberately unlinked has to come back unlinked. Merged OVER the auto-link exactly as
+    update_note merges its carried map, so a mention with no history still links itself.
+
+    ⚠️ AND IT REFUSES WHAT IT CANNOT READ, like every other list on a write path. A dict iterated
+    to its keys and a list of numbers filtered to nothing both answer 200 while losing the thing
+    they were asked to carry.
+    """
+    if value is None:
+        return {}, None
+    if not isinstance(value, list):
+        return None, "a note's refs must be a list"
+    out = {}
+    for r in value:
+        if not isinstance(r, dict):
+            return None, "each ref must be an object"
+        idx, words, sid = r.get("ref_index"), r.get("match_text"), r.get("step_id")
+        if not isinstance(idx, int) or not isinstance(words, str):
+            return None, "a ref names a mention by ref_index and match_text"
+        if sid is not None and not isinstance(sid, int):
+            return None, "a ref's step_id must be a step id or null"
+        out[(idx, words)] = sid
+    return out, None
+
+
 def _rescan_note_refs(s, note_id, text, step_ids, carried=None):
     """Rewrite one note's step references from its words. Returns the rows written.
 
@@ -2523,19 +2566,6 @@ def _auto_link_mentions(text, step_ids, numbers):
         if sid is not None and sid in step_ids and not step_ids[sid]:
             out[(m["ref_index"], m["match_text"])] = sid
     return out
-
-
-def _sync_notes_column(s, rid):
-    """Rebuild recipes.notes from the rows, which is the only thing that writes it.
-
-    ⚠️ IT CANNOT MOVE THE SNAPSHOT, WHICH IS WHY THIS IS SAFE TO DO ON EVERY NOTE WRITE. The column
-    left SNAPSHOT_RECIPE_FIELDS when a note became a playground, so rewriting it reaches nothing the
-    byte-equal short-circuit compares. It stays written so the previous deploy can still serve a
-    recipe during a deploy window, and a later migration drops it.
-    """
-    rows = _stored_rows(s, RecipeNote.__table__, rid)
-    s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rid)
-              .values(notes=notes_rules.derived_text(rows) or None))
 
 
 def _notes_out(s, rid, note_id):
@@ -2607,6 +2637,9 @@ def create_note(rid):
         vals, msg = _validated_note_fields(payload, step_ids, kinds, creating=True)
         if msg:
             return jsonify({"error": msg}), 400
+        carried, msg = _carried_refs(payload.get("refs"))
+        if msg:
+            return jsonify({"error": msg}), 400
         stored = _stored_rows(s, RecipeNote.__table__, rid)
         vals.setdefault("kind", notes_rules.DEFAULT_KIND)
         vals.setdefault("step_id", None)
@@ -2629,9 +2662,15 @@ def create_note(rid):
             select(RecipeStep.__table__.c.id, RecipeStep.__table__.c.is_heading)
             .where(RecipeStep.__table__.c.recipe_id == rid)
             .order_by(RecipeStep.__table__.c.position, RecipeStep.__table__.c.id)).mappings()))
-        _rescan_note_refs(s, new_id, vals["text"], step_ids,
-                          _auto_link_mentions(vals["text"], step_ids, numbers))
-        _sync_notes_column(s, rid)
+        # ⚠️ AN UNDO RESTORES THE LINKS IT WAS DELETED WITH, AND IT USED TO RE-LINK THEM. The undo
+        #    of a delete is a re-create (delete_note hands back `restore` and the client posts it),
+        #    and this ran the auto-link over the words with nothing carried, so every "step N"
+        #    mention came back linked. A cook who had unlinked one, deleted the note and pressed
+        #    Undo got the link they had removed. Same merge as update_note: carried wins, including
+        #    a carried null, and a mention with no history still links itself.
+        auto = _auto_link_mentions(vals["text"], step_ids, numbers)
+        auto.update(carried)
+        _rescan_note_refs(s, new_id, vals["text"], step_ids, auto)
         out, all_notes = _notes_out(s, rid, new_id)
         s.commit()
     return jsonify({"note": out, "notes": all_notes}), 201
@@ -2688,7 +2727,6 @@ def update_note(rid, note_id):
             # and a mention with no history takes the auto-link.
             auto.update(carried)
             _rescan_note_refs(s, note_id, vals["text"], step_ids, auto)
-        _sync_notes_column(s, rid)
         out, all_notes = _notes_out(s, rid, note_id)
         s.commit()
     return jsonify({"note": out, "notes": all_notes}), 200
@@ -2701,6 +2739,14 @@ def update_note_ref(rid, note_id, ref_index):
     ⚠️ A SEPARATE ROUTE BECAUSE IT NAMES A MENTION, NOT THE NOTE. The note's text is unchanged, so
     sending it through update_note would rescan the references and undo the very thing being asked
     for.
+
+    ⚠️ NO CLIENT CALLS THIS TODAY, AND IT STAYS. Measured 2026-10-07: static/app.js had one caller,
+    unlinkNoteRef, which nothing called, and it has been removed. The × beside a note's step link is
+    data-note-unlink-step and clears the note's own step_id, which is a different thing. The route
+    stays because it is the ONLY way a stored null reference is made, and a stored null is what
+    "an unlink survives the next keystroke" rests on (_note_ref_rows, and the restore a delete hands
+    back). Removing it would leave that rule with nothing able to exercise it outside the tests.
+    Whether the page should offer a per-mention unlink again is a product decision, not a cleanup.
     """
     payload = request.get_json(silent=True) or {}
     with orm_session() as s:
@@ -2756,12 +2802,20 @@ def delete_note(rid, note_id):
         #    recipe_notes_original has no title column, and an app-authored note has no original row
         #    at all. The Edit-mode delete keeps the whole row object and survived, so this was the
         #    reading view only. Same shape as the restore's own four fields and as `heading_level`.
+        # ⚠️ THE REFERENCES TRAVEL WITH IT, FOR THE REASON THE TITLE DOES. This body is what Undo
+        #    posts back verbatim, and a field missing from it is a field the restore invents. The
+        #    references were missing, so the re-create auto-linked every "step N" mention and an
+        #    unlink the cook had made was undone by their own Undo.
+        refs = [{"ref_index": r["ref_index"], "match_text": r["match_text"], "step_id": r["step_id"]}
+                for r in s.execute(
+                    select(RecipeNoteStepRef.__table__)
+                    .where(RecipeNoteStepRef.__table__.c.note_id == note_id)
+                    .order_by(RecipeNoteStepRef.__table__.c.ref_index)).mappings()]
         restore = {"text": me["text"], "title": me["title"], "kind": me["kind"],
-                   "position": me["position"], "step_id": me["step_id"]}
+                   "position": me["position"], "step_id": me["step_id"], "refs": refs}
         s.execute(delete(rn).where(rn.c.id == note_id))      # refs cascade
         left = [m for m in stored if m["id"] != note_id]
         _apply_rows(s, rn, [(m, {"position": i}) for i, m in enumerate(left)], [])
-        _sync_notes_column(s, rid)
         all_notes = read_notes(s, rid)
         s.commit()
     return jsonify({"deleted": note_id, "restore": restore, "notes": all_notes}), 200
@@ -2797,7 +2851,7 @@ def delete_test_recipes():
                                .join(Recipe, CookPhoto.recipe_id == Recipe.id)
                                .where(*mine)))                 # the caller's test recipes' album files
         files += list(s.scalars(select(Recipe.image)
-                                .where(*mine, Recipe.image.isnot(None))))     # + their heroes
+                                .where(*mine, has_image())))                  # + their heroes
         n = s.execute(delete(Recipe).where(*mine)).rowcount     # children cascade (FK ON)
         s.commit()
     unlink_unreferenced(files)   # AFTER commit: unlink files no surviving recipe uses (copy-share guarded)
@@ -2806,12 +2860,32 @@ def delete_test_recipes():
 
 # ---- ingredient field guide ----
 
+def mine_or_shared():
+    """The one answer to "may this reader see this ingredient row".
+
+    ⚠️ ONE CLAUSE, FIVE CALLERS, BECAUSE FOUR OF THEM HAD IT AND ONE DID NOT. Migration 031 gave
+    `ingredients` an owner: NULL means a LIBRARY row anyone may read, anything else means the row
+    belongs to one person. get_ingredient folded that into its WHERE and so did both halves of
+    delete_ingredient, while list_ingredients and in_season selected the table bare, so a personal
+    row showed up in every account's picker and in everyone's seasonal list. Written out five times
+    it was one omission away from exactly that, which is what happened.
+
+    ⚠️ IT READS THE TABLE COLUMN, NOT THE MAPPED ATTRIBUTE, so one spelling serves both an ORM
+    select and a Core delete and no caller has to name `owner` to ask the question. A test pins that
+    this function is the only reader of the column (tests/test_ingredient_identity.py)."""
+    col = Ingredient.__table__.c.owner
+    return or_(col.is_(None),                        # a library row, readable by everyone
+               col == current_user.id)               # or this reader's own personal row
+
+
 @app.route("/api/ingredients")
 def list_ingredients():
     """The whole library as {id, name} — used to populate the recipe form and the
     'add ingredient' picker in a person's version."""
     with orm_session() as s:
-        rows = s.execute(select(Ingredient.id, Ingredient.name).order_by(Ingredient.name)).all()
+        rows = s.execute(select(Ingredient.id, Ingredient.name)
+                         .where(mine_or_shared())
+                         .order_by(Ingredient.name)).all()
     return jsonify([dict(r._mapping) for r in rows])
 
 
@@ -2843,8 +2917,7 @@ def get_ingredient(iid):
         ing = s.execute(
             select(Ingredient.__table__).where(
                 Ingredient.id == iid,
-                or_(Ingredient.owner.is_(None),                  # a library row, readable by everyone
-                    Ingredient.owner == current_user.id),        # or this reader's own personal row
+                mine_or_shared(),
             )
         ).first()
         if ing is None:                                          # not there, or not yours: same answer
@@ -2921,7 +2994,7 @@ def delete_ingredient(iid):
                 # owner NULL and stays deletable by anyone, which is what keeps this the undo for
                 # the promote path, since that path leaves owner NULL on purpose. One refusal
                 # branch, so "no such ingredient" and "not yours" cannot drift apart later.
-                or_(Ingredient.owner.is_(None), Ingredient.owner == current_user.id),
+                mine_or_shared(),
             )).first()
         if row is None:                                  # not there, or not yours: same answer
             return jsonify({"error": "ingredient not found"}), 404
@@ -2940,10 +3013,16 @@ def delete_ingredient(iid):
         # ⚠️ THE CLAUSE IS ON THE DELETE TOO, NOT ONLY ON THE LOOKUP THAT AUTHORIZED IT. A check
         # that reads and then writes on the bare id is correct only while nothing changes in
         # between, and the whole point of this round is that a write path states what it may touch.
-        s.execute(delete(Ingredient.__table__).where(
+        done = s.execute(delete(Ingredient.__table__).where(
             Ingredient.__table__.c.id == iid,
-            or_(Ingredient.__table__.c.owner.is_(None),
-                Ingredient.__table__.c.owner == current_user.id)))
+            mine_or_shared()))
+        # ⚠️ THE WRITE'S OWN ANSWER, NOT THE READ'S. The lookup above authorized the delete and the
+        #    clause is repeated on the statement, so a row that changed hands or was removed between
+        #    the two matches nothing. Reporting {"deleted": id} on a rowcount of 0 tells the client
+        #    the row is gone when it is still there, and the client repaints on that word.
+        if not done.rowcount:
+            s.rollback()
+            return jsonify({"error": "ingredient not found"}), 404
         s.commit()
     return jsonify({"deleted": iid})
 
@@ -2957,7 +3036,7 @@ def in_season(month=None):
         rows = s.execute(
             select(Ingredient.id, Ingredient.name)
             .join(IngredientSeason, IngredientSeason.ingredient_id == Ingredient.id)
-            .where(IngredientSeason.month == month)
+            .where(IngredientSeason.month == month, mine_or_shared())
             .order_by(Ingredient.name)
         ).all()
     return jsonify({"month": month, "ingredients": [dict(r._mapping) for r in rows]})
@@ -3373,7 +3452,7 @@ def add_cook_photo(rid):
         # No-hijack guard — only when YOU own the recipe: attaching a photo to your cook of someone else's
         # recipe must NOT auto-set their empty hero. (Standalone attach already required recipe-owner.)
         is_hero = False
-        if not rec.image and rec.owner == current_user.id:
+        if not image_file(rec) and rec.owner == current_user.id:
             s.execute(update(Recipe.__table__).where(Recipe.__table__.c.id == rec.id).values(image=path))
             is_hero = True
         s.commit()
@@ -3993,7 +4072,13 @@ def preview_body(plan, provenance, duplicate):
     return {
         "slug": r["id"],
         "recipe": {k: r[k] for k in ("name", "author", "source_url", "category", "servings",
-                                     "prep_time", "cook_time", "total_time", "descr", "notes")},
+                                     "prep_time", "cook_time", "total_time", "descr")},
+        # ⚠️ THE NOTES ARE ROWS, NOT A RECIPE FIELD. They were read from r["notes"] here while
+        #    recipes.notes existed as a derived copy. Migration 063 drops that column, and the plan
+        #    has carried the rows since migration 060, so the preview shows what will actually be
+        #    written: one entry per note, with the kind the importer assigned.
+        "notes": [{k: n.get(k) for k in ("position", "kind", "text")}
+                  for n in (plan.get("notes") or [])],
         "ingredients": [{k: row[k] for k in ("position", "is_heading", "qty", "quantity", "unit",
                                              "label", "raw_text", "grams", "secondary_measure")}
                         for row in plan["ingredients"]],

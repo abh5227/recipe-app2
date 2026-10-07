@@ -223,7 +223,7 @@ def run(db, apply_it):
     c = sqlite3.connect(db)
     c.row_factory = sqlite3.Row
     c.execute("PRAGMA foreign_keys=ON")
-    log = {"convert": [], "label": [], "note": [], "notes": [], "caps": [], "skipped": []}
+    log = {"convert": [], "label": [], "caps": [], "skipped": []}
 
     # ---- pass 1: a step becomes a heading in place ----------------------------------------------
     for r in _decisions(HEADINGS_CSV, "DECISION_convert_yes_no", {"yes"}):
@@ -259,70 +259,27 @@ def run(db, apply_it):
     # ---- passes 2 and 4: a lead-in label is lifted into a heading above its step -----------------
     _lift(c, log, LABELS_CSV, "label")
 
-    # ---- pass 3: a Note:/Tip: step moves to the recipe's Notes -----------------------------------
-    for r in _decisions(LABELS_CSV, "DECISION_make_heading_yes_no", {"no (note/tip)"}):
-        rid, sid = r["recipe_id"], int(r["step_row_id"])
-        live = c.execute("SELECT text FROM recipe_steps WHERE id=? AND recipe_id=?",
-                         (sid, rid)).fetchone()
-        if live is None:
-            log["skipped"].append((rid, sid, "no such live step"))
-            continue
-        # ⚠️ A WAIT POINTING AT THIS STEP WOULD LOSE ITS LINK. ON DELETE SET NULL would clear it
-        #    silently, so refuse instead and let a person decide.
-        linked = c.execute("SELECT id FROM recipe_waits WHERE step_id=? OR alongside_step_id=? "
-                           "OR ext_step_id=?", (sid, sid, sid)).fetchone()
-        if linked:
-            log["skipped"].append((rid, sid, "a wait points at this step"))
-            continue
-        body = _baseline(c, rid)
-        steps = (body or {}).get("steps") or []
-        bi = next((i for i, s in enumerate(steps) if s.get("id") == sid), None)
-        if bi is None:
-            log["skipped"].append((rid, sid, "not in the baseline"))
-            continue
-        if _drifted(live["text"], steps[bi].get("text")):
-            log["skipped"].append((rid, sid, f"note: {DRIFTED}"))
-            continue
-        text = " ".join((live["text"] or "").split())
-        old_notes = c.execute("SELECT notes FROM recipes WHERE id=?", (rid,)).fetchone()["notes"]
-        if _drifted(old_notes, ((body.get("recipe") or {}).get("notes"))):
-            log["skipped"].append((rid, sid, f"note: the recipe's notes have drifted. {DRIFTED}"))
-            continue
-        new_notes = text if not (old_notes or "").strip() \
-            else f"{old_notes.rstrip()}{NOTE_SEPARATOR}{text}"
-        c.execute("UPDATE recipes SET notes=? WHERE id=?", (new_notes, rid))
-        c.execute("DELETE FROM recipe_steps WHERE id=?", (sid,))
-        for s in _renumber(_live_steps(c, rid)):
-            c.execute("UPDATE recipe_steps SET position=? WHERE id=?", (s["position"], s["id"]))
-        # ⚠️ BOTH HALVES OF THE BASELINE MOVE. notes is in SNAPSHOT_RECIPE_FIELDS, so leaving it
-        #    behind would mint a "your changes" entry saying the cook rewrote the recipe's notes.
-        steps.pop(bi)
-        body["steps"] = _renumber(steps)
-        body["recipe"]["notes"] = new_notes
-        _write_baseline(c, rid, body)
-        log["note"].append((rid, sid, text[:80]))
+    # ---- passes 3 and 5 are RETIRED, with the column they were written for ----------------------
+    # ⚠️ BOTH WROTE recipes.notes, WHICH MIGRATION 063 DROPS. Pass 3 moved a Note:/Tip: step out of
+    #    the method and appended it to that column, and pass 5 cleaned the column's own text. A note
+    #    is a ROW now (migration 060) and the column was only a derived copy of those rows, kept
+    #    written so the previous deploy could serve during the notes window.
+    #
+    #    They are not rewritten against recipe_notes, deliberately. Both ran once, over the 300, in
+    #    the 2026-09-30 chain: 7 Note steps moved and the notes of 47 recipes were cleaned, and
+    #    docs/data-repairs/ holds the record of each. The importer carries the live half of the same
+    #    rules (import_cleanup.clean_notes and _step_rows, which builds note ROWS), so a recipe
+    #    imported tomorrow is still cleaned the way those 300 were.
+    #
+    # ⚠️ AND PASS 3 CARRIED A STALE CLAIM WORTH RECORDING. Its comment said "notes is in
+    #    SNAPSHOT_RECIPE_FIELDS, so the baseline's recipe.notes moves with the live row". That
+    #    stopped being true when a note became a playground: notes left the snapshot, and
+    #    scripts/notes_to_rows.py then stripped the key from all 300 stored baselines. Re-running
+    #    this pass today would have written the key back INTO a baseline, which is the one thing
+    #    that takes a recipe out of the byte-equal set for no reason a cook can see.
 
     # ---- pass 4: a DASH lead-in label is lifted the same way -------------------------------------
     _lift(c, log, DASH_CSV, "dash")
-
-    # ---- pass 5: the notes data rule ------------------------------------------------------------
-    # ⚠️ LOCKSTEP LIKE EVERY OTHER PASS, and notes IS in SNAPSHOT_RECIPE_FIELDS, so the baseline's
-    #    recipe.notes moves with the live row or the cook is told they rewrote a note they never
-    #    touched. Same function the importer runs, so a recipe imported tomorrow is cleaned the way
-    #    these 300 were.
-    for row in [dict(x) for x in c.execute(
-            "SELECT id, notes FROM recipes WHERE notes IS NOT NULL AND trim(notes)<>'' ORDER BY id")]:
-        cleaned, removed = clean_notes(row["notes"])
-        if cleaned == row["notes"]:
-            continue
-        body = _baseline(c, row["id"])
-        if body is None:
-            log["skipped"].append((row["id"], None, "notes: no baseline"))
-            continue
-        c.execute("UPDATE recipes SET notes=? WHERE id=?", (cleaned, row["id"]))
-        body["recipe"]["notes"] = cleaned
-        _write_baseline(c, row["id"], body)
-        log["notes"].append((row["id"], removed or [("whitespace", "paragraph gaps normalized")]))
 
     # ---- pass 6: ALL CAPS heading text becomes sentence case -------------------------------------
     # Runs last so it catches the headings passes 1 and 2 just made.
@@ -363,11 +320,6 @@ def main():
     print(f"{'APPLIED' if a.apply else 'DRY RUN'}  {a.db}")
     print(f"  1   steps converted to headings in place : {len(log['convert'])}")
     print(f"  2+4 lead-in labels lifted into headings  : {len(log['label'])}")
-    print(f"  3   Note/Tip steps moved to Notes        : {len(log['note'])}")
-    print(f"  5   recipes whose notes were cleaned      : {len(log['notes'])}")
-    for rid, removed in log["notes"]:
-        for what, text in removed:
-            print(f"        {rid}: {what} {text!r}")
     print(f"  6   headings recased or unwrapped        : {len(log['caps'])}")
     if log["skipped"]:
         print(f"  SKIPPED: {len(log['skipped'])}")

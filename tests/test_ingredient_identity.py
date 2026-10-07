@@ -194,12 +194,16 @@ def test_owner_is_read_ONLY_by_the_detail_route_and_the_delete(kitchen):
     assertion tightened again. A reader appearing in a THIRD function still trips it, which is the
     whole point of pinning the call sites rather than the count.
 
-    Four in delete_ingredient and not two: the clause is on the lookup AND on the DELETE statement,
-    because a read-then-write on a bare id is correct only while nothing changes in between."""
-    assert sorted(set(_ingredient_column_readers("owner"))) == \
-        ["delete_ingredient", "get_ingredient"]
-    assert collections.Counter(_ingredient_column_readers("owner")) == \
-        {"get_ingredient": 2, "delete_ingredient": 4}
+    ⚠️ AND THE THIRD MOVE IS THE ONE THAT MADE IT ONE FUNCTION. The safety round found
+    list_ingredients and in_season selecting the table with no owner clause at all, so a personal
+    row showed up in every account's picker and in everyone's seasonal list. The clause was written
+    out four times and missing twice, which is what a rule spelled out at each call site does. It is
+    `mine_or_shared()` now, and the only function that READS the column is that one. A reader
+    appearing anywhere else still trips this, which is the whole point of pinning the call sites
+    rather than the count."""
+    assert sorted(set(_ingredient_column_readers("owner"))) == ["mine_or_shared"]
+    # ONE spelling, the table column, which serves an ORM select and a Core delete alike.
+    assert collections.Counter(_ingredient_column_readers("owner")) == {"mine_or_shared": 1}
 
 
 def test_both_new_columns_are_still_additive_in_the_drawer(kitchen):
