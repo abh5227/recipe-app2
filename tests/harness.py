@@ -53,18 +53,20 @@ class Kitchen:
         on Postgres, which always enforces them), so this matches conn()'s explicit PRAGMA.
         """
         import app
-        # ⚠️ ASKED ABOUT THE DATABASE THE FACTORY WILL OPEN, NOT THE ONE THIS OBJECT REMEMBERS.
+        # ⚠️ ASKED OF THE SESSION ITSELF, NOT OF A PATH THE SESSION MIGHT NOT USE.
+        # Two globals stand between this object and the write, and both have moved under it.
         # orm_session() composes its URL from the module-global app.DB at CALL time, and that global
         # does not have to still equal self.db: building a second Kitchen rebinds it, which three
         # tests in this suite do. Verifying self.db there passed while the write went elsewhere.
-        # Measured by review: with app.DB pointed at an unmarked database, a session write landed in
-        # it and the check returned happily. This is the same rule corpus_guard states, that a guard
-        # has to know the FILE rather than a name for it.
-        # The residual, stated: orm_session() prefers $DATABASE_URL over app.DB, so on a run with
-        # that variable set this is a check on the path and not on the connection. That is the
-        # mid-run setenv gap ROADMAP defers, not a new one, and urlguard covers the inherited case.
-        dbmarker.verify_sqlite(app.DB, self.temp_root)
-        return app.orm_session()
+        # It then prefers $DATABASE_URL over app.DB entirely, and reads it on every call, while
+        # urlguard reads that variable once at conftest import. Measured: a kitchen built and
+        # marked, one monkeypatch.setenv mid-test, and the check inspected the marked test.db while
+        # the INSERT landed in an unmarked decoy, with nothing raised.
+        # verify_session asks the CONNECTION what it opened, which is the same rule corpus_guard
+        # states, that a guard has to know the FILE rather than a name for it.
+        s = app.orm_session()
+        dbmarker.verify_session(s, self.temp_root)
+        return s
 
     def count(self, table, where=""):
         sql = f"SELECT COUNT(*) FROM {table}" + (f" WHERE {where}" if where else "")

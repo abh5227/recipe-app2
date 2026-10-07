@@ -110,6 +110,72 @@ def _token_of_sqlite(con):
     return row[0] if row else None
 
 
+def _opened_by(con):
+    """The file behind a LIVE SQLAlchemy connection's `main` schema, asked of the connection."""
+    for row in con.exec_driver_sql("PRAGMA database_list"):
+        if row[1] == "main":
+            return row[2]
+    return ""
+
+
+def verify_session(session, temp_root):
+    """Refuse unless the database THIS SESSION ACTUALLY OPENED is one this run made.
+
+    ⚠️ THE PATH AND THE CONNECTION ARE DIFFERENT QUESTIONS, AND $DATABASE_URL IS WHERE THEY PART.
+    `app.orm_session()` composes its URL as `$DATABASE_URL or sqlite:///{app.DB}`, reading the
+    environment on EVERY call, while `tests/urlguard.py` reads that variable once at conftest
+    import. A test that sets it mid-run therefore reaches a database no guard has seen, and
+    `verify_sqlite(app.DB, ...)` went on answering about the file the path named. Measured: with a
+    kitchen built and marked, one `monkeypatch.setenv("DATABASE_URL", "sqlite:///<decoy>")` left
+    the check inspecting the marked `test.db` while the session opened the unmarked decoy and the
+    INSERT landed there, with nothing raised. That is the same defect `_main_file` exists to stop,
+    one level further up: a path is what you asked for, and this is what you got.
+
+    The URL is checked first and the connection second, which is the order the rest of this module
+    uses. An out-of-tree SQLite path is refused before anything is opened; what the connection
+    reports is then the authoritative answer, because a symlink or a redirect resolves there and
+    not in the caller's head.
+
+    ⚠️ POSTGRES HAS NO FILE, SO `temp_root` GOVERNS SQLITE ONLY. On that dialect the token is the
+    whole check here, which is what `claim_or_verify_pg` already establishes at reset.
+    """
+    def refuse(message):
+        session.close()
+        raise Refused(message)
+
+    bind = session.get_bind()                        # the engine, WITHOUT opening a connection
+    sqlite = bind.dialect.name == "sqlite"
+    named = bind.url.database
+    if sqlite and named and not _inside(named, temp_root):
+        refuse(f"\n\nthe harness refuses to write:\n  this session is bound to {named}, which is "
+               f"OUTSIDE its own temp directory {temp_root}.\n  app.orm_session() prefers "
+               f"${ENV_URL_NAME} over app.DB, so the path the harness was handed is not "
+               f"necessarily\n  the database a write opens.\n")
+
+    con = session.connection()
+    if sqlite:
+        opened = _opened_by(con)
+        if not opened:
+            refuse(f"\n\nthe harness refuses to write:\n  this session reports no file behind its "
+                   f"main schema, so there is nothing to identify\n")
+        if not _inside(opened, temp_root):
+            refuse(f"\n\nthe harness refuses to write:\n  this session opened {opened}, which is "
+                   f"OUTSIDE its own temp directory {temp_root}.\n  The harness writes only inside "
+                   f"the directory pytest made for this test.\n")
+    try:
+        token = con.exec_driver_sql(f'SELECT token FROM "{MARKER_TABLE}" LIMIT 1').scalar()
+    except Exception:                                # no marker table at all, on either dialect
+        token = None
+    if token is None:
+        refuse(f"\n\nthe harness refuses to write:\n  the database this session opened carries no "
+               f"harness marker, so it is one this run did not create.\n  A copy of live, a "
+               f"restored backup and a colleague's database all look like this.\n")
+    if token != TOKEN:
+        refuse(f"\n\nthe harness refuses to write:\n  the database this session opened is marked "
+               f"{token[:8]}… and this run is {TOKEN[:8]}….\n  It was made by a different run, so "
+               f"it is not this run's to write.\n")
+
+
 def stamp_sqlite(path):
     """Mark a database this run created. Idempotent, and it replaces an older run's token."""
     con = sqlite3.connect(str(path))

@@ -84,6 +84,84 @@ def test_the_marker_survives_a_rebuild(kitchen):
     assert _token(kitchen.db) == dbmarker.TOKEN
 
 
+# ---- the door the address checks are nailed to, and the session that walks past it ---------------
+
+def test_a_session_still_verifies_when_the_url_is_unset(kitchen, tmp_path):
+    """⚠️ ANTI-VACUITY FIRST. A check that refuses everything proves as little as one that refuses
+    nothing, and the three refusals below are only worth reading if this one passes."""
+    from sqlalchemy import text
+    with kitchen.session() as s:
+        assert s.execute(text("SELECT count(*) FROM recipes")).scalar() is not None
+
+
+def test_a_database_url_set_MID_RUN_is_refused_with_nothing_written(kitchen, tmp_path):
+    """⚠️ THE GAP THE IMPORT-TIME WALL LEAVES OPEN, MEASURED BEFORE IT WAS CLOSED.
+
+    urlguard reads $DATABASE_URL once at conftest import. app.orm_session() reads it on every call.
+    So a test that sets it mid-run reaches a database no address check has seen, and the old
+    `verify_sqlite(app.DB, ...)` went on answering about the marked file while the write landed in
+    the decoy: measured at one row inserted, nothing raised.
+    """
+    decoy = tmp_path / "somebody-elses.db"
+    con = sqlite3.connect(decoy)
+    con.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)")
+    con.commit()
+    con.close()
+    assert _token(decoy) is None, "the decoy must carry no marker, or this proves nothing"
+    before = _sha(decoy)
+
+    os.environ["DATABASE_URL"] = f"sqlite:///{decoy}"
+    try:
+        with pytest.raises(dbmarker.Refused) as e:
+            kitchen.session()
+    finally:
+        del os.environ["DATABASE_URL"]
+    assert "no harness marker" in str(e.value)
+    assert _sha(decoy) == before, "a database the check refused was written to anyway"
+
+
+def test_a_session_pointed_outside_the_temp_directory_opens_nothing(kitchen, tmp_path):
+    """⚠️ REFUSED ON THE URL, BEFORE A CONNECTION EXISTS. SQLite CREATES a database file the moment
+    something connects to it, so a check that only asked the connection would leave a file behind
+    at whatever the variable named. The address check stays in front for that reason."""
+    outside = tmp_path.parent / "not-in-this-test.db"
+    assert not outside.exists()
+    os.environ["DATABASE_URL"] = f"sqlite:///{outside}"
+    try:
+        with pytest.raises(dbmarker.Refused) as e:
+            kitchen.session()
+    finally:
+        del os.environ["DATABASE_URL"]
+    assert "OUTSIDE its own temp directory" in str(e.value)
+    assert not outside.exists(), "the refusal still created the database file"
+
+
+def test_a_refused_session_is_closed_rather_than_left_open(kitchen, tmp_path):
+    """A guard that raises and leaks the connection it opened has swapped one defect for another."""
+    decoy = tmp_path / "another.db"
+    sqlite3.connect(decoy).close()
+    os.environ["DATABASE_URL"] = f"sqlite:///{decoy}"
+    captured = {}
+    try:
+        import app
+        real = app.orm_session
+
+        def spy():
+            captured["s"] = real()
+            return captured["s"]
+
+        app.orm_session = spy
+        try:
+            with pytest.raises(dbmarker.Refused):
+                kitchen.session()
+        finally:
+            app.orm_session = real
+    finally:
+        del os.environ["DATABASE_URL"]
+    assert captured["s"] is not None
+    assert not captured["s"].is_active or captured["s"].get_transaction() is None
+
+
 # ---- the case the address checks cannot see ------------------------------------------------------
 
 def test_a_preexisting_database_is_refused_with_nothing_written(tmp_path):
@@ -224,7 +302,10 @@ def _marker_calls(func):
     # asking about the wrong database: the write opens the module global, which does not have to
     # equal self.db, and review demonstrated a write landing in an unmarked database with the check
     # satisfied. A pin that cannot see the argument cannot see this class of defect at all.
-    ("session", "verify_sqlite", "app.DB"),
+    # ⚠️ AND THE ARGUMENT IS THE SESSION, NOT A PATH. app.DB is only what the URL is composed
+    # FROM when $DATABASE_URL is unset, and orm_session() re-reads that variable on every call
+    # while urlguard reads it once at conftest import. verify_session asks the connection.
+    ("session", "verify_session", "s"),
     ("rebuild", "verify_sqlite", "build_db.DB"),
     ("rebuild", "stamp_sqlite", "build_db.DB"),
 ])
