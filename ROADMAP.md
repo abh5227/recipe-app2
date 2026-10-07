@@ -2272,6 +2272,37 @@ joy, deliberately *not* a feature.
 Things that are actually *wrong* in edge cases (not just cosmetic), plus deferred cleanups —
 worth knowing before they bite. None of the *data* limitations occur in the current recipes.
 
+- **Seven older additive migrations have no transaction, so a FRESH CLONE can be stopped half way
+  through one.** 009, 013, 015, 018, 027, 031 and 048 each add two or more columns under a single
+  `executescript`, which opens no transaction, so every statement auto-commits on its own. An
+  interrupted run leaves some columns added with the filename unrecorded, and the retry then fails
+  forever on "duplicate column name". 031 is the worst of them: two `ADD COLUMN`s followed by two
+  `UPDATE`s, so a backfill can be missing with the columns already in place and nothing saying so.
+  Found 2026-10-06 while proving migration 062 all-or-nothing for the note-titles round, which is
+  recorded in `golive/2026-10-06-note-titles.md` section 7a.
+  **No risk to live or to any database past them**, because `migrate.py` tracks by filename and never
+  by checksum. A fresh clone is the exposure.
+  Fix shape: wrap each file in its own `BEGIN;`/`COMMIT;`, exactly as the five table rebuilds (005,
+  019, 026, 041, 045) were wrapped for the same reason. Editing an applied migration is safe here for
+  that same filename-tracking reason, and `045` is the precedent for keeping a `PRAGMA foreign_keys`
+  outside the transaction. **Deferred to a later safety round, on purpose**, rather than widened into
+  a round about note titles. The seven are named in `UNWRAPPED_ADDITIVE` in
+  `tests/test_migration_atomicity.py` and the list is CLOSED, so the next additive migration written
+  has to carry its own wrap.
+
+- **The retired `recipes.notes` column should be DROPPED, not repaired.** Migration 060 made the note
+  rows the source and left the column as a derived copy, written on every note write so the previous
+  deploy could still serve a recipe during the window. The titles round then lifted a label out of a
+  note's text into `recipe_notes.title`, so `notes.py::derived_text` puts it back on the front with a
+  `". "` join, and a note whose body now starts lowercase reads "Mirin. substitute Chinese cooking
+  wine" in that column. The author wrote "Mirin — substitute…", so the join is a near-match for a
+  string nothing on the page reads and the running deploy does not read either.
+  **The answer is to drop the column rather than to tune the separator.** A second opinion about how
+  a note's words are assembled is exactly the thing one shared rule exists to prevent, and the column
+  is the last place that opinion lives. Deferred to a later cleanup round: it is a destructive
+  migration, so it runs AFTER its deploy (the 053/054 rule), and the retirement commit that stops
+  writing it has to ship first.
+
 - **`field-sizing: content` is Chromium-only — long ingredient names are unreadable while editing on
   Safari and Firefox.** `styles.css` sets `field-sizing: content` on `.ie-ov textarea.ie`, and the
   shipped focus-expand behaviour (Option B: the field wraps taller on focus to show the whole value)
