@@ -1008,6 +1008,37 @@ def _pair_notes(stored, incoming, in_n):
     return pairs, [m for m in stored if m["id"] not in claimed]
 
 
+def record_notes_original(s, rid):
+    """Record a recipe's note rows as the words it was born with. Once per recipe, or never.
+
+    ⚠️ A NOTE IS A PLAYGROUND ONLY IF THERE IS A WAY BACK, AND AN APP-CREATED RECIPE HAD NONE.
+    Andy's ruling is that editing a note costs the recipe nothing: no annotation entry, no mark, no
+    place in the byte-equal set. Both halves need the notes OUT of the snapshot, so the baseline is
+    not the record of what the author wrote. recipe_notes_original is that record, and until now
+    only scripts/applied/notes_to_rows.py (the corpus move) and import_write.commit_plan (an
+    import) wrote it. A recipe typed into the app therefore got the playground without the way
+    back: reword a note, reload, and the words it was created with are gone from the database.
+
+    ⚠️ ONE RULE, THREE DOORS. copy_recipe already had this written out as its fallback for a source
+    with no originals of its own, and a comment claiming two places share a rule is not a function.
+
+    ⚠️ IT WRITES ONCE AND UPDATES NEVER. An original that moved with the rows would be a copy of
+    the rows, which is what recipes.notes was and what migration 063 dropped. A recipe that already
+    has a row here is left exactly as it is, so this is safe to call twice.
+    """
+    t = RecipeNoteOriginal.__table__
+    if s.execute(select(func.count()).select_from(t).where(t.c.recipe_id == rid)).scalar():
+        return 0
+    rows = list(s.execute(select(RecipeNote.__table__)
+                          .where(RecipeNote.__table__.c.recipe_id == rid)
+                          .order_by(RecipeNote.__table__.c.position)).mappings())
+    at = now_utc()
+    for row in rows:
+        s.execute(insert(t).values(recipe_id=rid, position=row["position"], kind=row["kind"],
+                                   text=row["text"], recorded_at=at))
+    return len(rows)
+
+
 def write_notes(s, rid, payload):
     """Write a recipe's NOTE rows from a validated payload, in place, and rebuild the derived column.
 
@@ -1751,6 +1782,9 @@ def create_recipe():
         ))
         write_recipe_rows(s, slug, clean)
         write_notes(s, slug, payload)   # after the rows, so a note's step_id names a step that exists
+        # ⚠️ AFTER THE NOTES AND BEFORE THE BASELINE. The notes are not IN the baseline, so
+        #    this is the only record of what this recipe was created saying.
+        record_notes_original(s, slug)
         snapshot_original(s, slug)   # O-a: capture the pristine reason='original' baseline at birth (for O-c annotations)
         s.commit()
     return jsonify({"id": slug}), 201
@@ -1827,8 +1861,8 @@ def get_recipe(rid):
         #    the step NUMBER the page prints. Migration 053 made the link a step id, so there is
         #    nothing left to verify — a pointer either names a step of this recipe or is null.
         planahead.resolve_steps(waits, steps)
-        # ⚠️ NOTES ARE ROWS SINCE MIGRATION 060, and recipes.notes is a derived copy kept only so the
-        #    previous deploy can still serve during the window. The page reads these.
+        # ⚠️ NOTES ARE ROWS SINCE MIGRATION 060, and the derived recipes.notes column that was kept
+        #    for one deploy window is gone (migration 063). These rows are the notes.
         # ⚠️ THROUGH read_notes, WHICH THE PER-NOTE ENDPOINTS ALSO CALL. This was assembled inline
         #    here, and a PATCH that returned a differently-shaped row from the one the next page load
         #    produces is the drift the single-reader rule exists to stop. The number each reference
@@ -2303,12 +2337,7 @@ def copy_recipe(rid):
                 vals["recipe_id"] = new_id
                 s.execute(insert(RecipeNoteOriginal.__table__).values(**vals))
         else:
-            for n in s.execute(select(RecipeNote.__table__)
-                               .where(RecipeNote.__table__.c.recipe_id == new_id)
-                               .order_by(RecipeNote.__table__.c.position)).mappings():
-                s.execute(insert(RecipeNoteOriginal.__table__).values(
-                    recipe_id=new_id, position=n["position"], kind=n["kind"],
-                    text=n["text"], recorded_at=now_utc()))
+            record_notes_original(s, new_id)      # the create route's own rule
         snapshot_original(s, new_id)   # O-a: the copy's original = its copied content at birth (before editing)
         s.commit()
     return jsonify({"id": new_id}), 201
@@ -2524,7 +2553,7 @@ def _carried_refs(value):
     return out, None
 
 
-def _rescan_note_refs(s, note_id, text, step_ids, carried=None):
+def _rescan_note_refs(s, note_id, text, step_ids, carried=None, auto=None):
     """Rewrite one note's step references from its words. Returns the rows written.
 
     ⚠️ THE SAME RULE write_notes USES, AND FOR THE SAME REASON. A reference exists only while its
@@ -2534,6 +2563,21 @@ def _rescan_note_refs(s, note_id, text, step_ids, carried=None):
 
     ⚠️ AND A MENTION WITH NO TARGET IS STILL A ROW. It stores step_id NULL, which is what lets the
     text render as plain words rather than as a link, and what lets a later link/unlink name it.
+
+    ⚠️ carried AND auto STAY APART, BECAUSE _note_step_target ASKS WHAT WAS STORED. Both per-note
+    doors merged them (`auto.update(carried)`) and handed the result in as `carried`, so the
+    guard's `sid != was` compared a value against itself and could never fire. write_notes, the
+    third door, had it right all along and takes the two as separate arguments.
+    ⚠️ MEASURED, THAT MERGE CHANGED NO OUTCOME, and this is recorded rather than dressed up as a
+    bug fix. The only keys the merge added to `carried` came from the auto-link, and
+    _auto_link_mentions resolves against notes_rules.step_numbers, which counts NON-HEADING rows,
+    so an auto-linked target is never a heading and the guard had nothing to catch. They are passed
+    apart because a guard that cannot fire is worse than no guard: it reads as protection. Found by
+    an independent review of the 2026-10-07 round.
+    ⚠️ A heading link handed back by an UNDO still survives, which is the point of the distinction
+    and is tested: delete_note returns the note's references and Undo posts them straight back, so
+    those ARE links that were stored. Refusing them would make deleting a note the one gesture that
+    destroys a link to a converted step for good.
     """
     rnr = RecipeNoteStepRef.__table__
     s.execute(delete(rnr).where(rnr.c.note_id == note_id))
@@ -2542,7 +2586,7 @@ def _rescan_note_refs(s, note_id, text, step_ids, carried=None):
     #    become a heading while the PUT door kept it. Measured: auto-link a note to step 2, convert
     #    step 2 to a heading through the PUT (the link is held, correctly), then change one word of
     #    the note in reading view, and the link is gone for good.
-    written = _note_ref_rows(text, step_ids, carried=carried)
+    written = _note_ref_rows(text, step_ids, carried=carried, auto=auto)
     for row in written:
         s.execute(insert(rnr).values(note_id=note_id, **row))
     return written
@@ -2669,8 +2713,7 @@ def create_note(rid):
         #    Undo got the link they had removed. Same merge as update_note: carried wins, including
         #    a carried null, and a mention with no history still links itself.
         auto = _auto_link_mentions(vals["text"], step_ids, numbers)
-        auto.update(carried)
-        _rescan_note_refs(s, new_id, vals["text"], step_ids, auto)
+        _rescan_note_refs(s, new_id, vals["text"], step_ids, carried=carried, auto=auto)
         out, all_notes = _notes_out(s, rid, new_id)
         s.commit()
     return jsonify({"note": out, "notes": all_notes}), 201
@@ -2721,12 +2764,12 @@ def update_note(rid, note_id):
             # ⚠️ A MENTION THE COOK HAS JUST TYPED IS AUTO-LINKED, AND ONE THEY ALREADY UNLINKED IS
             #    NOT RE-LINKED. The carried value wins where the same words were there before, so
             #    "remove link" survives the next keystroke; a mention with no history auto-links.
-            auto = _auto_link_mentions(vals["text"], step_ids, numbers)
             # The carried value WINS, including a carried None. A mention whose words were there
             # before keeps whatever it pointed at, so "remove link" survives the next keystroke,
-            # and a mention with no history takes the auto-link.
-            auto.update(carried)
-            _rescan_note_refs(s, note_id, vals["text"], step_ids, auto)
+            # and a mention with no history takes the auto-link. _note_ref_rows holds that order;
+            # merging the two here is what let a NEW link name a heading.
+            auto = _auto_link_mentions(vals["text"], step_ids, numbers)
+            _rescan_note_refs(s, note_id, vals["text"], step_ids, carried=carried, auto=auto)
         out, all_notes = _notes_out(s, rid, note_id)
         s.commit()
     return jsonify({"note": out, "notes": all_notes}), 200

@@ -169,6 +169,88 @@ def test_the_whole_new_note_panel_arrives_in_one_create(kitchen):
     assert tuple(row) == ("Resting", "tips", sid)
 
 
+def test_an_undo_restores_a_reference_to_a_step_that_is_now_a_heading(kitchen):
+    """⚠️ THIS IS THE RULE, NOT A HOLE, AND THE REVIEW WAS RIGHT THAT IT WAS UNSTATED.
+
+    An independent review found that POST /notes with a `refs` entry naming a HEADING answers 201
+    and stores the pointer, while the same note's `step_id` field is correctly refused with "a note
+    attaches to a step, not to a heading". Two spellings, two answers, which is the shape this
+    repository keeps finding.
+
+    It is the right answer, and here is why. A POST is how UNDO works: delete_note hands the client
+    the note's references as they stood and Undo posts them straight back. The note existed with
+    that link a moment ago, so it is a link that WAS stored, and CLAUDE.md's rule is that a heading
+    is kept where it was already stored and refused where it is new. Refusing it here would make
+    deleting a note the one gesture that silently destroys a link to a converted step, which is the
+    exact irreversibility `_note_step_target` was written to stop.
+
+    ⚠️ AND THE MERGE THAT HID THIS WAS DEAD WEIGHT RATHER THAN THE CAUSE. Both per-note doors did
+    `auto.update(carried)` and passed the result in as `carried`, so _note_step_target's `was`
+    argument was the proposed target itself and its guard could never fire. Measured, that changed
+    no outcome: the only entries the merge added to `carried` came from the auto-link, and
+    _auto_link_mentions resolves against step_numbers, which counts NON-HEADING rows only, so an
+    auto-linked target is never a heading and the guard had nothing to catch. The two are passed
+    apart now because a guard that cannot fire is worse than no guard: it reads as protection.
+    """
+    rid = _recipe(kitchen.client, steps=[{"text": "Rinse them"},
+                                         {"heading": "For the beans"},
+                                         {"text": "Simmer"}])
+    head = [st for st in _steps_of(kitchen.client, rid) if st["is_heading"]][0]
+    r = kitchen.client.post(f"/api/recipes/{rid}/notes", json={
+        "text": "see step 2 for this", "kind": "notes",
+        "refs": [{"ref_index": 0, "match_text": "step 2", "step_id": head["id"]}]})
+    assert r.status_code == 201, r.get_json()
+    refs = r.get_json()["note"]["refs"]
+    assert len(refs) == 1 and refs[0]["step_id"] == head["id"], refs
+    assert refs[0]["step_no"] is None, "a heading has no number, so the mention must render plain"
+
+
+def test_a_mention_with_no_history_still_cannot_auto_link_to_a_heading(kitchen):
+    """The other half of the same question: with nothing carried, the auto-link decides, and it
+    counts the numbers the PAGE prints, which skip headings. "step 2" is the second step a cook can
+    see, never the heading sitting between them."""
+    rid = _recipe(kitchen.client, steps=[{"text": "Rinse them"},
+                                         {"heading": "For the beans"},
+                                         {"text": "Simmer"}])
+    steps = _steps_of(kitchen.client, rid)
+    visible = [st for st in steps if not st["is_heading"]]
+    r = kitchen.client.post(f"/api/recipes/{rid}/notes",
+                            json={"text": "see step 2 for this", "kind": "notes"})
+    assert r.status_code == 201, r.get_json()
+    assert r.get_json()["note"]["refs"][0]["step_id"] == visible[1]["id"], \
+        "the auto-link resolved against something other than the printed numbering"
+
+
+def test_a_STORED_reference_to_a_converted_step_still_survives(kitchen):
+    """⚠️ THE OTHER HALF, AND THE REASON THE GUARD READS THE STORED VALUE RATHER THAN BANNING
+    HEADINGS OUTRIGHT. Converting a step to a heading has to be reversible, so a link that already
+    named that row survives and simply stops printing a number."""
+    rid = _recipe(kitchen.client, steps=[{"text": "Rinse them"},
+                                         {"text": "Soak them"},
+                                         {"text": "Simmer"}])
+    steps = _steps_of(kitchen.client, rid)
+    r = kitchen.client.post(f"/api/recipes/{rid}/notes",
+                            json={"text": "see step 2 for this", "kind": "notes"})
+    assert r.status_code == 201, r.get_json()
+    note_id = r.get_json()["note"]["id"]
+    assert r.get_json()["note"]["refs"][0]["step_id"] == steps[1]["id"], "the auto-link did not fire"
+
+    # turn that step into a heading through the whole-recipe save, which is allowed to hold the link
+    body = {"name": "Beans",
+            "ingredients": [{"id": i["id"], "raw_text": i.get("raw_text") or ""}
+                            for i in kitchen.client.get(f"/api/recipes/{rid}").get_json()["ingredients"]],
+            "steps": [{"id": st["id"], "is_heading": st["id"] == steps[1]["id"],
+                       "text": st["text"]} for st in steps]}
+    assert kitchen.client.put(f"/api/recipes/{rid}", json=body).status_code == 200
+
+    # now edit the note's words through the per-note door: the held link must not be destroyed
+    r = kitchen.client.patch(f"/api/recipes/{rid}/notes/{note_id}",
+                             json={"text": "see step 2 for this, really"})
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["note"]["refs"][0]["step_id"] == steps[1]["id"], \
+        "a stored link to a converted step was destroyed by an ordinary text edit"
+
+
 def test_a_note_will_not_attach_to_a_heading(kitchen):
     rid = _recipe(kitchen.client, steps=[{"heading": "For the beans"}, {"text": "Rinse them"}])
     head = [s for s in _steps_of(kitchen.client, rid) if s["is_heading"]][0]

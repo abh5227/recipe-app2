@@ -49,9 +49,15 @@ def _originals(kitchen, rid):
 
 def _seed_originals(kitchen, rid, rows):
     """Record the author's words, the way scripts/notes_to_rows.py does, so there is a record to
-    check a save against."""
+    check a save against.
+
+    ⚠️ IT REPLACES RATHER THAN APPENDS. The create route records originals at birth now, so the
+    fixture recipe already has a row at every position and the table carries
+    UNIQUE (recipe_id, position). What this helper is for is pinning the EXACT four rows the test
+    names, so it clears first and states what it wants."""
     import app as A
     with A.orm_session() as s:
+        s.execute(A.text("DELETE FROM recipe_notes_original WHERE recipe_id = :r"), {"r": rid})
         for n in rows:
             s.execute(A.text(
                 "INSERT INTO recipe_notes_original (recipe_id, position, kind, text, recorded_at)"
@@ -227,9 +233,10 @@ def test_a_held_session_writes_exactly_what_it_changed(kitchen):
     keep = next(n for n in before if n["text"] == "Note: keep.")
     edit = next(n for n in before if n["text"] == "Note: edit me.")
     retype = next(n for n in before if n["text"] == "Tip: retype me.")
-    # ⚠️ recipe_notes_original IS WRITTEN BY THE CORPUS PASS AND BY THE IMPORTER, not by the create
-    #    route, so a fixture recipe has none. It is seeded here on purpose: a check that the save
-    #    leaves it alone is worth nothing against an empty table.
+    # ⚠️ SEEDED ON PURPOSE: a check that the save leaves this table alone is worth nothing against
+    #    an empty one. The create route records originals now (app.record_notes_original), so this
+    #    fixture would have them anyway, and seeding keeps the four rows this test names rather than
+    #    whatever the fixture happened to be built with.
     _seed_originals(kitchen, rid, before)
     originals = _originals(kitchen, rid)
     assert len(originals) == 4, "the record this check compares against was not written"
