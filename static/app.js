@@ -1649,8 +1649,13 @@ function scaleMetaBlock(r) {
   //    than part of the range, so it reads quieter than the figure it qualifies. beans soaks
   //    overnight at step 2 and describes its 90 minute quick soak at step 3, so the alternative can
   //    carry its own step link that the wait's own does not.
+  // ⚠️ THE LEADING SPACE IS NOT DECORATION, AND THE REBUILD DELETED IT ONCE ALREADY. Without it the
+  //    markup runs "(optional)or a 90 minute quick soak" with nothing between the two spans. On
+  //    screen the block display hides that, and a COPY of the line shows it. A block element is one
+  //    CSS line away from not being one, and the text should read correctly either way. 9 of live's
+  //    111 waits carry an ext_label, so 9 lines read that way for the fortnight it was gone.
   const ext = (w) => (w.ext_label
-    ? `<span class="meta-ext">${esc(bindUnits(w.ext_label))}`
+    ? ` <span class="meta-ext">${esc(bindUnits(w.ext_label))}`
       + (w.ext_no ? ` (${stepTag(w.ext_no)})` : "") + `</span>` : "");
   const DOT = `<span class="meta-sep"> · </span>`;
   // ⚠️ label_text, NOT label. The server decides what a wait PRINTS (planahead.display_label), so
@@ -1695,17 +1700,30 @@ function scaleMetaBlock(r) {
     ? row(META_FIG, `Serves <span class="serves-count meta-val">${formatAmount(base * view.scale)}</span>`)
     : "";
 
-  // ⚠️ TWO COLUMNS ONLY WHEN THE RIGHT ONE HAS WAITS IN IT. Keeps on its own does not earn a
+  // ⚠️ TWO COLUMNS ONLY WHEN BOTH OF THEM HAVE SOMETHING IN THEM. Keeps on its own does not earn a
   //    column: it is one short line, and a lone Keeps opposite three times reads as a layout the
   //    page fell into rather than one it chose.
-  const twoCol = waits.length > 0;
-  const left = times + second + (twoCol ? "" : keeps) + serves;
+  // ⚠️ AND THE LEFT SIDE IS HALF THE QUESTION, WHICH ASKING ABOUT THE WAITS ALONE MISSED. A recipe
+  //    can carry a wait and state no prep, no cook, no total and no serving count, and 27 of the
+  //    300 do: beans, hummus, key-lime-pie, chocolate-chip-cookies among them. Those drew the grid
+  //    with a 277px EMPTY left half and the dividing rule hanging in it, which is the half-empty
+  //    row this split exists to avoid, mirrored. Measured on the rendered page, not reasoned about.
+  const leftBody = times + second + serves;
+  const twoCol = waits.length > 0 && leftBody.trim() !== "";
+  // One column takes everything, waits included, in the order the phone reads them.
+  const left = twoCol ? leftBody : times + second + planAhead + keeps + serves;
   const right = twoCol ? planAhead + keeps : "";
-  const block = `<div class="time-block${twoCol ? " two-col" : ""}">`
-    + `<div class="meta-stack tb-col">${left}</div>`
-    + (twoCol ? `<div class="meta-stack tb-col tb-right">${right}</div>` : "")
-    + `</div>`;
-  if (!left.trim() && !right.trim()) return "";
+  const block = (left + right).trim()
+    ? `<div class="time-block${twoCol ? " two-col" : ""}">`
+      + `<div class="meta-stack tb-col">${left}</div>`
+      + (twoCol ? `<div class="meta-stack tb-col tb-right">${right}</div>` : "")
+      + `</div>`
+    : "";
+  // ⚠️ THE SCALER IS NOT PART OF THE BLOCK AND MUST NOT SHARE ITS FATE. An earlier version of this
+  //    returned "" when the block had nothing to say, which took #scaler-host with it: 78 of the
+  //    300 recipes state no time and no serving count, and every one of them lost the ½×/1×/2×
+  //    control entirely. rerenderScaler null-checks the host, so nothing threw and nothing said so.
+  //    An empty block renders as no block at all, and the scaler is drawn either way.
   // The scaler sits BELOW the block now rather than beside it. At the reading width the two columns
   // and a 195px row of fixed controls cannot share a line without the text wrapping, which is what
   // the preview showed.
@@ -3872,7 +3890,7 @@ async function renderForm(mode, slug) {
         <label class="field"><span>Total time</span><input id="f-total" value="${esc(pre.total_time || "")}"></label>
         <label class="field span2"><span>Image path (optional, e.g. images/my-recipe.jpg)</span><input id="f-image" value="${esc(pre.image || "")}"></label>
         <label class="field span2"><span>Description</span><textarea id="f-descr" rows="2">${esc(pre.descr || "")}</textarea></label>
-        <label class="field span2"><span>Note (optional)</span><textarea id="f-notes" rows="2">${esc(pre.notes || "")}</textarea></label>
+        ${mode === "create" ? `<label class="field span2"><span>Note (optional)</span><textarea id="f-notes" rows="2"></textarea></label>` : ""}
         ${mode === "create" ? `<label class="field span2 test-toggle"><input type="checkbox" id="f-test"> <span>Make this a test recipe <em>— a scratch recipe you can bulk-delete later (can't be changed after creating)</em></span></label>` : ""}
       </div>
 
@@ -3937,15 +3955,25 @@ function wireForm(mode, slug) {
   document.getElementById("save-recipe").addEventListener("click", () => onSaveForm(mode, slug));
 }
 
-function gatherPayload() {
+// ⚠️ THIS FORM MAY NOT SPEAK ABOUT NOTES WHEN IT IS EDITING, AND THAT IS A DATA-LOSS RULE RATHER
+//    than a tidy-up. On the PUT, an ABSENT notes key means keep and an EMPTY STRING means replace
+//    the list with nothing. The textarea used to pre-fill from recipe.notes, the derived copy, so
+//    the save round-tripped. Migration 063 dropped that column, `pre.notes` became undefined, and
+//    this form then sent notes:"" on every save: measured on a fixture, a recipe with two note
+//    rows answered 200 and came back with zero. There is no note editor on this form, so the only
+//    safe thing it can say about a recipe's notes is nothing. Edit mode is the real editor.
+//    The field stays for CREATE, where a bare string is still the documented way to start a recipe
+//    off with a note and there is nothing to destroy.
+function gatherPayload(mode) {
   const val = (id) => (document.getElementById(id)?.value || "").trim();
   const payload = {
     name: val("f-name"), author: val("f-author"), category: val("f-category"),
     servings: val("f-servings"), prep_time: val("f-prep"), cook_time: val("f-cook"),
     total_time: val("f-total"), image: val("f-image"), descr: val("f-descr"),
-    notes: val("f-notes"), ingredients: [], steps: [],
+    ingredients: [], steps: [],
     is_test: !!document.getElementById("f-test")?.checked,   // create-only; PUT ignores it
   };
+  if (mode === "create") payload.notes = val("f-notes");
 
   document.querySelectorAll("#ing-editor .ed-row").forEach((row) => {
     if (row.querySelector(".ed-type").value === "heading") {
@@ -3983,7 +4011,7 @@ function showFormError(msg) {
 }
 
 async function onSaveForm(mode, slug) {
-  const payload = gatherPayload();
+  const payload = gatherPayload(mode);
   if (!payload.name) { showFormError("Please give the recipe a name."); return; }
   const res = mode === "create"
     ? await sendJSON("POST", "/api/recipes", payload)

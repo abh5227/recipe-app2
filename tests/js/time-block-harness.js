@@ -21,8 +21,13 @@ export function sliceFunction(name, source = APP) {
   const lines = source.split("\n");
   const start = lines.findIndex((l) => l.startsWith(`function ${name}(`));
   assert.ok(start >= 0, `${name} is not a top-level function in app.js any more`);
+  // ⚠️ BOUNDED, BECAUSE PAST THE END lines[end] IS undefined AND NEVER EQUALS "}". The start anchor
+  //    was asserted and the end was not, so a function whose closing brace stopped being in column 1
+  //    span the suite forever with no output instead of failing. A hang is the worst failure a test
+  //    can have: it reports nothing at all.
   let end = start;
-  while (lines[end] !== "}") end += 1;
+  while (end < lines.length && lines[end] !== "}") end += 1;
+  assert.ok(end < lines.length, `${name} has no closing } in column 1, so it cannot be sliced`);
   return lines.slice(start, end + 1).join("\n");
 }
 
