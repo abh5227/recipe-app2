@@ -152,7 +152,11 @@ def main():
     reparse_lines.apply_catchup(conn, cu)
     conn.execute("COMMIT")
     after_cu = reparse_lines.annotations(args.db, rids)
-    plan = reparse_lines.plan_reparse(conn, after_cu, reparse_lines.hand_repointed())
+    # ⚠️ hand_repointed TAKES THE CONNECTION. dad2e8f re-keyed hand_repoints.csv on row ids
+    #    and gave this function a `conn` so it can resolve a row id to its CURRENT position.
+    #    reparse_lines' own caller was updated and this one was not, so every run of this
+    #    pass has died here with a TypeError since that commit, AFTER phase 1 had written.
+    plan = reparse_lines.plan_reparse(conn, after_cu, reparse_lines.hand_repointed(conn))
     writes = [d for d in plan if d["verdict"] == "WRITE"]
     print(f"         reparse: {len(plan)} rows differ, {len(writes)} would be written")
     if writes:

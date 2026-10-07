@@ -90,7 +90,18 @@ def annotations(db, rids):
 # --------------------------------------------------------------------------------------------- #
 # Phase 1: catch-up
 # --------------------------------------------------------------------------------------------- #
-CATCHUP_KEYS = ("qty", "label")
+# ⚠️ EVERY COLUMN THE CATCH-UP WRITES IS A COLUMN IT COMPARES. This was ("qty", "label") while
+# resplit.plan_row writes qty, quantity, unit and label, so a baseline could be "caught up" to a
+# live row the re-split had never reached: the comparison agreed on the two it read, and the write
+# then put a quantity and a unit into the baseline that the live row did not have. The baseline
+# stopped matching its recipe, the recipe left the byte-equal set, and the page showed an edit
+# nobody made. Measured 2026-10-07 on a fixture whose live rows carry a NULL quantity and unit
+# (tests/test_reparse_catchup.py), which is what every row looked like before the 2026-09-25
+# reparse and what an app-authored row looks like today.
+# ⚠️ `note` IS THE ONE EXCEPTION AND IT IS DELIBERATE. Clearing a baseline note that only repeats
+# its own label is the other half of ed6aaf5's damage, and the live row has no say in it, so it is
+# written without a comparison. The keys below are the ones a live row carries.
+CATCHUP_KEYS = ("qty", "quantity", "unit", "label")
 
 
 def plan_catchup(conn):
@@ -119,7 +130,8 @@ def plan_catchup(conn):
                 continue
             merged = dict(row, **got)
             lv = dict(zip(("position", "qty", "quantity", "unit", "label"), live[pos]))
-            if all((merged.get(k) or None) == (lv.get(k) or None) for k in CATCHUP_KEYS):
+            compared = set(CATCHUP_KEYS) | (set(got) & set(lv))
+            if all((merged.get(k) or None) == (lv.get(k) or None) for k in compared):
                 plan[rid][pos] = got
     return plan
 
