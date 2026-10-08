@@ -100,9 +100,42 @@ def classify(name, brands=None, known_word=None, is_catalog_name=None):
     return "clear", ""
 
 
+# ⚠️ THE ONE NAME THAT IS BOTH A LISTED MARK AND A CATALOG CANONICAL, DECLARED RATHER THAN
+#    DISCOVERED. The library-wins rule above clears a canonical whose name merely CONTAINS a mark.
+#    It cannot clear one whose name IS a mark, because the exact-form check runs first and has to:
+#    "velveeta" is a listed mark and a canonical would not make it a cheese variety.
+#
+#    Andy's call, 2026-10-07: Miracle Whip STAYS its own ingredient. It is a dressing, not mayonnaise,
+#    and the two are not interchangeable in a recipe. Both halves of that ruling are what the code
+#    already does, which is why nothing here changed to honour it:
+#      * it stays a library_names canonical. Nothing in this module deletes a row. The verdict is
+#        read by substitution_run.py, and by nothing that owns the library.
+#      * it is never offered as a substitute. is_brand -> True drops any substitution pair naming
+#        either side, so "Miracle Whip <-> mayonnaise" can never be mined. That is the ruling.
+#
+#    Measured over live, read only, 2026-10-07: 104 surface forms against 10,020 canonicals, and
+#    this is the ONLY intersection. The enforcement test asserted the intersection was EMPTY, which
+#    is stricter than the rule its own name states ("unless its exact form is listed") and was true
+#    only until the catalog grew a row for a mark. It compares against this set now, so a NEW
+#    collision still fails and this one does not.
+DELIBERATE_BRAND_CANONICALS = {
+    "miracle whip": "a dressing in its own right, not interchangeable with mayonnaise. Andy's call, "
+                    "2026-10-07. It keeps its library row and is never offered as a substitute.",
+}
+
+
 def is_brand(name, brands=None, is_catalog_name=None):
     """The one question the enforcement test asks. Only a listed mark answers yes."""
     return classify(name, brands, is_catalog_name=is_catalog_name)[0] == "brand"
+
+
+def is_declared_brand_canonical(name):
+    """Is this name a mark the library deliberately carries as a canonical? -> bool.
+
+    Normalized on both sides, the way every other lookup in this module is, so "Miracle Whip",
+    "miracle whip" and "Miracle-Whip" are one answer.
+    """
+    return _norm(name) in DELIBERATE_BRAND_CANONICALS
 
 
 def catalog_name_check(conn):

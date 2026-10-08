@@ -550,8 +550,16 @@ def test_a_catalog_canonical_is_food_unless_its_exact_form_is_listed():
     An interior word span used to be enough to call a name a brand, and it cut three real rows.
     "Tabasco pepper" is Capsicum frutescens, the variety, where the mark covers the sauce.
     "Castagna del Monte Amiata PGI" and "Pecorino del Monte Poro" are a chestnut and a cheese,
-    and "del Monte" is Italian for "of the mountain". No listed surface form is itself a catalog
-    canonical, so deferring to the library lets nothing real through.
+    and "del Monte" is Italian for "of the mountain". Deferring to the library lets nothing real
+    through.
+
+    ⚠️ AND THE EXEMPTION IN THIS TEST'S OWN NAME IS NOW ASSERTED RATHER THAN ASSUMED. It read
+    `blocked == []`, which is stricter than "unless its exact form is listed" and held only while
+    the brand list and the catalog canonicals were disjoint. They stopped being disjoint when the
+    catalog grew a row for a mark, and the test went red on a name whose classification is correct.
+    It compares against brand_guard.DELIBERATE_BRAND_CANONICALS, so a NEW collision still fails and
+    each declared one carries its reason. Measured 2026-10-07: 104 surface forms, 10,020 canonicals,
+    1 intersection.
     """
     import sqlite3 as _s
     from pathlib import Path as _P
@@ -563,7 +571,56 @@ def test_a_catalog_canonical_is_food_unless_its_exact_form_is_listed():
     blocked = [n for (n,) in conn.execute("SELECT canonical FROM library_names")
                if brand_guard.is_brand(n, is_catalog_name=chk)]
     conn.close()
-    assert blocked == [], f"real catalog rows classified as brands: {blocked}"
+    declared = {n for n in blocked if brand_guard.is_declared_brand_canonical(n)}
+    assert set(blocked) - declared == set(), (
+        f"real catalog rows classified as brands: {sorted(set(blocked) - declared)}\n"
+        f"  Either the name is food and its exact form must come off brands.csv, or it is a mark "
+        f"the library deliberately carries and belongs in "
+        f"brand_guard.DELIBERATE_BRAND_CANONICALS with a reason.")
+    # ⚠️ AND THE DECLARATION MAY NOT GO STALE. A name listed here that the catalog no longer
+    #    carries is a stale exemption, and a stale exemption is how the next real collision gets
+    #    waved through.
+    missing = {n for n in brand_guard.DELIBERATE_BRAND_CANONICALS
+               if n not in {brand_guard._norm(b) for b in blocked}}
+    assert not missing, (
+        f"DELIBERATE_BRAND_CANONICALS names {sorted(missing)}, which the live catalog does not "
+        f"carry as a canonical any more. Remove the entry rather than leaving it to excuse "
+        f"something else.")
+
+
+def test_the_one_declared_brand_canonical_is_still_both_things():
+    """⚠️ ANDY'S CALL ON MIRACLE WHIP, PINNED IN CI, WHERE THE LIVE TEST ABOVE SKIPS.
+
+    That test needs the 10,020-row catalog and skips wherever there is no live database, which is
+    every CI run. So the rule it enforces had no cover at all in CI, and the ruling it now carries
+    would be undetectable if someone changed it. These two halves are the ruling:
+
+      * a dressing in its own right. It keeps its library row, and nothing in brand_guard deletes
+        one, so this asserts the verdict is read for substitutions and not for membership.
+      * not interchangeable with mayonnaise. is_brand -> True is what drops a substitution pair
+        naming either side, so this asserts it answers yes.
+    """
+    for form in ("Miracle Whip", "miracle whip", "Miracle-Whip", "  MIRACLE WHIP "):
+        assert brand_guard.is_declared_brand_canonical(form), f"{form!r} is not recognised"
+        assert brand_guard.is_brand(form), (
+            f"{form!r} stopped being a mark, so a substitution pair naming it would now be mined")
+    # The library-wins rule must NOT rescue it: the exact-form check runs first, on purpose.
+    assert brand_guard.is_brand("Miracle Whip", is_catalog_name=lambda _s: True), \
+        "being a catalog canonical cleared a name whose EXACT form is a listed mark"
+    # Every entry carries a reason, so the next reader learns why rather than guessing.
+    for name, why in brand_guard.DELIBERATE_BRAND_CANONICALS.items():
+        assert name == brand_guard._norm(name), f"{name!r} is not stored normalized"
+        assert isinstance(why, str) and len(why) > 40, f"{name!r} has no real reason recorded"
+
+
+def test_an_undeclared_mark_in_the_catalog_still_fails_the_rule():
+    """⚠️ THE ANTI-VACUITY HALF. The exemption above is only safe if an UNDECLARED collision is
+    still caught, which is the whole failure mode: a declared-exception list that swallows the next
+    real one. Velveeta is a listed mark and is not declared, so it must still read as a brand even
+    when the library is pretending to carry it."""
+    assert not brand_guard.is_declared_brand_canonical("velveeta")
+    assert brand_guard.is_brand("velveeta", is_catalog_name=lambda _s: True), \
+        "an undeclared mark was cleared by the library-wins rule"
 
 
 def test_a_listed_mark_is_still_blocked_inside_a_longer_name():
