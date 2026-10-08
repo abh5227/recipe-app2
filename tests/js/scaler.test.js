@@ -263,3 +263,24 @@ test("canonicalizeUnit: long measuring units -> short lowercase; cup/count-nouns
   assert.equal(s.canonicalizeUnit("clove"), "clove");     // singular unchanged
   assert.equal(s.canonicalizeUnit("cloves"), "cloves");   // plural NOT folded to "clove"
 });
+
+// ⚠️ THE PLURAL RULE COULD NOT SEE THE FRACTIONS IT WAS MEANT TO AGREE WITH. scaleQty returns
+// "½" rather than "1/2", so amountText("2 cups", 0.25) printed "½ cups" while
+// amountText("1 cup", 0.5) printed "½ cup" — the same quantity, two spellings, decided by what the
+// author happened to type.
+test("fixPlurals reads the glyphs scaleQty writes", () => {
+  assert.equal(s.amountText("2 cups", 0.25), "½ cup");
+  assert.equal(s.amountText("4 cups", 0.125), "½ cup");
+  assert.equal(s.amountText("1.5 cups", 0.5), "¾ cup");
+  assert.equal(s.amountText("1 cup", 0.5), "½ cup");
+  assert.equal(s.amountText("3 cups", 0.5), "1½ cups");   // above one, so plural
+});
+
+// ⚠️ ONE PATTERN ENDING IN s? COLLAPSED BOTH FORMS TO "liter", so the liter entries in
+// UNIT_PLURALS could never take effect and "2 liters" printed "2 liter".
+test("the American spelling keeps its plural", () => {
+  assert.equal(s.amountText("2 liters", 1), "2 liters");
+  assert.equal(s.amountText("2 litres", 1), "2 liters");
+  assert.equal(s.amountText("1 litre", 1), "1 liter");
+  assert.equal(s.amountText("1 liter", 2), "2 liters");
+});

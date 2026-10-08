@@ -11,7 +11,7 @@
 // Pure (scaler.js only) so the numbers are testable with no DOM. It returns TEXT, never markup:
 // app.js owns the escaping and the spans.
 
-import { amountText, weightText, scaleQty, abbrevUnits, toUnicodeFractions } from "./scaler.js";
+import { amountText, weightText, scaleQty, abbrevUnits, fixPlurals, toUnicodeFractions } from "./scaler.js";
 
 /** The two halves of an edited amount cell, plus the gram estimate the row is entitled to.
  *
@@ -46,6 +46,9 @@ export function removedAmountText(text, label, factor) {
  * reworded step and the reason that shortcut is not taken here. */
 export function stepSpanTexts(spans, factor) {
   return (spans || []).map((s) => (s.t === "scale"
-    ? { t: "scale", text: toUnicodeFractions(abbrevUnits(scaleQty(String(s.text || ""), factor))) }
+    // ⚠️ fixPlurals HERE TOO, OR ONE PAGE PRINTS TWO SPELLINGS. The ledger agreed its unit with
+    //    the figure and the method text did not, so at 2x an ingredient read "2 cups" and the step
+    //    that names it read "2 cup". Same order as amountText: scale, agree, abbreviate, glyphs.
+    ? { t: "scale", text: toUnicodeFractions(abbrevUnits(fixPlurals(scaleQty(String(s.text || ""), factor)))) }
     : { t: "plain", text: String(s.text || "") }));
 }

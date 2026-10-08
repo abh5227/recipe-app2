@@ -43,12 +43,13 @@ import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
+sys.path.insert(0, str(HERE / "gates"))      # for gates/state.py's entry_key, the gate's own key
 sys.path.insert(0, str(HERE.parent))
-from corpus_guard import refuse_live                                          # noqa: E402
+from corpus_guard import refuse_live, report_target                           # noqa: E402
 
 DECISIONS = (HERE.parent / "docs" / "data-repairs"
              / "round-b-decisions-2026-10-08.csv")
-REPORTS = HERE.parent / "reports"
+RESIDUAL = "round-b-residual-2026-10-08.csv"
 
 # The five single-row calls, by the row they name. Each one is a judgement about these words that no
 # rule can read, and each is recorded in the decisions file with its reason.
@@ -74,15 +75,6 @@ def _load_rows(con):
     for r in con.execute("SELECT * FROM recipe_ingredients ORDER BY recipe_id, position, id"):
         rows[r["recipe_id"]].append(dict(r))
     return rows
-
-
-def _hand_edited_rows(app, rid):
-    """The ids of rows this recipe's cook has edited, from the annotation set itself."""
-    out = set()
-    for entry in app._recipe_annotations_cached(rid):
-        if entry.get("kind") == "ingredient" and entry.get("row_id") is not None:
-            out.add(entry["row_id"])
-    return out
 
 
 def plan(con, ic, density_for, hand_edited):
@@ -111,8 +103,23 @@ def plan(con, ic, density_for, hand_edited):
             if above is None or above["id"] in absorbed:
                 continue
             why = ic.joins_the_row_above(above, r)
-            if why:
-                absorbed[r["id"]] = (above["id"], why)
+            if not why:
+                continue
+            # ⚠️ AN ABSORBED ROW IS DELETED, SO IT NEEDS THE SAME GUARD THE SURVIVOR GETS. The
+            #    row-level protection ran on the row that SURVIVES, and the absorbed one was taken
+            #    out of the list before any guard saw it. A row the cook had edited would have been
+            #    deleted with its baseline entry and named in no flag of the residual list.
+            if r["id"] in hand_edited.get(rid, ()) or above["id"] in hand_edited.get(rid, ()):
+                flags.append({"recipe_id": rid, "row_id": r["id"], "part": "lockstep",
+                              "reason": "this row joins the one above it and the cook has edited "
+                                        "one of the two, so neither is changed"})
+                continue
+            if r["id"] in DECIDED_ROWS or above["id"] in DECIDED_ROWS:
+                flags.append({"recipe_id": rid, "row_id": r["id"], "part": "decided elsewhere",
+                              "reason": "this row joins the one above it and one of the two is a "
+                                        "row Andy decided about, so the rule stands aside"})
+                continue
+            absorbed[r["id"]] = (above["id"], why)
         final = []
         for r in rs:
             if r["id"] in absorbed:
@@ -247,12 +254,23 @@ def _half_applied(rid, done, why):
 
 
 def _state(s, sqlalchemy, app, rid):
+    """This recipe's byte-equal place and its annotation SET, as the declared gate reads them.
+
+    ⚠️ THE KEY IS gates/state.py's OWN, NOT THE RAW ENTRIES. An entry carries new_pos and
+       old_pos, the heading-excluded index of the row it sits on, and this round inserts 4 rows and
+       deletes 21, so every entry BELOW a changed row gets a different index while saying the same
+       thing. Comparing the raw entries would abort a recipe over a re-index the round declares as
+       "annotations: unchanged", leaving the corpus half migrated. Two answers to one question, and
+       this is the one the go-live gate is held to.
+    """
+    import state as gate_state
     cur = app.serialize_recipe_content(s, rid)
     got = s.execute(sqlalchemy.text(
         "SELECT content FROM recipe_snapshots WHERE recipe_id=:r AND reason='original'"),
         {"r": rid}).scalar_one_or_none()
+    marks = sorted(gate_state.entry_key(e) for e in app._recipe_annotations(s, rid))
     return {"byte_equal": got is not None and cur == got,
-            "marks": json.dumps(app._recipe_annotations(s, rid), sort_keys=True)}
+            "marks": json.dumps(marks, sort_keys=True)}
 
 
 def _entry(doc, row_id):
@@ -421,8 +439,13 @@ def run(db, apply=False, record=None):
     # answers can be compared. A row with no stored link has nothing to lose.
     import linkage_matcher
     derived = {r["id"]: (r.get("catalog_id") or "") for r in linkage_matcher.propose(db=db)[0]}
+    # ⚠️ EVERY WRITE THAT RENAMES A ROW, NOT JUST THE RULE WRITES. split_row renames 3824 and
+    #    list_to_heading takes 4060 out of the lines altogether, and neither is a "row" write, so
+    #    neither reached the matcher comparison. 2,851 of live's ingredient rows carry a catalog_id.
     changing = {w["id"]: w for ws in writes.values() for w in ws
-                if w["what"] == "row" and "label" in w.get("changes", {})}
+                if "id" in w and (
+                    (w["what"] == "row" and "label" in w.get("changes", {}))
+                    or w["what"] in ("split_row", "list_to_heading", "join"))}
     renamed_before = {}
     for row in con.execute("SELECT id, recipe_id, label, catalog_id FROM recipe_ingredients"):
         if row["id"] in changing and row["catalog_id"]:
@@ -446,14 +469,19 @@ def run(db, apply=False, record=None):
     if notes:
         print(f"  {len(notes)} note(s), where one part of a row was declined and the rest applied")
 
-    out = record or (REPORTS / "round-b-residual-2026-10-08.csv")
-    _write_residual(out, flags, notes)
-    print(f"  residual rows -> {out}")
+    # ⚠️ ONE WRITE, AT THE END. It was written here and AGAIN after the drift survey, on the
+    #    same path, which is how three committed records were truncated to their header lines. The
+    #    overwrite refusal is report_target's, so it has to be asked once per run.
+    out = report_target(RESIDUAL, record)   # it exits on its own over a non-empty record
 
     if not apply:
-        print("  DRY RUN. Nothing written. Pass --apply to write.")
+        _write_residual(out, flags, notes)
+        print(f"  residual rows -> {out}")
+        print("  DRY RUN. Nothing written to the database. Pass --apply to write.")
         return writes
     if not writes:
+        _write_residual(out, flags, notes)
+        print(f"  residual rows -> {out}")
         print("  nothing to do. Every decision is already in place.")
         return writes
 
@@ -483,9 +511,13 @@ def run(db, apply=False, record=None):
                                                   "so the two cannot be kept in step"))
             try:
                 moved = _write_recipe(s, sqlalchemy, snapshot_serialize, rid, ws, doc)
-            except RuntimeError as exc:
+            except Exception as exc:
+                # ⚠️ NOT JUST RuntimeError. _write_recipe can raise IntegrityError from three
+                #    real constraints on the note insert alone, and a bare traceback never tells
+                #    the operator that N recipes before this one are already committed, which is
+                #    the whole job of the message below.
                 s.rollback()
-                sys.exit(_half_applied(rid, done, str(exc)))
+                sys.exit(_half_applied(rid, done, f"{type(exc).__name__}: {exc}"))
             if moved and doc is not None:
                 s.execute(sqlalchemy.text(
                     "UPDATE recipe_snapshots SET content=:c WHERE recipe_id=:r "
@@ -518,13 +550,13 @@ def run(db, apply=False, record=None):
         print(f"     {row['row_id']} {row['recipe_id']}: {row['was']!r} -> {row['now']!r}")
         print(f"        the matcher said {row['before']!r}, it now says {row['after']!r}. The "
               f"stored link is untouched by this round.")
-    if drift:
-        _write_residual(out, flags + [
-            {"recipe_id": d["recipe_id"], "row_id": d["row_id"], "part": "library link",
-             "reason": (f"the name becomes {d['now']!r} and the matcher no longer derives "
-                        f"{d['before']!r}, so a build_links rebuild would drop the link. Either the "
-                        f"prep clause belongs in the note column or hand_repoints.csv needs a row.")}
-            for d in drift], notes)
+    _write_residual(out, flags + [
+        {"recipe_id": d["recipe_id"], "row_id": d["row_id"], "part": "library link",
+         "reason": (f"the name becomes {d['now']!r} and the matcher no longer derives "
+                    f"{d['before']!r}, so a build_links rebuild would drop the link. Either the "
+                    f"prep clause belongs in the note column or hand_repoints.csv needs a row.")}
+        for d in drift], notes)
+    print(f"  residual rows -> {out}")
     return writes
 
 
@@ -557,9 +589,10 @@ def _link_drift(db, renamed):
 
 def _write_residual(path, flags, notes):
     """The rows no rule settles, with a blank DECISION column for Andy."""
+    path = pathlib.Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    # ⚠️ A DRY RUN NEVER WRITES INTO docs/data-repairs/. This goes to gitignored reports/ unless
-    #    --record names a path, and --record refuses to overwrite a non-empty file.
+    # The path comes from corpus_guard.report_target, which puts it in gitignored reports/ unless
+    # --record is given and refuses to overwrite a non-empty committed record.
     with path.open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
         w.writerow(["kind", "recipe_id", "row_id", "part", "reason", "DECISION", "REASON"])
@@ -574,13 +607,11 @@ def main(argv=None):
     ap.add_argument("db")
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--i-mean-live", action="store_true")
-    ap.add_argument("--record", type=pathlib.Path,
-                    help="write the residual CSV to this committed path instead of reports/")
+    ap.add_argument("--record", action="store_true",
+                    help="write the residual CSV into the committed docs/data-repairs/ instead of "
+                         "gitignored reports/")
     a = ap.parse_args(argv)
     refuse_live(a.db, a.i_mean_live)
-    if a.record is not None and a.record.exists() and a.record.stat().st_size > 0:
-        sys.exit(f"{a.record} already holds something. A record is replaced by deleting it on "
-                 f"purpose, which is a thing a person does and a script does not.")
     run(a.db, apply=a.apply, record=a.record)
 
 

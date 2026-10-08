@@ -486,3 +486,142 @@ def test_the_estimate_is_computed_and_never_stored():
     pa.cook_estimate(recipe, _steps("Bake for 30 minutes."))
     assert recipe["cook_time"] is None
     assert pa.recipe_total(recipe, []) == before
+
+
+# --------------------------------------------------------------------------- #
+# What three fresh reviewers found, and none of it changed a cell of this round
+# --------------------------------------------------------------------------- #
+# Measured: the rehearsal before these fixes and after them differed by 0 cells. Every one is a
+# path the 300 recipes do not exercise and an IMPORT, a save or the next recipe would.
+
+def test_a_zero_denominator_is_not_a_number():
+    """"1/0 hour" normalized happily to "1/0 hr" and then every reader of it raised."""
+    assert ic.time_number("1/0") is None
+    assert ic.normalize_time("1/0 hour") == "1/0 hour"
+    assert pa.clock_minutes("1/0 hour") == (None, None)
+    assert pa.read_duration("1/0 hour") == (None, None)
+
+
+def test_a_figure_continued_by_and_a_half_is_refused_rather_than_halved():
+    """It wrote "1 hr (and a half)", which STATES an hour for an hour and a half."""
+    assert ic.normalize_time("one hour and a half") == "one hour and a half"
+    assert pa.clock_minutes("one hour and a half") == (None, None)
+    assert pa.read_duration("one hour and a half") == (None, None)
+
+
+def test_the_first_segment_is_not_always_the_first_time():
+    """⚠️ THE WIDENED READER LOST SIX DURATIONS IT USED TO READ. A word number matches "twelve
+    balls" and "one batch", whose unit is not a time word, and read_duration took the first segment
+    and gave up. The extension sentences in docs/data-repairs/ are written exactly that way."""
+    for text, minutes in (("or roll into twelve balls and chill 30 minutes", 30),
+                          ("or make one batch and rest 2 hours", 120),
+                          ("cut each into four strips, then marinate 30 minutes", 30),
+                          ("leave two thirds of the dough to rise 1 hour", 60)):
+        assert pa.read_duration(text) == (minutes, minutes), text
+
+
+def test_half_a_minute_is_a_minute_and_not_nothing():
+    """int() truncated it to 0, and round() reads a half to the even number, which is also 0."""
+    assert pa.clock_minutes("half a minute") == (1, 1)
+    assert pa.clock_minutes("35 min") == (35, 35)          # a whole number is unchanged
+
+
+def test_a_repair_declines_where_nothing_states_the_density():
+    """⚠️ THE CORPUS PASS KNOWS WHAT EACH FOOD WEIGHS AND THE IMPORTER DOES NOT. Run with no
+    density the wide band admitted several readings and the clear-winner test then picked one:
+    classify_line read "2/3 cups (305 grams) all-purpose flour" as 1⅔ where the pass reads 2⅔."""
+    d = ic.classify_line("2/3 cups (305 grams) all-purpose flour")
+    assert d["amount"] == "2/3" and ic.BROKEN_AMOUNT_FLAG in d["flags"]
+    # one candidate needs no choice, so the shapes with a single reading still work at import
+    assert ic.classify_line("14 cups (250g) dried chickpeas")["amount"] == "1¼"
+    assert ic.classify_line("stick (8 tablespoons/113 grams) unsalted butter")["amount"] == "1"
+
+
+@pytest.mark.parametrize("line, second", [
+    ("3 (6-ounce) salmon fillets", None),          # a per-piece size, and it used to SCALE
+    ("6 (4-ounce) lamb chops", None),
+    ("2 (1-pound) pork tenderloins", None),
+    ("1 (14-ounce) can coconut milk", None),       # already caught, by the noun after it
+    ("2 cups (about 320 grams) blueberries", "about 320 grams"),   # still a backup
+])
+def test_a_hyphenated_measure_in_a_bracket_is_a_size(line, second):
+    assert ic.classify_line(line)["secondary_measure"] == second
+
+
+@pytest.mark.parametrize("line", [
+    "1 1/4 cups warm water (110 degrees F)",       # a temperature
+    "1 pound ground chuck (80 percent lean)",      # a grade
+    "1 cup heavy cream (36 percent fat)",
+    "4 eggs (2 days old)",
+])
+def test_a_count_restatement_has_to_end_on_something_countable(line):
+    """The trailing "<number> plus any lowercase words" had no positive test at all, so these were
+    taken out of the name and stored as amounts that SCALE."""
+    d = ic.classify_line(line)
+    assert d["secondary_measure"] is None
+    assert "(" in d["name"]                        # the bracket stays in the name
+
+
+def test_a_discarded_plan_leaves_no_flag_behind():
+    """A shallow copy is not a snapshot: the flag list is the same object, so a plan this block
+    discarded still left its flag on the row, paired with the next rule's reason."""
+    assert ic.classify_line("Zest of 1 lemon (optional")["flags"] == ["ambiguous_section"]
+    assert ic.classify_line("")["flags"] == ["ambiguous_section"]
+
+
+def test_every_round_b_flag_carries_its_reason_for_the_review_queue():
+    for flag in (ic.UNBALANCED_BRACKET_FLAG, ic.BROKEN_AMOUNT_FLAG, ic.NO_NAME_COLUMN_FLAG,
+                 ic.NO_NAME_LEFT_FLAG, ic.FOOD_INSIDE_FRAGMENT_FLAG):
+        assert ic.CLEANUP_REASONS.get(flag), flag
+
+
+def test_per_side_doubles_only_a_clause_that_states_one_duration():
+    """"a total of around 4 minutes, 2 minutes on each side" states the total and then breaks it
+    down, and the 4 was DOUBLED: 8 minutes printed for a 4-minute sear."""
+    one = pa.cook_estimate({"id": "r", "cook_time": None},
+                           _steps("Sear for 3 minutes per side."))
+    assert one["label"] == "~6 min"
+    for text, label in (("Sear the steak for a total of around 4 minutes, 2 minutes on each side.",
+                         "~4 min"),
+                        ("Grill for 10 minutes, 5 minutes per side.", "~10 min")):
+        assert pa.cook_estimate({"id": "r", "cook_time": None}, _steps(text))["label"] == label
+
+
+def test_keep_on_a_simmer_is_not_a_shelf_life():
+    """_SHELF_LIFE opens on "keeps?|keeping", and the cooking-verb override was wired to the rest
+    test alone, so "Cover and keep on a low simmer for 20 minutes" lost 20 minutes of heat."""
+    e = pa.cook_estimate({"id": "r", "cook_time": None}, _steps(
+        "Brown the sausage for 5 minutes.", "Cover and keep on a low simmer for 20 minutes."))
+    assert e["label"] == "~25 min"
+    # and a real shelf life is still excluded
+    assert pa.cook_estimate({"id": "r", "cook_time": None},
+                            _steps("These keep for up to 3 days in the fridge."))["label"] == ""
+
+
+def test_a_wait_does_not_swallow_a_cooking_time_of_the_same_length():
+    """The wait is matched by its MINUTES, so a 30-minute chill took a 30-minute simmer with it."""
+    steps = _steps("Simmer for 30 minutes, then chill for 30 minutes.")
+    waits = [{"step_id": 1, "label": "chill 30 min", "ext_label": "", "min_minutes": 30,
+              "max_minutes": 30, "when_kind": "always"}]
+    assert pa.cook_estimate({"id": "r", "cook_time": None}, steps, waits)["label"] == "~30 min"
+
+
+def test_the_recipe_payload_computes_its_estimate_inside_the_session():
+    """⚠️ THE RETURN jsonify(...) SITS OUTSIDE THE `with orm_session()`, so a query evaluated in
+    that dict runs on a CLOSED session: SQLAlchemy opens a new transaction, checks out a
+    connection, and nothing is left to return it. Measured by hammering one recipe through the test
+    client: the commit :8000 runs served 60 requests cleanly and this one 500'd from the 26th,
+    which is a pool of 5 plus an overflow of 10 leaking exactly one connection per page view. A
+    real server dies after fifteen page loads.
+
+    Stated over the SOURCE rather than by hammering a database, because the leak is a question
+    about where the call sits and the suite has no 300-recipe database to hammer."""
+    import pathlib
+    src = (pathlib.Path(__file__).resolve().parent.parent / "app.py").read_text()
+    body = src[src.index("def get_recipe("):]
+    body = body[:body.index("\n@app.route")]
+    estimate = body.index("planahead.cook_estimate(")
+    handoff = body.index("\n    return jsonify(")
+    assert estimate < handoff, (
+        "planahead.cook_estimate is evaluated after the session block has closed, which leaks a "
+        "connection on every recipe page view")

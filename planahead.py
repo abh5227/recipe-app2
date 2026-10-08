@@ -143,13 +143,26 @@ def read_duration(text):
     s = (text or "").strip()
     if not s:
         return None, None
-    m = _TIME_SEG_RE.search(s)
-    unit = _UNIT_WORDS.get(m.group("unit").lower()) if m else None
+    # ⚠️ THE FIRST SEGMENT IS NOT ALWAYS THE FIRST TIME, AND READING ONLY THE FIRST ONE LOST SIX
+    #    REAL DURATIONS. A word number matches "twelve balls" and "one batch", whose unit is not a
+    #    time word, so "or roll into twelve balls and chill 30 minutes" refused the 30 minutes it
+    #    had read before. The extension sentences in docs/data-repairs/ are written exactly that
+    #    way. Scan for the first segment whose UNIT is a time.
+    if _TRAILING_FRACTION_ANYWHERE.search(s):
+        return None, None
+    m = unit = None
+    for probe in _TIME_SEG_RE.finditer(s):
+        word = _UNIT_WORDS.get(probe.group("unit").lower())
+        if word and time_number(probe.group("lo")) is not None:
+            m, unit = probe, word
+            break
     if m and unit:
         # time_number, not float: the segment reader admits "2 1/2", "1½", "¾" and "half" now,
         # and float() read the first of those as a bare 2 and refused the other three.
         lo = time_number(m.group("lo")) * _MIN[unit]
-        hi = time_number(m.group("hi")) * _MIN[unit] if m.group("hi") else lo
+        hi = lo
+        if m.group("hi") is not None and time_number(m.group("hi")) is not None:
+            hi = time_number(m.group("hi")) * _MIN[unit]
         # ⚠️ A SECOND SEGMENT MEANS ONE OF TWO THINGS AND THE SEPARATOR SETTLES IT.
         #    "10 min to 1 hr" is a RANGE ACROSS UNITS, which _TIME_SEG_RE cannot see because its
         #    `hi` group only catches a bare number. Read as a continuation it gave (10, 10), which
@@ -158,6 +171,8 @@ def read_duration(text):
         sep = _RANGE_SEP.match(rest)
         m2 = _TIME_SEG_RE.match(rest[sep.end():] if sep else rest.lstrip(" ,"))
         u2 = _UNIT_WORDS.get(m2.group("unit").lower()) if m2 else None
+        if m2 is not None and time_number(m2.group("lo")) is None:
+            m2 = u2 = None
         # ⚠️ THE HIGH END CAN BE A WORD. "6 hr – overnight" is 3 of the proposals, and without this
         #    it read as a flat 6 hours, dropping the half of the range the cook plans around.
         if sep and not m2 and not m.group("hi"):
@@ -177,7 +192,8 @@ def read_duration(text):
             # "up to", which the leading segment reader never reaches.
             m3 = _TIME_SEG_RE.search(s[nf.end():]) if nf else None
             u3 = _UNIT_WORDS.get(m3.group("unit").lower()) if m3 else None
-            hi = time_number(m3.group("lo")) * _MIN[u3] if (m3 and u3) else None
+            n3 = time_number(m3.group("lo")) if m3 else None
+            hi = n3 * _MIN[u3] if (m3 and u3 and n3 is not None) else None
         # ⚠️ "up to X" IS A CEILING AND WAS BEING READ AS A FLOOR. "up to 1 week" returned
         #    (10080, 10080), which says a week is required where the recipe says a week is the most.
         #    Measured on the v2 proposals: 22 rows carry this shape. All 22 are storage today, which
@@ -186,7 +202,8 @@ def read_duration(text):
         #    because a null min already means the reader could not parse the text at all.
         elif hi is not None and nf:
             lo = 0
-        return int(lo), (None if hi is None else int(hi))
+        # int(n + 0.5) for the reason clock_minutes gives: int() read half a minute as 0.
+        return int(lo + 0.5), (None if hi is None else int(hi + 0.5))
     for pat, lo, hi in _WORD_DURATIONS:
         if pat.search(s):
             return lo, hi
@@ -196,6 +213,11 @@ def read_duration(text):
 # ⚠️ "at least" AND A TRAILING "+" BOTH MEAN NO CEILING. 45 of the 72 proposals are open-ended and
 #    most of them say it in words rather than by leaving the range off.
 _RANGE_SEP = re.compile(r"\s*(?:to|[-\u2013\u2014])\s*", re.I)
+# ⚠️ A FIGURE CONTINUED BY "AND A HALF" IS NOT READABLE HERE EITHER. The segment reader sees the
+# hour and not the half, so answering 60 for an hour and a half is worse than answering nothing.
+# The mirror of import_cleanup's _TIME_TRAILING_FRACTION.
+_TRAILING_FRACTION_ANYWHERE = re.compile(
+    r"\band\s+(?:a\s+)?(?:half|quarter|third|three\s+quarters)\b", re.I)
 _OPEN_ENDED = re.compile(r"\b(?:at least|minimum(?: of)?|or (?:more|longer|overnight))\b|\+\s*$", re.I)
 # The mirror of the line above. "at least" removes the ceiling, "up to" removes the floor, and a
 # text carrying both ("at least 12 hours and up to 48") states a real range and keeps both ends.
@@ -242,6 +264,8 @@ def clock_minutes(text):
     s = (text or "").strip()
     if not s:
         return None, None
+    if _TRAILING_FRACTION_ANYWHERE.search(s):
+        return None, None
     lo = hi = 0.0
     pos, seen = 0, 0
     while pos < len(s):
@@ -253,14 +277,21 @@ def clock_minutes(text):
         if not unit:
             break
         a = time_number(m.group("lo"))
+        if a is None:
+            break                       # the regex matched a shape that is not a number (1/0)
         b = time_number(m.group("hi")) if m.group("hi") else a
+        if b is None:
+            b = a
         lo += a * _MIN[unit]
         hi += b * _MIN[unit]
         seen += 1
         pos = m.end()
     if not seen:
         return None, None
-    return int(lo), int(hi)
+    # ⚠️ ROUNDED, NOT TRUNCATED. int() read "half a minute" as 0 minutes, and round() reads it as 0
+    #    too, because Python rounds a half to the even number. Every whole-number case is
+    #    unchanged, because int(n + 0.5) of an integer is that integer.
+    return int(lo + 0.5), int(hi + 0.5)
 
 
 # What the Total line says when the plan-ahead waits are inside the figure. A cook seeing
@@ -944,7 +975,11 @@ def cook_estimate(recipe, steps, waits=(), storage=(), baseline_cook_time=None):
                 #    30, both in step 1, and the step carrying the cooling wait took the browning
                 #    with it. The comparison is against the wait's own minutes, because a wait's
                 #    label is often a rewording of the step's words.
-                if step.get("id") in wait_steps and _matches_a_wait(d, waits, step.get("id")):
+                if (step.get("id") in wait_steps and not cooking
+                        and _matches_a_wait(d, waits, step.get("id"))):
+                    # ⚠️ AND NOT WHERE A COOKING VERB GOVERNS IT. The wait is matched by its
+                    #    MINUTES, so "Simmer for 30 minutes, then chill for 30 minutes" against a
+                    #    30-minute chill lost the simmer as well as the chill.
                     why = "the duration is the plan-ahead wait this step carries"
                 elif d["raw"].strip() and d["raw"].strip() in wait_text:
                     why = "the duration is already stored as a wait"
@@ -952,7 +987,10 @@ def cook_estimate(recipe, steps, waits=(), storage=(), baseline_cook_time=None):
                     why = "the duration is already stored as a Keeps entry"
                 elif _SCHEDULING.search(sentence):
                     why = "the sentence is scheduling, not time on the heat"
-                elif _SHELF_LIFE.search(sentence):
+                elif _SHELF_LIFE.search(sentence) and not cooking:
+                    # ⚠️ "KEEP ON A LOW SIMMER" IS NOT A SHELF LIFE, and the cooking-verb override
+                    #    was wired to the rest test alone. _SHELF_LIFE opens on "keeps?|keeping",
+                    #    so "Cover and keep on a low simmer for 20 minutes" lost 20 minutes of heat.
                     why = "the sentence states a shelf life"
                 elif _ALT_METHOD.search(sentence):
                     why = "the sentence gives an alternative method for a step already timed"
@@ -976,7 +1014,12 @@ def cook_estimate(recipe, steps, waits=(), storage=(), baseline_cook_time=None):
                 note = ""
                 if why is None:
                     # Decision 10. "N per side" is paid twice, and "at least N" has no ceiling.
-                    if _PER_SIDE.search(sentence):
+                    # ⚠️ AND ONLY WHERE THE CLAUSE STATES ONE DURATION. "a total of around 4
+                    #    minutes, 2 minutes on each side" states the total and then breaks it
+                    #    down, so the 2 is correctly excluded as part of the 4 and the 4 was then
+                    #    DOUBLED, printing 8 minutes for a 4-minute sear. The same shape as
+                    #    _SUBPART's own comment, read from the other end.
+                    if _PER_SIDE.search(sentence) and len(here) == 1:
                         lo, hi, note = lo * 2, hi * 2, "counted twice, the sentence says per side"
                     if _AT_LEAST.search(before):
                         open_ended, note = True, "open-ended, the sentence says at least"

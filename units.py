@@ -22,7 +22,12 @@ UNIT_ABBREV = [
     (r"\bteaspoons?\b", "tsp"),
     (r"\bkilograms?\b", "kg"),
     (r"\bmilli(?:lit(?:re|er)s?)\b", "ml"),
-    (r"\blit(?:re|er)s?\b", "liter"),   # display-only: "litre"/"litres" -> "liter" (American spelling)
+    # display-only: "litre"/"litres" -> "liter"/"liters" (American spelling).
+    # ⚠️ THE PLURAL IS ITS OWN ROW. One pattern ending in s? collapsed both to "liter", so the
+    # liter entries in scaler.js's UNIT_PLURALS could never take effect and "2 liters" printed
+    # "2 liter". Mirrors scaler.js.
+    (r"\blit(?:re|er)s\b", "liters"),
+    (r"\blit(?:re|er)\b", "liter"),
     (r"\bounces?\b", "oz"),
     (r"\bpounds?\b", "lb"),
     (r"\bgrams?\b", "g"),

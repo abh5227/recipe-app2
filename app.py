@@ -1965,6 +1965,15 @@ def get_recipe(rid):
             }
             for p in photo_rows
         ]
+        # ⚠️ COMPUTED INSIDE THE SESSION BLOCK, AND IT WAS NOT. The `return jsonify(...)` below
+        #    sits OUTSIDE the `with orm_session()`, so a query evaluated in that dict runs on a
+        #    CLOSED session: SQLAlchemy opens a new transaction, checks out a connection, and
+        #    nothing is left to return it. Measured by hammering one recipe: the commit :8000 runs
+        #    served 60 requests cleanly and this one 500'd from the 26th, which is a pool of 5 plus
+        #    an overflow of 10 leaking exactly one connection per page view. A real server dies
+        #    after fifteen page loads.
+        cook_estimate = planahead.cook_estimate(
+            r, steps, waits, storage, _baseline_cook_time(s, rid))["label"]
     return jsonify(
         {
             "recipe": dict(r),
@@ -2023,8 +2032,7 @@ def get_recipe(rid):
             #    ⚠️ AND IT NEVER REACHES THE TOTAL. recipe_total reads recipe["cook_time"], which
             #    this never writes, so the Total cannot pick it up by accident.
             #    Measured over the 300: 137 recipes print one, 103 state their own cook time.
-            "cook_estimate": planahead.cook_estimate(
-                r, steps, waits, storage, _baseline_cook_time(s, rid))["label"],
+            "cook_estimate": cook_estimate,
         }
     )
 

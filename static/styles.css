@@ -665,7 +665,7 @@ a:hover { color: var(--berry-lift); }
 .ic-note { width: 20px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 /* a present note renders BELOW the ingredient — indented under the name, italic, clearly attached */
 /* first column matches the erow amount-zone width so the below-note aligns under the ingredient name */
-.note-row { display: grid; grid-template-columns: calc(2.8rem + 4.5rem + 6px) 1fr; column-gap: 12px; padding: 0 0 6px; border-bottom: 1px solid var(--rule-soft); }
+.note-row { display: grid; grid-template-columns: calc(2.8rem + 4.5rem + 5.5rem + 12px) 1fr; column-gap: 12px; padding: 0 0 6px; border-bottom: 1px solid var(--rule-soft); }
 /* gap >= the note field's focus-lift left-bleed (margin:0 -8px) so the lifted edit box never overlaps the icon */
 .note-below { grid-column: 2 / -1; display: flex; align-items: baseline; gap: 9px; min-width: 0; }
 .note-below .n-ico { flex: 0 0 auto; color: var(--amber); opacity: 0.75; }
@@ -1206,7 +1206,11 @@ a:hover { color: var(--berry-lift); }
    the primary one. Two backups take two of these lines. */
 .qty2 { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-soft);
   font-size: var(--fs-amount); line-height: 1.15; margin-top: 1px; opacity: .62; }
-.qty.approx, .weight.approx, .qty2.approx { opacity: 0.8; }   /* "~" estimated / humane-rounded — shared treatment */
+.qty.approx, .weight.approx { opacity: 0.8; }   /* "~" estimated / humane-rounded — shared treatment */
+/* ⚠️ .qty2 STARTS AT .62, SO THE SHARED 0.8 WOULD BRIGHTEN IT. Two classes beat one, so an
+   estimated second amount rendered DARKER than an exact one. The treatment is "dimmer than my own
+   base", which for this one is below .62 rather than at 0.8. */
+.qty2.approx { opacity: 0.5; }
 .iname { min-width: 0; font-size: var(--fs-amount); }   /* name matches the amount size (15px); color unchanged (--ink vs muted amount still differentiates) */
 /* a note: its own line beneath the ingredient, styled as a distinct secondary annotation (muted, italic,
    smaller, slightly indented) — not part of the ingredient name. Applies to every reading-mode note. */

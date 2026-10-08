@@ -214,7 +214,11 @@
     [/\bteaspoons?\b/gi, "tsp"],
     [/\bkilograms?\b/gi, "kg"],
     [/\bmilli(?:lit(?:re|er)s?)\b/gi, "ml"],
-    [/\blit(?:re|er)s?\b/gi, "liter"],   // display-only: "litre"/"litres" -> "liter" (American spelling)
+    // display-only: "litre"/"litres" -> "liter"/"liters" (American spelling).
+    // ⚠️ THE PLURAL IS ITS OWN ROW. One pattern ending in s? collapsed both to "liter", so the
+    // liter entries in UNIT_PLURALS could never take effect and "2 liters" printed "2 liter".
+    [/\blit(?:re|er)s\b/gi, "liters"],
+    [/\blit(?:re|er)\b/gi, "liter"],
     [/\bounces?\b/gi, "oz"],
     [/\bpounds?\b/gi, "lb"],
     [/\bgrams?\b/gi, "g"],
@@ -246,7 +250,14 @@
   for (const one in UNIT_PLURALS) UNIT_SINGULARS[UNIT_PLURALS[one]] = one;
 
   // "<number> <unit word>" — the number longest-form-first so "1 1/2" is one token, not two.
-  const NUMBER_THEN_WORD = /(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)(\s*)([A-Za-z]+)/g;
+  // ⚠️ AND IT HAS TO READ THE GLYPHS, BECAUSE scaleQty ALREADY WROTE THEM. formatAmount returns
+  // "½" rather than "1/2", so a pattern that only knew the ascii forms never saw the fraction:
+  // amountText("2 cups", 0.25) printed "½ cups" while amountText("1 cup", 0.5) printed "½ cup".
+  // Same quantity on screen, two spellings, decided by what the author happened to type.
+  const GLYPHS = "¼½¾⅓⅔⅛⅜⅝⅞⅙⅚";
+  const NUMBER_THEN_WORD = new RegExp(
+    `(\\d+\\s+\\d+\\/\\d+|\\d+\\/\\d+|\\d+\\s*[${GLYPHS}]|[${GLYPHS}]|\\d+(?:\\.\\d+)?)(\\s*)([A-Za-z]+)`,
+    "g");
 
   // Keep the capital the author wrote: "2 Cups" stays "2 Cups" and does not become "2 cups".
   function matchCase(sample, word) {
@@ -262,7 +273,7 @@
       const low = word.toLowerCase();
       const one = UNIT_SINGULARS[low] || (low in UNIT_PLURALS ? low : null);
       if (one === null) return whole;                 // an abbreviation, a descriptor, a name
-      const n = tokenToNumber(num);
+      const n = tokenToNumber(normalizeFractions(num));
       if (!isFinite(n)) return whole;
       const wanted = n > 0 && n <= 1 ? one : UNIT_PLURALS[one];
       return num + gap + matchCase(word, wanted);

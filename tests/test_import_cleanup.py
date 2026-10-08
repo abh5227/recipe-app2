@@ -773,9 +773,13 @@ def test_cleanup_rule_table_has_the_shape_the_writer_expects():
     #    polish round 2 added are read by import_write._line_flag_rows exactly as the others are, and
     #    they are not "cleaned_" because nothing substituted anything: one moves a row, one rewrites a
     #    name and one is a REFUSAL to.
+    #    Round B adds five more for the same reason: each names a row the amount rules REFUSED, and
+    #    a refusal with no words is the one a person has to read.
     extra = set(ic.CLEANUP_REASONS) - {f for f, _p, _rp, _r in ic.CLEANUP_RULES}
     assert extra == {"cleaned_emphasis_wrap", "ingredient_optional_grouped",
-                     "ingredient_name_lowercased", "ingredient_name_title_cased"}, extra
+                     "ingredient_name_lowercased", "ingredient_name_title_cased",
+                     "unbalanced_bracket", "broken_amount_unproved", "no_name_column",
+                     "no_name_left", "food_inside_the_fragment"}, extra
     assert all(r and isinstance(r, str) for r in ic.CLEANUP_REASONS.values())
 
 

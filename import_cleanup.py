@@ -278,6 +278,21 @@ CLEANUP_REASONS["ingredient_optional_grouped"] = (
 CLEANUP_REASONS["ingredient_name_lowercased"] = (
     "an ingredient name starts lowercase unless it is a proper noun, a brand or an acronym, and this "
     "one is none of those")
+# The round B flags. They are not CLEANUP_RULES rows (none is a regex substitution), and
+# import_write._line_flag_rows reads this map for the WHY a line is in the review queue.
+CLEANUP_REASONS["unbalanced_bracket"] = (
+    "the line's brackets do not pair, so no rule can tell what they were around, and the row was "
+    "left exactly as written")
+CLEANUP_REASONS["broken_amount_unproved"] = (
+    "the amount cannot be read back and no other measure on the line proves one reading of it, so "
+    "it was left for a person to decide")
+CLEANUP_REASONS["no_name_column"] = (
+    "the row carries no name of its own, so nothing here can tell its amount from its food")
+CLEANUP_REASONS["no_name_left"] = (
+    "every rule that fits this row would leave it with no name at all, so none was applied")
+CLEANUP_REASONS["food_inside_the_fragment"] = (
+    "the bracketed measure carries the food's own name, so it was recorded as the second amount "
+    "and left in the name as well")
 CLEANUP_REASONS["ingredient_name_title_cased"] = (
     "the name is title-cased, so which of its later words are names is a question no rule can answer "
     "and the name was left exactly as written for a person to decide")
@@ -926,6 +941,14 @@ def classify_fragment(text, after="", before="", kind="paren"):
     if kind == "paren" and inner and (is_measure_phrase(t[:inner.start()])
                                       or is_dimension_only(t[:inner.start()])):
         return FRAGMENT_PACKAGE, "the fragment names the container it sizes"
+    # ⚠️ A HYPHENATED MEASURE IN A BRACKET IS A SIZE, NOT THE LINE'S OWN QUANTITY. "3 (6-ounce)
+    #    salmon fillets" is the commonest US publisher shape for a per-piece weight, and read as a
+    #    backup it SCALED: a 2x of six 4-oz chops printed "12 chops / 8-oz". The container form
+    #    "1 (14-ounce) can" was already caught by the noun after it, and this is the same fact with
+    #    no noun to lean on.
+    if kind == "paren" and re.match(r"^\s*(?:" + _MEASURE_QUALIFIER + r"\s*)?" + _MEASURE_NUM
+                                   + r"\s*-\s*" + _MEASURE_UNIT + r"\b\.?\s*$", t, re.I):
+        return FRAGMENT_PACKAGE, "the fragment is a hyphenated size, so it sizes one piece"
     if is_dimension_only(t):
         if _DIMENSION_BEFORE_RE.search(before or ""):
             return FRAGMENT_PROSE, "the fragment restates in metric the size the line just gave"
@@ -994,6 +1017,18 @@ def count_restatement(text):
         return ""
     if {w.strip(",.;").lower() for w in t.split()} & _COUNT_FUNCTION_WORDS:
         return ""
+    # ⚠️ AND IT HAS TO END ON SOMETHING COUNTABLE. The trailing "<number> plus any lowercase
+    #    words" had no positive test at all, so "(110 degrees F)", "(80 percent lean)" and
+    #    "(2 days old)" were taken out of the name and stored as amounts that SCALE. A count ends
+    #    on a counting noun, a size word, or a plural, and a fragment that is only a number ends on
+    #    nothing, which is french-fries' "(3 – 4)" russet potatoes.
+    words = [w.strip(",.;’'") for w in t.split() if re.search(r"[A-Za-z]", w)]
+    if words:
+        last = words[-1].lower()
+        countable = (last in _COUNT_NOUNS or last in _SIZE_WORDS
+                     or (last.endswith("s") and len(last) > 3 and not last.endswith("ss")))
+        if not countable:
+            return ""
     return "the fragment is only a count of the same food, so it scales with the line"
 
 
@@ -1605,8 +1640,15 @@ def repair_broken_amount(row, front=None, second=None, density=None):
         if gaps:
             scored.append((min(gaps)[0], text, unit, min(gaps)[1]))
     scored.sort()
+    # ⚠️ WITHOUT A STATED DENSITY, A CHOICE BETWEEN READINGS IS NOT PROVED. The corpus pass
+    #    knows what each food weighs and the IMPORTER does not, and run with no density the wide
+    #    band admitted several candidates and the clear-winner test then picked one: measured,
+    #    classify_line read "2/3 cups (305 grams) all-purpose flour" as 1⅔ where the pass with the
+    #    density reads 2⅔, and wrote it with no flag. One candidate needs no choice, so shape B and
+    #    shape D still work at import. Anything else waits for a caller that knows the food.
     clear = bool(scored) and scored[0][0] <= DENSITY_TOLERANCE and (
-        len(scored) == 1 or scored[1][0] > 2 * scored[0][0])
+        len(scored) == 1
+        or (density is not None and scored[1][0] > 2 * scored[0][0]))
     if not clear:
         fits = [c for c in scored if c[0] <= DENSITY_TOLERANCE]
         return {"flag": BROKEN_AMOUNT_FLAG, "shape": shape,
@@ -1975,6 +2017,12 @@ _TIME_SEG_RE = re.compile(
 _TIME_JOIN_RE = re.compile(r"[\s,]*(?:and\s+)?", re.I)
 _TIME_NOTE_LEAD_RE = re.compile(r"^[\s,;:—–-]+")
 _TIME_PLAIN_NUM = re.compile(r"^\d+(?:\.\d+)?$")
+# ⚠️ "ONE HOUR AND A HALF" IS 90 MINUTES AND THE SEGMENT READER CAN ONLY SEE THE 60. It wrote
+#    "1 hr (and a half)", which STATES an hour for an hour and a half. Nothing here can read a
+#    fraction that trails its own unit, so the whole string comes back exactly as stored, which is
+#    what this function does with everything else it cannot read.
+_TIME_TRAILING_FRACTION = re.compile(
+    r"^[\s,]*and\s+(?:a\s+)?(?:half|quarter|third|three\s+quarters)\b", re.I)
 
 
 def time_number(tok):
@@ -1989,12 +2037,19 @@ def time_number(tok):
         return word[1]
     m = re.match(r"^(\d+)\s+(\d+)\s*/\s*(\d+)$", t)
     if m:
+        if float(m.group(3)) == 0:
+            return None
         return float(m.group(1)) + float(m.group(2)) / float(m.group(3))
     m = re.match(r"^(\d+)\s*([" + _TIME_FRAC_CHARS + r"])$", t)
     if m:
         return float(m.group(1)) + TIME_FRACTIONS[m.group(2)]
     m = re.match(r"^(\d+)\s*/\s*(\d+)$", t)
     if m:
+        # ⚠️ A ZERO DENOMINATOR IS NOT A NUMBER, AND THE REGEX HANDS ONE OVER. "1/0 hour"
+        #    normalized happily to "1/0 hr" and then every reader of it raised ZeroDivisionError:
+        #    the recipe page, the wait box and the cook estimate.
+        if float(m.group(2)) == 0:
+            return None
         return float(m.group(1)) / float(m.group(2))
     if t in TIME_FRACTIONS:
         return float(TIME_FRACTIONS[t])
@@ -2030,7 +2085,9 @@ def _time_in_note(note):
     """Normalize any duration INSIDE a trailing note, leaving every other word alone."""
     def rep(m):
         unit = _TIME_UNITS.get(m.group("unit").lower())
-        return _time_seg(m, unit) if unit else m.group(0)
+        if not unit or time_number(m.group("lo")) is None:
+            return m.group(0)
+        return _time_seg(m, unit)
     return _TIME_SEG_RE.sub(rep, note)
 
 
@@ -2084,11 +2141,13 @@ def normalize_time(raw):
         if not m:
             break
         unit = _TIME_UNITS.get(m.group("unit").lower())
-        if not unit:
+        if not unit or time_number(m.group("lo")) is None:
             break
         parts.append(_time_seg(m, unit))
         pos = m.end()
     if not parts:
+        return s
+    if _TIME_TRAILING_FRACTION.match(s[pos:]):
         return s
     note = _TIME_NOTE_LEAD_RE.sub("", s[pos:].strip())
     if note.startswith("(") and note.endswith(")"):
@@ -4102,7 +4161,11 @@ def classify_line(raw, section_hints=None, has_stored_amount=False):
     #     not read ("Scant ½ cup (120ml) olive oil") or a number word ("One 16-ounce can
     #     chickpeas"). The same plan the corpus pass runs answers both, so an import gets the
     #     shape the repair gave the 300 rather than an ambiguous flag.
-    before = dict(res)
+    # ⚠️ A SHALLOW COPY IS NOT A SNAPSHOT, AND THE FLAG LIST IS THE SAME OBJECT. apply_amount_plan
+    #    appends to res["flags"], and restoring a shallow copy restored that same mutated list, so
+    #    a plan this block DISCARDED still left its flag on the row, paired with the next rule's
+    #    reason. "Zest of 1 lemon (optional" carried unbalanced_bracket beside ambiguous_section.
+    before = {k: (list(v) if isinstance(v, list) else v) for k, v in res.items()}
     apply_amount_plan(res, line)
     if res["amount"]:
         return res
