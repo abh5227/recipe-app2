@@ -25,10 +25,11 @@ pair is a cost with nothing buying it.
 """
 import re
 
-from import_cleanup import _TIME_JOIN_RE, _TIME_SEG_RE, _TIME_UNITS, normalize_time   # THE shared segment reader
+from import_cleanup import (_TIME_JOIN_RE, _TIME_SEG_RE, _TIME_UNITS, TIME_UNIT_MINUTES,
+                            normalize_time, time_number)   # THE shared segment reader
 
 # minutes per unit the segment reader may return, plus the two it does not carry
-_MIN = {"min": 1, "hr": 60, "day": 1440, "week": 10080}
+_MIN = dict(TIME_UNIT_MINUTES, day=1440, week=10080)
 _UNIT_WORDS = dict(_TIME_UNITS)
 _UNIT_WORDS.update({"day": "day", "days": "day", "week": "week", "weeks": "week"})
 
@@ -145,8 +146,10 @@ def read_duration(text):
     m = _TIME_SEG_RE.search(s)
     unit = _UNIT_WORDS.get(m.group("unit").lower()) if m else None
     if m and unit:
-        lo = float(m.group("lo")) * _MIN[unit]
-        hi = float(m.group("hi")) * _MIN[unit] if m.group("hi") else lo
+        # time_number, not float: the segment reader admits "2 1/2", "1½", "¾" and "half" now,
+        # and float() read the first of those as a bare 2 and refused the other three.
+        lo = time_number(m.group("lo")) * _MIN[unit]
+        hi = time_number(m.group("hi")) * _MIN[unit] if m.group("hi") else lo
         # ⚠️ A SECOND SEGMENT MEANS ONE OF TWO THINGS AND THE SEPARATOR SETTLES IT.
         #    "10 min to 1 hr" is a RANGE ACROSS UNITS, which _TIME_SEG_RE cannot see because its
         #    `hi` group only catches a bare number. Read as a continuation it gave (10, 10), which
@@ -162,7 +165,7 @@ def read_duration(text):
                 if pat.match(rest[sep.end():]):
                     return int(lo), wlo
         if m2 and u2 and not m.group("hi"):
-            other = float(m2.group("lo")) * _MIN[u2]
+            other = time_number(m2.group("lo")) * _MIN[u2]
             if sep:
                 hi = other                                  # the high end of a cross-unit range
             elif _MIN[u2] < _MIN[unit]:
@@ -174,7 +177,7 @@ def read_duration(text):
             # "up to", which the leading segment reader never reaches.
             m3 = _TIME_SEG_RE.search(s[nf.end():]) if nf else None
             u3 = _UNIT_WORDS.get(m3.group("unit").lower()) if m3 else None
-            hi = float(m3.group("lo")) * _MIN[u3] if (m3 and u3) else None
+            hi = time_number(m3.group("lo")) * _MIN[u3] if (m3 and u3) else None
         # ⚠️ "up to X" IS A CEILING AND WAS BEING READ AS A FLOOR. "up to 1 week" returned
         #    (10080, 10080), which says a week is required where the recipe says a week is the most.
         #    Measured on the v2 proposals: 22 rows carry this shape. All 22 are storage today, which
@@ -249,8 +252,8 @@ def clock_minutes(text):
         unit = _TIME_UNITS.get(m.group("unit").lower())
         if not unit:
             break
-        a = float(m.group("lo"))
-        b = float(m.group("hi")) if m.group("hi") else a
+        a = time_number(m.group("lo"))
+        b = time_number(m.group("hi")) if m.group("hi") else a
         lo += a * _MIN[unit]
         hi += b * _MIN[unit]
         seen += 1

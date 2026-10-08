@@ -18,14 +18,39 @@ const TIME_UNITS = {
   hr: "hr", hrs: "hr", hour: "hr", hours: "hr", h: "hr",
 };
 
+// ⚠️ A NUMBER IS NOT ALWAYS SPELLED IN DIGITS. Mirrors import_cleanup's _TIME_NUM: a mixed
+// number, a unicode fraction, a bare fraction and a word all read as the figure they name. The
+// Python side carries the measurement of why (a 150-minute braise read as 120).
+const FRACS = "¼½¾⅐⅑⅒⅓⅔⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞";
+// The numeral each word is written back as. "half hr" is not a time, so a word that has no numeral
+// gets the glyph that names it. Mirrors TIME_WORD_NUMBERS.
+const WORD_NUMERALS = {
+  one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8",
+  nine: "9", ten: "10", eleven: "11", twelve: "12",
+  half: "½", quarter: "¼", "three quarters": "¾",
+};
+const WORDS = Object.keys(WORD_NUMERALS).sort((a, b) => b.length - a.length).join("|");
+const NUM = `(?:\\d+\\s+\\d+\\s*/\\s*\\d+|\\d+\\s*[${FRACS}]|(?<!\\d)\\d+\\s*/\\s*\\d+`
+          + `|[${FRACS}]|\\b(?:${WORDS})\\b|\\d+(?:\\.\\d+)?)`;
 // One "N unit" segment with an optional range. The unit is captured LOOSELY as any word, so a
 // non-time word ("1 cup" in a time column) is read and then REFUSED rather than skipped past.
-const SEG = /(\d+(?:\.\d+)?)(?:\s*(?:to|[-–—])\s*(\d+(?:\.\d+)?))?\s*([A-Za-z]+)\.?/iy;
-const SEG_G = /(\d+(?:\.\d+)?)(?:\s*(?:to|[-–—])\s*(\d+(?:\.\d+)?))?\s*([A-Za-z]+)\.?/gi;
+// "half an hour" is the one shape that puts an article between the number and its unit.
+const SEG_SRC = `(${NUM})(?:\\s*(?:to|[-–—])\\s*(${NUM}))?\\s*(?:an?\\s+)?([A-Za-z]+)\\.?`;
+const SEG = new RegExp(SEG_SRC, "iy");
+const SEG_G = new RegExp(SEG_SRC, "gi");
 const JOIN = /[\s,]*(?:and\s+)?/iy;
 const NOTE_LEAD = /^[\s,;:—–-]+/;
 
-const seg = (lo, hi, unit) => (hi ? `${lo}–${hi} ${unit}` : `${lo} ${unit}`);
+// The author's own shape is kept and only a word is rewritten — reshaping "2 1/2 hr" into
+// "2 hr 30 min" is the same invention as narrowing a range to its upper end. Mirrors _time_written.
+function written(tok) {
+  const t = String(tok == null ? "" : tok).split(/\s+/).filter(Boolean).join(" ");
+  const w = WORD_NUMERALS[t.toLowerCase()];
+  return w || t;
+}
+
+const seg = (lo, hi, unit) =>
+  (hi ? `${written(lo)}–${written(hi)} ${unit}` : `${written(lo)} ${unit}`);
 
 // Normalize any duration INSIDE a trailing note, leaving every other word alone.
 function timeInNote(note) {

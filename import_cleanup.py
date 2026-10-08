@@ -740,22 +740,108 @@ def parse_servings(raw):
 # thing and there is no competing reading in a time column.
 _TIME_UNITS = {"min": "min", "mins": "min", "minute": "min", "minutes": "min", "m": "min",
                "hr": "hr", "hrs": "hr", "hour": "hr", "hours": "hr", "h": "hr"}
+# How many minutes one unit of the segment reader's two units is worth. planahead extends this with
+# day and week, which no time COLUMN carries and a wait box does.
+TIME_UNIT_MINUTES = {"min": 1, "hr": 60}
+
+# ⚠️ A NUMBER IS NOT ALWAYS SPELLED IN DIGITS, AND THE READER USED TO REFUSE EVERY OTHER SHAPE.
+#    The number below reads a mixed number, a unicode fraction, a bare fraction and a word, because
+#    the two callers of this one regex disagreed about what refusing meant. Measured on live text:
+#
+#        "2 1/2 hours"      clock_minutes (None, None)   read_duration (120, 120)   is 150
+#        "1 1/2 - 4 hours"  clock_minutes (None, None)   read_duration (120, 240)   is (90, 240)
+#        "1½ hours"         clock_minutes (None, None)   read_duration (None, None) is 90
+#        "¾ hour"           clock_minutes (None, None)   read_duration (None, None) is 45
+#
+#    clock_minutes refused, which is the safe direction. read_duration TRUNCATED to the whole-number
+#    part, so a 150-minute braise read as 120 with nothing on the page to say so.
+#
+#    ⚠️ AND NOTHING STORED CHANGES BY IT. Measured over the copy on 2026-10-08: 0 of the stored
+#    prep, cook and total times and 0 of the wait and storage labels carry any of these shapes. All
+#    24 occurrences are in STEP TEXT, which is what the cook estimate reads.
+TIME_FRACTIONS = {"¼": .25, "½": .5, "¾": .75, "⅐": 1 / 7, "⅑": 1 / 9, "⅒": .1,
+                  "⅓": 1 / 3, "⅔": 2 / 3, "⅕": .2, "⅖": .4, "⅗": .6, "⅘": .8,
+                  "⅙": 1 / 6, "⅚": 5 / 6, "⅛": .125, "⅜": .375, "⅝": .625,
+                  "⅞": .875}
+_TIME_FRAC_CHARS = "".join(TIME_FRACTIONS)
+# ⚠️ ONE THROUGH TWELVE, AND NOT "a". "bake for one hour; remove the cover and bake for another
+#    30 minutes" read as 30 minutes, a quarter of what the step costs. Past twelve an author writes
+#    the digit. "a minute or two" is a figure of speech, so the article is left out on purpose.
+#    Each word carries the numeral it is written back as, because "half hr" is not a time.
+TIME_WORD_NUMBERS = {"one": ("1", 1.0), "two": ("2", 2.0), "three": ("3", 3.0), "four": ("4", 4.0),
+                     "five": ("5", 5.0), "six": ("6", 6.0), "seven": ("7", 7.0),
+                     "eight": ("8", 8.0), "nine": ("9", 9.0), "ten": ("10", 10.0),
+                     "eleven": ("11", 11.0), "twelve": ("12", 12.0),
+                     "half": ("½", 0.5), "quarter": ("¼", 0.25),
+                     "three quarters": ("¾", 0.75)}
+_TIME_WORDS = "|".join(sorted(TIME_WORD_NUMBERS, key=len, reverse=True))
+_TIME_NUM = (r"(?:\d+\s+\d+\s*/\s*\d+"                 # 2 1/2
+             r"|\d+\s*[" + _TIME_FRAC_CHARS + r"]"       # 2½ and 2 ½
+             r"|(?<!\d)\d+\s*/\s*\d+"                   # 1/2, never the tail of "2 1/2"
+             r"|[" + _TIME_FRAC_CHARS + r"]"               # ½
+             r"|\b(?:" + _TIME_WORDS + r")\b"              # one / half
+             r"|\d+(?:\.\d+)?)")                         # 2 / 2.5
 # One "N unit" segment, with an optional range on the number. The unit is captured LOOSELY as any
 # word, so a non-time word ("1 cup" in a time column) is read and then REFUSED rather than being
 # skipped past to find a time later in the string.
 _TIME_SEG_RE = re.compile(
-    r"(?P<lo>\d+(?:\.\d+)?)"
-    r"(?:\s*(?:to|[-–—])\s*(?P<hi>\d+(?:\.\d+)?))?"
-    r"\s*(?P<unit>[A-Za-z]+)\.?", re.I)
+    r"(?P<lo>" + _TIME_NUM + r")"
+    r"(?:\s*(?:to|[-–—])\s*(?P<hi>" + _TIME_NUM + r"))?"
+    # "half an hour" is the one shape that puts an article between the number and its unit.
+    r"\s*(?:an?\s+)?(?P<unit>[A-Za-z]+)\.?", re.I)
 # What may sit between two segments of one duration: whitespace, a comma, an "and".
 _TIME_JOIN_RE = re.compile(r"[\s,]*(?:and\s+)?", re.I)
 _TIME_NOTE_LEAD_RE = re.compile(r"^[\s,;:—–-]+")
+_TIME_PLAIN_NUM = re.compile(r"^\d+(?:\.\d+)?$")
+
+
+def time_number(tok):
+    """One matched time number as a float, whatever shape it was written in.
+
+    Returns None for a token that is not a number at all, which the regex above means no caller
+    ever sees. It mirrors what float() did and adds the four shapes float() could not read.
+    """
+    t = " ".join((tok or "").split())
+    word = TIME_WORD_NUMBERS.get(t.lower())
+    if word:
+        return word[1]
+    m = re.match(r"^(\d+)\s+(\d+)\s*/\s*(\d+)$", t)
+    if m:
+        return float(m.group(1)) + float(m.group(2)) / float(m.group(3))
+    m = re.match(r"^(\d+)\s*([" + _TIME_FRAC_CHARS + r"])$", t)
+    if m:
+        return float(m.group(1)) + TIME_FRACTIONS[m.group(2)]
+    m = re.match(r"^(\d+)\s*/\s*(\d+)$", t)
+    if m:
+        return float(m.group(1)) / float(m.group(2))
+    if t in TIME_FRACTIONS:
+        return float(TIME_FRACTIONS[t])
+    try:
+        return float(t)
+    except ValueError:
+        return None
+
+
+def _time_written(tok):
+    """A matched number as this function writes it back.
+
+    ⚠️ THE AUTHOR'S OWN SHAPE IS KEPT, AND ONLY A WORD IS REWRITTEN. "2 1/2 hr" is a time and
+    reshaping it to "2 hr 30 min" is the same kind of invention as narrowing a range to its upper
+    end, which the docstring below refuses for the same reason. A word has no numeral at all, so
+    "half an hour" has to be written as "½ hr" or it comes out as "half hr".
+
+    ⚠️ AND EVERY REWRITE IS ITS OWN FIXED POINT, which is what the idempotence test holds. The
+    numeral a word maps to reads back through the same regex as the same figure.
+    """
+    t = " ".join((tok or "").split())
+    word = TIME_WORD_NUMBERS.get(t.lower())
+    return word[0] if word else t
 
 
 def _time_seg(m, unit):
     """One matched segment as the app writes it. A range keeps BOTH ends and an en dash."""
-    hi = m.group("hi")
-    return f"{m.group('lo')}\u2013{hi} {unit}" if hi else f"{m.group('lo')} {unit}"
+    lo, hi = _time_written(m.group("lo")), m.group("hi")
+    return f"{lo}\u2013{_time_written(hi)} {unit}" if hi else f"{lo} {unit}"
 
 
 def _time_in_note(note):
