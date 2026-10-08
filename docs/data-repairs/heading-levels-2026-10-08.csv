@@ -1,0 +1,79 @@
+recipe_id,step_id,position,text,today,proposed,DECISION,why,in_the_66_andy_confirmed,recipe_in_the_preview
+acqua-pazza,5973,0,Sauté fennel and onion,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+acqua-pazza,5974,2,Garlic and chili,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+acqua-pazza,5975,4,Tomatoes,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+acqua-pazza,5976,6,Reduce wine,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+acqua-pazza,5977,8,Simmer sauce,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+acqua-pazza,5978,10,Cook fish,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+acqua-pazza,5979,12,Remove fish,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+acqua-pazza,5980,14,Add herbs,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+aloo-potato-parathas,6082,8,Cook the paratha,2,1,section,"no author-written heading above it, so it opens a section",no,no
+birria-tacos,6024,17,Slow cook 2 1/2 hours,2,1,section,"names a duration, so it is a stage of the recipe and opens a section",no,no
+bulgogi-bowls,5988,1,Wilt the spinach,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+bulgogi-bowls,5989,3,Cook the beef,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+bulgogi-bowls,5990,5,Build the bowls,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+butter-chicken,5991,0,Optional blitz,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+butter-chicken,5992,2,Marinade,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+butter-chicken,5993,4,Cook chicken,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+butter-chicken,5994,7,Sauce,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+caramelized-onion-dal,6086,4,"Meanwhile, make the onion",2,1,section,"no author-written heading above it, so it opens a section",no,no
+chicken-shawarma,6031,0,Marinade chicken,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+chicken-shawarma,6032,2,Preheat stove or BBQ,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+chicken-shawarma,6033,4,Cook chicken,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+chicken-shawarma,6034,6,Rest,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+chickpea-rice-pilaf,6035,1,Spiced chickpeas,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+chickpea-rice-pilaf,6036,4,Toss,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+french-fries,6005,0,Cut,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+french-fries,6006,3,Rinse,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+french-fries,6007,5,Simmer,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+french-fries,6008,7,Dry 5 min,2,1,section,"names a duration, so it is a stage of the recipe and opens a section",yes,yes
+french-fries,6009,9,Pot,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+french-fries,6077,15,50 sec fry,2,1,section,"names a duration, so it is a stage of the recipe and opens a section",no,yes
+french-fries,6078,18,30 min cool,2,1,section,"names a duration, so it is a stage of the recipe and opens a section",no,yes
+french-fries,6010,21,Fry #2,2,1,section,"names a numbered stage, so it opens a section",no,yes
+gai-yang-2,6037,0,Blitz,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+gai-yang-2,6038,2,Marinate,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+gai-yang-2,6039,5,Cook,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+gai-yang-2,6040,7,Rest and serve,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+garlic-rice,6041,0,Sauté garlic,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+garlic-rice,6042,2,Coat rice,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+garlic-rice,6043,4,Simmer,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+garlic-rice,6044,6,Cook 15 minutes,2,1,section,"names a duration, so it is a stage of the recipe and opens a section",yes,yes
+garlic-rice,6045,8,Rest 10 minutes,2,1,section,"names a duration, so it is a stage of the recipe and opens a section",yes,yes
+jamaican-jerk-fish,6046,0,Jerk Spice Blend,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+jamaican-jerk-fish,6047,2,Coat fish,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+jamaican-jerk-fish,6048,4,Cook fish,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+jamaican-jerk-fish,6049,6,Flip,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+jamaican-rice-and-peas-beans,6050,1,Sauté aromatics,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+jamaican-rice-and-peas-beans,6051,5,Rest,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+kachumber-tilapia,6091,2,"Meanwhile, make the kachumber topping",2,1,section,"no author-written heading above it, so it opens a section",no,no
+kachumber-tilapia,6092,4,Cook the fish,2,1,section,"no author-written heading above it, so it opens a section",no,no
+kfc-spicy-chicken-rice-bowl,6012,0,Marinade,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+kfc-spicy-chicken-rice-bowl,6013,2,Make the flour dredge,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+kfc-spicy-chicken-rice-bowl,6014,4,Dredge the chicken,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+kfc-spicy-chicken-rice-bowl,6015,6,Make the toasted rice powder,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+kfc-spicy-chicken-rice-bowl,6016,8,Make the liquid dressing,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+kfc-spicy-chicken-rice-bowl,6075,10,Fry the chicken (the first time),2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+kfc-spicy-chicken-rice-bowl,6076,13,Fry the chicken again,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+kuku-paka-african-chicken-curry,6052,0,Season chicken,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+kuku-paka-african-chicken-curry,6053,2,Brown chicken,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+kuku-paka-african-chicken-curry,6054,4,Sauté aromatics,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+kuku-paka-african-chicken-curry,6055,6,Sauce,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+kuku-paka-african-chicken-curry,6056,8,Simmer 30 min,2,1,section,"names a duration, so it is a stage of the recipe and opens a section",yes,yes
+kuku-paka-african-chicken-curry,6057,10,Finish & serve,2,1,section,"no author-written heading above it, so it opens a section",yes,yes
+nandos-portuguese-chicken-and-rice,6062,11,Cook 15 minutes,2,1,section,"names a duration, so it is a stage of the recipe and opens a section",no,no
+nandos-portuguese-chicken-and-rice,6063,13,Rest 10 minutes,2,1,section,"names a duration, so it is a stage of the recipe and opens a section",no,no
+oven-baked-ribs,6096,3,Wrap with foil,2,1,section,"no author-written heading above it, so it opens a section",no,no
+oven-baked-ribs,6097,5,Bake the ribs,2,1,section,"no author-written heading above it, so it opens a section",no,no
+panang-curry,6064,2,Peanuts,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+panang-curry,6065,4,Blitz paste,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+panang-curry,6066,6,Cook curry paste,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+panang-curry,6067,8,Sauce,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+pork-stir-fry-with-green-beans,6068,0,Sauce,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+quick-easy-hainanese-chicken-rice-khao-mun-gai,6018,10,To serve,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+spicy-edamame,6069,0,Spicy garlic sauce,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+spicy-edamame,6070,2,Edamame,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+spicy-edamame,6071,4,Toss,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+vietnamese-caramel-ginger-chicken,6072,1,Caramel,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+vietnamese-caramel-ginger-chicken,6073,3,Cook outside of chicken,2,1,section,"no author-written heading above it, so it opens a section",yes,no
+vietnamese-caramel-ginger-chicken,6074,5,Simmer 10 min,2,1,section,"names a duration, so it is a stage of the recipe and opens a section",yes,no

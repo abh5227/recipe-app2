@@ -164,6 +164,8 @@ _READ_ONLY_BY_INSPECTION = {
     "gates/tablediff.py":         "row-for-row comparison, opens both sides through state.open_ro",
     "gates/rounds.py":            "the per-round gate; reads two JSON readings and, for the table "
                                   "half, reaches a database only through gates/tablediff",
+    "gates/cells.py":             "the cell diff for a table rounds.py had to except; opens both "
+                                  "sides through state.open_ro and writes nothing",
     "gen_note_corpus.py":         "captures the note rows into a test fixture, opens mode=ro so "
                                   "SQLite itself refuses a write",
 }

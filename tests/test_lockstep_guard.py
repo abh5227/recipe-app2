@@ -99,6 +99,11 @@ DECLINES_ON_THE_FIXTURE = {
                              "a recorded decision no longer matches the row it was about"),
     "relink_pass.py": ("the reparse is not settled",
                        "it expects the 2026-09-25 reparse to have run first"),
+    "apply_polish_round_2.py": ("ABORT: a recorded decision no longer matches the row",
+                                "its three decision files name 78 step rows, 112 ingredient rows and "
+                                "six more by id, none of which exist in a three-recipe fixture. A "
+                                "pass whose input is a list of row ids can only refuse a corpus that "
+                                "is not the one the decisions were made about"),
     "remove_demo_rows.py": ("REFUSING: there is no account",
                             "the fixture has no owner account to keep rows for"),
     # ⚠️ TWO DECLINES, BECAUSE THIS ONE READS A 235 MB FILE THAT IS NOT IN THE REPO. With the
@@ -360,14 +365,14 @@ def test_the_pass_list_is_a_real_partition():
     so a pass that spells its write flag --write or --yes, or a move to scripts/passes/, drops out
     of the sweep with no complaint at all."""
     on_disk = {p.name for p in (REPO / "scripts").glob("*.py")}
-    assert len(on_disk) == 28, f"scripts/ changed shape: {len(on_disk)} files"
+    assert len(on_disk) == 29, f"scripts/ changed shape: {len(on_disk)} files"
     missing = NOT_A_PASS - on_disk
     assert not missing, f"NOT_A_PASS names files that are not in scripts/: {sorted(missing)}"
     unclassified = on_disk - set(PASSES) - NOT_A_PASS
     assert not unclassified, (
         "a script in scripts/ is neither swept as a pass nor declared not to be one. If it can "
         f"write, give it --apply; if it cannot, name it in NOT_A_PASS: {sorted(unclassified)}")
-    assert len(PASSES) == 17, f"the sweep covers {len(PASSES)} passes: {PASSES}"
+    assert len(PASSES) == 18, f"the sweep covers {len(PASSES)} passes: {PASSES}"
 
 
 def test_every_declared_decline_is_still_a_decline():

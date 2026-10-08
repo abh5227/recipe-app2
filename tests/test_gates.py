@@ -867,3 +867,213 @@ def test_the_reading_counts_every_snapshot_and_not_only_the_baselines(tmp_path):
     reading = gstate.read_state(db)
     assert reading["counts"]["snapshots_original"] == 3, "the baseline count moved, which it should not"
     assert reading["counts"]["snapshots"] == 4, "the reading cannot see a reason='cook' snapshot"
+
+
+# ---- cells.py: the hole an excepted table leaves -------------------------------------------------
+
+import cells as gcells             # noqa: E402
+
+CELLS_ROUND = {"round": "probe", "why": "a test", "short_circuit": "unchanged",
+               "annotations": "unchanged", "counts": {}, "tables": {"except": ["recipe_steps"]}}
+
+
+def _cells_round(tmp_path, allowance, name="round.json"):
+    spec = dict(CELLS_ROUND)
+    spec["cells"] = allowance
+    p = tmp_path / name
+    p.write_text(json.dumps(spec))
+    return p
+
+
+def _two_corpora(tmp_path):
+    """Two databases built the same way, so only what a test changes differs."""
+    a = _corpus(tmp_path / "a", "a.db")
+    b = _corpus(tmp_path / "b", "b.db")
+    return a, b
+
+
+def _step_ids(db, rid="beans"):
+    con = sqlite3.connect(db)
+    ids = [r[0] for r in con.execute(
+        "SELECT id FROM recipe_steps WHERE recipe_id=? ORDER BY position", (rid,))]
+    con.close()
+    return ids
+
+
+def test_a_declared_cell_that_moved_is_the_only_thing_that_passes(tmp_path):
+    a, b = _two_corpora(tmp_path)
+    sid = _step_ids(b)[0]
+    con = sqlite3.connect(b)
+    con.execute("UPDATE recipe_steps SET text='Mix it slowly' WHERE id=?", (sid,))
+    con.commit()
+    con.close()
+    allow = {"recipe_steps": {"columns": ["text"], "ids": [sid], "deleted": [], "inserted": 0}}
+    ok, lines = gcells.check(a, b, json.loads(_cells_round(tmp_path, allow).read_text())["cells"])
+    assert ok, lines
+
+
+def test_a_cell_that_moved_on_an_undeclared_row_fails(tmp_path):
+    """⚠️ THE WHOLE REASON THIS GATE EXISTS. rounds.py excepts a table it cannot compare, and from
+    that moment nothing is watching any other row in it."""
+    a, b = _two_corpora(tmp_path)
+    ids = _step_ids(b)
+    con = sqlite3.connect(b)
+    con.execute("UPDATE recipe_steps SET text='Mix it slowly' WHERE id=?", (ids[0],))
+    con.execute("UPDATE recipe_steps SET text='Bake it longer' WHERE id=?", (ids[1],))
+    con.commit()
+    con.close()
+    allow = {"recipe_steps": {"columns": ["text"], "ids": [ids[0]], "deleted": [], "inserted": 0}}
+    ok, lines = gcells.check(a, b, allow)
+    assert not ok
+    assert any("undeclared" in l and str(ids[1]) in l for l in lines), lines
+
+
+def test_a_cell_that_moved_in_an_undeclared_column_fails(tmp_path):
+    a, b = _two_corpora(tmp_path)
+    sid = _step_ids(b)[0]
+    con = sqlite3.connect(b)
+    con.execute("UPDATE recipe_steps SET text='Mix it slowly', is_heading=1 WHERE id=?", (sid,))
+    con.commit()
+    con.close()
+    allow = {"recipe_steps": {"columns": ["text"], "ids": [sid], "deleted": [], "inserted": 0}}
+    ok, lines = gcells.check(a, b, allow)
+    assert not ok
+    assert any("is_heading" in l and "did not declare" in l for l in lines), lines
+
+
+def test_a_declared_column_that_moved_on_no_row_fails(tmp_path):
+    """⚠️ THE ANTI-VACUITY HALF, which is the behaviour this whole folder exists to keep. A gate that
+    passes because it found nothing teaches everyone the check is green."""
+    a, b = _two_corpora(tmp_path)
+    sid = _step_ids(b)[0]
+    con = sqlite3.connect(b)
+    con.execute("UPDATE recipe_steps SET text='Mix it slowly' WHERE id=?", (sid,))
+    con.commit()
+    con.close()
+    allow = {"recipe_steps": {"columns": ["text", "heading_level"], "ids": [sid],
+                             "deleted": [], "inserted": 0}}
+    ok, lines = gcells.check(a, b, allow)
+    assert not ok
+    assert any("heading_level" in l and "moved on no row" in l for l in lines), lines
+
+
+def test_a_declared_row_that_did_not_move_fails(tmp_path):
+    """A decision that was recorded and did not happen is as much a reason to stop as a stray write."""
+    a, b = _two_corpora(tmp_path)
+    ids = _step_ids(b)
+    con = sqlite3.connect(b)
+    con.execute("UPDATE recipe_steps SET text='Mix it slowly' WHERE id=?", (ids[0],))
+    con.commit()
+    con.close()
+    allow = {"recipe_steps": {"columns": ["text"], "ids": ids[:2], "deleted": [], "inserted": 0}}
+    ok, lines = gcells.check(a, b, allow)
+    assert not ok
+    assert any("declared_but_still" in l and str(ids[1]) in l for l in lines), lines
+
+
+def test_an_undeclared_deletion_fails_and_a_declared_one_passes(tmp_path):
+    a, b = _two_corpora(tmp_path)
+    ids = _step_ids(b)
+    con = sqlite3.connect(b)
+    con.execute("DELETE FROM recipe_steps WHERE id=?", (ids[1],))
+    con.execute("UPDATE recipe_steps SET text='Mix it slowly' WHERE id=?", (ids[0],))
+    con.commit()
+    con.close()
+    base = {"columns": ["text"], "ids": [ids[0]], "inserted": 0}
+    ok, lines = gcells.check(a, b, {"recipe_steps": dict(base, deleted=[])})
+    assert not ok and any("deleted" in l for l in lines), lines
+    ok, lines = gcells.check(a, b, {"recipe_steps": dict(base, deleted=[ids[1]])})
+    assert ok, lines
+
+
+def test_an_extra_inserted_row_fails(tmp_path):
+    a, b = _two_corpora(tmp_path)
+    sid = _step_ids(b)[0]
+    con = sqlite3.connect(b)
+    con.execute("UPDATE recipe_steps SET text='Mix it slowly' WHERE id=?", (sid,))
+    con.execute("INSERT INTO recipe_steps (recipe_id, position, is_heading, text) "
+                "VALUES ('beans', 9, 0, 'And a stray one')")
+    con.commit()
+    con.close()
+    allow = {"recipe_steps": {"columns": ["text"], "ids": [sid], "deleted": [], "inserted": 0}}
+    ok, lines = gcells.check(a, b, allow)
+    assert not ok
+    assert any("inserted" in l and "declared" in l for l in lines), lines
+
+
+def test_a_column_added_or_dropped_between_the_two_is_reported_rather_than_compared(tmp_path):
+    a, b = _two_corpora(tmp_path)
+    con = sqlite3.connect(b)
+    con.execute("ALTER TABLE recipe_steps ADD COLUMN scratch TEXT")
+    con.commit()
+    con.close()
+    allow = {"recipe_steps": {"columns": ["text"], "ids": [], "deleted": [], "inserted": 0}}
+    ok, lines = gcells.check(a, b, allow)
+    assert not ok
+    assert any("COLUMNS moved" in l and "scratch" in l for l in lines), lines
+
+
+@pytest.mark.parametrize("missing", ["columns", "ids", "deleted", "inserted"])
+def test_every_allowance_key_is_required(tmp_path, missing):
+    allow = {"recipe_steps": {"columns": ["text"], "ids": [1], "deleted": [], "inserted": 0}}
+    allow["recipe_steps"].pop(missing)
+    with pytest.raises(gcells.BadAllowance) as e:
+        gcells.load_allowance(_cells_round(tmp_path, allow))
+    assert missing in str(e.value)
+
+
+def test_a_round_file_with_no_cells_key_is_refused(tmp_path):
+    """An excepted table is unwatched until something says what may move in it, and the refusal says
+    so rather than defaulting to an empty allowance."""
+    p = tmp_path / "round.json"
+    p.write_text(json.dumps(CELLS_ROUND))
+    with pytest.raises(gcells.BadAllowance) as e:
+        gcells.load_allowance(p)
+    assert "cells" in str(e.value)
+
+
+def test_a_missing_round_file_is_refused(tmp_path):
+    with pytest.raises(gcells.BadAllowance):
+        gcells.load_allowance(tmp_path / "nope.json")
+
+
+def test_a_table_the_database_does_not_have_is_refused_rather_than_skipped(tmp_path):
+    a, b = _two_corpora(tmp_path)
+    allow = {"not_a_table": {"columns": ["x"], "ids": [], "deleted": [], "inserted": 0}}
+    with pytest.raises(gcells.BadAllowance) as e:
+        gcells.check(a, b, allow)
+    assert "not_a_table" in str(e.value)
+
+
+def test_the_command_line_exits_non_zero_when_a_cell_was_not_declared(tmp_path, capsys):
+    a, b = _two_corpora(tmp_path)
+    ids = _step_ids(b)
+    con = sqlite3.connect(b)
+    con.execute("UPDATE recipe_steps SET text='Mix it slowly' WHERE id=?", (ids[1],))
+    con.commit()
+    con.close()
+    allow = {"recipe_steps": {"columns": ["text"], "ids": [ids[0]], "deleted": [], "inserted": 0}}
+    code = gcells.main(["--a", str(a), "--b", str(b),
+                        "--round", str(_cells_round(tmp_path, allow))])
+    assert code == 1
+    assert "STOP" in capsys.readouterr().out
+
+
+def test_two_copies_of_one_database_have_no_moved_cells_and_an_empty_allowance_is_still_refused(tmp_path):
+    """Nothing moved, and a declaration naming a column is therefore describing nothing. The gate has
+    to fail: 'the pass did nothing' and 'the pass did what it said' must not look the same."""
+    a = _corpus(tmp_path / "same")
+    allow = {"recipe_steps": {"columns": ["text"], "ids": [], "deleted": [], "inserted": 0}}
+    ok, lines = gcells.check(a, a, allow)
+    assert not ok
+    assert any("moved on no row" in l for l in lines), lines
+
+
+def test_this_rounds_own_allowance_names_only_tables_the_round_excepted():
+    """⚠️ THE TWO HALVES OF THE DECLARATION HAVE TO AGREE. A table in `cells` that rounds.py still
+    compares is harmless noise; a table in `tables.except` with no `cells` entry is the hole back."""
+    spec = json.loads((REPO / "golive" / "rounds" /
+                       "2026-10-08-polish-round-2.json").read_text())
+    excepted = set(spec["tables"]["except"]) - {"sqlite_sequence", "schema_migrations"}
+    assert set(spec["cells"]) == excepted, (
+        "every content table the round excepts from rounds.py needs a cells entry")
