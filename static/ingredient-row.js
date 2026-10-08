@@ -47,6 +47,7 @@
     if (key === "qty") row.qty = val;
     else if (key === "quantity") row.quantity = val;   // Stage 4: structured amount expression
     else if (key === "unit") row.unit = val;           // Stage 4: structured unit
+    else if (key === "second") row.secondary_measure = val;   // round B: the author's second amount
     else if (key === "name") row.label = val;
     else if (key === "note") row.note = val;
     else if (key === "heading") row.heading = val;

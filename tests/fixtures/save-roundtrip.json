@@ -1,542 +1,552 @@
 {
- "note": "Captured from static/save-payload.js and static/note-draft.js. Regenerate with scripts/gen_save_roundtrip.mjs.",
- "rows": [
-  {
-   "shape": "heading",
-   "row": {
-    "id": 9001,
-    "position": 0,
-    "is_heading": 1,
-    "qty": null,
-    "quantity": null,
-    "unit": null,
-    "ingredient_id": null,
-    "label": null,
-    "note": "",
-    "raw_text": "FOR THE SAUCE:",
-    "grams": null,
-    "secondary_measure": null,
-    "catalog_id": null,
-    "link_confidence": null,
-    "link_rule": null,
-    "link_matched": null
-   },
-   "payload": {
-    "id": 9001,
-    "heading": "FOR THE SAUCE:"
-   }
-  },
-  {
-   "shape": "unlinked with a label, raw_text longer (the imported shape)",
-   "row": {
-    "id": 9002,
-    "position": 1,
-    "is_heading": 0,
-    "qty": "25 g",
-    "quantity": "25",
-    "unit": "g",
-    "ingredient_id": null,
-    "label": "guajillo chillies, dried",
-    "note": null,
-    "raw_text": "25 g (0.9 oz) guajillo chillies, dried",
-    "grams": 25,
-    "secondary_measure": null,
-    "catalog_id": "en:guajillo-chili",
-    "link_confidence": "exact",
-    "link_rule": "exact",
-    "link_matched": "guajillo chili"
-   },
-   "payload": {
-    "id": 9002,
-    "quantity": "25",
-    "unit": "g",
-    "text": "guajillo chillies, dried",
-    "note": ""
-   }
-  },
-  {
-   "shape": "unlinked with a NULL label (the Paprika shape)",
-   "row": {
-    "id": 9003,
-    "position": 2,
-    "is_heading": 0,
-    "qty": "2 tbsp",
-    "quantity": "2",
-    "unit": "tbsp",
-    "ingredient_id": null,
-    "label": null,
-    "note": null,
-    "raw_text": "extra virgin olive oil",
-    "grams": null,
-    "secondary_measure": null,
-    "catalog_id": "Q93165",
-    "link_confidence": "exact",
-    "link_rule": "exact",
-    "link_matched": "olive oil"
-   },
-   "payload": {
-    "id": 9003,
-    "quantity": "2",
-    "unit": "tbsp",
-    "text": "extra virgin olive oil",
-    "note": ""
-   }
-  },
-  {
-   "shape": "unit the client canonicalizes (teaspoon -> tsp)",
-   "row": {
-    "id": 9004,
-    "position": 3,
-    "is_heading": 0,
-    "qty": "1 teaspoon",
-    "quantity": "1",
-    "unit": "teaspoon",
-    "ingredient_id": null,
-    "label": null,
-    "note": null,
-    "raw_text": "kosher salt",
-    "grams": 6,
-    "secondary_measure": null,
-    "catalog_id": "Q4116639",
-    "link_confidence": "exact",
-    "link_rule": "exact",
-    "link_matched": "kosher salt"
-   },
-   "payload": {
-    "id": 9004,
-    "quantity": "1",
-    "unit": "tsp",
-    "text": "kosher salt",
-    "note": ""
-   }
-  },
-  {
-   "shape": "a note row",
-   "row": {
-    "id": 9005,
-    "position": 4,
-    "is_heading": 0,
-    "qty": "2 tbsp",
-    "quantity": "2",
-    "unit": "tbsp",
-    "ingredient_id": null,
-    "label": "soy sauce",
-    "note": "all-purpose or light",
-    "raw_text": "2 tbsp soy sauceall-purpose or light",
-    "grams": null,
-    "secondary_measure": null,
-    "catalog_id": null,
-    "link_confidence": null,
-    "link_rule": null,
-    "link_matched": null
-   },
-   "payload": {
-    "id": 9005,
-    "quantity": "2",
-    "unit": "tbsp",
-    "text": "soy sauce",
-    "note": "all-purpose or light"
-   }
-  },
-  {
-   "shape": "duplicate name, different qty",
-   "row": {
-    "id": 9006,
-    "position": 5,
-    "is_heading": 0,
-    "qty": "3 tbsp",
-    "quantity": "3",
-    "unit": "tbsp",
-    "ingredient_id": null,
-    "label": null,
-    "note": null,
-    "raw_text": "water",
-    "grams": null,
-    "secondary_measure": null,
-    "catalog_id": "water",
-    "link_confidence": "exact",
-    "link_rule": "exact",
-    "link_matched": "water"
-   },
-   "payload": {
-    "id": 9006,
-    "quantity": "3",
-    "unit": "tbsp",
-    "text": "water",
-    "note": ""
-   }
-  },
-  {
-   "shape": "duplicate name, different qty (the second)",
-   "row": {
-    "id": 9007,
-    "position": 6,
-    "is_heading": 0,
-    "qty": "2 tbsp",
-    "quantity": "2",
-    "unit": "tbsp",
-    "ingredient_id": null,
-    "label": null,
-    "note": null,
-    "raw_text": "water",
-    "grams": null,
-    "secondary_measure": null,
-    "catalog_id": "water",
-    "link_confidence": "form_strip",
-    "link_rule": "form_strip:cold",
-    "link_matched": "water"
-   },
-   "payload": {
-    "id": 9007,
-    "quantity": "2",
-    "unit": "tbsp",
-    "text": "water",
-    "note": ""
-   }
-  },
-  {
-   "shape": "duplicate name AND qty (the full key collides)",
-   "row": {
-    "id": 9008,
-    "position": 7,
-    "is_heading": 0,
-    "qty": "1 cup",
-    "quantity": "1",
-    "unit": "cup",
-    "ingredient_id": null,
-    "label": null,
-    "note": null,
-    "raw_text": "flour",
-    "grams": 120,
-    "secondary_measure": "1 cup",
-    "catalog_id": "Q95388739",
-    "link_confidence": "exact",
-    "link_rule": "exact",
-    "link_matched": "all purpose flour"
-   },
-   "payload": {
-    "id": 9008,
-    "quantity": "1",
-    "unit": "cup",
-    "text": "flour",
-    "note": ""
-   }
-  },
-  {
-   "shape": "duplicate name AND qty (the second)",
-   "row": {
-    "id": 9009,
-    "position": 8,
-    "is_heading": 0,
-    "qty": "1 cup",
-    "quantity": "1",
-    "unit": "cup",
-    "ingredient_id": null,
-    "label": null,
-    "note": null,
-    "raw_text": "flour",
-    "grams": 120,
-    "secondary_measure": "1 cup",
-    "catalog_id": "Q95388739",
-    "link_confidence": "exact",
-    "link_rule": "exact",
-    "link_matched": "all purpose flour"
-   },
-   "payload": {
-    "id": 9009,
-    "quantity": "1",
-    "unit": "cup",
-    "text": "flour",
-    "note": ""
-   }
-  },
-  {
-   "shape": "linked to a library ingredient",
-   "row": {
-    "id": 9010,
-    "position": 9,
-    "is_heading": 0,
-    "qty": "200 g",
-    "quantity": "200",
-    "unit": "g",
-    "ingredient_id": "egg_pasta",
-    "label": "egg pasta",
-    "note": null,
-    "raw_text": "200 g fresh egg pasta, cut into ribbons",
-    "grams": 200,
-    "secondary_measure": null,
-    "catalog_id": "en:egg-pasta",
-    "link_confidence": "exact",
-    "link_rule": "exact",
-    "link_matched": "egg pasta"
-   },
-   "payload": {
-    "id": 9010,
-    "quantity": "200",
-    "unit": "g",
-    "item": "egg_pasta",
-    "label": "egg pasta",
-    "note": ""
-   }
-  },
-  {
-   "shape": "trailing space in the name",
-   "row": {
-    "id": 9011,
-    "position": 10,
-    "is_heading": 0,
-    "qty": "1 tbsp",
-    "quantity": "1",
-    "unit": "tbsp",
-    "ingredient_id": null,
-    "label": "onion, finely grated ",
-    "note": "~1/4 onion",
-    "raw_text": "1 tbsp onion, finely grated ~1/4 onion",
-    "grams": null,
-    "secondary_measure": null,
-    "catalog_id": null,
-    "link_confidence": null,
-    "link_rule": null,
-    "link_matched": null
-   },
-   "payload": {
-    "id": 9011,
-    "quantity": "1",
-    "unit": "tbsp",
-    "text": "onion, finely grated ",
-    "note": "~1/4 onion"
-   }
-  }
- ],
- "steps": [
-  {
-   "row": {
-    "id": 9101,
-    "position": 0,
-    "is_heading": 1,
-    "text": "MAKE THE SAUCE",
-    "heading_level": 1
-   },
-   "payload": {
-    "id": 9101,
-    "heading": "MAKE THE SAUCE",
-    "level": 1
-   }
-  },
-  {
-   "row": {
-    "id": 9102,
-    "position": 1,
-    "is_heading": 0,
-    "text": "Whisk it."
-   },
-   "payload": {
-    "id": 9102,
-    "text": "Whisk it."
-   }
-  },
-  {
-   "row": {
-    "id": 9103,
-    "position": 2,
-    "is_heading": 0,
-    "text": "Rest.\n\nAIR FRYER OPTION:\nShake off excess."
-   },
-   "payload": {
-    "id": 9103,
-    "text": "Rest.\n\nAIR FRYER OPTION:\nShake off excess."
-   }
-  },
-  {
-   "row": {
-    "id": 9104,
-    "position": 3,
-    "is_heading": 1,
-    "text": "Deseed",
-    "heading_level": 2
-   },
-   "payload": {
-    "id": 9104,
-    "heading": "Deseed",
-    "level": 2
-   }
-  },
-  {
-   "row": {
-    "id": 9105,
-    "position": 4,
-    "is_heading": 1,
-    "text": "For the dough:"
-   },
-   "payload": {
-    "id": 9105,
-    "heading": "For the dough:",
-    "level": 1
-   }
-  },
-  {
-   "row": {
-    "id": 9106,
-    "position": 5,
-    "is_heading": 0,
-    "text": "Knead for 10 minutes."
-   },
-   "payload": {
-    "id": 9106,
-    "text": "Knead for 10 minutes."
-   }
-  }
- ],
- "notes": [
-  {
-   "shape": "titled",
-   "row": {
-    "id": 9201,
-    "position": 0,
-    "kind": "notes",
-    "title": "Flour",
-    "text": "Use 11% protein flour.",
-    "step_id": null,
-    "ingredient_row_id": null,
-    "step_no": null,
-    "refs": []
-   },
-   "payload": {
-    "id": 9201,
-    "text": "Use 11% protein flour.",
-    "title": "Flour",
-    "kind": "notes",
-    "step_id": null,
-    "ingredient_row_id": null,
-    "refs": []
-   }
-  },
-  {
-   "shape": "untitled, which is 148 of the 176",
-   "row": {
-    "id": 9202,
-    "position": 1,
-    "kind": "tips",
-    "title": null,
-    "text": "Rest the dough overnight.",
-    "step_id": null,
-    "ingredient_row_id": null,
-    "step_no": null,
-    "refs": []
-   },
-   "payload": {
-    "id": 9202,
-    "text": "Rest the dough overnight.",
-    "title": null,
-    "kind": "tips",
-    "step_id": null,
-    "ingredient_row_id": null,
-    "refs": []
-   }
-  },
-  {
-   "shape": "a title the cook CLEARED, which must arrive as null and not as ''",
-   "row": {
-    "id": 9203,
-    "position": 2,
-    "kind": "notes",
-    "title": "   ",
-    "text": "The title box was emptied.",
-    "step_id": null,
-    "ingredient_row_id": null,
-    "step_no": null,
-    "refs": []
-   },
-   "payload": {
-    "id": 9203,
-    "text": "The title box was emptied.",
-    "title": null,
-    "kind": "notes",
-    "step_id": null,
-    "ingredient_row_id": null,
-    "refs": []
-   }
-  },
-  {
-   "shape": "titled AND linked to a step, with the number the server resolved",
-   "row": {
-    "id": 9204,
-    "position": 3,
-    "kind": "storage",
-    "title": "To Freeze the pie shell",
-    "text": "Wrap it tightly first.",
-    "step_id": 9102,
-    "ingredient_row_id": null,
-    "step_no": 1,
-    "refs": []
-   },
-   "payload": {
-    "id": 9204,
-    "text": "Wrap it tightly first.",
-    "title": "To Freeze the pie shell",
-    "kind": "storage",
-    "step_id": 9102,
-    "ingredient_row_id": null,
-    "refs": []
-   }
-  },
-  {
-   "shape": "titled, with a step reference in its own words",
-   "row": {
-    "id": 9205,
-    "position": 4,
-    "kind": "notes",
-    "title": "Shaping",
-    "text": "Fold it over, then proceed with step 2 as written.",
-    "step_id": null,
-    "ingredient_row_id": null,
-    "step_no": null,
-    "refs": [
-     {
-      "ref_index": 0,
-      "match_text": "step 2",
-      "step_id": 9103,
-      "step_no": 2
-     }
-    ]
-   },
-   "payload": {
-    "id": 9205,
-    "text": "Fold it over, then proceed with step 2 as written.",
-    "title": "Shaping",
-    "kind": "notes",
-    "step_id": null,
-    "ingredient_row_id": null,
-    "refs": [
-     {
-      "ref_index": 0,
-      "match_text": "step 2",
-      "step_id": 9103
-     }
-    ]
-   }
-  },
-  {
-   "shape": "a draft note, whose negative id never leaves the client",
-   "row": {
-    "id": -2,
-    "position": 5,
-    "kind": "notes",
-    "title": "Shaping",
-    "text": "Added this session.",
-    "step_id": null,
-    "ingredient_row_id": null,
-    "step_no": null,
-    "refs": []
-   },
-   "payload": {
-    "text": "Added this session.",
-    "title": "Shaping",
-    "kind": "notes",
-    "step_id": null,
-    "ingredient_row_id": null,
-    "refs": []
-   }
-  }
- ]
+  "note": "Captured from static/save-payload.js and static/note-draft.js. Regenerate with scripts/gen_save_roundtrip.mjs.",
+  "rows": [
+    {
+      "shape": "heading",
+      "row": {
+        "id": 9001,
+        "position": 0,
+        "is_heading": 1,
+        "qty": null,
+        "quantity": null,
+        "unit": null,
+        "ingredient_id": null,
+        "label": null,
+        "note": "",
+        "raw_text": "FOR THE SAUCE:",
+        "grams": null,
+        "secondary_measure": null,
+        "catalog_id": null,
+        "link_confidence": null,
+        "link_rule": null,
+        "link_matched": null
+      },
+      "payload": {
+        "id": 9001,
+        "heading": "FOR THE SAUCE:"
+      }
+    },
+    {
+      "shape": "unlinked with a label, raw_text longer (the imported shape)",
+      "row": {
+        "id": 9002,
+        "position": 1,
+        "is_heading": 0,
+        "qty": "25 g",
+        "quantity": "25",
+        "unit": "g",
+        "ingredient_id": null,
+        "label": "guajillo chillies, dried",
+        "note": null,
+        "raw_text": "25 g (0.9 oz) guajillo chillies, dried",
+        "grams": 25,
+        "secondary_measure": null,
+        "catalog_id": "en:guajillo-chili",
+        "link_confidence": "exact",
+        "link_rule": "exact",
+        "link_matched": "guajillo chili"
+      },
+      "payload": {
+        "id": 9002,
+        "quantity": "25",
+        "unit": "g",
+        "secondary_measure": "",
+        "text": "guajillo chillies, dried",
+        "note": ""
+      }
+    },
+    {
+      "shape": "unlinked with a NULL label (the Paprika shape)",
+      "row": {
+        "id": 9003,
+        "position": 2,
+        "is_heading": 0,
+        "qty": "2 tbsp",
+        "quantity": "2",
+        "unit": "tbsp",
+        "ingredient_id": null,
+        "label": null,
+        "note": null,
+        "raw_text": "extra virgin olive oil",
+        "grams": null,
+        "secondary_measure": null,
+        "catalog_id": "Q93165",
+        "link_confidence": "exact",
+        "link_rule": "exact",
+        "link_matched": "olive oil"
+      },
+      "payload": {
+        "id": 9003,
+        "quantity": "2",
+        "unit": "tbsp",
+        "secondary_measure": "",
+        "text": "extra virgin olive oil",
+        "note": ""
+      }
+    },
+    {
+      "shape": "unit the client canonicalizes (teaspoon -> tsp)",
+      "row": {
+        "id": 9004,
+        "position": 3,
+        "is_heading": 0,
+        "qty": "1 teaspoon",
+        "quantity": "1",
+        "unit": "teaspoon",
+        "ingredient_id": null,
+        "label": null,
+        "note": null,
+        "raw_text": "kosher salt",
+        "grams": 6,
+        "secondary_measure": null,
+        "catalog_id": "Q4116639",
+        "link_confidence": "exact",
+        "link_rule": "exact",
+        "link_matched": "kosher salt"
+      },
+      "payload": {
+        "id": 9004,
+        "quantity": "1",
+        "unit": "tsp",
+        "secondary_measure": "",
+        "text": "kosher salt",
+        "note": ""
+      }
+    },
+    {
+      "shape": "a note row",
+      "row": {
+        "id": 9005,
+        "position": 4,
+        "is_heading": 0,
+        "qty": "2 tbsp",
+        "quantity": "2",
+        "unit": "tbsp",
+        "ingredient_id": null,
+        "label": "soy sauce",
+        "note": "all-purpose or light",
+        "raw_text": "2 tbsp soy sauceall-purpose or light",
+        "grams": null,
+        "secondary_measure": null,
+        "catalog_id": null,
+        "link_confidence": null,
+        "link_rule": null,
+        "link_matched": null
+      },
+      "payload": {
+        "id": 9005,
+        "quantity": "2",
+        "unit": "tbsp",
+        "secondary_measure": "",
+        "text": "soy sauce",
+        "note": "all-purpose or light"
+      }
+    },
+    {
+      "shape": "duplicate name, different qty",
+      "row": {
+        "id": 9006,
+        "position": 5,
+        "is_heading": 0,
+        "qty": "3 tbsp",
+        "quantity": "3",
+        "unit": "tbsp",
+        "ingredient_id": null,
+        "label": null,
+        "note": null,
+        "raw_text": "water",
+        "grams": null,
+        "secondary_measure": null,
+        "catalog_id": "water",
+        "link_confidence": "exact",
+        "link_rule": "exact",
+        "link_matched": "water"
+      },
+      "payload": {
+        "id": 9006,
+        "quantity": "3",
+        "unit": "tbsp",
+        "secondary_measure": "",
+        "text": "water",
+        "note": ""
+      }
+    },
+    {
+      "shape": "duplicate name, different qty (the second)",
+      "row": {
+        "id": 9007,
+        "position": 6,
+        "is_heading": 0,
+        "qty": "2 tbsp",
+        "quantity": "2",
+        "unit": "tbsp",
+        "ingredient_id": null,
+        "label": null,
+        "note": null,
+        "raw_text": "water",
+        "grams": null,
+        "secondary_measure": null,
+        "catalog_id": "water",
+        "link_confidence": "form_strip",
+        "link_rule": "form_strip:cold",
+        "link_matched": "water"
+      },
+      "payload": {
+        "id": 9007,
+        "quantity": "2",
+        "unit": "tbsp",
+        "secondary_measure": "",
+        "text": "water",
+        "note": ""
+      }
+    },
+    {
+      "shape": "duplicate name AND qty (the full key collides)",
+      "row": {
+        "id": 9008,
+        "position": 7,
+        "is_heading": 0,
+        "qty": "1 cup",
+        "quantity": "1",
+        "unit": "cup",
+        "ingredient_id": null,
+        "label": null,
+        "note": null,
+        "raw_text": "flour",
+        "grams": 120,
+        "secondary_measure": "1 cup",
+        "catalog_id": "Q95388739",
+        "link_confidence": "exact",
+        "link_rule": "exact",
+        "link_matched": "all purpose flour"
+      },
+      "payload": {
+        "id": 9008,
+        "quantity": "1",
+        "unit": "cup",
+        "secondary_measure": "1 cup",
+        "text": "flour",
+        "note": ""
+      }
+    },
+    {
+      "shape": "duplicate name AND qty (the second)",
+      "row": {
+        "id": 9009,
+        "position": 8,
+        "is_heading": 0,
+        "qty": "1 cup",
+        "quantity": "1",
+        "unit": "cup",
+        "ingredient_id": null,
+        "label": null,
+        "note": null,
+        "raw_text": "flour",
+        "grams": 120,
+        "secondary_measure": "1 cup",
+        "catalog_id": "Q95388739",
+        "link_confidence": "exact",
+        "link_rule": "exact",
+        "link_matched": "all purpose flour"
+      },
+      "payload": {
+        "id": 9009,
+        "quantity": "1",
+        "unit": "cup",
+        "secondary_measure": "1 cup",
+        "text": "flour",
+        "note": ""
+      }
+    },
+    {
+      "shape": "linked to a library ingredient",
+      "row": {
+        "id": 9010,
+        "position": 9,
+        "is_heading": 0,
+        "qty": "200 g",
+        "quantity": "200",
+        "unit": "g",
+        "ingredient_id": "egg_pasta",
+        "label": "egg pasta",
+        "note": null,
+        "raw_text": "200 g fresh egg pasta, cut into ribbons",
+        "grams": 200,
+        "secondary_measure": null,
+        "catalog_id": "en:egg-pasta",
+        "link_confidence": "exact",
+        "link_rule": "exact",
+        "link_matched": "egg pasta"
+      },
+      "payload": {
+        "id": 9010,
+        "quantity": "200",
+        "unit": "g",
+        "secondary_measure": "",
+        "item": "egg_pasta",
+        "label": "egg pasta",
+        "note": ""
+      }
+    },
+    {
+      "shape": "trailing space in the name",
+      "row": {
+        "id": 9011,
+        "position": 10,
+        "is_heading": 0,
+        "qty": "1 tbsp",
+        "quantity": "1",
+        "unit": "tbsp",
+        "ingredient_id": null,
+        "label": "onion, finely grated ",
+        "note": "~1/4 onion",
+        "raw_text": "1 tbsp onion, finely grated ~1/4 onion",
+        "grams": null,
+        "secondary_measure": null,
+        "catalog_id": null,
+        "link_confidence": null,
+        "link_rule": null,
+        "link_matched": null
+      },
+      "payload": {
+        "id": 9011,
+        "quantity": "1",
+        "unit": "tbsp",
+        "secondary_measure": "",
+        "text": "onion, finely grated ",
+        "note": "~1/4 onion"
+      }
+    }
+  ],
+  "steps": [
+    {
+      "row": {
+        "id": 9101,
+        "position": 0,
+        "is_heading": 1,
+        "text": "MAKE THE SAUCE",
+        "heading_level": 1
+      },
+      "payload": {
+        "id": 9101,
+        "heading": "MAKE THE SAUCE",
+        "level": 1
+      }
+    },
+    {
+      "row": {
+        "id": 9102,
+        "position": 1,
+        "is_heading": 0,
+        "text": "Whisk it."
+      },
+      "payload": {
+        "id": 9102,
+        "text": "Whisk it."
+      }
+    },
+    {
+      "row": {
+        "id": 9103,
+        "position": 2,
+        "is_heading": 0,
+        "text": "Rest.\n\nAIR FRYER OPTION:\nShake off excess."
+      },
+      "payload": {
+        "id": 9103,
+        "text": "Rest.\n\nAIR FRYER OPTION:\nShake off excess."
+      }
+    },
+    {
+      "row": {
+        "id": 9104,
+        "position": 3,
+        "is_heading": 1,
+        "text": "Deseed",
+        "heading_level": 2
+      },
+      "payload": {
+        "id": 9104,
+        "heading": "Deseed",
+        "level": 2
+      }
+    },
+    {
+      "row": {
+        "id": 9105,
+        "position": 4,
+        "is_heading": 1,
+        "text": "For the dough:"
+      },
+      "payload": {
+        "id": 9105,
+        "heading": "For the dough:",
+        "level": 1
+      }
+    },
+    {
+      "row": {
+        "id": 9106,
+        "position": 5,
+        "is_heading": 0,
+        "text": "Knead for 10 minutes."
+      },
+      "payload": {
+        "id": 9106,
+        "text": "Knead for 10 minutes."
+      }
+    }
+  ],
+  "notes": [
+    {
+      "shape": "titled",
+      "row": {
+        "id": 9201,
+        "position": 0,
+        "kind": "notes",
+        "title": "Flour",
+        "text": "Use 11% protein flour.",
+        "step_id": null,
+        "ingredient_row_id": null,
+        "step_no": null,
+        "refs": []
+      },
+      "payload": {
+        "id": 9201,
+        "text": "Use 11% protein flour.",
+        "title": "Flour",
+        "kind": "notes",
+        "step_id": null,
+        "ingredient_row_id": null,
+        "refs": []
+      }
+    },
+    {
+      "shape": "untitled, which is 148 of the 176",
+      "row": {
+        "id": 9202,
+        "position": 1,
+        "kind": "tips",
+        "title": null,
+        "text": "Rest the dough overnight.",
+        "step_id": null,
+        "ingredient_row_id": null,
+        "step_no": null,
+        "refs": []
+      },
+      "payload": {
+        "id": 9202,
+        "text": "Rest the dough overnight.",
+        "title": null,
+        "kind": "tips",
+        "step_id": null,
+        "ingredient_row_id": null,
+        "refs": []
+      }
+    },
+    {
+      "shape": "a title the cook CLEARED, which must arrive as null and not as ''",
+      "row": {
+        "id": 9203,
+        "position": 2,
+        "kind": "notes",
+        "title": "   ",
+        "text": "The title box was emptied.",
+        "step_id": null,
+        "ingredient_row_id": null,
+        "step_no": null,
+        "refs": []
+      },
+      "payload": {
+        "id": 9203,
+        "text": "The title box was emptied.",
+        "title": null,
+        "kind": "notes",
+        "step_id": null,
+        "ingredient_row_id": null,
+        "refs": []
+      }
+    },
+    {
+      "shape": "titled AND linked to a step, with the number the server resolved",
+      "row": {
+        "id": 9204,
+        "position": 3,
+        "kind": "storage",
+        "title": "To Freeze the pie shell",
+        "text": "Wrap it tightly first.",
+        "step_id": 9102,
+        "ingredient_row_id": null,
+        "step_no": 1,
+        "refs": []
+      },
+      "payload": {
+        "id": 9204,
+        "text": "Wrap it tightly first.",
+        "title": "To Freeze the pie shell",
+        "kind": "storage",
+        "step_id": 9102,
+        "ingredient_row_id": null,
+        "refs": []
+      }
+    },
+    {
+      "shape": "titled, with a step reference in its own words",
+      "row": {
+        "id": 9205,
+        "position": 4,
+        "kind": "notes",
+        "title": "Shaping",
+        "text": "Fold it over, then proceed with step 2 as written.",
+        "step_id": null,
+        "ingredient_row_id": null,
+        "step_no": null,
+        "refs": [
+          {
+            "ref_index": 0,
+            "match_text": "step 2",
+            "step_id": 9103,
+            "step_no": 2
+          }
+        ]
+      },
+      "payload": {
+        "id": 9205,
+        "text": "Fold it over, then proceed with step 2 as written.",
+        "title": "Shaping",
+        "kind": "notes",
+        "step_id": null,
+        "ingredient_row_id": null,
+        "refs": [
+          {
+            "ref_index": 0,
+            "match_text": "step 2",
+            "step_id": 9103
+          }
+        ]
+      }
+    },
+    {
+      "shape": "a draft note, whose negative id never leaves the client",
+      "row": {
+        "id": -2,
+        "position": 5,
+        "kind": "notes",
+        "title": "Shaping",
+        "text": "Added this session.",
+        "step_id": null,
+        "ingredient_row_id": null,
+        "step_no": null,
+        "refs": []
+      },
+      "payload": {
+        "text": "Added this session.",
+        "title": "Shaping",
+        "kind": "notes",
+        "step_id": null,
+        "ingredient_row_id": null,
+        "refs": []
+      }
+    }
+  ]
 }

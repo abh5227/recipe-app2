@@ -37,8 +37,13 @@ export function ingToPayload(x) {
   // qty = quantity + " " + unit, so qty is omitted. Authority is quantity+unit.
   const quantity = oneLine(x.quantity);
   const unit = canonicalizeUnit(x.unit);
-  if (x.ingredient_id) return { id, quantity, unit, item: x.ingredient_id, label: oneLine(x.label || x.raw_text), note: x.note || "" };
-  return { id, quantity, unit, text: oneLine(x.label || x.raw_text), note: x.note || "" };
+  // ⚠️ THE SECOND AMOUNT IS SENT ON EVERY LINE, AND THE KEY BEING PRESENT IS WHAT MAKES IT AN
+  // ANSWER. A cook who clears the field sends "", which stores NULL. A client too old to know
+  // about the field sends no key at all, and the server then keeps what it has rather than
+  // reading the silence as a deletion. Same rule a note's kind and step link follow.
+  const second = oneLine(x.secondary_measure);
+  if (x.ingredient_id) return { id, quantity, unit, secondary_measure: second, item: x.ingredient_id, label: oneLine(x.label || x.raw_text), note: x.note || "" };
+  return { id, quantity, unit, secondary_measure: second, text: oneLine(x.label || x.raw_text), note: x.note || "" };
 }
 
 // ⚠️ A NON-HEADING STEP USED TO GO BACK AS A BARE STRING, and it is now an object, because a string

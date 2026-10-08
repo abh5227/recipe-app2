@@ -740,3 +740,270 @@ def resolve_steps(waits, steps):
             continue
         w["step_no"] = num
     return waits
+
+
+# ---------------------------------------------------------------------------------------------
+# The cook-time estimate. Round B, decision 10.
+# ---------------------------------------------------------------------------------------------
+# ⚠️ ONE IMPLEMENTATION, AND THE PAGE AND THE REVIEW FILE BOTH CALL IT. app.py computes the line
+#    when the recipe page is drawn and scripts/round_b_cook_estimates.py writes the review CSV from
+#    the same call, so a figure Andy reads in the CSV is the figure the page prints.
+#
+# ⚠️ IT IS COMPUTED, NEVER STORED. There is no column for it and there is no migration. A stored
+#    estimate is a number nobody wrote that outlives the steps it was read from, and the first
+#    time somebody edits a step the two disagree with nothing to say so.
+#
+# ⚠️ AND IT NEVER REACHES THE TOTAL. recipe_total reads recipe["cook_time"], which this never
+#    writes, so the Total cannot pick it up by accident. The estimate is a reading of the steps and
+#    the Total is a claim about the dish.
+
+# Which recipes get no estimate at all, and why. ⚠️ A DECLARED LIST, NOT A COLUMN: these are seven
+# decisions Andy made once, recorded in docs/data-repairs/round-b-decisions-2026-10-08.csv, and a
+# column would make them user data that a rebuild cannot explain and that no one can read the
+# reason for. tests/test_round_b_rules.py holds this list to that file, so the two cannot drift.
+NO_COOK_ESTIMATE = {
+    "beans": "the sibling sections are alternative methods (stovetop, pressure cooker, slow cooker)",
+    "shrimp-scampi": "the whole dish happens inside one 12-minute pasta boil",
+    "sunday-sauce": "step 7 restates step 4's 4 to 5 hours",
+    "rigatoni-amatriciana": "\"pull the pasta 1 to 2 minutes early\" is a subtraction",
+    "kachumber-tilapia": "a batch aside, and whether the figures are sequential needs a person",
+    "khichdi": "the sentence runs past what the rule reads",
+    "chocolate-peanut-butter-banana-smoothie":
+        "the cook edited the cook time by hand, and an estimate never overrides that",
+}
+
+# ⚠️ A SENTENCE ENDS AFTER A CLOSING BRACKET TOO, AND A CLAUSE IS WHAT A DURATION IS JUDGED BY.
+#    Both halves were found by reading the 14 recipes where every duration was excluded.
+#    matcha-amaretti writes "(Alternatively, use a hand mixer and large bowl.) Mix on medium speed
+#    until slightly frothy, 2 to 3 minutes", and with no split after the bracket the whole thing
+#    read as one sentence offering an alternative method, so the mixing time went with it.
+#    buttermilk-biscuits writes "Place the tray in the freezer for 15 minutes, then transfer
+#    straight to the oven and bake for 15 to 17 minutes": one sentence holding a rest AND a bake,
+#    and judging the sentence as a whole threw the bake away with the rest.
+_SENTENCE_SPLIT = re.compile(r"(?:(?<=[.!?;])|(?<=[.!?;]\)))\s+|,?\s+then\s+|,\s+and\s+then\s+")
+_SECONDS = {"sec", "secs", "second", "seconds", "s"}
+# A step that runs alongside another one costs no extra time.
+# ⚠️ "BAKE BOTH SHEETS AT THE SAME TIME" IS NOT TWO TASKS, IT IS TWO TRAYS IN ONE OVEN. The bare
+#    phrase is gone for that reason: it took the whole estimate off four cookie recipes, including
+#    the only bake time any of them stated. "Meanwhile" and "while the X cooks" are the shapes that
+#    really mean a second task running inside the first one.
+_PARALLEL = re.compile(r"\b(meanwhile|in the meantime|while (?:the|it|they|you|that)"
+                       r"|as the\b.{0,30}\b(?:cook|bake|simmer|roast|rest|chill))\b", re.I)
+# ⚠️ THE VERB IS NOT ALWAYS NEXT TO ITS OBJECT. "Let broth settle for 5 minutes", "Set the batter
+#    aside for 5 minutes" and "Cover again and set for 24 hours" are all rests, and a pattern that
+#    wanted "let the X settle" read all three as time on the heat.
+_RESTING = re.compile(r"\b(rest|rests|resting|cool|cools|cooling|chill|chills|chilled|chilling|"
+                      r"refrigerat\w*|fridge|freez\w*|frozen|marinat\w*|soak\w*|rise|rises|rising|"
+                      r"proof\w*|prove|proving|ferment\w*|"
+                      r"\b(?:let|leave|allow)\b[^.;]{0,30}?\b(?:set|sit|stand|rest|settle|sink|cool)\b|"
+                      r"\bset\b[^.;]{0,24}?\baside\b|\bset for\b|\bsettle for\b|"
+                      r"\bleave\b[^.;]{0,24}?\b(?:for|out|to|in the)\b|doubled in size|"
+                      r"\brisen\b|\bdouble[sd]? in (?:size|volume)\b|"
+                      r"standing|overnight|thaw\w*|defrost\w*|"
+                      r"brine|brining|infuse|infusing|steep\w*|macerat\w*|sink to the bottom|"
+                      r"come to room temperature)\b", re.I)
+_SHELF_LIFE = re.compile(r"\b(keeps?|keeping|lasts?|stores?|storage|storing|shelf|stays? (?:fresh|good)|"
+                         r"good for|best within|up to \d+ (?:day|week|month))\b", re.I)
+# ⚠️ AN ALTERNATIVE METHOD IS NOT A STEP OF THIS RECIPE. "Alternatively, in an Instant Pot … 6
+#    minutes" and "If kneading by hand … 7-10 minutes" are a second way to do a step already timed.
+_ALT_METHOD = re.compile(r"\b(alternatively|or you (?:can|could)|if (?:you (?:are |'re )?)?"
+                         r"(?:knead|mix|work|do|prefer|would rather|use|using|cook)\w*\b[^.;]{0,40}"
+                         r"\b(?:by hand|instead|manually)|instant pot|multi-?cooker|pressure cooker|"
+                         r"slow cooker|air fryer|microwave instead)\b", re.I)
+# ⚠️ A LATER DURATION IN ONE SENTENCE IS USUALLY PART OF THE FIRST, NOT A SECOND COST.
+#    "a total of around 4 minutes, 2 minutes on each side"      the 2 is inside the 4
+#    "18 to 22 minutes, rotating the sheets after 12 minutes"   the 12 is inside the 22
+_SUBPART = re.compile(r"\b(on each side|per side|each side|after|halfway|half way|rotating|"
+                      r"turning|flipping|at a time|in between|of (?:that|which))\b", re.I)
+_ADDITIVE_BEFORE = re.compile(r"\b(another|more|further|additional|then|and)\s*$", re.I)
+_OR_BEFORE = re.compile(r"\bor\s*(?:until\s+)?$", re.I)
+# ⚠️ "AFTER 30 MINUTES, REMOVE THE LID" IS A CLOCK READING, NOT A SECOND HALF HOUR. Measured:
+#    french-baguette counted its 45-minute rise three times and pasta-with-lentils counted its 30
+#    minutes twice, purely on sentences looking back at a duration the recipe already gave. It is a
+#    backreference only when the SAME figure was already counted, because "After 8-9 minutes of
+#    cooking, add the pasta" is the only statement of that time in pasta-alla-norcina.
+_AFTER_BEFORE = re.compile(r"\bafter\s+(?:the\s+|about\s+|around\s+)?$", re.I)
+# ⚠️ "EVERY 2 MINUTES" IS A CADENCE. It says how often to stir, not how long anything cooks.
+_EVERY_BEFORE = re.compile(r"\b(every|each)\s*$", re.I)
+# ⚠️ "EITHER … FOR 5 MINUTES OR … FOR 10" IS ONE STEP DONE TWO WAYS.
+_EITHER = re.compile(r"\beither\b", re.I)
+# Decision 10's three rules about what a duration MEANS.
+_PER_SIDE = re.compile(r"\b(?:on each side|per side|each side)\b", re.I)
+_AT_LEAST = re.compile(r"\bat least\s*$", re.I)
+_SCHEDULING = re.compile(r"\bbefore you(?:'re| are)? ready to\b", re.I)
+# ⚠️ A COOKING VERB GOVERNING THE DURATION BEATS THE REST TEST. "microwave for 5 minutes, until all
+#    the beans are thawed" mentions thawing and is five minutes of real heat, and "bake for 15 to
+#    17 minutes" in a clause that also froze the tray is a bake. The verb has to come BEFORE the
+#    figure, which is what keeps "allow it to cool for 15 minutes before baking another batch"
+#    excluded.
+# ⚠️ A COOKING WORD IS NOT ALWAYS A COOKING VERB, AND THREE NOUNS PROVED IT. "Let the COOKIES cool
+#    for at least 1 hour" matched cook\w*, "allow it to cool for 15 minutes" sat behind "the BAKING
+#    sheets", and brown\w* reaches "brownies". Each one turned a cooling into time on the heat: the
+#    mocha cookies read 1 hr 31 min, of which 1 hr 15 min was the cookies cooling down. The verb
+#    endings are spelled out and the baking-sheet family is refused by name.
+_COOKING_VERB = re.compile(
+    r"\b(?:bak(?:e|es|ed|ing)\b(?!\s+(?:sheet|sheets|tray|trays|dish|dishes|pan|pans|paper|"
+    r"parchment|powder|soda|rack|racks|time|times|stone|stones))|"
+    r"roast(?:s|ed|ing)?|fry|frying|fried|deep-fry(?:ing)?|sear(?:s|ed|ing)?|"
+    r"saut[eé](?:s|ed|ing)?|griddle(?:s|d)?|griddling|grill(?:s|ed|ing)?|broil(?:s|ed|ing)?|"
+    r"boil(?:s|ed|ing)?|simmer(?:s|ed|ing)?|poach(?:es|ed|ing)?|steam(?:s|ed|ing)?|"
+    r"braise(?:s|d)?|braising|stew(?:s|ed|ing)?|toast(?:s|ed|ing)?|microwave(?:s|d)?|microwaving|"
+    r"caramelis(?:e|es|ed|ing)|caramefiz|carameliz(?:e|es|ed|ing)|"
+    r"brown(?:s|ed|ing)?|reduce(?:s|d)?|reducing|stir-fry(?:ing)?|"
+    r"cook(?:s|ed|ing)?|heat(?:s|ed|ing)?|warm(?:s|ed|ing)?|blanch(?:es|ed|ing)?|"
+    r"pressure-cook(?:s|ed|ing)?)\b", re.I)
+
+
+def _estimate_durations(text):
+    """Every duration in a step, in minutes, with where it sits. Seconds are not a cook time."""
+    out = []
+    for m in _TIME_SEG_RE.finditer(text or ""):
+        word = m.group("unit").lower().rstrip(".")
+        if word in _SECONDS:
+            continue
+        unit = _UNIT_WORDS.get(word)
+        if unit not in ("min", "hr"):
+            continue
+        lo = time_number(m.group("lo"))
+        if lo is None:
+            continue
+        hi = time_number(m.group("hi")) if m.group("hi") else lo
+        out.append({"span": (m.start(), m.end()), "lo": lo * _MIN[unit], "hi": hi * _MIN[unit],
+                    "raw": m.group(0)})
+    return out
+
+
+def _sentences(text):
+    pos, out = 0, []
+    for part in _SENTENCE_SPLIT.split(text or ""):
+        start = (text or "").find(part, pos)
+        out.append((start, start + len(part), part))
+        pos = start + len(part)
+    return out
+
+
+def _matches_a_wait(duration, waits, step_id):
+    """Is this duration the wait the step carries, rather than a different figure in the same step?"""
+    for w in waits:
+        if w.get("step_id") != step_id:
+            continue
+        for minutes in (w.get("min_minutes"), w.get("max_minutes")):
+            if minutes is None:
+                continue
+            if abs(duration["lo"] - minutes) < 1 or abs(duration["hi"] - minutes) < 1:
+                return True
+    return False
+
+
+def cook_estimate(recipe, steps, waits=(), storage=(), baseline_cook_time=None):
+    """What the steps say this dish costs on the heat, and why each figure was counted or not.
+
+    Returns {"label", "lo", "hi", "open_ended", "verdict", "rows"}. `label` is "" wherever the
+    page must print nothing, which is the only field the reading view uses.
+
+    ⚠️ THE AUTHOR'S OWN COOK TIME ALWAYS WINS, and so does a cook's edit to it. A hand edit is
+       detected by comparing the stored cook_time against the recipe's ORIGINAL baseline, which is
+       the same evidence the "your changes" layer reads. Measured over the 300: exactly one recipe
+       differs, the smoothie, whose baseline said "0 mins" and whose cook cleared it. Without that
+       comparison the estimate would reappear over a deliberate deletion.
+    """
+    rid = recipe.get("id")
+    stated = (recipe.get("cook_time") or "").strip()
+    if stated:
+        return {"label": "", "lo": 0, "hi": 0, "open_ended": False,
+                "verdict": "the author gave a cook time", "rows": []}
+    if baseline_cook_time is not None and (baseline_cook_time or "").strip() != stated:
+        return {"label": "", "lo": 0, "hi": 0, "open_ended": False,
+                "verdict": "the cook edited the cook time by hand", "rows": []}
+    if rid in NO_COOK_ESTIMATE:
+        return {"label": "", "lo": 0, "hi": 0, "open_ended": False,
+                "verdict": NO_COOK_ESTIMATE[rid], "rows": []}
+
+    wait_steps = {w.get("step_id") for w in waits if w.get("step_id")}
+    wait_text = " | ".join((w.get("label") or "") + " " + (w.get("ext_label") or "")
+                           for w in waits)
+    store_text = " | ".join(s.get("label") or "" for s in storage)
+    found, counted_figures, number = [], set(), 0
+    open_ended = False
+    for step in steps:
+        if step.get("is_heading"):
+            continue
+        number += 1
+        text = step.get("text") or ""
+        every = _estimate_durations(text)
+        for s0, s1, sentence in _sentences(text):
+            here = [d for d in every if s0 <= d["span"][0] < s1]
+            says_total = bool(re.search(r"\btotal of\b", sentence, re.I))
+            for k, d in enumerate(here):
+                before = text[max(0, d["span"][0] - 28):d["span"][0]]
+                clause_before = sentence[:max(0, d["span"][0] - s0)]
+                cooking = bool(_COOKING_VERB.search(clause_before))
+                why = None
+                # ⚠️ THE WAIT'S OWN FIGURE IS EXCLUDED, NOT EVERY FIGURE IN ITS STEP. blueberry
+                #    -muffin-sugar-cookies browns butter for 3 to 4 minutes and then cools it for
+                #    30, both in step 1, and the step carrying the cooling wait took the browning
+                #    with it. The comparison is against the wait's own minutes, because a wait's
+                #    label is often a rewording of the step's words.
+                if step.get("id") in wait_steps and _matches_a_wait(d, waits, step.get("id")):
+                    why = "the duration is the plan-ahead wait this step carries"
+                elif d["raw"].strip() and d["raw"].strip() in wait_text:
+                    why = "the duration is already stored as a wait"
+                elif d["raw"].strip() and d["raw"].strip() in store_text:
+                    why = "the duration is already stored as a Keeps entry"
+                elif _SCHEDULING.search(sentence):
+                    why = "the sentence is scheduling, not time on the heat"
+                elif _SHELF_LIFE.search(sentence):
+                    why = "the sentence states a shelf life"
+                elif _ALT_METHOD.search(sentence):
+                    why = "the sentence gives an alternative method for a step already timed"
+                elif _PARALLEL.search(sentence):
+                    why = "the step runs alongside another one"
+                elif _RESTING.search(sentence) and not cooking:
+                    why = "the sentence is a rest, not time on the heat"
+                elif _EVERY_BEFORE.search(before):
+                    why = "the figure is how often to stir, not how long anything cooks"
+                elif _AFTER_BEFORE.search(before) and (d["lo"], d["hi"]) in counted_figures:
+                    why = "the sentence looks back at a duration this recipe already counted"
+                elif k and _EITHER.search(sentence):
+                    why = "one of two ways to do the step, and the first is already counted"
+                elif k and _OR_BEFORE.search(before):
+                    why = "an alternative to the duration already counted in this sentence"
+                elif k and says_total:
+                    why = "the sentence gives a total, and this is part of it"
+                elif k and _SUBPART.search(sentence) and not _ADDITIVE_BEFORE.search(before):
+                    why = "a part of the duration already counted in this sentence"
+                lo, hi = d["lo"], d["hi"]
+                note = ""
+                if why is None:
+                    # Decision 10. "N per side" is paid twice, and "at least N" has no ceiling.
+                    if _PER_SIDE.search(sentence):
+                        lo, hi, note = lo * 2, hi * 2, "counted twice, the sentence says per side"
+                    if _AT_LEAST.search(before):
+                        open_ended, note = True, "open-ended, the sentence says at least"
+                    counted_figures.add((d["lo"], d["hi"]))
+                found.append({"step": number, "step_id": step.get("id"), "raw": d["raw"],
+                              "lo": lo, "hi": hi, "used": why is None,
+                              "why": why or (note or "counted"),
+                              "sentence": sentence.strip()[:170]})
+    used = [f for f in found if f["used"]]
+    if not found:
+        return {"label": "", "lo": 0, "hi": 0, "open_ended": False,
+                "verdict": "no stated time in any step", "rows": found}
+    if not used:
+        return {"label": "", "lo": 0, "hi": 0, "open_ended": False,
+                "verdict": "every duration excluded", "rows": found}
+    if any(f["why"] == "the step runs alongside another one" for f in found):
+        return {"label": "", "lo": 0, "hi": 0, "open_ended": False,
+                "verdict": "no estimate, the steps overlap", "rows": found}
+    lo = int(sum(f["lo"] for f in used))
+    hi = int(sum(f["hi"] for f in used))
+    # ⚠️ "~" AND NOTHING ELSE. Andy's call: the line reads "Cook ~30 min – 35 min", with the app's
+    #    own duration spelling after the tilde. No "about", no "from the steps".
+    if open_ended:
+        label = f"~{fmt_minutes(lo)}+"
+    elif hi == lo:
+        label = f"~{fmt_minutes(lo)}"
+    else:
+        label = f"~{fmt_minutes(lo)} – {fmt_minutes(hi)}"
+    return {"label": label, "lo": lo, "hi": hi, "open_ended": open_ended,
+            "verdict": "estimate", "rows": found}

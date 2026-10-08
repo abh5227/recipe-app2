@@ -601,13 +601,14 @@ a:hover { color: var(--berry-lift); }
    quantity + unit pair (two tight fixed sub-columns) so it reads as one amount unit AND keeps names
    column-aligned across rows. Values are ONE line at rest; the quantity overlay truncates with "…" and
    expands (lift + wrap taller) on focus. Edit mode widens the page to ~1000px (see .page.recipe-view.editing). */
-.ingredient-list.edit li.erow { grid-template-columns: calc(2.8rem + 4.5rem + 6px) 1fr auto; align-items: start; column-gap: 12px; padding: 8px 0; }
+.ingredient-list.edit li.erow { grid-template-columns: calc(2.8rem + 4.5rem + 5.5rem + 12px) 1fr auto; align-items: start; column-gap: 12px; padding: 8px 0; }
 .ingredient-list.edit li.erow.group-row { display: grid; grid-template-columns: 1fr auto; padding: 14px 0 6px; border-bottom: none; }
 .erow.has-note { border-bottom: none; padding-bottom: 2px; }        /* the below-note row carries the rule instead */
 /* Stage 4 (un-crowd): tighter amount zone (quantity 2.8rem + unit 4.5rem) reclaims ~1.7rem of name
    width while normal values still fit at rest (numbers "2.6"/"1/2"; short units "tbsp"/"cups"/"litre"). */
-.erow .amount-zone { display: grid; grid-template-columns: 2.8rem 4.5rem; column-gap: 6px; align-items: start; }
-.erow .amount-zone.no-unit { grid-template-columns: 1fr; }          /* A3: quantity spans the zone, no unit box */
+/* round B adds the author's second amount as a third sub-column, beside the quantity it backs up. */
+.erow .amount-zone { display: grid; grid-template-columns: 2.8rem 4.5rem 5.5rem; column-gap: 6px; align-items: start; }
+.erow .amount-zone.no-unit { grid-template-columns: calc(2.8rem + 4.5rem + 6px) 5.5rem; }   /* A3: quantity spans the unit box too */
 /* the unit combobox: short plain <input> (no overlay); mono/tabular to sit with the quantity */
 .erow .e-unit { width: 100%; line-height: 24px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-amount); color: var(--ink); }
 .detail-card.editing .e-unit:focus { padding: 2px 6px; margin: 0 -2px; box-shadow: 0 0 0 1px var(--paper-edge), 0 4px 10px -6px rgba(40,35,30,.25); }
@@ -617,6 +618,10 @@ a:hover { color: var(--berry-lift); }
 .ie-ov { position: relative; display: block; min-width: 0; }
 .note-below .ie-ov { flex: 1 1 auto; }
 .erow .e-qty { font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-amount); color: var(--ink); }
+/* the second amount: the same mono figure as the quantity, lightened the way the reading view
+   lightens it, so the pair reads as one amount with its backup rather than as two amounts. */
+.erow .e-second { width: 100%; line-height: 24px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-amount); color: var(--ink-soft); }
+.detail-card.editing .e-second:focus { padding: 2px 6px; margin: 0 -2px; box-shadow: 0 0 0 1px var(--paper-edge), 0 4px 10px -6px rgba(40,35,30,.25); }
 .erow .e-name { font-family: var(--font-serif); font-size: var(--fs-amount); color: var(--ink); }   /* name matches the measurement size (15px) */
 .erow .e-heading { font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--green); }
 .note-row .e-note { font-family: var(--font-sans); font-style: italic; font-size: 12.5px; color: var(--ink-soft); }
@@ -1195,7 +1200,13 @@ a:hover { color: var(--berry-lift); }
 .qty, .weight { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-soft); }
 .qty { font-size: var(--fs-amount); }                             /* the amount — primary figure */
 .weight { font-size: 12px; line-height: 1.15; margin-top: 1px; }  /* gram estimate, tucked under the amount */
-.qty.approx, .weight.approx { opacity: 0.8; }   /* "~" estimated / humane-rounded — shared treatment */
+/* the AUTHOR'S second amount, stacked under the first (A1, as previewed on round B's page A).
+   It sits at the amount's own size rather than the estimate's 12px, because it is a figure the
+   author wrote down and not a computation, and it is lightened so the first amount still reads as
+   the primary one. Two backups take two of these lines. */
+.qty2 { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-soft);
+  font-size: var(--fs-amount); line-height: 1.15; margin-top: 1px; opacity: .62; }
+.qty.approx, .weight.approx, .qty2.approx { opacity: 0.8; }   /* "~" estimated / humane-rounded — shared treatment */
 .iname { min-width: 0; font-size: var(--fs-amount); }   /* name matches the amount size (15px); color unchanged (--ink vs muted amount still differentiates) */
 /* a note: its own line beneath the ingredient, styled as a distinct secondary annotation (muted, italic,
    smaller, slightly indented) — not part of the ingredient name. Applies to every reading-mode note. */

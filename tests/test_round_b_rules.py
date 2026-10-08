@@ -223,6 +223,39 @@ def test_a_broken_amount_no_measure_proves_is_flagged_and_left_alone(r):
     assert plan["flags"][0][0] == ic.BROKEN_AMOUNT_FLAG
 
 
+def test_a_repair_needs_a_clear_winner_and_not_merely_a_passing_one():
+    """marble-bundt-cake reads 2⅔ at 9 percent off the flour density against 3⅔ at 34, which is a
+    reading. lavender's "3/4 cups" reads 3¾ at 12 against 2¾ at 21, which is a coin toss, and the
+    amount the grams point at, 3½, is not a reading of "3/4" at all."""
+    clear = row("all-purpose flour", qty="2/3 cups", quantity="2/3", unit="cups",
+                raw_text="2/3 cups (305 grams) all-purpose flour", grams=305.0)
+    assert ic.amount_plan(clear, 0.53)["changes"]["qty"] == "2⅔ cups"
+    toss = row("spooned and leveled all-purpose flour", qty="3/4 cups", quantity="3/4",
+               unit="cups", raw_text="3/4 cups spooned and leveled all-purpose flour (416 grams)",
+               grams=416.0)
+    plan = ic.amount_plan(toss, 0.53)
+    assert plan["changes"] == {} and plan["flags"][0][0] == ic.BROKEN_AMOUNT_FLAG
+
+
+def test_the_proof_is_the_row_s_second_amount_even_where_the_slot_is_already_right():
+    """⚠️ bananas-foster already stores "2 ¾ cups" correctly, so a repair that read only the
+    CHANGE to the slot had nothing to measure "35 grams" against. It is a digit short of 350."""
+    r = row("spooned and leveled all-purpose flour", qty="35 grams", quantity="35", unit="grams",
+            raw_text="35 grams (2 ¾ cups) spooned and leveled all-purpose flour", grams=35.0,
+            secondary="2 ¾ cups")
+    assert ic.second_amount(r) is None            # the slot is already what the author wrote
+    plan = ic.amount_plan(r, 0.54)
+    assert plan["changes"] == {} and plan["flags"][0][0] == ic.BROKEN_AMOUNT_FLAG
+
+
+def test_a_measure_that_is_the_first_amount_again_proves_nothing():
+    """The grams column is a copy of the amount on that row, so it agreed with it perfectly and
+    the gate concluded the amount was fine."""
+    r = row("flour", qty="35 grams", quantity="35", unit="grams", raw_text="35 grams flour",
+            grams=35.0)
+    assert ic.amount_plan(r, 0.54)["flags"] == []     # nothing else on the line, so nothing is said
+
+
 def test_an_ordinary_fraction_under_a_plural_unit_is_not_a_broken_amount():
     """⚠️ A fraction below one cannot really be plural, and authors write "3/4 teaspoons" anyway."""
     r = row("sea salt", qty="3/4 teaspoons", quantity="3/4", unit="teaspoons",
@@ -292,6 +325,19 @@ def test_a_row_that_is_only_a_measure_joins_the_row_above():
     assert "measures the row above" in ic.joins_the_row_above(above, row("(224 grams)"))
 
 
+def test_a_comma_joins_only_a_prep_clause_and_only_under_a_row_with_no_amount():
+    """⚠️ vanilla-mug-cake writes every line of its list with a trailing comma, and reading that
+    the way a connective is read merged five ingredients into one."""
+    above = row("natural, unsweetened cocoa powder,", qty="¼ cup")
+    assert "prep clause" in ic.joins_the_row_above(above, row("sifted"))
+    # its own amount, so its own ingredient
+    assert ic.joins_the_row_above(row("sugar,", qty="2 tablespoons"),
+                                 row("baking powder,", qty="1/4 teaspoon")) == ""
+    # no amount, and still a food of its own
+    assert ic.joins_the_row_above(row("baking powder,", qty="1/4 teaspoon"),
+                                 row("dash salt")) == ""
+
+
 @pytest.mark.parametrize("above, this", [
     (row("kosher salt", qty="1 tsp"), row("black pepper", qty="1 tsp")),
     ({"is_heading": 1, "label": "For the sauce"}, row("olive oil", qty="2 tbsp")),
@@ -336,3 +382,102 @@ def test_the_look_alike_letter_is_repaired_before_any_rule_reads_the_line():
     d = ic.classify_line("1½ Ib./700g skinned white fish fillets")
     assert d["unit"] == "lb" and "cleaned_lookalike_lb" in d["flags"]
     assert ic.repair_lookalike_units("Ibsen") == "Ibsen"           # only after a number
+
+
+# --------------------------------------------------------------------------- #
+# The cook estimate
+# --------------------------------------------------------------------------- #
+def _steps(*texts):
+    return [{"id": i + 1, "position": i, "is_heading": 0, "text": t} for i, t in enumerate(texts)]
+
+
+def test_the_estimate_reads_the_steps_and_says_so_with_a_tilde():
+    e = pa.cook_estimate({"id": "r", "cook_time": None},
+                         _steps("Fry the onions for 5 minutes.", "Bake for 30 to 35 minutes."))
+    assert e["label"] == "~35 min – 40 min"
+
+
+def test_an_author_s_own_cook_time_wins():
+    e = pa.cook_estimate({"id": "r", "cook_time": "25 min"}, _steps("Bake for 30 minutes."))
+    assert e["label"] == "" and e["verdict"] == "the author gave a cook time"
+
+
+def test_a_cook_s_hand_edit_to_the_cook_time_is_never_overridden():
+    """The smoothie's baseline said "0 mins" and its cook cleared it. 1 of the 300."""
+    e = pa.cook_estimate({"id": "r", "cook_time": None}, _steps("Blend for 2 minutes."),
+                         baseline_cook_time="0 mins")
+    assert e["label"] == "" and e["verdict"] == "the cook edited the cook time by hand"
+
+
+def test_the_seven_no_estimate_recipes_are_the_ones_the_decision_file_names():
+    """⚠️ A DECLARED LIST, HELD TO THE FILE THAT DECIDED IT. A column would make these seven
+    judgements user data a rebuild cannot explain, and a second copy of a list is a thing to
+    drift."""
+    import csv, io as _io, pathlib
+    path = (pathlib.Path(__file__).resolve().parent.parent / "docs" / "data-repairs"
+            / "round-b-decisions-2026-10-08.csv")
+    decided = {r["recipe_id"] for r in csv.DictReader(_io.open(path, encoding="utf-8-sig"))
+               if r["action"] == "no_estimate"}
+    assert decided == set(pa.NO_COOK_ESTIMATE), (decided ^ set(pa.NO_COOK_ESTIMATE))
+
+
+@pytest.mark.parametrize("text, label", [
+    ("Sear for 3 minutes per side.", "~6 min"),                     # per side is paid twice
+    ("Simmer for at least 20 minutes.", "~20 min+"),                # at least has no ceiling
+    ("Start this 30 minutes before you are ready to serve.", ""),   # scheduling, not heat
+])
+def test_decision_10_s_three_rules_about_what_a_duration_means(text, label):
+    assert pa.cook_estimate({"id": "r", "cook_time": None}, _steps(text))["label"] == label
+
+
+def test_a_bake_is_time_on_the_heat_even_where_the_clause_also_freezes_something():
+    """buttermilk-biscuits step 17, one of the 14 read by hand. The sentence holds a rest AND a
+    bake, and judging the sentence whole threw the bake away with the rest."""
+    e = pa.cook_estimate({"id": "r", "cook_time": None}, _steps(
+        "Place the tray in the freezer for 15 minutes, then transfer straight to the oven and "
+        "bake for 15 to 17 minutes, rotating once at the 10-minute mark."))
+    assert e["label"] == "~15 min – 17 min"
+
+
+def test_two_trays_in_one_oven_are_not_two_tasks():
+    """"Bake both sheets at the same time" took the whole estimate off four cookie recipes."""
+    e = pa.cook_estimate({"id": "r", "cook_time": None},
+                         _steps("Bake both sheets at the same time for 12 to 14 minutes."))
+    assert e["label"] == "~12 min – 14 min"
+
+
+def test_a_second_task_running_inside_the_first_still_takes_the_estimate_away():
+    e = pa.cook_estimate({"id": "r", "cook_time": None}, _steps(
+        "Boil the rice for 20 minutes.",
+        "Meanwhile, simmer the lentils for 15 minutes."))
+    assert e["label"] == "" and e["verdict"] == "no estimate, the steps overlap"
+
+
+@pytest.mark.parametrize("text", [
+    "Let the cookies cool for at least 1 hour on the baking sheets.",   # cookies is not a verb
+    "If reusing one of the baking sheets, allow it to cool for 15 minutes.",
+    "Allow the brownies to cool for 20 minutes.",
+])
+def test_a_cooling_is_not_a_bake_because_the_words_look_like_cooking(text):
+    e = pa.cook_estimate({"id": "r", "cook_time": None}, _steps(text))
+    assert e["label"] == ""
+
+
+def test_the_wait_s_own_figure_is_excluded_and_the_rest_of_its_step_is_not():
+    """blueberry-muffin-sugar-cookies browns butter for 3 to 4 minutes and cools it for 30, both
+    in step 1, and the step carrying the wait took the browning with it."""
+    steps = _steps("Cook the butter until fragrant, 3 to 4 minutes. Let it cool for 30 minutes.")
+    waits = [{"step_id": 1, "label": "cool 30 min", "ext_label": "",
+              "min_minutes": 30, "max_minutes": 30, "when_kind": "always"}]
+    e = pa.cook_estimate({"id": "r", "cook_time": None}, steps, waits)
+    assert e["label"] == "~3 min – 4 min"
+
+
+def test_the_estimate_is_computed_and_never_stored():
+    """There is no column and no migration. The proof is that recipe_total cannot see it: it reads
+    recipe["cook_time"], which the estimate never writes."""
+    recipe = {"id": "r", "cook_time": None, "prep_time": "10 min", "total_time": None}
+    before = pa.recipe_total(recipe, [])
+    pa.cook_estimate(recipe, _steps("Bake for 30 minutes."))
+    assert recipe["cook_time"] is None
+    assert pa.recipe_total(recipe, []) == before

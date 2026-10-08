@@ -500,6 +500,18 @@ def _ingredient_pair_changes(o, n, new_pos=None, old_pos=None):
         out.append({"kind": "ingredient", "type": "modified", "field": "note", "label": label,
                     "from": o.get("note") or "", "to": n.get("note") or "", "new_pos": new_pos,
                     "old_pos": old_pos, "row_id": rid})
+    # ⚠️ THE SECOND AMOUNT IS A FIELD A COOK CAN EDIT, SO IT IS A FIELD THE LAYER COMPARES. Edit
+    #    mode has carried a box for it since round B, and a field the editor writes and the diff
+    #    does not read is a change that disappears. The other editable fields were already
+    #    covered: quantity and unit both travel inside `qty`, which _row_qty_parts recombines, so
+    #    a unit edit already showed as an amount change. Like a note edit, this emits an entry and
+    #    gets no margin treatment of its own (annotation-index slots only amount and name).
+    if units.compare_text(o.get("secondary_measure")) != units.compare_text(
+            n.get("secondary_measure")):
+        out.append({"kind": "ingredient", "type": "modified", "field": "second_amount",
+                    "label": label, "from": o.get("secondary_measure") or "",
+                    "to": n.get("secondary_measure") or "", "new_pos": new_pos,
+                    "old_pos": old_pos, "row_id": rid})
     return out
 
 

@@ -72,6 +72,8 @@ test("the second Total is quieter and sits under the first", () => {
 });
 
 test("the main Total's own line is untouched by the feature", () => {
-  assert.ok(/\["Total", totals\.label \|\| "", totals\.note \|\| ""\]/.test(APP),
+  // The fourth element is round B's pre-formatted flag, which the Total has always needed: its
+  // label arrives already split and already normalized, so timeParts must not run over it.
+  assert.ok(/\["Total", totals\.label \|\| "", totals\.note \|\| "", true\]/.test(APP),
     "the Total line no longer reads the server's label");
 });

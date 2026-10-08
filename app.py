@@ -505,7 +505,11 @@ def resolve_recipe_payload(s, payload, standing_step_links=frozenset()):
         #    TypeError (unhashable), and a list bound into the library_id lookup raises in the
         #    driver. Both surfaced as a 500 with a traceback on ordinary malformed client input.
         #    The `item` half of this predates add-on-save and was found by the same review.
-        for key, value in (("item", item), ("library id", library_id)):
+        # ⚠️ AND THE SECOND AMOUNT, WHICH IS WRITTEN STRAIGHT INTO A TEXT COLUMN. A list or a dict
+        #    reaching that column is a 500 on the driver, which is what the two checks above exist
+        #    for. Absent is fine and means the client has no opinion. See _ing_row_values.
+        for key, value in (("item", item), ("library id", library_id),
+                           ("second amount", row.get("secondary_measure"))):
             if value is not None and not isinstance(value, str):
                 return None, f"an ingredient line's {key} must be text"
         if item and library_id:
@@ -1297,6 +1301,14 @@ def assert_no_blanked_rows(s, rid, before_ing, before_step):
             + "\n  - ".join(problems))
 
 
+def _kept_second(row, stored):
+    """The second amount after this save: what the payload says, or what is stored when it is silent."""
+    if "secondary_measure" not in row:
+        return stored
+    sent = row.get("secondary_measure")
+    return (sent or "").strip() or None
+
+
 def _ing_row_values(pos, row, parts, held, exact):
     """Every column an ingredient row is written with — the SAME dict for an INSERT and an UPDATE.
 
@@ -1352,13 +1364,24 @@ def _ing_row_values(pos, row, parts, held, exact):
             qty, quantity, unit = held["qty"], held["quantity"], held["unit"]
         links = (held["catalog_id"], held["link_confidence"],
                  held["link_rule"], held["link_matched"])
-        grams, secondary = (held["grams"], held["secondary_measure"]) if exact else (None, None)
+        grams = held["grams"] if exact else None
+        # ⚠️ A CHANGE TO THE FIRST AMOUNT USED TO DROP THE SECOND ONE IN SILENCE. The second amount
+        #    is the AUTHOR'S figure for this line, so correcting a typo in the first one is no
+        #    reason to delete it. grams keeps its old rule: it is a weight the import harvested
+        #    FOR the amount that was there, so it does not travel with a new one.
+        #
+        #    ⚠️ AND A SENT EMPTY STRING IS AN ANSWER WHERE AN ABSENT KEY IS NOT. The cook clearing
+        #    the field sends "", which stores NULL. A client too old to know about the field sends
+        #    no key, and reading that silence as a deletion is what one save from an old bundle
+        #    would have done to every row. Same rule a note's kind and step link follow.
+        secondary = _kept_second(row, held["secondary_measure"])
     else:
         raw_text = text                             # a new line: the typed text IS the source line
         label = text
         note = note_in or None
         links = (None, None, None, None)
-        grams, secondary = None, None
+        grams = None
+        secondary = _kept_second(row, None)
 
     return {
         "position": pos, "is_heading": 0, "qty": qty, "quantity": quantity, "unit": unit,
@@ -1657,6 +1680,27 @@ def sync_original_heading_layout(s, rid):
                      RecipeSnapshot.__table__.c.reason == "original")
               .values(content=synced))
     return True
+
+
+def _baseline_cook_time(s, rid):
+    """The cook time the recipe was BORN with, or None when it has no baseline.
+
+    ⚠️ THIS IS HOW A HAND EDIT TO THE COOK TIME IS DETECTED, and it is the same evidence the "your
+       changes" layer reads. A cook who clears the cook time has said the dish has none, and an
+       estimate that reappears over that deletion has overruled them. Measured over the 300:
+       exactly one recipe differs from its baseline here, the smoothie, whose baseline said
+       "0 mins" and whose cook cleared it.
+    """
+    original = s.execute(
+        select(RecipeSnapshot.content)
+        .where(RecipeSnapshot.recipe_id == rid, RecipeSnapshot.reason == "original")
+    ).scalar_one_or_none()
+    if original is None:
+        return None
+    try:
+        return (json.loads(original).get("recipe") or {}).get("cook_time")
+    except (ValueError, AttributeError):
+        return None
 
 
 def _recipe_annotations(s, rid):
@@ -1971,6 +2015,16 @@ def get_recipe(rid):
             #    on the page so a cook holding the source card finds it. planahead.author_total_note
             #    is the whole rule. See stated_total_verdict for the two cases it refuses to decide.
             "author_total": planahead.author_total_note(r, waits),
+            # ⚠️ THE COOK ESTIMATE, READ OFF THE STEPS AND COMPUTED HERE RATHER THAN STORED. The
+            #    same function writes the review file, so a figure Andy read in the CSV is the
+            #    figure the page prints. It is "" wherever the page must say nothing: where the
+            #    author gave a cook time, where the cook edited one by hand, where the steps
+            #    overlap, and for the seven recipes in planahead.NO_COOK_ESTIMATE.
+            #    ⚠️ AND IT NEVER REACHES THE TOTAL. recipe_total reads recipe["cook_time"], which
+            #    this never writes, so the Total cannot pick it up by accident.
+            #    Measured over the 300: 137 recipes print one, 103 state their own cook time.
+            "cook_estimate": planahead.cook_estimate(
+                r, steps, waits, storage, _baseline_cook_time(s, rid))["label"],
         }
     )
 

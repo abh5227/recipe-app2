@@ -1020,6 +1020,32 @@ DENSITY_LOW_LIGHT = 0.05
 DENSITY_TOLERANCE = 0.35
 
 
+def measure_distance(first, second, density=None, light=False):
+    """How far these two measures are from describing one quantity, as a fraction, else None.
+
+    The same arithmetic coherence() reads, returned as a figure so a caller can compare two
+    candidate readings against each other rather than only against a threshold.
+    """
+    kind_a, value_a = read_measure(first)
+    kind_b, value_b = read_measure(second)
+    if kind_a is None or kind_b is None:
+        return None
+    if kind_a == kind_b:
+        high, low = max(value_a, value_b), min(value_a, value_b)
+        return None if low <= 0 else (high - low) / low
+    grams, millilitres = ((value_a, value_b) if kind_a == "weight" else (value_b, value_a))
+    if millilitres <= 0:
+        return None
+    implied = grams / millilitres
+    if light:
+        middle = (DENSITY_LOW_LIGHT + DENSITY_HIGH) / 2
+        return abs(implied - middle) / middle
+    if density is not None and density > 0:
+        return abs(implied - density) / density
+    middle = (DENSITY_LOW + DENSITY_HIGH) / 2
+    return abs(implied - middle) / middle
+
+
 def is_light_food(name):
     """Is this food one the maintained light list names? See LIGHT_FOODS for why there is a list."""
     words = {w.strip(".,;()").lower() for w in re.split(r"[\s/-]+", name or "")}
@@ -1498,9 +1524,20 @@ def repair_broken_amount(row, front=None, second=None, density=None):
     grams = row.get("grams")
     if grams:
         proofs.append(f"{grams:g} g")
-    if second and second.get("secondary_measure"):
-        proofs.extend(p for p in str(second["secondary_measure"]).split(SECOND_AMOUNT_JOIN) if p)
+    # ⚠️ THE PROOF IS THE ROW'S SECOND AMOUNT AS IT WILL STAND, AND second_amount RETURNS None WHEN
+    #    THE SLOT IS ALREADY RIGHT. Reading only the CHANGE meant the one row this round most wanted
+    #    flagged had no proof at all: bananas-foster already stores "2 ¾ cups" correctly, so the
+    #    rule had nothing to measure "35 grams" against and concluded there was nothing wrong.
+    sec = second["secondary_measure"] if second is not None else row.get("secondary_measure")
+    if sec:
+        proofs.extend(p for p in str(sec).split(SECOND_AMOUNT_JOIN) if p)
     proofs = [p for p in proofs if read_measure(p)[0] is not None]
+    # ⚠️ A MEASURE THAT IS THE FIRST AMOUNT AGAIN PROVES NOTHING, AND IT KEPT THE GATE SHUT ON THE
+    #    ONE ROW THIS ROUND MOST WANTED FLAGGED. bananas-foster stores "35 grams (2 ¾ cups) flour"
+    #    with grams 35, so the grams column read back as the amount's own twin, agreed with it
+    #    perfectly, and the gate concluded the amount was fine. It is a digit short of 350.
+    first_read = read_measure(qty)
+    proofs = [p for p in proofs if read_measure(p) != first_read]
     if gated:
         # The stored amount reads perfectly well. Only a measure on the line that it cannot
         # possibly agree with makes it a broken amount at all.
@@ -1536,17 +1573,28 @@ def repair_broken_amount(row, front=None, second=None, density=None):
         return {"flag": BROKEN_AMOUNT_FLAG, "shape": shape,
                 "why": f"{unit!r} carried no number and no measure on the line lands on a figure "
                        f"an author would write"}
-    fits = []
+    # ⚠️ A REPAIR WRITES, SO IT NEEDS A CLEAR WINNER AND NOT MERELY A PASSING ONE. marble-bundt-cake
+    #    reads 2⅔ at 9 percent off the flour density against 3⅔ at 34, which is a reading. lavender
+    #    -chocolate-chunk-cookies reads 3¾ at 12 against 2¾ at 21, which is a coin toss, and the
+    #    amount the grams actually point at, 3½, is not a reading of "3/4" at all. The candidate set
+    #    is what the characters can produce, so where it does not clearly contain the answer the
+    #    honest move is to flag rather than to pick the least bad member of it.
+    scored = []
     for text, unit in candidates:
-        ok = [p for p in proofs if coherence(f"{text} {unit}", p, density)[0] is True]
-        if ok:
-            fits.append((text, unit, ok[0]))
-    if len(fits) != 1:
+        gaps = [(d, p) for d, p in ((measure_distance(f"{text} {unit}", p, density), p)
+                                    for p in proofs) if d is not None]
+        if gaps:
+            scored.append((min(gaps)[0], text, unit, min(gaps)[1]))
+    scored.sort()
+    clear = bool(scored) and scored[0][0] <= DENSITY_TOLERANCE and (
+        len(scored) == 1 or scored[1][0] > 2 * scored[0][0])
+    if not clear:
+        fits = [c for c in scored if c[0] <= DENSITY_TOLERANCE]
         return {"flag": BROKEN_AMOUNT_FLAG, "shape": shape,
                 "why": (f"{qty or shape!r} reads as {len(candidates)} amounts and "
                         f"{len(fits)} of them fit the measures on the line, so no reading is "
                         f"proved")}
-    text, unit, proof = fits[0]
+    _off, text, unit, proof = scored[0]
     return {"qty": _norm_ws(f"{text} {unit}"), "quantity": text, "unit": unit, "shape": shape,
             "proof": proof, "front_len": front_len,
             "why": f"{qty or shape!r} reads as {text} {unit}, the one reading {proof} fits"}
@@ -1761,9 +1809,17 @@ def amount_plan(row, density=None):
 # ---- a row that is half of one line ---------------------------------------------------------- #
 # Decision for part 4. Two shapes, and both are read off the row ABOVE rather than off this row
 # alone, because what makes a row a continuation is the line it continues.
+# ⚠️ A TRAILING COMMA IS A WEAKER SIGNAL THAN A CONNECTIVE, AND READING THE TWO THE SAME WAY WOULD
+#    HAVE MERGED FIVE INGREDIENTS INTO ONE. vanilla-mug-cake writes its list with a comma after
+#    every line ("2 tablespoons sugar,", "1/4 teaspoon baking powder,"), and each of those is a
+#    whole ingredient. What tells them from a real continuation is that the row BELOW carries its
+#    own amount. A connective or an unclosed bracket leaves a sentence that cannot stand up, so it
+#    joins whatever follows: chocolate-hazelnut-wedges ends on "cut into" and the row below it
+#    carries an amount of its own, "½", which is the size and not a quantity.
 _ENDS_MID_PHRASE_RE = re.compile(
     r"(?:\b(?:cut|chopped|sliced|diced|torn|broken|grated|cubed)\s+into|\b(?:into|plus|and|or|of|"
-    r"with|for|about)|[,+/–—-])\s*$", re.IGNORECASE)
+    r"with|for|about)|[+/–—-]|\()\s*$", re.IGNORECASE)
+_ENDS_ON_A_COMMA_RE = re.compile(r",\s*$")
 # A row that is ONLY a parenthesized measure measures the row above it.
 _ONLY_A_MEASURE_PAREN_RE = re.compile(
     r"^\s*\(\s*(?P<inner>" + _ONE_MEASURE + r")\s*\)\s*(?P<tail>[,;]?\s*(?:plus|and)\b.*)?$",
@@ -1784,6 +1840,13 @@ def joins_the_row_above(above, row):
         return ""
     if _ENDS_MID_PHRASE_RE.search(above_text):
         return f"the row above ends mid-phrase, on {above_text.split()[-1]!r}"
+    # ⚠️ AND WHAT FOLLOWS A COMMA HAS TO BE A PREP CLAUSE RATHER THAN A FOOD. vanilla-mug-cake's
+    #    "1/4 teaspoon baking powder," is followed by "dash salt", which carries no amount in its
+    #    own column and is still a whole ingredient. "sifted" is not.
+    if (_ENDS_ON_A_COMMA_RE.search(above_text) and not (row.get("qty") or "").strip()
+            and _is_all_modifier(text.lower())):
+        return (f"the row above ends on a comma and this row is the prep clause {text!r} with no "
+                f"food of its own")
     m = _ONLY_A_MEASURE_PAREN_RE.match(text)
     if m and not (row.get("qty") or "").strip():
         return (f"the row is only the measure {_norm_ws(m.group('inner'))!r}, which measures the "

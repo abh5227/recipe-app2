@@ -224,6 +224,51 @@
     return s;
   }
 
+  // ⚠️ SCALING MOVES THE NUMBER AND LEAVES THE UNIT SAYING THE OLD ONE. "1 cup" doubled printed
+  // "2 cup" and "2 cups" halved printed "1 cups". The word is corrected to agree with the figure
+  // in front of it, in BOTH directions, and an abbreviation is never touched: "2 tbsp" is right
+  // and "2 tbsps" is not a thing anyone writes.
+  //
+  // The table is spelled out rather than derived with a trailing "s", because the plurals that
+  // are not formed that way are exactly the ones a bare rule gets wrong: pinches, boxes, bunches,
+  // loaves, leaves.
+  const UNIT_PLURALS = {
+    cup: "cups", tablespoon: "tablespoons", teaspoon: "teaspoons", ounce: "ounces",
+    pound: "pounds", gram: "grams", kilogram: "kilograms", liter: "liters", litre: "litres",
+    milliliter: "milliliters", millilitre: "millilitres", quart: "quarts", pint: "pints",
+    stick: "sticks", block: "blocks", clove: "cloves", sprig: "sprigs", stalk: "stalks",
+    slice: "slices", piece: "pieces", head: "heads", jar: "jars", bag: "bags", box: "boxes",
+    ear: "ears", fillet: "fillets", can: "cans", tin: "tins", bulb: "bulbs", bottle: "bottles",
+    packet: "packets", package: "packages", tub: "tubs", sheet: "sheets", handful: "handfuls",
+    pinch: "pinches", bunch: "bunches", loaf: "loaves", leaf: "leaves",
+  };
+  const UNIT_SINGULARS = {};
+  for (const one in UNIT_PLURALS) UNIT_SINGULARS[UNIT_PLURALS[one]] = one;
+
+  // "<number> <unit word>" — the number longest-form-first so "1 1/2" is one token, not two.
+  const NUMBER_THEN_WORD = /(\d+\s+\d+\/\d+|\d+\/\d+|\d+(?:\.\d+)?)(\s*)([A-Za-z]+)/g;
+
+  // Keep the capital the author wrote: "2 Cups" stays "2 Cups" and does not become "2 cups".
+  function matchCase(sample, word) {
+    if (sample === sample.toUpperCase() && sample !== sample.toLowerCase()) return word.toUpperCase();
+    if (sample.charAt(0) === sample.charAt(0).toUpperCase()) {
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    }
+    return word;
+  }
+
+  function fixPlurals(s) {
+    return String(s).replace(NUMBER_THEN_WORD, (whole, num, gap, word) => {
+      const low = word.toLowerCase();
+      const one = UNIT_SINGULARS[low] || (low in UNIT_PLURALS ? low : null);
+      if (one === null) return whole;                 // an abbreviation, a descriptor, a name
+      const n = tokenToNumber(num);
+      if (!isFinite(n)) return whole;
+      const wanted = n > 0 && n <= 1 ? one : UNIT_PLURALS[one];
+      return num + gap + matchCase(word, wanted);
+    });
+  }
+
   // Canonicalize a bare UNIT to its short lowercase form for the editor (reuses UNIT_ABBREV):
   // "tablespoons" -> "tbsp", "Tbsp" -> "tbsp", "Cup" -> "cup" (cup/cups left as-is, already short),
   // count-nouns/textual left as-is ("cloves" -> "cloves"), "" -> "". Editor-only — reading already
@@ -238,10 +283,25 @@
     if (qty == null || String(qty).trim() === "") return "";
     const f = factor > 0 ? factor : 1;
     let t;
-    if (isCountAmount(qty)) t = scaleCount(qty, f);
-    else if (String(qty).includes(" / ")) t = scaleQty(qty, f);
-    else t = abbrevUnits(scaleQty(qty, f));
+    if (isCountAmount(qty)) t = fixPlurals(scaleCount(qty, f));
+    // ⚠️ A DUAL AMOUNT IS SPLIT BY THE CALLER NOW, so this branch is the one that is left when a
+    // stored qty still carries a " / " of its own. It is abbreviated like any other, which it
+    // was not: the branch skipped abbrevUnits, and four rounds of the round B preview judged a
+    // wrapping problem that only existed because full words were being printed where the page
+    // prints "tbsp".
+    else t = abbrevUnits(fixPlurals(scaleQty(qty, f)));
     return toUnicodeFractions(t);   // stored ascii ("1 1/2") -> unicode, so all amounts match
+  }
+
+  // The ledger's SECOND amount: the author's own backup, scaled the same way the first one is.
+  // Two backups are stored in one slot joined by " / " and the display stacks each on its own
+  // line, so this answers with a list rather than a string.
+  const SECOND_AMOUNT_JOIN = " / ";
+  function secondAmountParts(secondary, factor) {
+    if (secondary == null) return [];
+    return String(secondary).split(SECOND_AMOUNT_JOIN)
+      .map((part) => amountText(part.trim(), factor))
+      .filter((t) => t !== "");
   }
 
   // The ledger WEIGHT column: the estimated gram weight of a VOLUME amount, for ingredients the
@@ -263,4 +323,5 @@
     AMOUNT_TOKEN, scaleQty, collapseRange, UNIT_TO_ML, UNIT_TO_G, MEASURE_UNIT_RE, MEASURE_UNIT_RE_G,
     SPOON_MAX_ML, isCountAmount, scaleCount, parseAmount, toMetric, displayQty,
     abbrevUnits, canonicalizeUnit, amountText, weightText, toUnicodeFractions,
+    UNIT_PLURALS, fixPlurals, secondAmountParts, SECOND_AMOUNT_JOIN,
   };

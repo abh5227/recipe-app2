@@ -1,7 +1,7 @@
 "use strict";
 
 import {
-  formatAmount, group, canonicalizeUnit, amountText, weightText,
+  formatAmount, group, canonicalizeUnit, amountText, weightText, secondAmountParts,
 } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
 import { showLinksAsWords } from "./step-adapter.js";
@@ -797,27 +797,47 @@ function figCell(cls, text, inlineStyle) {
   return `<span class="${cls}${approx}"${style}>${esc(text)}</span>`;
 }
 
-// One ledger amount-cell for a line: the amount, with the gram estimate stacked as a muted sub-line
-// beneath it when present (chart-known volume over 2 tbsp) — nothing emitted otherwise, so weightless
-// rows reserve no column and names stay aligned (Option B2). Replaces the old metric/imperial toggle.
+// The sub-lines under a ledger amount: the AUTHOR'S second amount where there is one, each on its
+// own line, and otherwise the computed gram estimate.
+//
+// ⚠️ THE AUTHOR'S FIGURE BEATS THE COMPUTED ONE, AND 90 LIVE ROWS HAVE BOTH. The estimate is
+//    weightText: the chart's grams-per-millilitre for this food times the authored volume, shown
+//    only above 2 tablespoons and only where the chart knows the food, with a "~" saying so. It is
+//    a good estimate and it is still an estimate: on those 90 rows the author weighed the
+//    ingredient and wrote the figure down, so "250g" replaces "~240 g" rather than sitting beside
+//    it. A row with no second amount keeps the estimate exactly as before.
+//
+// ⚠️ AND TWO BACKUPS GO ON TWO LINES. secondAmountParts splits the slot on " / ", which is how
+//    import_cleanup stores a line that states its amount three ways.
+function amountSubLines(row, inlineStyle) {
+  const parts = secondAmountParts(row.secondary_measure, view.scale);
+  if (parts.length) return parts.map((t) => figCell("qty2", t, inlineStyle)).join("");
+  const weight = weightText(row.qty, row.grams_per_ml, view.scale);
+  return weight ? figCell("weight", weight, inlineStyle) : "";
+}
+
+// One ledger amount-cell for a line: the amount, with the author's second amount or the gram
+// estimate stacked as a muted sub-line beneath it — nothing emitted otherwise, so rows with
+// neither reserve no column and names stay aligned (Option B2).
 // R2 hook: this .amount-cell (and its addressable .qty) is the reserved strike target — Round 2
 // will strike the printed amount and set the edited value beside it in the hand color. No R1 treatment.
-function ledgerCells(qty, gramsPerMl, inlineStyle) {
-  const weight = weightText(qty, gramsPerMl, view.scale);
+function ledgerCells(row, inlineStyle) {
   return `<span class="amount-cell">` +
-         figCell("qty", amountText(qty, view.scale), inlineStyle) +
-         (weight ? figCell("weight", weight, inlineStyle) : "") +
+         figCell("qty", amountText(row.qty, view.scale), inlineStyle) +
+         amountSubLines(row, inlineStyle) +
          `</span>`;
 }
 
 // The amount-cell for a row whose AMOUNT was edited: the struck original over the ink correction,
 // with the same gram sub-line an unedited row gets. The numbers come from annotation-amount.js
 // (pure, tested); this is only the markup, so every value is esc()'d in one place.
-function editedAmountCell(from, to, gramsPerMl, inlineStyle) {
-  const p = editedAmountParts(from, to, gramsPerMl, view.scale);
+function editedAmountCell(from, to, row, inlineStyle) {
+  const p = editedAmountParts(from, to, row.grams_per_ml, view.scale);
+  // The sub-line is whatever an unedited row would get: the author's second amount is a fact
+  // about the line and a hand edit to the AMOUNT does not change it.
   return `<span class="amount-cell">` +
          `<span class="qty"><span class="was">${esc(p.was)}</span><span class="fix">${esc(p.fix)}</span></span>` +
-         (p.weight ? figCell("weight", p.weight, inlineStyle) : "") +
+         amountSubLines(row, inlineStyle) +
          `</span>`;
 }
 
@@ -936,15 +956,15 @@ function plainRow(row, ann) {
   if (row.is_heading) return headingText(row).trim() ? `<li class="group">${esc(showLinksAsWords(headingText(row)))}</li>` : "";
   if (!(row.label || row.raw_text || "").trim()) return "";
   // Added ingredient: the whole current line in the hand ink, "+"-prefixed (see li.added CSS).
-  if (ann && ann.added) return `<li class="added">${ledgerCells(row.qty, row.grams_per_ml)}<span class="iname">${lineBodyHTML(row)}</span></li>`;
+  if (ann && ann.added) return `<li class="added">${ledgerCells(row)}<span class="iname">${lineBodyHTML(row)}</span></li>`;
   const amt = ann && ann.amount, nm = ann && ann.name;
   // Amount edit stacks the struck original over the Kalam ink value INSIDE the 5rem cell (li.edited).
   // ⚠️ BOTH HALVES RENDER AT view.scale, like every other row. They used to render at a hardcoded 1,
   //    so an edited row stayed at its printed amount while the rows around it doubled. The gram
   //    sub-line comes back with them: an edited row is still a ledger row and keeps the column.
   const amountCell = amt
-    ? editedAmountCell(amt.from, amt.to, row.grams_per_ml)
-    : ledgerCells(row.qty, row.grams_per_ml);
+    ? editedAmountCell(amt.from, amt.to, row)
+    : ledgerCells(row);
   let iname;
   if (nm && amt) {
     // BOTH amount AND name change on one row: stack the name whole-field (struck over ink) so the struck
@@ -1603,12 +1623,18 @@ function scaleMetaBlock(r) {
   // ⚠️ NORMALIZED ON THE WAY OUT, AND THE STORED TEXT IS NEVER REWRITTEN. 40 of the 63 distinct
   //    stored spellings are another way of writing the same duration ("10 min", "10 mins",
   //    "10 minutes"), and normalizing on save would edit a cook's own words for them.
-  const times = [["Prep", r.prep_time, ""], ["Cook", r.cook_time, ""],
-                 ["Total", totals.label || "", totals.note || ""]]
+  // ⚠️ THE COOK ESTIMATE FILLS THE COOK LINE ONLY WHERE THE RECIPE STATES NO COOK TIME, and the
+  //    server has already decided that: cook_estimate is "" wherever the page must say nothing.
+  //    It arrives already formatted ("~30 min – 35 min") for the reason the Total does, so it is
+  //    marked as pre-formatted here. Running timeParts over it would truncate the range at the en
+  //    dash, which is the defect measured on the Total before it was given the same treatment.
+  const cookEstimate = ((view.data || {}).cook_estimate || "").trim();
+  const cookValue = (r.cook_time || "").trim() || cookEstimate;
+  const times = [["Prep", r.prep_time, "", false], ["Cook", cookValue, "", !(r.cook_time || "").trim()],
+                 ["Total", totals.label || "", totals.note || "", true]]
     .filter(([, v]) => (v || "").trim())
-    .map(([label, v, serverNote], i) => {
-      const isTotal = label === "Total";
-      const { value, note } = isTotal ? { value: v, note: serverNote } : timeParts(v);
+    .map(([label, v, serverNote, preformatted], i) => {
+      const { value, note } = preformatted ? { value: v, note: serverNote } : timeParts(v);
       // The note is its own span so it can stay at the inherited 400 while .meta-val carries the
       // 600 that makes the figure land. The parentheses and the weight then say the same thing.
       const tail = note ? `<span class="meta-note"> (${esc(bindUnits(note))})</span>` : "";
@@ -3080,6 +3106,12 @@ function ieCell(key, i, val, cls, ph) {
 function unitCell(i, val) {
   return `<input class="ie e-unit" list="ie-units" data-inline-edit-ing="unit" data-i="${i}" value="${esc(canonicalizeUnit(val))}" placeholder="unit" aria-label="Unit" spellcheck="false">`;
 }
+// The SECOND AMOUNT field: the author's own backup, as written. A plain <input> like the unit, and
+// deliberately free text — "250g", "8 tablespoons / 113 grams", "about 1 bunch" are all things an
+// author wrote and none of them splits into a number and one unit.
+function secondCell(i, val) {
+  return `<input class="ie e-second" data-inline-edit-ing="second" data-i="${i}" value="${esc(val == null ? "" : val)}" placeholder="2nd amount" aria-label="Second amount, as the author wrote it" spellcheck="false">`;
+}
 // A3: the amount zone spans to one wide field (no unit box) ONLY for a whole-string fallback — a
 // non-empty quantity carrying letters/slash/plus ("pinch", "2 lb / 1 kg", "3 + 2 tbsp") where a unit
 // makes no sense. A pure number/fraction/range with an empty unit (a count, or a new row) keeps the
@@ -3092,7 +3124,8 @@ function amountSpans(quantity, unit) {
 function amountZoneHTML(x, i) {
   const span = amountSpans(x.quantity, x.unit);
   const qty = ieCell("quantity", i, x.quantity, "e-qty", "qty");
-  return `<span class="amount-zone${span ? " no-unit" : ""}">${qty}${span ? "" : unitCell(i, x.unit)}</span>`;
+  return `<span class="amount-zone${span ? " no-unit" : ""}">${qty}${span ? "" : unitCell(i, x.unit)}` +
+         `${secondCell(i, x.secondary_measure)}</span>`;
 }
 function editIngRowHTML(x, i) {
   if (x.is_heading) {

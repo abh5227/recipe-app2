@@ -184,9 +184,45 @@ test("amountText: scaled volume in canonical units, unicode; counts + dual", () 
   assert.equal(s.amountText("6½ tablespoons", 1), "6½ tbsp");      // stored unicode -> stays unicode
   assert.equal(s.amountText("2 cups", 2), "4 cups");
   assert.equal(s.amountText("140 grams", 1), "140 g");
-  assert.equal(s.amountText("1 can", 2), "2 can");             // count
+  assert.equal(s.amountText("1 can", 2), "2 cans");            // count, and the word agrees now
   assert.equal(s.amountText("2 lb / 1 kg", 2), "4 lb / 2 kg"); // dual passes through scaled
   assert.equal(s.amountText("", 2), "");
+});
+
+// ⚠️ SCALING MOVED THE NUMBER AND LEFT THE UNIT SAYING THE OLD ONE. "1 cup" doubled printed
+// "2 cup" and "1 can" doubled printed "1 can"'s plural not at all. Both directions, and an
+// abbreviation is never touched because "2 tbsps" is not a thing anyone writes.
+test("fixPlurals makes the unit agree with the figure, in both directions", () => {
+  assert.equal(s.amountText("1 cup", 2), "2 cups");
+  assert.equal(s.amountText("2 cups", 0.5), "1 cup");
+  assert.equal(s.amountText("2 cup", 1), "2 cups");        // repairs what is already stored wrong
+  assert.equal(s.amountText("1 cups", 1), "1 cup");
+  assert.equal(s.amountText("1 stick", 2), "2 sticks");
+  assert.equal(s.amountText("2 pinches", 0.5), "1 pinch");  // an irregular plural, from the table
+  assert.equal(s.amountText("1 loaf", 2), "2 loaves");
+  assert.equal(s.amountText("1 Cup", 2), "2 Cups");         // the author's capital is kept
+  assert.equal(s.amountText("2 tbsp", 2), "4 tbsp");        // an abbreviation is left alone
+  assert.equal(s.amountText("1 tsp", 3), "3 tsp");
+  assert.equal(s.amountText("½ cup", 1), "½ cup");          // a fraction takes the singular
+  assert.equal(s.amountText("2 medium", 2), "4 medium");    // a descriptor is not a unit
+});
+
+test("a compound amount scales both of its parts", () => {
+  assert.equal(s.amountText("¼ cup + 2 tablespoons", 2), "½ cup + 4 tbsp");
+  assert.equal(s.amountText("400 millilitres + 2 tbsp", 2), "800 ml + 4 tbsp");
+  assert.equal(s.amountText("¾ cup + 2 tablespoons", 0.5), "⅜ cup + 1 tbsp");
+});
+
+// The author's second amount, which the display stacks under the first. Two backups are stored in
+// one slot joined by " / ", so this answers with a list rather than a string.
+test("secondAmountParts splits the slot and scales each part", () => {
+  assert.deepEqual(s.secondAmountParts("250g", 1), ["250g"]);
+  assert.deepEqual(s.secondAmountParts("250 g", 2), ["500 g"]);
+  assert.deepEqual(s.secondAmountParts("8 tablespoons / 113 grams", 2), ["16 tbsp", "226 g"]);
+  assert.deepEqual(s.secondAmountParts("about 320 grams", 2), ["about 640 g"]);
+  assert.deepEqual(s.secondAmountParts("about 1 bunch", 2), ["about 2 bunches"]);
+  assert.deepEqual(s.secondAmountParts(null, 1), []);
+  assert.deepEqual(s.secondAmountParts("", 1), []);
 });
 
 test("amountText: a count clamped up from <1 is marked ~ (approximate family)", () => {
