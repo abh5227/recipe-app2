@@ -792,6 +792,13 @@ _MEASURE_PHRASE_RE = re.compile(
 _MEASURE_LEAD_RE = re.compile(
     r"^\s*(?:" + _ONE_MEASURE + r")(?:" + _MEASURE_JOIN + r"(?:" + _ONE_MEASURE + r"))*",
     re.IGNORECASE)
+# ⚠️ A HYPHENATED SIZE IS NOT AN AMOUNT, AND THE TWO RULES OSCILLATED OVER ONE ROW.
+#    sweet-pumpkin-fritters stores "15-ounce pumpkin puree": the sized-piece rule puts the 15 back
+#    with the words it sizes, and then this one reads "15-ounce" as a measure and pulls it out
+#    again. The hyphen is the evidence. "15-ounce pumpkin puree" is a can size and "15 ounces
+#    pumpkin puree" is a quantity. None of the 6 leading measures in the corpus carries one.
+_HYPHENATED_SIZE_RE = re.compile(r"^\s*" + _MEASURE_NUM + r"\s*-\s*" + _MEASURE_UNIT + r"\b",
+                                 re.IGNORECASE)
 # ⚠️ ONE MEASURE, AND THE DIFFERENCE IS LOAD-BEARING. _MEASURE_LEAD_RE spans a whole restatement
 #    ("about ¾ cup/140g"), which is what makes it the right test for "does this line open with a
 #    measure". It is the wrong thing to move into the amount: the amount is the FIRST measure and
@@ -1276,7 +1283,7 @@ def front_of_name(row):
                     "why": f"the name opened with the number word {m.group('word')!r} and the row "
                            f"had no amount"}
         m = _ONE_MEASURE_LEAD_RE.match(name)
-        if m:
+        if m and not _HYPHENATED_SIZE_RE.match(name):
             text = _norm_ws(m.group(0))
             tail = name[m.end():]
             cut = m.end() + (_UNIT_TAIL_RE.match(tail).end() if _UNIT_TAIL_RE.match(tail) else 0)
@@ -1319,8 +1326,13 @@ def author_line_fragments(line):
     #    unit, so the amount span matched nothing, the text in front of "(about 1)" was read as
     #    empty, and the count of the ENGLISH cucumber was taken as the Persian cucumbers' backup.
     lead = _AMOUNT_SPAN_RE.match(text) or re.match(r"^\s*" + _MEASURE_NUM, text, re.IGNORECASE)
+    # ⚠️ TWO DIFFERENT SPANS, AND COLLAPSING THEM BROKE THE SLASH PAIR. The span a slash pair is
+    #    read behind has to STOP at the line's own amount, or the pair is inside it and there is
+    #    nothing left to find. The span the bracket guard measures from has to INCLUDE the pairs
+    #    already accepted, or leek-and-potato-soup's "1.5 litre / 1.5 qt ... (6 cups)" reads its
+    #    own first backup as a second ingredient's amount standing in the way of its second.
+    own_end = lead.end() if lead else 0
     if lead:
-        # A slash pair only restates the LEADING amount, so it is read directly behind it.
         pos = lead.end()
         while True:
             m = _SLASH_PAIR_RE.match(text, pos)
@@ -1330,7 +1342,7 @@ def author_line_fragments(line):
                                                 before=text[:m.start()], kind="slash")
             out.append({"text": _norm_ws(m.group("second")), "span": (m.start(), m.end()),
                         "kind": "slash", "verdict": verdict, "reason": reason})
-            pos = m.end()
+            pos = own_end = m.end()
     for m in _PAREN_GROUP_RE.finditer(text):
         verdict, reason = classify_fragment(m.group(1), after=text[m.end():],
                                            before=text[:m.start()], kind="paren")
@@ -1342,7 +1354,7 @@ def author_line_fragments(line):
         #    bananas-foster writes "170 grams (6 ounces) bittersweet or semisweet chocolate,
         #    roughly chopped (about 1 cup)", where the 6 ounces is the first backup rather than a
         #    different ingredient's amount, so blanking the brackets is what tells the two apart.
-        between = _PAREN_SPAN_RE.sub(" ", text[lead.end():m.start()]) if lead else ""
+        between = _PAREN_SPAN_RE.sub(" ", text[own_end:m.start()]) if lead else ""
         if verdict in (FRAGMENT_ALTERNATE, FRAGMENT_COUNT) and split_measures(between):
             verdict, reason = FRAGMENT_PROSE, ("a second measure sits between the line's amount "
                                                "and the fragment, so the fragment measures that "
@@ -1434,6 +1446,7 @@ SIMPLE_COUNT_TOLERANCE = 0.03
 BROKEN_AMOUNT_FLAG = "broken_amount_unproved"
 UNBALANCED_BRACKET_FLAG = "unbalanced_bracket"
 NO_NAME_COLUMN_FLAG = "no_name_column"
+NO_NAME_LEFT_FLAG = "no_name_left"
 FOOD_INSIDE_FRAGMENT_FLAG = "food_inside_the_fragment"
 # What a name reduced to a trailing clause looks like. A name does not open with a connective.
 _FRAGMENT_LEFTOVER_RE = re.compile(
@@ -1792,8 +1805,23 @@ def amount_plan(row, density=None):
             rules.append("second_amount")
             why.append(second["why"])
     new_name = _tidy_name(new_name)
+    # ⚠️ A RULE THAT WOULD LEAVE THE ROW WITH NO NAME DOES NOT FIRE, AND THAT IS WHAT MADE THE
+    #    PASS NON-IDEMPOTENT. buttermilk-biscuits stores "1¼ cups plus 2 tablespoons" with no food
+    #    in it at all. The compound rule took the "plus 2 tablespoons" into the amount, the empty
+    #    name was refused as a write, so the name still began "plus" and the next run appended the
+    #    same 2 tablespoons again.
+    if not new_name and (front or changes):
+        return {"changes": {}, "flags": [(NO_NAME_LEFT_FLAG,
+                 f"every rule that fits this row would leave it with no name: {name!r}")],
+                "notes": notes, "why": why, "rules": []}
     if new_name != (stored_label or "") and new_name:
         changes["label"] = new_name
+        # ⚠️ A CHANGE WITH NO RULE BEHIND IT IS NOT A CHANGE ANYONE CAN READ. The tidy alone
+        #    repairs "garlic , peeled", which is the publisher artifact cleaned_space_before_comma
+        #    exists for, and it has to be named like any other rule.
+        if not rules:
+            rules.append("publisher_artifact")
+            why.append("the name carried a space in front of a comma, a publisher artifact")
     # ⚠️ A FLAGGED ROW IS LEFT EXACTLY AS IT IS. Half a repair is not an improvement: the
     #    flag says a person has to look, and a row that moved in the meantime is a row they are
     #    reading in a state neither the author nor they chose.
