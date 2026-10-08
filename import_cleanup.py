@@ -256,6 +256,19 @@ CLEANUP_REASONS = {flag: reason for flag, _rx, _repl, reason in CLEANUP_RULES}
 #    would carry the flag and no reason at all.
 CLEANUP_REASONS["cleaned_emphasis_wrap"] = (
     "the line was wrapped in bold or italic marks; they were removed so the heading reads clean")
+# ⚠️ AND THREE MORE THAT ARE NOT SUBSTITUTIONS EITHER, all three about an ingredient NAME. The first
+#    two record a change this round's rules make at import. The third records a REFUSAL, which is the
+#    one a person has to read: a title-cased name is a decision about every word in it, and lowering
+#    the first word alone leaves a worse string than it found.
+CLEANUP_REASONS["ingredient_optional_grouped"] = (
+    "the line opened \"Optional:\", so it was moved under an Optional ingredient heading and the "
+    "prefix was removed. The word was doing a heading's job on every line instead of once above them")
+CLEANUP_REASONS["ingredient_name_lowercased"] = (
+    "an ingredient name starts lowercase unless it is a proper noun, a brand or an acronym, and this "
+    "one is none of those")
+CLEANUP_REASONS["ingredient_name_title_cased"] = (
+    "the name is title-cased, so which of its later words are names is a question no rule can answer "
+    "and the name was left exactly as written for a person to decide")
 
 
 def clean_source_text(text):
@@ -880,6 +893,20 @@ STEP_STRUCTURE_REASONS = {
     "step_label_unjudged":
         "a lead-in label was found and NOT lifted, because nothing after it starts a new sentence, "
         "so no rule can tell a title from the first half of one; a person decides",
+    "step_letters_stripped":
+        "the author's own a/b/c lettering was removed from a run of steps, because the app draws its "
+        "own marker and the author's would print beside it",
+    "step_numbers_restarted":
+        "the author's numbering restarts under a heading, so each section was read as its own list "
+        "and those numbers were removed",
+    "step_footnote_moved":
+        "a step beginning with an asterisk is the footnote of the step above it, which carries the "
+        "matching marker. It was moved into the recipe's notes and the marker was removed, and the "
+        "step it belongs to is recorded so it can be linked in one click. The app has no footnotes, "
+        "so a marker left behind would point at nothing",
+    "step_footnote_marker_dangling":
+        "a step carries a footnote marker with no footnote anywhere in the recipe, so the marker was "
+        "removed. It pointed at nothing",
 }
 
 # ⚠️ position MEANS A DIFFERENT THING ON A STEP FLAG THAN ON A LINE FLAG, which is why this set
@@ -963,6 +990,169 @@ def note_kind(para):
         if any(_norm_label(l) == want for l in k["labels"]):
             return k["kind"]
     return None
+
+
+# ---------------------------------------------------------------------------------------------
+# A note's leading label that names its own KIND.
+#
+# ⚠️ THE LABEL AND THE KIND ARE TWO COPIES OF ONE FACT, AND ONLY ONE OF THEM IS SHOWN. The text is
+# stored verbatim, label and all, and the kind sits beside it (see note_kind). The page groups by
+# kind and prints the kind's header over the group, so a note whose text opens "Note:" under a
+# heading reading "Notes" says it twice. Andy's call, 2026-10-08: a label that merely RESTATES the
+# kind comes off, and a label that says MORE than the kind moves into the note's title.
+#
+# ⚠️ THE TEST IS WHETHER THE LABEL IS THE KIND'S OWN NAME, nothing cleverer. "Note" is the kind
+# `notes`, so it goes. "To Store" is also the kind `storage` and is not its name: it says WHEN, and
+# all-butter-pie-crust carries "To Store" and "To Freeze" as two notes of the same kind, which is
+# exactly the pair a title exists to tell apart. Morphology is deliberately NOT read: "Storing"
+# keeps a title under this rule even though it is close to "Storage", because a rule that decides
+# which gerunds are really the kind's name is a rule that gets one wrong quietly.
+#
+# ⚠️ AND THE TITLE TAKES THE HEADING CASE RULE, which is _title_case: ALL CAPS comes down to
+# sentence case ("SAME DAY VERSION" -> "Same day version") and anything the author already cased is
+# left exactly as written ("To Store" stays "To Store").
+NoteLabelPlan = collections.namedtuple("NoteLabelPlan", "verdict label title text kind")
+
+
+def _kind_own_names():
+    """Every spelling that IS a kind's name rather than a label under it."""
+    out = {}
+    for k in NOTE_KINDS:
+        names = set()
+        for word in (k["kind"], k["header"]):
+            w = _norm_label(word)
+            names |= {w, w.rstrip("s"), w + "s"}
+        out[k["kind"]] = names
+    return out
+
+
+KIND_OWN_NAMES = _kind_own_names()
+
+
+def note_label_plan(text):
+    """A note's stored text -> what to do with a leading label that names its kind.
+
+    verdict is "restates the kind" (the label comes off and nothing replaces it), "says more than the
+    kind" (the label becomes the title) or None when there is no listed label to read at all. The
+    kind is reported either way, because it is the thing the label is being compared against."""
+    kind = note_kind(text)
+    if kind is None:
+        return None
+    m = _NOTE_LEAD.match(text or "")
+    # group 2 is the body. Reading from m.end() instead returns "", because the pattern consumes the
+    # whole paragraph, and a rule that silently empties a note is not a rule anyone would notice.
+    label, body = m.group(1), m.group(2).lstrip()
+    if _norm_label(label) in KIND_OWN_NAMES[kind]:
+        return NoteLabelPlan("restates the kind", label, None, body, kind)
+    return NoteLabelPlan("says more than the kind", label, _title_case(label), body, kind)
+
+
+# ---------------------------------------------------------------------------------------------
+# A FOOTNOTE THE IMPORT TURNED INTO A STEP.
+#
+# ⚠️ AN ASTERISK IN A STEP IS A FOOTNOTE MARKER, AND THE APP HAS NO FOOTNOTES. The author writes
+# "about 5-8 minutes to cook the green beans this way*" and puts the note on the line below, opening
+# with the same "*". The import read that line as the next step, so the method carries an aside in
+# the middle of it and the marker points at a step rather than at the aside. A note LINKED to the
+# step is what the app has instead (recipe_notes.step_id), so the aside moves there and the marker
+# comes off, because a marker pointing at nothing is worse than no marker.
+#
+# ⚠️ PAIRED ASTERISKS ARE EMPHASIS AND ARE LEFT ALONE. "*Sui mi ya cai*" wraps a phrase, which is
+# what strip_wrapping_marks reads. Only an UNPAIRED one is a footnote marker. Measured over the
+# corpus: 3 steps in the 300 contain an asterisk at all.
+_PAIRED_EMPHASIS = re.compile(r"\*[^*\n]+\*")
+
+
+def unpaired_footnote_marks(text):
+    """The positions of every asterisk that is NOT half of a *wrapped* phrase."""
+    flat = str(text or "")
+    spans = [(m.start(), m.end()) for m in _PAIRED_EMPHASIS.finditer(flat)]
+    return [i for i, ch in enumerate(flat)
+            if ch == "*" and not any(a <= i < b for a, b in spans)]
+
+
+def strip_footnote_markers(text):
+    """`text` with every unpaired asterisk removed, and the spacing left tidy."""
+    flat = str(text or "")
+    marks = set(unpaired_footnote_marks(flat))
+    if not marks:
+        return flat
+    out = "".join(ch for i, ch in enumerate(flat) if i not in marks)
+    return re.sub(r"[ \t]{2,}", " ", out).strip()
+
+
+def footnote_step_plan(previous_text, text):
+    """Is `text` the footnote of the step above it? -> (note text, the step's text with its marker
+    off), else None.
+
+    Both halves of the evidence are required: the step above carries an unpaired marker, and this one
+    OPENS with one. A step that merely contains an asterisk is not a footnote."""
+    flat = str(text or "")
+    if not flat.lstrip().startswith("*"):
+        return None
+    if not unpaired_footnote_marks(previous_text):
+        return None
+    return strip_footnote_markers(flat), strip_footnote_markers(previous_text)
+
+
+# ---------------------------------------------------------------------------------------------
+# "Optional:" ON AN INGREDIENT LINE IS A HEADING THAT NEVER GOT ONE.
+#
+# ⚠️ THE WORD IS DOING A HEADING'S JOB ON EVERY LINE INSTEAD OF ONCE ABOVE THEM. Andy's call,
+# 2026-10-08, on quick-easy-hainanese-chicken-rice-khao-mun-gai, whose last two rice-section lines
+# both open "Optional: ". The app already has ingredient section headings (migration 052), so the
+# word belongs in one of those and the lines belong under it.
+# ⚠️ CONSECUTIVE LINES SHARE ONE HEADING, which is why the runs are grouped rather than each line
+# getting its own. A heading already reading "Optional" directly above a run is used as it stands.
+_OPTIONAL_LEAD = re.compile(r"^\s*optional\s*:\s*(\S.*)$", re.IGNORECASE | re.DOTALL)
+_OPTIONAL_HEADING = re.compile(r"^\s*optional\s*:?\s*$", re.IGNORECASE)
+OPTIONAL_HEADING_TEXT = "Optional"
+
+
+def lower_lead_word(name):
+    """The first word lowercased, unless it is a name the maintained lists know.
+
+    The same exceptions ingredient_name_case applies, asked without the corpus evidence it needs,
+    because a line that has just lost an "Optional: " prefix is a name this round is already
+    rewriting."""
+    t = str(name or "")
+    m = _LEAD_WORD.match(t)
+    if not m:
+        return t
+    pre, word = m.group(1), m.group(2)
+    if not word[0].isupper():
+        return t
+    if (word.isupper() and len(word) > 1) or word.lower() in ACRONYMS \
+            or word.lower() in PROPER_NOUNS:
+        return t
+    return pre + word[0].lower() + word[1:] + t[m.end():]
+
+
+def optional_ingredient_groups(rows):
+    """[{"id", "is_heading", "text"}] in position order -> the runs of "Optional:" lines.
+
+    Each run is {"at": index of its first line, "heading_id": the id of the heading already above it
+    or None, "lines": [(id, the line without its prefix)]}. A run with heading_id None needs one
+    inserted at `at`."""
+    groups, i = [], 0
+    while i < len(rows):
+        if rows[i].get("is_heading") or not _OPTIONAL_LEAD.match(str(rows[i].get("text") or "")):
+            i += 1
+            continue
+        lines, j = [], i
+        while j < len(rows) and not rows[j].get("is_heading"):
+            m = _OPTIONAL_LEAD.match(str(rows[j].get("text") or ""))
+            if not m:
+                break
+            lines.append((rows[j].get("id"), lower_lead_word(m.group(1).strip())))
+            j += 1
+        above = rows[i - 1] if i else None
+        already = (above is not None and above.get("is_heading")
+                   and _OPTIONAL_HEADING.match(str(above.get("text") or "")))
+        groups.append({"at": i, "heading_id": above.get("id") if already else None,
+                       "lines": lines})
+        i = j
+    return groups
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1696,6 +1886,125 @@ def strip_author_numbers(step_texts):
     return relaxed if changed(relaxed) > changed(strict) else strict
 
 
+# ⚠️ THE AUTHOR'S OWN LETTERING COMES OFF FOR THE SAME REASON THEIR NUMBERS DO: the app prints its
+#    own number in a circle, so a step still reading "a. Bring the pot to a boil" shows a marker the
+#    app is already drawing, and a lead-in label hiding behind one is invisible to the label rule.
+#    karak-chai's steps 9 to 11 are the corpus case, under the author's own heading "Repeat this 3-5
+#    times to make the texture velvety:".
+# ⚠️ AND THE EVIDENCE IS THE RUN, EXACTLY AS IT IS FOR A NUMBER. A run has to OPEN AT 'a' and be
+#    gapless, over CONSECUTIVE steps, and be at least two long. One step beginning "a." in a recipe
+#    that is not lettered is not a list. The separator is what keeps an ordinary word out: "a large
+#    onion, diced" has no separator after the "a" and "a.m." has no space after the stop, so neither
+#    can be read as a marker. Measured over the 2,223 ordinary steps: the pattern matches 3 of them,
+#    all three karak-chai's, and refuses both of those.
+_AUTHOR_LETTER = re.compile(r"^\s*\(?([A-Za-z])\s*[.):]\s+(?=\S)")
+
+
+def author_step_letter(text):
+    """The author's own list letter at the front of a step -> (letter, the text without it), else
+    None. Lowercased, because the run is compared by position in the alphabet and "A." and "a." are
+    the same list."""
+    m = _AUTHOR_LETTER.match(str(text or ""))
+    if not m:
+        return None
+    return m.group(1).lower(), str(text)[m.end():].lstrip()
+
+
+def strip_author_letters(step_texts):
+    """[step text] -> ([step text] with the author's lettering removed, [the runs it found]).
+
+    A RUN, not the whole recipe, which is the one place this differs from strip_author_numbers. The
+    author's numbering runs over every step, so it is all-or-nothing per recipe. Lettering is a
+    SUB-list under one step, so a recipe can carry several and each is judged on its own. Each run is
+    reported as (first index, [letters]) so a caller can flag it or make its parent a heading."""
+    out = list(step_texts)
+    runs = []
+    i = 0
+    while i < len(step_texts):
+        got = author_step_letter(step_texts[i])
+        if got is None or got[0] != "a":
+            i += 1
+            continue
+        letters, rest, j = [], [], i
+        while j < len(step_texts):
+            g = author_step_letter(step_texts[j])
+            if g is None or g[0] != chr(ord("a") + len(letters)):
+                break
+            letters.append(g[0])
+            rest.append(g[1])
+            j += 1
+        if len(letters) >= 2:
+            for k, text in enumerate(rest):
+                out[i + k] = text
+            runs.append((i, letters))
+            i = j
+        else:
+            i += 1
+    return out, runs
+
+
+# ⚠️ THE AUTHOR'S NUMBERING MAY RESTART UNDER EACH HEADING, AND READ OVER THE WHOLE RECIPE THAT IS
+#    NOT A SEQUENCE AT ALL. strip_author_numbers is handed the ordinary steps with the headings taken
+#    out, so a recipe numbered 1, 2, 3 under one heading and 1, 2 under the next reads as
+#    1, 2, 3, 1, 2 and is refused. Split at the headings and each section is its own list.
+# ⚠️ A SECTION WHOSE RUN IS ONE STEP LONG IS ADMITTED, WHICH THE WHOLE-RECIPE RULE REFUSES, AND THE
+#    DIFFERENCE IS THE HEADING. The two pieces of evidence the bare form needs are the ordinal and a
+#    following capital; here the heading itself is the evidence that a list starts, so "1." directly
+#    under one is the author opening their numbering. homemade-pasta-dough is the corpus case: its
+#    "Cooking" section holds one step, "1. bring a salted water to a boil".
+#    THE GUARD IS THAT WHAT FOLLOWS THE NUMBER IS NOT ITSELF A FIGURE, so "1. 5 cups water" is left
+#    alone. A run of one has no neighbours to corroborate it, so the one shape that could make it a
+#    measurement is refused outright.
+_FOLLOWS_WITH_A_FIGURE = re.compile(r"^\s*\d")
+
+
+def strip_author_numbers_by_section(rows):
+    """[(is_heading, text)] -> [text], the author's numbering removed by section.
+
+    The whole-recipe reading runs first and wins wherever it fires, so this only ever looks at the
+    sections it left alone. Headings come back unchanged."""
+    plain_at = [i for i, (h, _t) in enumerate(rows) if not h]
+    whole = strip_author_numbers([rows[i][1] for i in plain_at])
+    out = [t for _h, t in rows]
+    for i, text in zip(plain_at, whole):
+        out[i] = text
+
+    start = 0
+    for bound in [i for i, (h, _t) in enumerate(rows) if h] + [len(rows)]:
+        section = [i for i in range(start, bound) if not rows[i][0]]
+        start = bound + 1
+        if not section or any(out[i] != rows[i][1] for i in section):
+            continue                    # the whole-recipe reading already took this section's numbers
+        seen = []
+        for i in section:
+            flat = str(rows[i][1] or "")
+            if flat[:1] in LOOKALIKE_NUMERALS:
+                flat = LOOKALIKE_NUMERALS[flat[:1]] + flat[1:]
+            m = _LIST_NUMBER.match(flat)
+            if m:
+                seen.append((i, int(m.group(1)), flat[m.end():].lstrip()))
+        if not seen or [n for _i, n, _r in seen] != list(range(1, len(seen) + 1)):
+            continue
+        if len(seen) == 1 and _FOLLOWS_WITH_A_FIGURE.match(seen[0][2]):
+            continue
+        for i, _n, rest in seen:
+            out[i] = rest
+    return out
+
+
+# ⚠️ A STEP DIRECTLY AFTER A HEADING IS NEVER A CONTINUATION OF THE LINE ABOVE IT. The continuation
+#    test is "the row above does not end in terminal punctuation", and a heading never does, so every
+#    first step of every section looked like the tail of a sentence and was left lowercase.
+#    homemade-pasta-dough's "1. bring a salted water to a boil" under "Cooking" is the corpus case.
+#    A heading opens a section, so what follows it opens a sentence.
+def continues_the_line_above(previous_text, previous_is_heading):
+    """Does a step read on from the row above it, so that capitalizing it would capitalize the middle
+    of a sentence?"""
+    if previous_text is None or previous_is_heading:
+        return False
+    return not str(previous_text).rstrip().endswith((".", "!", "?", ":", ";"))
+
+
 def split_lead_label(text, label=None):
     """A step line -> (label, rest) when a lead-in label can be lifted, else a REASON STRING.
 
@@ -1783,6 +2092,37 @@ def names_a_component(label):
     return bool(_SECTION_LABEL.match(label or ""))
 
 
+# ⚠️ A LIFTED LABEL THAT NAMES A STAGE OR A DURATION IS ALSO ALWAYS A SECTION, for the same reason a
+#    component label is: it names a phase of the recipe's own timeline, and a timeline runs at one
+#    level. Andy's call after the 2026-10-08 click-through, on french-fries, whose author wrote
+#    "Fry #1" as a section and whose lifted "50 sec fry", "30 min cool" and "Fry #2" sat under it as
+#    captions. They are not captions on the first fry, they are the next three things that happen.
+#    THE EVIDENCE IS IN THE WORDS: a figure with a time unit after it, or a counter.
+# ⚠️ AND AN ALTERNATIVE IS NOT A STAGE. "Option 1" and "Method 2" carry a counter and are siblings
+#    UNDER a heading rather than stages of one sequence, which is why _ALTERNATIVE is checked first.
+#    brioche-bread's "Option 1:" / "Option 2:" are the corpus case and they stay subheadings.
+_STAGE_DURATION = re.compile(r"(?<!\w)\d[\d\s./\u2013\u2014-]*\s*" + _TIME_UNIT + r"\b", re.IGNORECASE)
+# A COUNTER: "#2", or a word followed by a bare number at the end ("Batch 2", "Day 2", "Fry 2"). The
+# word has to be at least three letters so a unit cannot pose as one ("3 L water" reads L + 0).
+_STAGE_COUNTER = re.compile(r"(?:#\s*\d+\b|\b[A-Za-z]{3,}\s+\d+\s*$)")
+
+
+def names_a_stage(label):
+    """Does this label name a STAGE or a DURATION ("50 sec fry", "Fry #2")?
+
+    A different question again from names_a_component, and the two are asked together by
+    label_level. Returns the reason as a string, or None, so a caller writing a review row can say
+    which half fired."""
+    l = " ".join((label or "").split())
+    if not l or _ALTERNATIVE.match(l):
+        return None
+    if _STAGE_DURATION.search(l):
+        return "names a duration, so it is a stage of the recipe and opens a section"
+    if _STAGE_COUNTER.search(l):
+        return "names a numbered stage, so it opens a section"
+    return None
+
+
 def label_level(label, section_above=False):
     """A lifted label -> SECTION or SUBHEADING.
 
@@ -1792,10 +2132,11 @@ def label_level(label, section_above=False):
     as a list of fragments rather than a recipe in parts. So the default is SECTION and
     `section_above` is what demotes it.
 
-    ⚠️ AND A LABEL THAT NAMES A COMPONENT IS A SECTION WHATEVER SITS ABOVE IT. "Make the chicken"
-    under a "Marinade" section is still a part of the recipe, not a caption on one step. See
-    _SECTION_LABEL for the list."""
-    if names_a_component(label):
+    ⚠️ AND A LABEL THAT NAMES A COMPONENT OR A STAGE IS A SECTION WHATEVER SITS ABOVE IT. "Make the
+    chicken" under a "Marinade" section is still a part of the recipe, not a caption on one step, and
+    "30 min cool" under "Fry #1" is the stage after it rather than part of it. See _SECTION_LABEL and
+    names_a_stage."""
+    if names_a_component(label) or names_a_stage(label):
         return SECTION
     return SUBHEADING if section_above else SECTION
 
@@ -2073,6 +2414,11 @@ def plan_step_rows(directions, notes=""):
     #    at all. Stated over the WHOLE list: the ordinals are the author's own, counted over the
     #    lines as they arrived, which is why this runs before anything becomes a heading or a note.
     directions = strip_author_numbers(list(directions or []))
+    # ⚠️ AND THE AUTHOR'S LETTERING COMES OFF WITH IT, for the same reason and with the same kind of
+    #    evidence. A run of consecutive steps lettered from "a" is the author's sub-list; a lone "a."
+    #    is a sentence. This needs no headings, so it runs here beside the numbers. The RESTART rule
+    #    below needs them and therefore runs at the end.
+    directions, letter_runs = strip_author_letters(list(directions))
 
     def note(flag, detail):
         conversions.append({"position": len(rows), "flag": flag,
@@ -2097,6 +2443,23 @@ def plan_step_rows(directions, notes=""):
         #    one character class. beans is the live case. The display layer strips the label for
         #    presentation (note-blocks.classifyNote), so keeping it costs nothing a reader sees and
         #    the kind stays recoverable.
+        # 3a — a step that is the FOOTNOTE of the step above it. Checked before the Note rule
+        #      because a footnote rarely says "Note:" and before the label rule because "*Turn the
+        #      heat lower if needed to avoid burning." is not a label.
+        # ⚠️ THE LINK IS A ROW ID AND NO ROW HAS ONE YET, which is the same limit the Note-step rule
+        #    hit. The step is RECORDED in the flag so a person makes the link in one click, exactly
+        #    as step_note_moved does, rather than this inventing plumbing to carry an id that does
+        #    not exist at plan time. The marker DOES come off the step above, here, because that is
+        #    a fact about the text rather than a judgement about the link.
+        last_step = next((r for r in reversed(rows) if not r.get("is_heading")), None)
+        foot = footnote_step_plan(last_step["text"] if last_step else "", raw)
+        if foot is not None:
+            body, without_marker = foot
+            last_step["text"] = without_marker
+            neighbour = " ".join(str(without_marker).split())[:80]
+            note("step_footnote_moved", f"{body}\u2003\u2003[footnote of: {neighbour}]")
+            notes = body if not notes.strip() else f"{notes.rstrip()}{NOTE_SEPARATOR}{body}"
+            continue
         m = _NOTE_STEP.match(raw)
         if m:
             body = " ".join(raw.split())
@@ -2147,6 +2510,52 @@ def plan_step_rows(directions, notes=""):
     # 8 — sibling ALTERNATIVES directly under a section become subheadings of it.
     rows, alt_notes = group_alternatives(rows)
     conversions.extend(alt_notes)
+
+    # 9 — the author's lettering, reported, and its parent made a heading where it is not one yet.
+    # ⚠️ THE PARENT CLAUSE FIRES ZERO TIMES ON THIS CORPUS and is here for the importer. karak-chai's
+    #    parent is "Repeat this 3-5 times to make the texture velvety:", which rule 2 has already
+    #    made a heading on the colon alone. A parent with no colon has only the letter run below it as
+    #    evidence, and that is evidence a rule can read, so it is read.
+    for first, letters in letter_runs:
+        at = next((i for i, r in enumerate(rows)
+                   if not r.get("is_heading") and r["text"] == directions[first]), None)
+        note("step_letters_stripped",
+             f"{''.join(letters)} over {len(letters)} steps, from {directions[first][:50]!r}")
+        if at is None or at == 0 or rows[at - 1].get("is_heading"):
+            continue
+        parent = rows[at - 1]
+        parent["is_heading"] = 1
+        parent["heading_level"] = label_level(parent["text"], section_above=any(
+            r.get("is_heading") and r.get("heading_level") == SECTION for r in rows[:at - 1]))
+        conversions.append({"position": at - 1, "flag": "step_letters_stripped",
+                            "reason": STEP_STRUCTURE_REASONS["step_letters_stripped"],
+                            "detail": f"the step above the run became its heading: "
+                                      f"{parent['text'][:50]!r}"})
+
+    # 10 — the author's numbering read AGAIN, per section, now that the headings exist.
+    # ⚠️ IT COULD NOT RUN AT THE TOP, WHERE THE NUMBERS COME OFF, because no row was a heading yet.
+    #    A recipe numbered 1, 2 under one heading and 1, 2 under the next reads as 1, 2, 1, 2 over the
+    #    whole list and is refused there, correctly, on the evidence available at that point.
+    before = [r["text"] for r in rows]
+    after = strip_author_numbers_by_section([(bool(r.get("is_heading")), r["text"]) for r in rows])
+    for i, (was, now) in enumerate(zip(before, after)):
+        if was != now:
+            rows[i]["text"] = now
+            conversions.append({"position": i, "flag": "step_numbers_restarted",
+                                "reason": STEP_STRUCTURE_REASONS["step_numbers_restarted"],
+                                "detail": f"{was[:50]!r} -> {now[:50]!r}"})
+
+    # 11 — a footnote marker with no footnote anywhere points at nothing, so it comes off.
+    # ⚠️ RUN LAST, AFTER rule 3a HAS TAKEN EVERY MARKER THAT DOES HAVE A FOOTNOTE. Reading them in
+    #    the other order would strip the marker 3a needs as its evidence.
+    for i, row in enumerate(rows):
+        if row.get("is_heading") or not unpaired_footnote_marks(row["text"]):
+            continue
+        was = row["text"]
+        row["text"] = strip_footnote_markers(was)
+        conversions.append({"position": i, "flag": "step_footnote_marker_dangling",
+                            "reason": STEP_STRUCTURE_REASONS["step_footnote_marker_dangling"],
+                            "detail": f"{was[:70]!r}"})
 
     # 5 — capitals become sentence case, over every heading including the ones just made.
     for i, row in enumerate(rows):

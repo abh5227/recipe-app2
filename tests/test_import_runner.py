@@ -18,7 +18,7 @@ def _rec(uid, name, **over):
     'Salt to taste' is an amountless line, so each recipe records one review flag."""
     base = dict(
         uid=uid, name=name, hash="h-" + uid,
-        ingredients="1 cup flour\n2 eggs\nSalt to taste",
+        ingredients="1 cup flour\n2 eggs\nSalt to taste",   # and one name the case rule lowercases
         directions="Mix everything.\nBake until done.",
         categories=["Test"], source="Tester", rating=0,
     )
@@ -50,7 +50,13 @@ def test_end_to_end_writes_and_accounts_for_every_entry(kitchen, archive, tmp_pa
     assert kitchen.count("recipes", "source='app'") == 3
     assert kitchen.count("recipe_ingredients") > 0
     assert kitchen.count("recipe_steps") > 0
-    assert kitchen.count("import_flags") == s.flags == 3   # one 'Salt to taste' flag each
+    # ⚠️ TWO FLAGS PER RECIPE, NOT ONE, AND THE SECOND ARRIVED WITH POLISH ROUND 2. "Salt to taste"
+    #    is amountless, which has always raised `ambiguous_section`, and it also starts with a capital
+    #    that is not a name, which the new import-only case rule lowercases and records. A bare count
+    #    would have read as "the importer got noisier"; the kinds say which rule fired.
+    assert kitchen.count("import_flags") == s.flags == 6
+    assert kitchen.count("import_flags", "flag='ambiguous_section'") == 3
+    assert kitchen.count("import_flags", "flag='ingredient_name_lowercased'") == 3
     assert kitchen.fk_orphans() == []
 
     # a fresh backup was actually made

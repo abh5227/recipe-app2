@@ -752,14 +752,18 @@ def test_cleanup_rule_table_has_the_shape_the_writer_expects():
         assert reason and isinstance(reason, str)
     # ⚠️ EVERY RULE HAS A REASON, AND THE MAP MAY HOLD MORE THAN THE RULES. It did hold exactly the
     #    rules, and the direction that matters is this one: a flag with no reason writes a queue row
-    #    saying nothing. `cleaned_emphasis_wrap` is the first entry that is not a regex substitution
-    #    (classify_line unwraps a whole-line emphasis run), so it is named here rather than letting
-    #    an equality assertion forbid the next one.
+    #    saying nothing.
     for flag, _p, _rp, reason in ic.CLEANUP_RULES:
         assert ic.CLEANUP_REASONS.get(flag) == reason, flag
+    # ⚠️ THE ENTRIES THAT ARE NOT REGEX SUBSTITUTIONS ARE NAMED, AND THE LAST VERSION OF THIS COMMENT
+    #    SAID THAT WAS SO WHILE THE ASSERTION BELOW IT FORBADE THE NEXT ONE. It named one entry with
+    #    an equality, which is the same thing as forbidding a second. The three line-flag reasons
+    #    polish round 2 added are read by import_write._line_flag_rows exactly as the others are, and
+    #    they are not "cleaned_" because nothing substituted anything: one moves a row, one rewrites a
+    #    name and one is a REFUSAL to.
     extra = set(ic.CLEANUP_REASONS) - {f for f, _p, _rp, _r in ic.CLEANUP_RULES}
-    assert extra == {"cleaned_emphasis_wrap"}, extra
-    assert all(f.startswith("cleaned_") for f in ic.CLEANUP_REASONS)
+    assert extra == {"cleaned_emphasis_wrap", "ingredient_optional_grouped",
+                     "ingredient_name_lowercased", "ingredient_name_title_cased"}, extra
     assert all(r and isinstance(r, str) for r in ic.CLEANUP_REASONS.values())
 
 
@@ -1761,11 +1765,51 @@ def test_the_two_kinds_of_no_are_different_flags():
     assert [c["flag"] for c in unjudged] == ["step_label_unjudged"]
 
 
-@pytest.mark.parametrize("label", ["Deseed", "Simmer", "30 min cool", "Assembly",
-                                   "Fry the chicken"])
+@pytest.mark.parametrize("label", ["Deseed", "Simmer", "Assembly", "Fry the chicken"])
 def test_a_label_under_a_section_heading_is_a_subheading(label):
-    """The other half of Andy's rule: a group is open above it, so the label belongs to that group."""
+    """The other half of Andy's rule: a group is open above it, so the label belongs to that group.
+
+    ⚠️ "30 min cool" WAS IN THIS LIST AND ANDY REVERSED IT ON 2026-10-08. It names a duration, so it
+    is a stage of the recipe rather than a caption on the stage above it, and names_a_stage now
+    promotes it. The case is kept, in test_a_label_that_names_a_stage_is_a_section_whatever_sits_above_it
+    below, asserting the opposite answer. A reversed decision is moved, not deleted."""
     assert ic.label_level(label, section_above=True) == 2
+
+
+@pytest.mark.parametrize("label,why", [
+    ("30 min cool", "names a duration"),
+    ("50 sec fry", "names a duration"),
+    ("Dry 5 min", "names a duration"),
+    ("Slow cook 2 1/2 hours", "names a duration"),
+    ("Fry #2", "names a numbered stage"),
+    ("Batch 2", "names a numbered stage"),
+])
+def test_a_label_that_names_a_stage_is_a_section_whatever_sits_above_it(label, why):
+    """⚠️ ANDY'S CALL AFTER THE 2026-10-08 CLICK-THROUGH, on french-fries. Its author wrote "Fry #1"
+    as a section and the lifted "50 sec fry", "30 min cool" and "Fry #2" sat under it as captions.
+    They are the next three things that happen, not notes on the first fry."""
+    assert ic.names_a_stage(label).startswith(why)
+    assert ic.label_level(label, section_above=True) == ic.SECTION
+    assert ic.label_level(label, section_above=False) == ic.SECTION
+
+
+@pytest.mark.parametrize("label", ["Option 1:", "Option 2", "Method 2", "Version 1",
+                                   "Variation 2"])
+def test_an_alternative_carries_a_counter_and_is_still_not_a_stage(label):
+    """⚠️ THE ONE SHAPE THE COUNTER HALF MUST NOT CLAIM. brioche-bread's "Option 1:" and "Option 2:"
+    are siblings UNDER a heading, not stages of one sequence, and Andy confirmed in the preview that
+    they stay subheadings. Without the _ALTERNATIVE check first, the trailing number promotes both."""
+    assert ic.names_a_stage(label) is None
+    assert ic.label_level(label, section_above=True) == ic.SUBHEADING
+
+
+@pytest.mark.parametrize("label", ["3 L water", "2 cups flour", "Assembly", "Marinade",
+                                   "Tomatoes"])
+def test_a_label_with_no_stage_in_it_is_not_promoted(label):
+    """A measure is not a duration and a plain caption carries no counter. "3 L water" is the one
+    that matters: the counter half reads a word then a number, and a one-letter unit is not a word,
+    which is what the three-letter minimum is for."""
+    assert ic.names_a_stage(label) is None
 
 
 @pytest.mark.parametrize("label", ["To make the chocolate icing", "For the dough",

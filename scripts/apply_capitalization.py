@@ -70,15 +70,21 @@ def plan(s, sqlalchemy, cleanup):
             "SELECT id, recipe_id, position, is_heading, text FROM recipe_steps "
             "ORDER BY recipe_id, position")).mappings():
         last = prev.get(r["recipe_id"])
-        prev[r["recipe_id"]] = r["text"]
+        prev[r["recipe_id"]] = (r["text"], bool(r["is_heading"]))
         if r["is_heading"]:
             continue
         fixed = cleanup.capitalize_first_visible(r["text"])
         if fixed == r["text"]:
             continue
-        if last is not None and not (last or "").rstrip().endswith((".", "!", "?", ":", ";")):
+        # ⚠️ ONE FUNCTION, TWO CALLERS, AND IT WAS TWO COPIES UNTIL 2026-10-08. This test was stated
+        #    here and again in import_write._step_rows, and both copies had the same hole: a HEADING
+        #    never ends in terminal punctuation, so every first step of every section read as the
+        #    tail of the line above it and stayed lowercase. homemade-pasta-dough's step under
+        #    "Cooking" is the corpus case. import_cleanup.continues_the_line_above is the rule, and it
+        #    takes whether the row above is a heading because that is the half neither copy asked.
+        if last is not None and cleanup.continues_the_line_above(last[0], last[1]):
             skipped_continuations.append({"row_id": r["id"], "recipe_id": r["recipe_id"],
-                                          "was": r["text"], "after": last})
+                                          "was": r["text"], "after": last[0]})
             continue
         steps.append({"row_id": r["id"], "recipe_id": r["recipe_id"],
                       "was": r["text"], "now": fixed})

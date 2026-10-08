@@ -55,13 +55,24 @@ def test_a_text_with_no_latin_at_all_is_untouched():
 
 # ---- the heading level, and the predicate rule 7 actually wants ---------------------------------
 
-@pytest.mark.parametrize("label", ["Deseed", "Simmer", "Assembly", "Tomatoes", "30 min cool"])
+@pytest.mark.parametrize("label", ["Deseed", "Simmer", "Assembly", "Tomatoes"])
 def test_a_plain_caption_does_not_name_a_component(label):
     """⚠️ THE QUESTION rule 7 ASKS. It was asking label_level with no context, which since Andy's
     ruling returns SECTION for everything, so its guard was never true and the sweep promoted every
-    level-2 heading in the corpus. Measured on a chained copy: level 2 went 112 to 2."""
+    level-2 heading in the corpus. Measured on a chained copy: level 2 went 112 to 2.
+
+    ⚠️ "30 min cool" LEFT THIS LIST ON 2026-10-08. It still names no component, which the test below
+    keeps asserting, and it IS a stage, so its level answer is now SECTION."""
     assert ic.names_a_component(label) is False
     assert ic.label_level(label, section_above=True) == ic.SUBHEADING
+
+
+def test_a_duration_caption_names_no_component_and_is_still_a_section():
+    """The two questions are separate, and "30 min cool" answers them differently: it is not a
+    component (rule 7 leaves its text alone) and it IS a stage (its level is 1)."""
+    assert ic.names_a_component("30 min cool") is False
+    assert ic.names_a_stage("30 min cool") is not None
+    assert ic.label_level("30 min cool", section_above=True) == ic.SECTION
 
 
 @pytest.mark.parametrize("label", ["Make the dough", "For the sauce", "To make the icing",

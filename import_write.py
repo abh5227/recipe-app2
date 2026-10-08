@@ -173,11 +173,96 @@ def _line_flag_rows(pos, line):
 
 def _ingredient_rows(cleaned):
     """Cleaned ingredient lines -> (recipe_ingredients rows, review-queue flag rows). Flagged
-    lines are WRITTEN (raw_text preserved) AND recorded in the queue; nothing is dropped."""
+    lines are WRITTEN (raw_text preserved) AND recorded in the queue; nothing is dropped.
+
+    ⚠️ TWO NAME RULES RUN AFTERWARDS, BOTH SHARED WITH THE CORPUS PASS AND BOTH ANDY'S, 2026-10-08.
+    They run over the BUILT rows rather than over the cleaned lines, because the first one INSERTS a
+    row and positions have to be assigned once, at the end, over the list that is actually written."""
     rows, flags = [], []
     for pos, line in enumerate(cleaned["ingredients"]):
         rows.append(_ingredient_row(pos, line))
         flags.extend(_line_flag_rows(pos, line))
+    rows, group_flags = _group_optional_lines(rows)
+    rows, case_flags = _lowercase_ingredient_names(rows)
+    return rows, flags + group_flags + case_flags
+
+
+def _ingredient_text(row):
+    """What the name rules read: the label a line displays, or its raw text when it has none."""
+    return row["label"] or row["raw_text"]
+
+
+def _group_optional_lines(rows):
+    """Runs of "Optional:" lines -> the same lines under an inserted "Optional" heading.
+
+    ⚠️ ONE RULE SET, TWO CALLERS, and the rule is import_cleanup.optional_ingredient_groups. The
+    corpus pass reads the same function over the 300 already-imported recipes."""
+    groups = cleanup.optional_ingredient_groups(
+        [{"id": i, "is_heading": r["is_heading"], "text": _ingredient_text(r)}
+         for i, r in enumerate(rows)])
+    if not groups:
+        return rows, []
+    rewritten = {i: text for g in groups for i, text in g["lines"]}
+    insert_at = {g["at"] for g in groups if g["heading_id"] is None}
+    out, flags = [], []
+    for i, row in enumerate(rows):
+        if i in insert_at:
+            out.append({"position": None, "is_heading": 1, "qty": None, "quantity": None,
+                        "unit": None, "ingredient_id": None, "label": None, "note": None,
+                        "raw_text": cleanup.OPTIONAL_HEADING_TEXT, "grams": None,
+                        "secondary_measure": None})
+        if i in rewritten:
+            row = dict(row)
+            # ⚠️ raw_text IS THE SOURCE LINE AND STAYS THE SOURCE LINE, which is the same answer the
+            #    corpus pass gives. The displayed name is the label, or raw_text where there is no
+            #    label, so only the one a reader sees is rewritten.
+            if row["label"]:
+                row["label"] = rewritten[i]
+            else:
+                row["raw_text"] = rewritten[i]
+            flags.append({"position": len(out), "flag": "ingredient_optional_grouped",
+                          "reason": cleanup.CLEANUP_REASONS["ingredient_optional_grouped"]})
+        out.append(row)
+    for pos, row in enumerate(out):
+        row["position"] = pos
+    return out, flags
+
+
+def _lowercase_ingredient_names(rows):
+    """The blanket first-word rule, FOR AN IMPORT ONLY.
+
+    ⚠️ ANDY'S CALL, 2026-10-08, AND THE "ONLY" IS THE DECISION. ingredient_name_case needs evidence
+    before it lowercases: either the library's own spelling or the corpus writing the same word
+    lowercase somewhere. A line being imported for the first time has neither, so the rule correctly
+    answers "uncertain" and changes nothing. For a NEW import that is the wrong default: the names
+    arrive as the publisher cased them and nobody is going to read 40 of them. So the evidence is
+    assumed here (`lowercase_elsewhere=True`) and the one shape it cannot help with, a title-cased
+    name, is FLAGGED instead.
+    ⚠️ AND IT NEVER RUNS OVER AN EXISTING RECIPE. The 48 corpus names this would lowercase are
+    exactly the ones the evidence-based rule refused for want of evidence, and Andy's decision file
+    settles them one at a time."""
+    flags = []
+    for row in rows:
+        if row["is_heading"]:
+            continue
+        name = _ingredient_text(row)
+        if not name:
+            continue
+        fixed, verdict, why = cleanup.ingredient_name_case(name, lowercase_elsewhere=True)
+        if verdict == cleanup.CASE_UNCERTAIN:
+            flags.append({"position": row["position"], "flag": "ingredient_name_title_cased",
+                          "reason": f"{cleanup.CLEANUP_REASONS['ingredient_name_title_cased']} "
+                                    f"({name!r})"})
+            continue
+        if fixed == name:
+            continue
+        if row["label"]:
+            row["label"] = fixed
+        else:
+            row["raw_text"] = fixed
+        flags.append({"position": row["position"], "flag": "ingredient_name_lowercased",
+                      "reason": f"{cleanup.CLEANUP_REASONS['ingredient_name_lowercased']} "
+                                f"({name!r} -> {fixed!r})"})
     return rows, flags
 
 
@@ -275,11 +360,16 @@ def _step_rows(cleaned):
     #    afterwards. That is the FIX BY RULE failure mode: the corpus and the next import disagreeing
     #    about the same defect. A continuation line is left alone for the reason the pass leaves it
     #    alone, which is that the row above it does not finish its sentence.
+    # ⚠️ AND THE CONTINUATION TEST IS ONE FUNCTION NOW, import_cleanup.continues_the_line_above,
+    #    shared with scripts/apply_capitalization.py. It was stated twice and both copies had the same
+    #    hole: a HEADING never ends in terminal punctuation, so every first step of every section read
+    #    as the tail of the line above it and stayed lowercase.
     for i, row in enumerate(rows):
         if row.get("is_heading"):
             continue
-        prev = rows[i - 1]["text"] if i else None
-        if prev is not None and not str(prev or "").rstrip().endswith((".", "!", "?", ":", ";")):
+        prev = rows[i - 1] if i else None
+        if cleanup.continues_the_line_above(prev["text"] if prev else None,
+                                            bool(prev and prev.get("is_heading"))):
             continue
         row["text"] = cleanup.capitalize_first_visible(row["text"])
     flags = [{"position": c["position"], "flag": c["flag"],
