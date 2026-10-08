@@ -5,6 +5,7 @@ corpus cases are named in the docstrings so the next reader can find the row tha
 and the refusals are tested as hard as the admissions, because every one of these rules is one bad
 match away from rewriting a sentence the author meant.
 """
+import json
 import pathlib
 import sys
 
@@ -163,11 +164,18 @@ def test_nothing_above_is_not_a_continuation():
     ("Notes: the dough is sticky.", "notes"),
     ("Tip: chill the bowl first.", "tips"),
     ("Storage: keep it covered.", "storage"),
+    ("Storing: keep it covered.", "storage"),
     ("Variation: swap the herbs.", "variations"),
     ("VARIATION: swap the herbs.", "variations"),
 ])
 def test_a_label_that_only_restates_the_kind_comes_off(text, kind):
-    """The page prints the kind's header over the group, so the label says it twice."""
+    """The page prints the kind's header over the group, so the label says it twice.
+
+    ⚠️ "Storing" IS ON THIS LIST BY ANDY'S CALL, 2026-10-08, AND WAS A TITLE BEFORE IT. The first
+    version of the rule compared the label against the kind's name with a plural rule, which titled
+    "Storing" on the grounds that it is not spelled "Storage". Which gerunds are really the kind's
+    name is a judgement about words, so it is written down in static/note-kinds.json now rather than
+    derived here."""
     plan = ic.note_label_plan(text)
     assert plan.verdict == "restates the kind"
     assert plan.kind == kind
@@ -185,6 +193,7 @@ def test_a_label_that_only_restates_the_kind_comes_off(text, kind):
     ("NOTE FOR NEXT TIME: more salt.", "Note for next time", "notes"),
     ("COOK'S NOTE: taste as you go.", "Cook's note", "notes"),
     ("SAME DAY VERSION: increase water to ~354 grams.", "Same day version", "variations"),
+    ("Reminder: the dough needs an hour.", "Reminder", "notes"),
 ])
 def test_a_label_that_says_more_than_the_kind_becomes_the_title(text, title, kind):
     """⚠️ all-butter-pie-crust CARRIES BOTH "To Store" AND "To Freeze", two notes of one kind, which
@@ -364,7 +373,7 @@ def test_the_importer_leaves_paired_emphasis_alone():
 
 
 def test_the_importer_gives_an_optional_run_its_heading():
-    rows, flags = import_write._group_optional_lines([
+    rows, flags, _moved = import_write._group_optional_lines([
         {"position": 0, "is_heading": 0, "label": "chopped ginger", "raw_text": "2 Tbsp chopped ginger",
          "qty": "2 Tbsp", "quantity": "2", "unit": "Tbsp", "note": None, "ingredient_id": None,
          "grams": None, "secondary_measure": None},
@@ -547,3 +556,222 @@ def test_a_heading_predecessor_is_the_half_both_copies_were_missing():
     assert ic.continues_the_line_above("Cooking", False) is True, (
         "the same words as an ordinary step DO read as an unfinished line, which is why the flag "
         "has to be passed in rather than guessed from the text")
+
+
+def test_which_labels_restate_their_kind_is_a_list_in_the_table_not_a_rule_here():
+    """⚠️ ANDY ASKED FOR A LIST RATHER THAN A GRAMMAR RULE, and this is what holds the rule to it.
+    static/note-kinds.json is the file the client reads too, so the display and the data rule cannot
+    disagree about what "Storing." means. A kind with no `restates_the_kind` key would make the rule
+    raise rather than default to "nothing restates it", which is the behaviour worth keeping: a kind
+    added without a decision is a question, not an empty answer."""
+    table = json.loads((REPO / "static" / "note-kinds.json").read_text())["kinds"]
+    assert table, "the table is empty, so this test is checking nothing"
+    for k in table:
+        assert "restates_the_kind" in k, f"{k['kind']} carries no restates_the_kind list"
+        declared = {l.lower() for l in k["restates_the_kind"]}
+        assert declared <= {l.lower() for l in k["labels"]}, (
+            f"{k['kind']} restates labels it does not carry: "
+            f"{sorted(declared - {l.lower() for l in k['labels']})}")
+        assert ic.KIND_RESTATING_LABELS[k["kind"]] == frozenset(declared), (
+            f"the rule and the table disagree for {k['kind']}")
+
+
+def test_andys_two_calls_are_the_table_and_not_a_coincidence():
+    """The two the 2026-10-08 click-through decided, asserted as the decisions rather than as the
+    behaviour, so editing the table to taste fails here."""
+    assert "storing" in ic.KIND_RESTATING_LABELS["storage"], "Storing restates Storage"
+    assert "reminder" not in ic.KIND_RESTATING_LABELS["notes"], "Reminder does not restate Notes"
+
+
+def test_a_kind_whose_list_is_missing_is_a_question_rather_than_an_empty_answer():
+    """Stated over a copy of the table, because the real one has every key."""
+    table = json.loads((REPO / "static" / "note-kinds.json").read_text())["kinds"]
+    broken = [dict(k) for k in table]
+    broken[0].pop("restates_the_kind")
+    with pytest.raises(KeyError):
+        {k["kind"]: frozenset(k["restates_the_kind"]) for k in broken}
+
+
+# ---- the stage rule's refusals, every one found by review on 2026-10-08 -------------------------
+
+@pytest.mark.parametrize("label", [
+    "Keeps 3 days", "Will keep 2 days", "Best within 2 days", "Store 3 days",
+    "Shelf life 2 weeks", "Stays crisp 2 hours", "Good for 3 days", "Lasts 5 days",
+])
+def test_a_shelf_life_carries_a_duration_and_is_not_a_stage(label):
+    """⚠️ IT SAYS HOW LONG THE FOOD LASTS, NOT HOW LONG THE COOK WAITS, and both shapes are a figure
+    plus a time unit. Without this a storage note lifted out of a step was promoted to a section of
+    the method."""
+    assert ic.names_a_stage(label) is None
+
+
+@pytest.mark.parametrize("label", ["Use 2 day-old bread", "3 day old rice", "1 week-old sourdough"])
+def test_an_ingredients_age_is_not_a_duration(label):
+    """The hyphen is a word boundary, so "2 day-old" matched the duration pattern."""
+    assert ic.names_a_stage(label) is None
+
+
+@pytest.mark.parametrize("label", ["Freeze 2 hours", "Chill in the fridge 1 hour",
+                                   "Rest 10 minutes", "Cool 30 min"])
+def test_the_shelf_life_list_leaves_the_real_waits_alone(label):
+    """⚠️ fridge, freezer AND freeze ARE DELIBERATELY NOT ON THAT LIST. "Freeze 2 hours" is a stage
+    the cook waits out, and refusing it would be the same mistake in the other direction."""
+    assert ic.names_a_stage(label) is not None
+
+
+@pytest.mark.parametrize("label", [
+    "Serves 4", "Makes 24", "Yield 12", "Bake 350", "Oven 200", "Pan 2", "Tip 2", "Notes 2",
+])
+def test_a_yield_or_a_temperature_is_not_a_numbered_stage(label):
+    """⚠️ THE COUNTER HALF WAS `[A-Za-z]{3,}\\s+\\d+$`, ANY WORD THEN ANY NUMBER, and a review found
+    it reading every one of these as a stage. A yield is not an ordinal and 350 is not a batch."""
+    assert ic.names_a_stage(label) is None
+
+
+@pytest.mark.parametrize("label", ["Batch 2", "Day 2", "Fry 3", "Rise 2", "Proof 2", "Bake 2",
+                                   "Step 4", "Round 2", "Soak 2", "Pass 3"])
+def test_a_listed_stage_word_with_a_small_ordinal_is_a_stage(label):
+    assert ic.names_a_stage(label) == "names a numbered stage, so it opens a section"
+
+
+@pytest.mark.parametrize("label", ["Batch 12", "Bake 350", "Day 30"])
+def test_a_figure_too_large_to_be_an_ordinal_is_refused_even_on_a_stage_word(label):
+    """A recipe with a tenth batch does not number it in a heading. Above the bound the figure is a
+    temperature, a yield or a quantity."""
+    assert ic.names_a_stage(label) is None
+
+
+@pytest.mark.parametrize("label", ["Fry #2", "Batch #12", "Thing #3"])
+def test_the_hash_form_needs_neither_a_listed_word_nor_a_small_number(label):
+    """The author marked it themselves, which is evidence no list can improve on."""
+    assert ic.names_a_stage(label) == "names a numbered stage, so it opens a section"
+
+
+@pytest.mark.parametrize("label", ["Variant 2", "Alternative 2", "Approach 2", "Choice 2",
+                                   "Option 1", "Method 2", "Version 1", "Way 2", "Variation 2"])
+def test_every_alternative_shape_is_refused_by_the_one_list_both_rules_read(label):
+    """⚠️ FIVE OF THESE SLIPPED PAST _ALTERNATIVE UNTIL 2026-10-08, and it cost two rules at once:
+    group_alternatives never demoted them under their section, and names_a_stage read the trailing
+    number as a stage counter and promoted them. Opposite answers from one gap."""
+    assert ic.names_a_stage(label) is None
+    assert ic._ALTERNATIVE.match(label), f"{label} is not read as an alternative"
+    assert ic.label_level(label, section_above=True) == ic.SUBHEADING
+
+
+# ---- the step-text chain ------------------------------------------------------------------------
+
+def test_two_step_text_writes_that_chain_are_collapsed_into_one():
+    writes = [{"what": "step_text", "id": 7, "was": "1. bring it", "now": "bring it",
+               "why": "the number came off"},
+              {"what": "step_text", "id": 7, "was": "bring it", "now": "Bring it",
+               "why": "it follows a heading"}]
+    out, broken = r2._collapse_step_text(writes)
+    assert broken == []
+    assert [(w["id"], w["was"], w["now"]) for w in out] == [(7, "1. bring it", "Bring it")]
+    assert out[0]["why"] == "the number came off, then it follows a heading"
+
+
+def test_two_step_text_writes_computed_from_the_same_text_are_refused_not_merged():
+    """⚠️ THE DEFECT A REVIEW FOUND. The collapse kept the first `was` and the LAST `now`, so two
+    writes computed from the same starting text silently dropped one change while the pass reported
+    both. Rather than guess an order, the break is named and the caller aborts."""
+    writes = [{"what": "step_text", "id": 7, "was": "cook this way*. Go.", "now": "cook this way. Go.",
+               "why": "the marker came off"},
+              {"what": "step_text", "id": 7, "was": "cook this way*. Go.", "now": "Cook this way*. Go.",
+               "why": "it follows a heading"}]
+    out, broken = r2._collapse_step_text(writes)
+    assert len(broken) == 1 and broken[0]["id"] == 7
+    assert broken[0]["was"] == "cook this way*. Go."
+    assert broken[0]["leaves"] == "cook this way. Go."
+    assert [w["id"] for w in out] == [7], "the first write survives for the abort message to name"
+
+
+def test_a_write_that_is_not_step_text_is_carried_through_untouched():
+    writes = [{"what": "heading_level", "id": 9, "was": 2, "now": 1},
+              {"what": "step_text", "id": 7, "was": "a", "now": "b", "why": "x"}]
+    out, broken = r2._collapse_step_text(writes)
+    assert broken == []
+    assert {w["what"] for w in out} == {"heading_level", "step_text"}
+
+
+def test_the_abort_message_says_what_is_already_committed():
+    """⚠️ IT USED TO SAY "so nothing was written", WHICH IS FALSE FOR EVERY RECIPE BEFORE THE ONE
+    THAT TRIPPED. Each recipe is its own transaction on purpose, so an abort leaves the corpus part
+    way through and the message has to say so."""
+    msg = r2._half_applied("brioche-bread", ["beans", "biscuits"], "the annotation set moved")
+    assert "nothing was written" not in msg
+    assert "2 recipe(s) BEFORE it are already COMMITTED" in msg
+    assert "beans, biscuits" in msg
+    assert r2._half_applied("beans", [], "x").endswith("(none)")
+
+
+# ---- the four more a review found on 2026-10-08 -------------------------------------------------
+
+@pytest.mark.parametrize("name", ["McIntosh apples", "DeLallo olive oil", "McCormick chili powder",
+                                   "LaCroix lime", "MacGregor oats"])
+def test_a_capital_inside_the_first_word_is_uncertain_rather_than_half_lowered(name):
+    """⚠️ _is_title_cased READS THE TEXT AFTER THE LEAD WORD, so an internally capitalized lead word
+    passed every check and came out half-cased: "McIntosh apples" -> "mcIntosh apples". That is
+    exactly the string the title-cased refusal exists to prevent, one word earlier. It matters most
+    on the import-only blanket rule, where there is no corpus evidence to catch it either."""
+    fixed, verdict, why = ic.ingredient_name_case(name, lowercase_elsewhere=True)
+    assert fixed == name, "it must be left exactly as written"
+    assert verdict == ic.CASE_UNCERTAIN
+    assert "half-cased" in why
+
+
+@pytest.mark.parametrize("name,want", [("Salt to taste", "salt to taste"),
+                                        ("Flour, sifted", "flour, sifted"),
+                                        ("Buns", "buns")])
+def test_an_ordinary_first_word_still_lowercases_on_an_import(name, want):
+    fixed, verdict, _why = ic.ingredient_name_case(name, lowercase_elsewhere=True)
+    assert (fixed, verdict) == (want, ic.CASE_CERTAIN)
+
+
+@pytest.mark.parametrize("text,title", [
+    ("leftovers: best pan-fried fresh", "Leftovers"),
+    ("to freeze: wrap it twice", "To freeze"),
+    ("LEFTOVERS - best fresh", "Leftovers"),
+    ("To Store: keep it cold", "To Store"),
+])
+def test_a_note_title_starts_with_a_capital_whatever_the_author_typed(text, title):
+    """⚠️ _title_case ALONE FIXES ONLY ALL CAPS, so "leftovers:" came out titled "leftovers" while
+    "LEFTOVERS -" came out "Leftovers". One author's casing decided whether the page printed a
+    heading in lower case."""
+    assert ic.note_label_plan(text).title == title
+
+
+def test_a_kind_with_no_restating_list_says_what_to_do_rather_than_raising_a_bare_keyerror():
+    """⚠️ A BARE KeyError HERE TAKES DOWN EVERY IMPORTER OF THE MODULE, app.py INCLUDED, on a
+    one-line edit to a JSON file. Stopping is right; stopping silently is not."""
+    import unittest.mock as mock
+    broken = [dict(k) for k in ic.NOTE_KINDS]
+    broken[0] = {k: v for k, v in broken[0].items() if k != "restates_the_kind"}
+    with mock.patch.object(ic, "NOTE_KINDS", broken):
+        with pytest.raises(KeyError) as e:
+            ic._restating_labels()
+    assert "note-kinds.json" in str(e.value) and "restates_the_kind" in str(e.value)
+
+
+def test_an_inserted_optional_heading_brings_the_earlier_flags_positions_with_it():
+    """⚠️ import_flags HAS ONE NULLABLE `position` COLUMN AND A LINE FLAG'S VALUE IS THE INGREDIENT
+    LINE'S INDEX. The grouping renumbers the rows, so every flag after an inserted heading pointed at
+    its neighbour, and the first one pointed at the heading itself, which the review-queue printer
+    renders as a section. Found by review 2026-10-08."""
+    rows = [{"position": i, "is_heading": 0, "label": lab, "raw_text": raw, "qty": None,
+             "quantity": None, "unit": None, "note": None, "ingredient_id": None,
+             "grams": None, "secondary_measure": None}
+            for i, (lab, raw) in enumerate([("flour", "1 cup flour"),
+                                            ("Optional: Walnuts", "Optional: 1/2 cup walnuts"),
+                                            ("salt", "Salt")])]
+    out, _flags, moved = import_write._group_optional_lines(rows)
+    assert [(r["position"], bool(r["is_heading"])) for r in out] == [
+        (0, False), (1, True), (2, False), (3, False)]
+    assert moved == {1: 2, 2: 3}, "the two lines after the insert each moved down one"
+    assert 0 not in moved, "a row the insert did not pass must not be remapped"
+
+
+def test_a_recipe_with_no_optional_run_remaps_nothing():
+    rows = [{"position": 0, "is_heading": 0, "label": "flour", "raw_text": "1 cup flour"}]
+    out, flags, moved = import_write._group_optional_lines(rows)
+    assert (out, flags, moved) == (rows, [], {})

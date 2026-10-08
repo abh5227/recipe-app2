@@ -1001,32 +1001,59 @@ def note_kind(para):
 # heading reading "Notes" says it twice. Andy's call, 2026-10-08: a label that merely RESTATES the
 # kind comes off, and a label that says MORE than the kind moves into the note's title.
 #
-# ⚠️ THE TEST IS WHETHER THE LABEL IS THE KIND'S OWN NAME, nothing cleverer. "Note" is the kind
-# `notes`, so it goes. "To Store" is also the kind `storage` and is not its name: it says WHEN, and
-# all-butter-pie-crust carries "To Store" and "To Freeze" as two notes of the same kind, which is
-# exactly the pair a title exists to tell apart. Morphology is deliberately NOT read: "Storing"
-# keeps a title under this rule even though it is close to "Storage", because a rule that decides
-# which gerunds are really the kind's name is a rule that gets one wrong quietly.
+# ⚠️ WHICH LABELS RESTATE THE KIND IS A LIST IN THE TABLE, NOT A GRAMMAR RULE HERE. "To Store" is
+# also the kind `storage` and is not a restatement of it: it says WHEN, and all-butter-pie-crust
+# carries "To Store" and "To Freeze" as two notes of one kind, which is exactly the pair a title
+# exists to tell apart.
+# ⚠️ AN EARLIER VERSION COMPARED THE LABEL AGAINST THE KIND NAME WITH A PLURAL RULE, and it titled
+# "Storing" on the grounds that it is not spelled "Storage". That is a rule deciding which gerunds
+# are really the kind's name, which is the kind of judgement that gets one wrong quietly. Andy's
+# call, 2026-10-08: "Storing" restates Storage and "Reminder" does not restate Notes. Both are
+# written down in static/note-kinds.json, beside the labels they are drawn from, so the client and
+# this rule read one answer.
 #
 # ⚠️ AND THE TITLE TAKES THE HEADING CASE RULE, which is _title_case: ALL CAPS comes down to
 # sentence case ("SAME DAY VERSION" -> "Same day version") and anything the author already cased is
 # left exactly as written ("To Store" stays "To Store").
 NoteLabelPlan = collections.namedtuple("NoteLabelPlan", "verdict label title text kind")
 
+# {kind: the labels that restate it}, read off the shared table. A kind with no list has none, which
+# is stated here rather than defaulted silently: every kind in the table carries the key.
+def _restating_labels():
+    """{kind: the labels that restate it}, read off the shared table.
 
-def _kind_own_names():
-    """Every spelling that IS a kind's name rather than a label under it."""
+    ⚠️ A KIND WITH NO LIST IS A QUESTION, NOT AN EMPTY ANSWER, so it stops the import rather than
+    defaulting to "nothing restates it". But a bare KeyError here takes down every importer of this
+    module, app.py included, on a one-line edit to a JSON file, so it says what is wrong and what to
+    do about it."""
     out = {}
     for k in NOTE_KINDS:
-        names = set()
-        for word in (k["kind"], k["header"]):
-            w = _norm_label(word)
-            names |= {w, w.rstrip("s"), w + "s"}
-        out[k["kind"]] = names
+        if "restates_the_kind" not in k:
+            raise KeyError(
+                f"static/note-kinds.json: the kind {k['kind']!r} carries no 'restates_the_kind' "
+                f"list. Add one naming which of its own labels say nothing its header does not "
+                f"already say (often just the kind's name, e.g. [\"{k['kind']}\"]). An empty list "
+                f"is a legitimate answer and means every label on this kind becomes a note title.")
+        out[k["kind"]] = frozenset(_norm_label(l) for l in k["restates_the_kind"])
     return out
 
 
-KIND_OWN_NAMES = _kind_own_names()
+KIND_RESTATING_LABELS = _restating_labels()
+
+
+def _heading_from_label(label):
+    """A note's label -> the TITLE it prints as.
+
+    ⚠️ _title_case ALONE LEAVES A LOWERCASE LABEL LOWERCASE, and a title is a heading. Found by
+    review 2026-10-08: "leftovers: best pan-fried fresh" came out titled "leftovers" while
+    "LEFTOVERS - ..." came out "Leftovers", so one author's casing decided whether the page printed a
+    heading in lower case. _title_case still owns the ALL CAPS half, because bringing capitals down
+    is the rule the headings already follow."""
+    t = _title_case(label)
+    for i, ch in enumerate(t):
+        if ch.isalpha():
+            return t[:i] + ch.upper() + t[i + 1:]
+    return t
 
 
 def note_label_plan(text):
@@ -1042,9 +1069,9 @@ def note_label_plan(text):
     # group 2 is the body. Reading from m.end() instead returns "", because the pattern consumes the
     # whole paragraph, and a rule that silently empties a note is not a rule anyone would notice.
     label, body = m.group(1), m.group(2).lstrip()
-    if _norm_label(label) in KIND_OWN_NAMES[kind]:
+    if _norm_label(label) in KIND_RESTATING_LABELS[kind]:
         return NoteLabelPlan("restates the kind", label, None, body, kind)
-    return NoteLabelPlan("says more than the kind", label, _title_case(label), body, kind)
+    return NoteLabelPlan("says more than the kind", label, _heading_from_label(label), body, kind)
 
 
 # ---------------------------------------------------------------------------------------------
@@ -1526,8 +1553,15 @@ _SECTION_LABEL = re.compile(
     r"|while\b[^,]*,\s*make\s+the\b)", re.IGNORECASE)
 
 # Sibling headings that are ALTERNATIVES rather than consecutive stages.
+# ⚠️ THE LIST IS FIVE WORDS LONGER THAN THE SHAPES IT MEANS TO COVER, found by review 2026-10-08.
+#    It held option|method|version|variation|way, so "Variant 2", "Alternative 2", "Approach 2" and
+#    "Choice 2" read as ordinary headings. That mattered twice over: group_alternatives below never
+#    demoted them under the section they belong to, and names_a_stage read their trailing number as a
+#    STAGE counter and promoted them to sections, which is the opposite answer. No heading in the 300
+#    uses any of the five, so this is the importer's exposure rather than the corpus's.
 _ALTERNATIVE = re.compile(
-    r"^\s*(?:option|method|version|variation|way)\s*(?:[0-9]+|[a-z]\b)"
+    r"^\s*(?:option|method|version|variation|variant|alternative|approach|choice|way)"
+    r"\s*(?:[0-9]+|[a-z]\b)"
     r"|^\s*for\s+(?:same[-\s]day|next[-\s]day)", re.IGNORECASE)
 
 # ⚠️ A DIGIT ON BOTH SIDES OF THE DASH IS A RANGE, NOT A LABEL. "Bake for 30 - 35 minutes" and
@@ -2102,9 +2136,36 @@ def names_a_component(label):
 #    UNDER a heading rather than stages of one sequence, which is why _ALTERNATIVE is checked first.
 #    brioche-bread's "Option 1:" / "Option 2:" are the corpus case and they stay subheadings.
 _STAGE_DURATION = re.compile(r"(?<!\w)\d[\d\s./\u2013\u2014-]*\s*" + _TIME_UNIT + r"\b", re.IGNORECASE)
-# A COUNTER: "#2", or a word followed by a bare number at the end ("Batch 2", "Day 2", "Fry 2"). The
-# word has to be at least three letters so a unit cannot pose as one ("3 L water" reads L + 0).
-_STAGE_COUNTER = re.compile(r"(?:#\s*\d+\b|\b[A-Za-z]{3,}\s+\d+\s*$)")
+# ⚠️ A SHELF LIFE IS NOT A STAGE, AND IT CARRIES A FIGURE AND A TIME UNIT JUST THE SAME. "Keeps 3
+#    days" and "Best within 2 days" say how long the FOOD lasts; "30 min cool" says how long the
+#    COOK waits. Found by review 2026-10-08: without this, a storage note lifted out of a step was
+#    promoted to a section of the method. A MAINTAINED LIST of the words that mean keeping, and
+#    deliberately NOT fridge, freezer or freeze, because "Freeze 2 hours" and "Chill in the fridge 1
+#    hour" really are stages.
+_SHELF_LIFE = re.compile(
+    r"\b(?:keeps?|keeping|kept|lasts?|stores?|stored|storage|storing|shelf|stays?|"
+    r"good\s+for|best\s+(?:within|before|by))\b", re.IGNORECASE)
+# ⚠️ AND "N DAY-OLD" IS AN INGREDIENT'S AGE RATHER THAN A WAIT. "Use 2 day-old bread" matched the
+#    duration pattern because the hyphen is a word boundary.
+_AGE_SPEC = re.compile(r"\d+\s*[-\s]?\s*(?:day|week|month|year)s?[-\s]old\b", re.IGNORECASE)
+# ⚠️ A COUNTER IS A STAGE'S ORDINAL, AND THE WORD IN FRONT OF IT IS WHAT SAYS SO. This was
+#    `[A-Za-z]{3,}\s+\d+$`, any word then any number, which a review found reading "Serves 4",
+#    "Makes 24", "Yield 12", "Bake 350" and "Oven 200" as numbered stages. A yield is not a stage and
+#    an oven temperature is not an ordinal. So the word comes from a list and the number has to be
+#    small enough to be an ordinal. The "#2" form needs neither, because the hash is the author
+#    marking it themselves.
+_STAGE_HASH = re.compile(r"#\s*\d+\b")
+_WORD_THEN_NUMBER = re.compile(r"\b([A-Za-z]{3,})\s+(\d+)\s*$")
+# The things a recipe does more than once and numbers when it does. Plurals and gerunds included
+# because a heading may read either way.
+_STAGE_WORDS = frozenset("""
+    batch batches bake bakes baking day days fry fries frying knead kneads kneading
+    part parts pass passes proof proofs proofing rise rises rising round rounds
+    session sessions soak soaks soaking stage stages step steps
+""".split())
+# An ordinal nobody writes past: a recipe with a tenth batch does not number it in a heading. A
+# figure above this is a temperature, a yield or a quantity.
+MAX_STAGE_ORDINAL = 9
 
 
 def names_a_stage(label):
@@ -2116,9 +2177,12 @@ def names_a_stage(label):
     l = " ".join((label or "").split())
     if not l or _ALTERNATIVE.match(l):
         return None
-    if _STAGE_DURATION.search(l):
+    if _STAGE_DURATION.search(l) and not _SHELF_LIFE.search(l) and not _AGE_SPEC.search(l):
         return "names a duration, so it is a stage of the recipe and opens a section"
-    if _STAGE_COUNTER.search(l):
+    if _STAGE_HASH.search(l):
+        return "names a numbered stage, so it opens a section"
+    m = _WORD_THEN_NUMBER.search(l)
+    if m and m.group(1).lower() in _STAGE_WORDS and int(m.group(2)) <= MAX_STAGE_ORDINAL:
         return "names a numbered stage, so it opens a section"
     return None
 
@@ -2282,6 +2346,14 @@ def ingredient_name_case(name, canonical=None, lowercase_elsewhere=False):
     #    question this rule cannot answer, so the whole name goes to the review list.
     if _is_title_cased(t[m.end(2):]):
         return t, CASE_UNCERTAIN, "title-cased, so lowering the first word alone would be worse"
+    # ⚠️ AND A CAPITAL INSIDE THE LEAD WORD IS THE SAME PROBLEM ONE WORD EARLIER. _is_title_cased
+    #    reads the text AFTER the lead word, so "McIntosh apples" and "DeLallo olive oil" passed
+    #    every check and came out "mcIntosh apples" and "deLallo olive oil" — exactly the half-cased
+    #    string the test above exists to prevent. Found by review 2026-10-08, on the import-only
+    #    blanket rule, where there is no corpus evidence to catch it either.
+    if any(ch.isupper() for ch in word[1:]):
+        return t, CASE_UNCERTAIN, ("a capital inside the first word, so lowering its first letter "
+                                   "alone would leave the name half-cased")
     if lowercase_elsewhere:
         return (pre + word[0].lower() + word[1:] + t[m.end():], CASE_CERTAIN,
                 "the corpus writes this word lowercase elsewhere and it is not a name")

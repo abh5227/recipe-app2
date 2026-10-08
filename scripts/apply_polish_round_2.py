@@ -68,7 +68,12 @@ UNTOUCHED = ("keep", "defer: round-b", "defer: ingredient-note")
 # The row file's actions, and what each one writes.
 ROW_ACTIONS = {"footnote_to_note", "delete_step", "strip_footnote_marker", "strip_author_letter",
                "strip_author_number", "capitalize_after_heading", "heading_section",
-               "note_label_to_title_beyond_the_list"}
+               "note_label_restates_the_kind", "note_label_to_title", "note_label_unruled"}
+# The actions that are a RECORD of why, not an instruction. Part 1 owns a heading's level and part 5
+# owns a note's label, both stated over the whole corpus by rule, so these rows are read, checked for
+# a vocabulary this pass knows, and then left to the part that owns them.
+RECORD_ONLY = {"heading_section", "note_label_restates_the_kind", "note_label_to_title",
+               "note_label_unruled"}
 
 
 class BadDecision(Exception):
@@ -369,10 +374,8 @@ def plan(ic, steps_by_recipe, ings_by_recipe, notes, levels, names, rowdecs):
     for r in rowdecs:
         action, rid = r["action"].strip(), r["recipe_id"]
         row_id = int(r["row_id"]) if (r.get("row_id") or "").strip() else None
-        if action == "heading_section":
-            continue                           # part 1 owns the level; this row is the record of why
-        if action == "note_label_to_title_beyond_the_list":
-            continue                           # part 5 owns it; this row is the record and the flag
+        if action in RECORD_ONLY:
+            continue
         if action == "footnote_to_note":
             # ⚠️ THE APPLIED STATE IS READ FIRST, BEFORE THE STEP IS LOOKED FOR, because this round
             #    DELETES that step. A second run cannot find it, let alone the step above it, so
@@ -419,6 +422,35 @@ def plan(ic, steps_by_recipe, ings_by_recipe, notes, levels, names, rowdecs):
         elif action in ("strip_author_number", "capitalize_after_heading"):
             continue                           # part 6 owns it, stated over the recipe
 
+    # ⚠️ THE RECORD ROWS ARE CHECKED, NOT JUST SKIPPED, because a record nothing reads is a comment.
+    #    Each one names a label and an outcome Andy decided, and the rule has to still agree.
+    for r in rowdecs:
+        action = r["action"].strip()
+        if action not in ("note_label_restates_the_kind", "note_label_to_title"):
+            continue
+        note = note_at.get(int(r["row_id"])) if (r.get("row_id") or "").strip() else None
+        if note is None:
+            refused.append(f"{ROWS_CSV.name}: note {r['row_id']} is gone")
+            continue
+        want = ("restates the kind" if action == "note_label_restates_the_kind"
+                else "says more than the kind")
+        got = ic.note_label_plan(note["text"])
+        if got is None:
+            # The label is already off, which is what the applied state looks like for a strip.
+            if want == "restates the kind" and not note["title"]:
+                continue
+            if want == "says more than the kind" and note["title"] == r["value"]:
+                continue
+            refused.append(f"{ROWS_CSV.name}: note {r['row_id']} no longer carries a label the "
+                           f"table knows, and the decision was {want!r}")
+            continue
+        if got.verdict != want:
+            refused.append(f"{ROWS_CSV.name}: note {r['row_id']} ({got.label!r}): the rule says "
+                           f"{got.verdict!r} and the decision says {want!r}")
+        elif _norm(got.label) != _norm(r["value"]):
+            refused.append(f"{ROWS_CSV.name}: note {r['row_id']} carries the label {got.label!r} "
+                           f"and the decision was made about {r['value']!r}")
+
     # ---- part 5: note labels -------------------------------------------------------------------
     for n in notes:
         got = ic.note_label_plan(n["text"])
@@ -444,7 +476,16 @@ def plan(ic, steps_by_recipe, ings_by_recipe, notes, levels, names, rowdecs):
                                  "label": got.label})
 
     # ---- part 6: the author's lettering, numbering and the capital after a heading --------------
+    # ⚠️ IT READS WHAT PART 4 LEAVES, NOT THE PRE-RUN TEXT, AND A REVIEW FOUND THAT GAP. Part 4
+    #    strips a footnote marker from a step and part 6 rewrites step text too. Both were computed
+    #    from the same loaded rows, so a step that needed BOTH produced two writes whose `was`
+    #    disagreed, and _collapse_step_text kept the LAST `now`: the marker silently stayed on,
+    #    in the row and in the baseline, while the pass reported it removed. No step in this corpus
+    #    needs both (part 4's are 3650 and 3853, part 6's are 2623 to 2625 and 2536), which is
+    #    exactly why it had to be found by reading the chain rather than by running it.
+    pending = {w["id"]: w["now"] for ws in todo.values() for w in ws if w["what"] == "step_text"}
     for rid, steps in steps_by_recipe.items():
+        steps = [dict(s, text=pending.get(s["id"], s["text"])) for s in steps]
         plain = [s for s in steps if not s["is_heading"]]
         lettered, runs = ic.strip_author_letters([s["text"] for s in plain])
         for s, now in zip(plain, lettered):
@@ -482,8 +523,16 @@ def plan(ic, steps_by_recipe, ings_by_recipe, notes, levels, names, rowdecs):
     #    patches is not: the second would look for text the first has already replaced. Collapsed
     #    here, where the chain is visible, rather than in the writer.
     for recipe, writes in todo.items():
-        todo[recipe] = _collapse_step_text(writes)
+        todo[recipe], broken = _collapse_step_text(writes)
+        for w in broken:
+            refused.append(f"two step_text writes on row {w['id']} do not join: the second was "
+                           f"computed from {w['was']!r} and the first leaves {w['leaves']!r}. "
+                           f"Collapsing them would keep one and drop the other silently.")
     return todo, noop, refused
+
+
+def _norm(text):
+    return " ".join(str(text or "").replace("\u2019", "'").split()).lower()
 
 
 def _step_before(steps, step_id):
@@ -494,24 +543,47 @@ def _step_before(steps, step_id):
 
 
 def _collapse_step_text(writes):
-    """Several step_text writes on one row -> one, from its first `was` to its last `now`."""
-    out, chain = [], collections.OrderedDict()
+    """Several step_text writes on one row -> one, from its first `was` to its last `now`.
+
+    -> (the collapsed writes, [the ones that do not join]).
+
+    ⚠️ IT CHECKS THAT THE CHAIN JOINS, AND THE FIRST VERSION DID NOT. It kept the first `was` and
+    the last `now`, which is only right when each write was computed from the one before it. Two
+    writes computed from the SAME starting text collapse to whichever happens to be last, and the
+    other change is dropped with the pass reporting both. Rather than guess an order, a break is
+    REFUSED and named: the caller turns it into an abort before anything is written."""
+    out, chain, broken = [], collections.OrderedDict(), []
     for w in writes:
         if w["what"] != "step_text":
             out.append(w)
             continue
         if w["id"] in chain:
             first = chain[w["id"]]
+            if w["was"] != first["now"]:
+                broken.append({"id": w["id"], "was": w["was"], "leaves": first["now"]})
+                continue
             first["now"] = w["now"]
             first["why"] = f"{first['why']}, then {w['why']}"
         else:
             chain[w["id"]] = dict(w)
-    return out + list(chain.values())
+    return out + list(chain.values()), broken
 
 
 # --------------------------------------------------------------------------------------------- #
 # the write
 # --------------------------------------------------------------------------------------------- #
+
+def _half_applied(rid, done, why):
+    """The abort message, saying where the run stopped rather than claiming it never started."""
+    return (f"ABORT on {rid}: {why}. This recipe's writes were rolled back.\n"
+            f"  {len(done)} recipe(s) BEFORE it are already COMMITTED, so the corpus is part way "
+            f"through this round. Each recipe is its own transaction on purpose, because a gate run "
+            f"over the whole pass would be a post-mortem on data already on disk.\n"
+            f"  Running the pass again is safe (it is a no-op on what is in place), but do not "
+            f"assume it will get further: fix what this recipe tripped on first, or restore the "
+            f"database from the backup named in the go-live file.\n"
+            f"  committed: {', '.join(done[-8:]) if done else '(none)'}")
+
 
 def _state(s, sqlalchemy, app, rid):
     cur = app.serialize_recipe_content(s, rid)
@@ -676,6 +748,7 @@ def run(db, apply=False):
         for rid in todo:
             before[rid] = _state(s, sqlalchemy, app, rid)
 
+    done = []
     for rid, writes in todo.items():
         with app.orm_session() as s:
             stored = s.execute(sqlalchemy.text(
@@ -686,7 +759,7 @@ def run(db, apply=False):
                 moved = _write_recipe(s, sqlalchemy, rid, writes, doc)
             except RuntimeError as exc:
                 s.rollback()
-                sys.exit(f"ABORT on {rid}: {exc}")
+                sys.exit(_half_applied(rid, done, str(exc)))
             if moved and doc is not None:
                 s.execute(sqlalchemy.text(
                     "UPDATE recipe_snapshots SET content=:c WHERE recipe_id=:r "
@@ -694,14 +767,20 @@ def run(db, apply=False):
                     {"c": json.dumps(doc, sort_keys=True, ensure_ascii=False,
                                      separators=(",", ":")), "r": rid})
             now = _state(s, sqlalchemy, app, rid)
+            # ⚠️ "SO NOTHING WAS WRITTEN" WAS A LIE AND A REVIEW CAUGHT IT. THIS recipe's writes are
+            #    rolled back, and every recipe before it in the run is already committed, so the
+            #    corpus is left part way through. Each recipe has to be its own transaction (a gate
+            #    that ran over the whole run would be a post-mortem on data already on disk), so the
+            #    honest thing is to say where it stopped and what to do about it.
             if now["marks"] != before[rid]["marks"]:
                 s.rollback()
-                sys.exit(f"ABORT on {rid}: the annotation set moved, so nothing was written.\n"
-                         f"  before={before[rid]['marks'][:300]}\n  after ={now['marks'][:300]}")
+                sys.exit(_half_applied(rid, done, "the annotation set moved") +
+                         f"\n  before={before[rid]['marks'][:300]}\n  after ={now['marks'][:300]}")
             if before[rid]["byte_equal"] and not now["byte_equal"]:
                 s.rollback()
-                sys.exit(f"ABORT on {rid}: it left the byte-equal set, so nothing was written.")
+                sys.exit(_half_applied(rid, done, "it left the byte-equal set"))
             s.commit()
+            done.append(rid)
 
     # ⚠️ THE LEVELS ARE RE-DERIVED AFTER EVERY PART HAS RUN, because part 6 can turn a step into a
     #    heading and a heading's level depends on what sits above it. Nothing in this round does, and

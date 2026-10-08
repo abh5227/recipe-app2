@@ -182,7 +182,17 @@ def _ingredient_rows(cleaned):
     for pos, line in enumerate(cleaned["ingredients"]):
         rows.append(_ingredient_row(pos, line))
         flags.extend(_line_flag_rows(pos, line))
-    rows, group_flags = _group_optional_lines(rows)
+    rows, group_flags, moved = _group_optional_lines(rows)
+    # ⚠️ EVERY FLAG BUILT ABOVE CARRIES A POSITION, AND THE GROUPING RENUMBERS THE ROWS UNDER IT.
+    #    Found by review 2026-10-08. import_flags has one nullable `position` column and a line
+    #    flag's value is the INGREDIENT line's index, so an inserted heading shifted every line after
+    #    it by one and left each flag pointing at its neighbour. The first flag after an insert
+    #    pointed at the heading itself, which the review-queue printer renders as a section. The
+    #    remap is applied here rather than inside the grouping, because the flags are this function's
+    #    and a rule that renumbers rows has no business reaching into them.
+    for f in flags:
+        if f.get("position") is not None and f["position"] in moved:
+            f["position"] = moved[f["position"]]
     rows, case_flags = _lowercase_ingredient_names(rows)
     return rows, flags + group_flags + case_flags
 
@@ -195,16 +205,19 @@ def _ingredient_text(row):
 def _group_optional_lines(rows):
     """Runs of "Optional:" lines -> the same lines under an inserted "Optional" heading.
 
+    -> (rows, flag rows, {the row's old index: its new position}) where the third is every row an
+    insert MOVED, so the caller can bring its flags along.
+
     ⚠️ ONE RULE SET, TWO CALLERS, and the rule is import_cleanup.optional_ingredient_groups. The
     corpus pass reads the same function over the 300 already-imported recipes."""
     groups = cleanup.optional_ingredient_groups(
         [{"id": i, "is_heading": r["is_heading"], "text": _ingredient_text(r)}
          for i, r in enumerate(rows)])
     if not groups:
-        return rows, []
+        return rows, [], {}
     rewritten = {i: text for g in groups for i, text in g["lines"]}
     insert_at = {g["at"] for g in groups if g["heading_id"] is None}
-    out, flags = [], []
+    out, flags, moved = [], [], {}
     for i, row in enumerate(rows):
         if i in insert_at:
             out.append({"position": None, "is_heading": 1, "qty": None, "quantity": None,
@@ -222,10 +235,11 @@ def _group_optional_lines(rows):
                 row["raw_text"] = rewritten[i]
             flags.append({"position": len(out), "flag": "ingredient_optional_grouped",
                           "reason": cleanup.CLEANUP_REASONS["ingredient_optional_grouped"]})
+        moved[i] = len(out)
         out.append(row)
     for pos, row in enumerate(out):
         row["position"] = pos
-    return out, flags
+    return out, flags, {old: new for old, new in moved.items() if old != new}
 
 
 def _lowercase_ingredient_names(rows):
