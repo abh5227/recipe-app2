@@ -365,14 +365,14 @@ def test_the_pass_list_is_a_real_partition():
     so a pass that spells its write flag --write or --yes, or a move to scripts/passes/, drops out
     of the sweep with no complaint at all."""
     on_disk = {p.name for p in (REPO / "scripts").glob("*.py")}
-    assert len(on_disk) == 29, f"scripts/ changed shape: {len(on_disk)} files"
+    assert len(on_disk) == 30, f"scripts/ changed shape: {len(on_disk)} files"
     missing = NOT_A_PASS - on_disk
     assert not missing, f"NOT_A_PASS names files that are not in scripts/: {sorted(missing)}"
     unclassified = on_disk - set(PASSES) - NOT_A_PASS
     assert not unclassified, (
         "a script in scripts/ is neither swept as a pass nor declared not to be one. If it can "
         f"write, give it --apply; if it cannot, name it in NOT_A_PASS: {sorted(unclassified)}")
-    assert len(PASSES) == 18, f"the sweep covers {len(PASSES)} passes: {PASSES}"
+    assert len(PASSES) == 19, f"the sweep covers {len(PASSES)} passes: {PASSES}"
 
 
 def test_every_declared_decline_is_still_a_decline():

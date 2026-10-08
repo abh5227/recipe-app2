@@ -1447,6 +1447,12 @@ BROKEN_AMOUNT_FLAG = "broken_amount_unproved"
 UNBALANCED_BRACKET_FLAG = "unbalanced_bracket"
 NO_NAME_COLUMN_FLAG = "no_name_column"
 NO_NAME_LEFT_FLAG = "no_name_left"
+# ⚠️ A FLAG ABOUT THE AMOUNT IS NOT A FLAG ABOUT THE WHOLE ROW. lavender-chocolate-chunk-cookies'
+#    "3/4 cups" cannot be read back, and its slot separately holds a copy of that same "3/4 cups",
+#    which is no backup at all and prints twice on the page. Freezing the row over the amount left
+#    the one thing the flag says nothing about sitting there wrong. These two flags mean the rules
+#    could not read the LINE, so nothing about the row may move.
+WHOLE_ROW_FLAGS = frozenset({UNBALANCED_BRACKET_FLAG, NO_NAME_COLUMN_FLAG, NO_NAME_LEFT_FLAG})
 FOOD_INSIDE_FRAGMENT_FLAG = "food_inside_the_fragment"
 # What a name reduced to a trailing clause looks like. A name does not open with a connective.
 _FRAGMENT_LEFTOVER_RE = re.compile(
@@ -1829,8 +1835,18 @@ def amount_plan(row, density=None):
     #    understood the row. An unbalanced bracket means it did not, so nothing moves. A fragment
     #    carrying the food's own name means it did: the second amount is the author's and is
     #    recorded, and only the name is left as written.
-    if flags:
+    if any(f in WHOLE_ROW_FLAGS for f, _r in flags):
         return {"changes": {}, "flags": flags, "notes": notes, "why": why, "rules": []}
+    if flags:
+        # ⚠️ ONLY THE SECOND AMOUNT, AND NOT THE NAME OR THE AMOUNT. Letting the name move on a
+        #    flagged row re-opened the half-repair this rule exists to stop: tahini-brioche's
+        #    "1/ cups all-purpose flour" lost its "/" to the punctuation rule on the first run, so
+        #    the second run read the name as opening with a stranded unit and wrote the amount
+        #    "1 cups". The row's real amount is a fraction of a cup, and the pass had quietly
+        #    decided it was one. The slot is the one column the amount flag says nothing about.
+        changes = {k: v for k, v in changes.items() if k == "secondary_measure"}
+        return {"changes": changes, "flags": flags, "notes": notes, "why": why,
+                "rules": ["second_amount"] if changes else []}
     return {"changes": changes, "flags": flags, "notes": notes, "why": why, "rules": rules}
 
 

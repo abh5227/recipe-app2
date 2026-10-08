@@ -1,6 +1,6 @@
 {
   "round": "2026-10-08-round-b",
-  "why": "Round B, from the committed decisions in docs/data-repairs/round-b-decisions-2026-10-08.csv (37 rows). One plan, computed from each row as stored and applied once. THE RULES (import_cleanup.amount_plan, which the importer calls too): the author's second amount read off raw_text into secondary_measure, which meant \"the volume\" until now and holds the author's BACKUP as written from now on; a unit, a measure, a number word or a piece of punctuation taken out of the front of a name; a compound amount joined so both halves scale; a size put back with the words it sizes; and 7 broken amounts repaired where exactly one reading is clearly proved by another measure on the same line. THE JOINS: 5 rows that are the rest of the row above them or only the measure of it. THE CALLS, each a judgement no rule can read: hummus-2's garnish line becomes an ingredient heading with its three garnishes under it, beans' 15-row simmer-time chart becomes one note titled \"Simmer times\" linked to step 1783 and leaves the ingredients, flatbreads-with-za-atar-mana-eesh row 3824 splits into two ingredients, and miso-tofu-recipe row 9135 keeps its 16 oz and sends \"block\" to the second amount. 442 writes over 155 recipes. 36 rows are FLAGGED and left exactly as they are, 24 of them because the cook has edited that row. Lockstep per recipe in one transaction, with the reason='original' baseline patched surgically. No schema change: migration 63 on both sides.",
+  "why": "Round B, from the committed decisions in docs/data-repairs/round-b-decisions-2026-10-08.csv (37 rows). One plan, computed from each row as stored and applied once. THE RULES (import_cleanup.amount_plan, which the importer calls too): the author's second amount read off raw_text into secondary_measure, which meant \"the volume\" until now and holds the author's BACKUP as written from now on; a unit, a measure, a number word or a piece of punctuation taken out of the front of a name; a compound amount joined so both halves scale; a size put back with the words it sizes; and 7 broken amounts repaired where exactly one reading is clearly proved by another measure on the same line. THE JOINS: 5 rows that are the rest of the row above them or only the measure of it. THE CALLS, each a judgement no rule can read: hummus-2's garnish line becomes an ingredient heading with its three garnishes under it, beans' 15-row simmer-time chart becomes one note titled \"Simmer times\" linked to step 1783 and leaves the ingredients, flatbreads-with-za-atar-mana-eesh row 3824 splits into two ingredients, and miso-tofu-recipe row 9135 keeps its 16 oz and sends \"block\" to the second amount. 443 writes over 155 recipes. 36 rows are FLAGGED and left exactly as they are, 24 of them because the cook has edited that row. Lockstep per recipe in one transaction, with the reason='original' baseline patched surgically. No schema change: migration 63 on both sides.",
   "short_circuit": "unchanged",
   "annotations": "unchanged",
   "counts": {
@@ -23,7 +23,7 @@
   },
   "rows": {
     "recipe_ingredients": {
-      "set": "454 rows changed across ['heading', 'is_heading', 'label', 'position', 'qty', 'quantity', 'raw_text', 'secondary_measure', 'unit']; 21 DELETED ([2865, 2866, 2867, 2868, 2869, 2870, 2871, 2872, 2873, 2874, 2875, 2876, 2877, 2878, 2879, 2880, 4420, 4423, 4653, 7543, 7550]) and 4 inserted, with the positions after each one closed up",
+      "set": "455 rows changed across ['heading', 'is_heading', 'label', 'position', 'qty', 'quantity', 'raw_text', 'secondary_measure', 'unit']; 21 DELETED ([2865, 2866, 2867, 2868, 2869, 2870, 2871, 2872, 2873, 2874, 2875, 2876, 2877, 2878, 2879, 2880, 4420, 4423, 4653, 7543, 7550]) and 4 inserted, with the positions after each one closed up",
       "why": "the round B rules, the 5 joins and the 4 single-row calls",
       "checked_by": "the cells gate below, because recipe_ingredients is in tables.except"
     },
@@ -215,6 +215,7 @@
         4315,
         4316,
         4317,
+        4320,
         4324,
         4338,
         4340,

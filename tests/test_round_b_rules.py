@@ -219,7 +219,10 @@ def test_a_unit_with_no_number_takes_the_count_the_other_measure_makes_it():
 ])
 def test_a_broken_amount_no_measure_proves_is_flagged_and_left_alone(r):
     plan = ic.amount_plan(r, 0.53)
-    assert plan["changes"] == {}
+    # ⚠️ THE AMOUNT AND THE NAME BOTH STAY. Letting the name move re-opened the half-repair:
+    #    "1/ cups all-purpose flour" lost its "/" on one run and the next read the name as opening
+    #    with a stranded unit and wrote the amount "1 cups". Only the slot may move.
+    assert set(plan["changes"]) <= {"secondary_measure"}
     assert plan["flags"][0][0] == ic.BROKEN_AMOUNT_FLAG
 
 
@@ -234,7 +237,9 @@ def test_a_repair_needs_a_clear_winner_and_not_merely_a_passing_one():
                unit="cups", raw_text="3/4 cups spooned and leveled all-purpose flour (416 grams)",
                grams=416.0)
     plan = ic.amount_plan(toss, 0.53)
-    assert plan["changes"] == {} and plan["flags"][0][0] == ic.BROKEN_AMOUNT_FLAG
+    assert "qty" not in plan["changes"] and plan["flags"][0][0] == ic.BROKEN_AMOUNT_FLAG
+    # the slot held a copy of that same "3/4 cups", which is no backup at all
+    assert plan["changes"]["secondary_measure"] == "416 grams"
 
 
 def test_the_proof_is_the_row_s_second_amount_even_where_the_slot_is_already_right():
