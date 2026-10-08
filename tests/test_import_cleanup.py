@@ -255,6 +255,8 @@ def test_a_counting_noun_inside_a_parenthetical_is_an_aside_not_the_count():
     "4 whole sticks", "2 sticks", "1 large head", "3 slices", "2 pinches", "1 can", "2 bunches",
 ])
 def test_a_counting_noun_with_nothing_beside_it_stays_the_ingredient(line):
+    """⚠️ AND ROUND B'S STRANDED-UNIT RULE MAKES THE SAME REFUSAL FOR THE SAME REASON. 'sticks' is
+    a unit word now, so without that guard "2 sticks" became qty "2 sticks" with no name at all."""
     assert ic.classify_line(line)["unit"] == ""
 
 
@@ -434,26 +436,35 @@ def test_harvested_gram_paren_stripped_from_name():
 
 def test_harvested_gram_paren_strip_keeps_contentful_paren():
     # only the harvested "(270g)" goes; the contentful "(light roast)" stays
+    # ⚠️ AND THE "plus 2 tablespoons" GOES INTO THE AMOUNT SINCE ROUND B. It is the second half of
+    #    one compound amount, and leaving it at the front of the name read as a name that had lost
+    #    its front. Both halves scale.
     d = ic.classify_line("1 cup plus 2 tablespoons (270g) tahini (light roast)")
     assert d["grams_harvested"] == 270.0
-    assert d["name"] == "plus 2 tablespoons tahini (light roast)"
+    assert d["amount"] == "1 cup + 2 tablespoons"
+    assert d["name"] == "tahini (light roast)"
 
 
 # ----------------------------------------------------------------- dual-unit secondary measure
+# ⚠️ secondary_measure MEANS THE AUTHOR'S SECOND AMOUNT SINCE ROUND B, AND IT USED TO MEAN "the
+#    volume". Andy's decision 3a: the slot holds what the author wrote as the backup, as written,
+#    with the first amount staying in qty. "1 cup (250 g) flour" therefore stores "250 g" where it
+#    used to store "1 cup", which was a copy of the amount the row already had. The stray leading
+#    slash goes too: 130 live rows held a copy of their own first amount and 163 more a "/10g".
 def test_dual_unit_secondary_measure_stripped_from_name():
     # "2 teaspoons / 6 g active dry yeast": keep the primary qty, drop the "/ 6 g" from the label
     d = ic.classify_line("2 teaspoons / 6 g active dry yeast")
     assert d["kind"] == "ingredient"
     assert (d["amount"], d["unit"]) == ("2", "teaspoons")
     assert d["name"] == "active dry yeast"               # label is now the clean ingredient name
-    assert d["secondary_measure"] == "/ 6 g"
+    assert d["secondary_measure"] == "6 g"
     assert d["raw"] == "2 teaspoons / 6 g active dry yeast"   # raw_text kept intact
 
 
 def test_dual_unit_metric_weight_stripped_keeps_alternative():
     d = ic.classify_line("3 ½ cups / 440 g bread flour or high gluten flour")
     assert d["name"] == "bread flour or high gluten flour"
-    assert d["secondary_measure"] == "/ 440 g"
+    assert d["secondary_measure"] == "440 g"
     assert d["has_alternative"] is True                  # "or" still detected on the clean name
 
 
@@ -462,7 +473,7 @@ def test_dual_unit_only_leading_secondary_stripped():
     d = ic.classify_line("1 ¼ cups / 300 ml warm water (you may need ± ¼ cup /60 ml more)")
     assert d["name"].startswith("warm water")
     assert "/60 ml" in d["name"]
-    assert d["secondary_measure"] == "/ 300 ml"
+    assert d["secondary_measure"] == "300 ml"
 
 
 def test_no_secondary_measure_for_single_unit_line():
@@ -496,11 +507,12 @@ def test_weight_first_volume_paren_captured():
 
 
 def test_volume_first_gram_paren_captures_both():
-    # volume-first: gram harvested from the paren (as before) + the leading volume captured
+    # volume-first: the gram is harvested from the paren AND is the author's second amount. It used
+    # to store "1 cup", which is the amount the row already carries in qty.
     d = ic.classify_line("1 cup (250g) flour")
     assert d["name"] == "flour"
     assert d["grams_harvested"] == 250.0
-    assert d["secondary_measure"] == "1 cup"
+    assert d["secondary_measure"] == "250g"
 
 
 def test_dual_measure_leaves_contentful_paren():
@@ -1025,24 +1037,29 @@ def test_paren_with_no_weight_is_untouched(line, name):
 
 
 def test_measure_list_leaves_the_name_alone():
-    """The volume STAYS in the name for now (moving it is a later stage), so the harvest returns
-    no gram_paren and _strip_gram_paren has nothing to remove."""
+    """harvest_grams still hands back no gram_paren, so _strip_gram_paren has nothing to remove.
+
+    ⚠️ ROUND B IS THE LATER STAGE THIS TEST WAS WAITING FOR. The restatement list leaves the name
+    as the author's second amount, both measures of it, joined by the separator the display
+    stacks on. The harvest is unchanged, which is what the last line still pins."""
     line = "1 cup (16 Tbsp; 226g) unsalted butter, cut into 16 pieces"
     d = ic.classify_line(line)
     assert d["grams_harvested"] == 226.0
-    assert d["name"] == "(16 Tbsp; 226g) unsalted butter, cut into 16 pieces"
+    assert d["name"] == "unsalted butter, cut into 16 pieces"
+    assert d["secondary_measure"] == "16 Tbsp / 226g"
     assert d["raw"] == line
     assert ic.harvest_grams(line)[2] is None            # no paren handed to the name-stripper
 
 
 @pytest.mark.parametrize("line, grams, name, secondary", [
-    # The ALREADY-WORKING single-measure forms, pinned: the new path must not change any of them.
+    # The single-measure forms, pinned. grams is unchanged by round B in every one of them, which
+    # is the half this table was written to hold. secondary_measure now names the author's backup.
     ("(250g) dried chickpeas", 250.0, "(250g) dried chickpeas", None),
-    ("14 cups (250g) dried chickpeas", 250.0, "dried chickpeas", "14 cups"),
-    ("1 cup (250 g) flour", 250.0, "flour", "1 cup"),
+    ("14 cups (250g) dried chickpeas", 250.0, "dried chickpeas", "250g"),
+    ("1 cup (250 g) flour", 250.0, "flour", "250 g"),
     ("100 g (1 cup) granulated sugar", 100.0, "granulated sugar", "1 cup"),
     ("1 cup plus 2 tablespoons (270g) tahini (light roast)", 270.0,
-     "plus 2 tablespoons tahini (light roast)", "1 cup"),
+     "tahini (light roast)", "270g"),
 ])
 def test_single_measure_gram_paren_forms_unchanged(line, grams, name, secondary):
     d = ic.classify_line(line)

@@ -296,8 +296,10 @@ def test_commit_persists_secondary_measure_both_orders(kitchen):
         rows = conn.execute(
             "SELECT label, grams, secondary_measure FROM recipe_ingredients "
             "WHERE recipe_id=? ORDER BY position", (plan["recipe"]["id"],)).fetchall()
+    # ⚠️ secondary_measure IS THE AUTHOR'S SECOND AMOUNT SINCE ROUND B, so each row stores the
+    #    measure the author wrote in brackets rather than a copy of the amount already in qty.
     assert tuple(rows[0]) == ("granulated sugar", 100.0, "1 cup")   # weight-first
-    assert tuple(rows[1]) == ("flour", 250.0, "1 cup")              # volume-first
+    assert tuple(rows[1]) == ("flour", 250.0, "250g")               # volume-first
 
 
 # ----------------------------------------------------------------- W1 characterisation

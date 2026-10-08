@@ -32,6 +32,7 @@ import unicodedata
 from stepscale import _NUM, _SCALE_UNIT, _UNI, _to_value, _normalize_unicode, _canon_amount
 
 from recipe_line_parser import MEASURE_ABBREV, _is_all_modifier
+import weights
 
 # ⚠️ THE LEADING UNIT IS A WIDER QUESTION THAN WHAT TO SCALE, and conflating the two was the bug.
 #    _SCALE_UNIT comes from stepscale and answers "which quantities does the CLIENT SCALE". It is
@@ -246,6 +247,17 @@ CLEANUP_RULES = (
      "removed a space before a comma — publisher artifact"),
     ("cleaned_double_comma", re.compile(r"([,;])\s*[,;]+"), r"\1",
      "collapsed a doubled comma — publisher artifact"),
+
+    # ⚠️ A CAPITAL I STANDING IN FOR A LOWERCASE l, AND IT DEFEATED A LATER RULE IN SILENCE.
+    # spiced-fish-pilaf stores "1½ Ib./700g skinned white fish fillets". "Ib." is not a unit, so
+    # the amount parse found none, the count-noun lift then read "fillets" as the unit and the
+    # line was stored as 1½ fillets of "Ib./700g skinned white fish". Same family as
+    # normalize_lookalikes, which repairs the Cyrillic look-alikes in step text for the same
+    # reason: a letter that only LOOKS right is invisible to every rule downstream.
+    # Only after a number, so the word "Ibsen" and the acronym IBS cannot reach it.
+    ("cleaned_lookalike_lb",
+     re.compile(r"(?<=[\d" + _UNI + r"])(\s*)I(bs?)\b"), r"\1l\2",
+     "a capital I was standing in for a lowercase l, so \"Ib.\" is \"lb.\""),
 )
 
 # flag -> reason, for the writer's flag-row builder (import_write._line_flag_rows).
@@ -714,6 +726,1069 @@ def _dual_measure(amount, value, unit, name, grams):
     if secondary is None and grams is not None and u in _VOLUME_LEAD_UNITS:
         secondary = ("%s %s" % (amount, unit)).strip()   # volume-first dual: the leading volume
     return name, grams, secondary
+
+
+
+# --------------------------------------------------------------------------- #
+# Round B: the author's second amount, the units left in names, broken amounts
+# --------------------------------------------------------------------------- #
+# ⚠️ ONE READ OF THE ROW, AND EVERY RULE READS THE SAME TEXT. Polish round 2's worst defect was
+#    part 6 reading text part 4 had already changed, so the rules below are stated as what they
+#    would do to the row AS STORED, and `amount_plan` is the only thing that composes them. A rule
+#    returns the span of the name it consumes rather than a new name, so two rules cannot disagree
+#    about what the name is.
+#
+# ⚠️ AND THE AUTHOR'S LINE IS IN raw_text, NOT IN label. Measured over the 379 backups the corpus
+#    carries: 293 rows already hold something in `secondary_measure` and their `label` has had the
+#    fragment removed, so reading the backup back off the label is impossible for most of them.
+#    130 of those 293 hold a copy of the FIRST amount, which is no backup at all. raw_text is the
+#    only column that still holds what the author wrote.
+
+# A stick of butter and a block of cream cheese are WRAPPER measures, and they are weights. Calling
+# a stick a volume would read "2 sticks (226 grams)" as a density of 0.95 and pass a weight against
+# a weight as though one side were a volume.
+MEASURE_TO_GRAMS = {
+    "g": 1.0, "gr": 1.0, "gm": 1.0, "gms": 1.0, "gram": 1.0, "grams": 1.0,
+    "kg": 1000.0, "kilogram": 1000.0, "kilograms": 1000.0, "kilo": 1000.0, "kilos": 1000.0,
+    "oz": 28.3495, "ozs": 28.3495, "ounce": 28.3495, "ounces": 28.3495,
+    "lb": 453.592, "lbs": 453.592, "pound": 453.592, "pounds": 453.592,
+    "stick": 113.0, "sticks": 113.0, "block": 226.796, "blocks": 226.796,
+}
+# ⚠️ THE THREE SHARED FACTORS ARE READ OFF weights.VOLUME_TO_ML RATHER THAN TYPED AGAIN.
+#    tests/js/factor-sync.test.js holds static/scaler.js to that table, so a fourth copy of
+#    cup/tbsp/tsp is a fourth thing to drift. The units added below it are ones no client converts.
+MEASURE_TO_ML = dict(
+    weights.VOLUME_TO_ML,
+    tbsps=14.7868, tbs=14.7868, tsps=4.92892,
+    ml=1.0, mls=1.0, millilitre=1.0, millilitres=1.0, milliliter=1.0, milliliters=1.0,
+    l=1000.0, litre=1000.0, litres=1000.0, liter=1000.0, liters=1000.0,
+    quart=946.353, quarts=946.353, qt=946.353, qts=946.353,
+    pint=473.176, pints=473.176, pt=473.176, pts=473.176,
+)
+MEASURE_TO_ML["fl oz"] = 29.5735
+MEASURE_TO_ML["fluid ounce"] = 29.5735
+MEASURE_TO_ML["fluid ounces"] = 29.5735
+
+# ⚠️ BARE "l" IS ADMITTED HERE AND NOWHERE ELSE, AND ONLY WITH A WORD BOUNDARY EACH SIDE. It is the
+#    reason static/scaler.js keeps it OUT of MEASURE_UNIT_RE: without the boundaries it matches the
+#    l in "small" and in "oil". With them it matches "3 L water" and nothing else in the corpus.
+#    Longest first, so "fl oz" is never read as a bare "l" and "quarts" is never read as "quart"
+#    with a stray s.
+_MEASURE_UNITS = sorted(set(MEASURE_TO_GRAMS) | set(MEASURE_TO_ML), key=len, reverse=True)
+_MEASURE_UNIT = r"(?:" + "|".join(u.replace(" ", r"\s+") for u in _MEASURE_UNITS) + r")"
+# A qualifier is part of the figure it stands in front of, so it travels with it.
+_MEASURE_QUALIFIER = (r"(?:about|approx\.?|approximately|around|roughly|~|scant|heaped|heaping|"
+                      r"generous|rounded|packed|full|up\s+to|a\s+scant|a\s+heaped|a\s+generous)")
+_MEASURE_NUM = r"(?:" + _NUM + r"\s*(?:to|or|[-–—])\s*" + _NUM + r"|" + _NUM + r")"
+_ONE_MEASURE = (r"(?:" + _MEASURE_QUALIFIER + r"\s*)?" + _MEASURE_NUM
+                + r"\s*-?\s*" + _MEASURE_UNIT + r"\b\.?")
+_MEASURE_RE = re.compile(_ONE_MEASURE, re.IGNORECASE)
+# What may sit between two measures that restate ONE quantity.
+_MEASURE_JOIN = r"(?:\s*/\s*|\s*;\s*|\s*,\s*|\s+or\s+|\s+plus\s+|\s*\+\s*|\s+)"
+_MEASURE_PHRASE_RE = re.compile(
+    r"^\s*(?:" + _ONE_MEASURE + r")(?:" + _MEASURE_JOIN + r"(?:" + _ONE_MEASURE + r"))*"
+    r"\s*(?:total)?\s*$", re.IGNORECASE)
+# A measure phrase sitting at the FRONT of a string, however the string carries on.
+_MEASURE_LEAD_RE = re.compile(
+    r"^\s*(?:" + _ONE_MEASURE + r")(?:" + _MEASURE_JOIN + r"(?:" + _ONE_MEASURE + r"))*",
+    re.IGNORECASE)
+# ⚠️ ONE MEASURE, AND THE DIFFERENCE IS LOAD-BEARING. _MEASURE_LEAD_RE spans a whole restatement
+#    ("about ¾ cup/140g"), which is what makes it the right test for "does this line open with a
+#    measure". It is the wrong thing to move into the amount: the amount is the FIRST measure and
+#    the rest of the phrase is the backup. kale-fennel-and-noodle-soup stored the pair whole.
+_ONE_MEASURE_LEAD_RE = re.compile(r"^\s*(?:" + _ONE_MEASURE + r")", re.IGNORECASE)
+# ⚠️ THE LINE'S OWN AMOUNT CAN BE A COMPOUND, AND READING ONLY ITS FIRST HALF LOST FIVE BACKUPS.
+#    "¾ cup plus 2 tablespoons (200 grams) cold unsalted butter" states one amount in two parts,
+#    so the 2 tablespoons is not a second ingredient's measure sitting in the way of the 200 grams.
+_AMOUNT_SPAN_RE = re.compile(
+    r"^\s*(?:" + _ONE_MEASURE + r")(?:\s*(?:\+|plus)\s*(?:" + _ONE_MEASURE + r"))*",
+    re.IGNORECASE)
+_PAREN_SPAN_RE = re.compile(r"\([^()]*\)")
+
+# A container noun names what a size SIZES rather than what the line measures.
+_MEASURE_CONTAINER = (r"(?:cans?|tins?|jars?|packages?|packets?|packs?|bags?|boxes|box|bottles?|"
+                      r"blocks?|tubs?|loaves|loaf|sheets?|crusts?|pie\s+crusts?|rolls?|bars?|"
+                      r"cartons?|punnets?|containers?|pouches?|pouch|tubes?|slabs?|bricks?|logs?|"
+                      r"wheels?)")
+_CONTAINER_AFTER = re.compile(r"^[\s,\-]*" + _MEASURE_CONTAINER + r"\b", re.IGNORECASE)
+_CONTAINER_INSIDE = re.compile(r"\b" + _MEASURE_CONTAINER + r"\b\s*$", re.IGNORECASE)
+
+# A dimension is a size, never a quantity. "2 x 6cm", '9"', "1-inch", "10 to 18 centimeters".
+_DIMENSION_UNIT = (r"(?:\"|''|”|″|inch(?:es)?|in\.|\bin\b|cm|centimet(?:re|er)s?|mm|"
+                   r"millimet(?:re|er)s?)")
+_ONE_DIMENSION = (r"(?:" + _MEASURE_QUALIFIER + r"\s*)?" + _MEASURE_NUM + r"\s*(?:-\s*)?"
+                  + _DIMENSION_UNIT)
+_DIMENSION_TAIL = (r"(?:[\s-]*(?:long|wide|thick|deep|tall|square|round|across|lengths?|pieces?|"
+                   r"cubes?|strips?|slices?|wedges?|segments?|chunks?|batons?|sticks?|discs?|"
+                   r"rounds?|knobs?|sections?))*")
+_DIMENSION_ONLY_RE = re.compile(
+    r"^\s*(?:" + _MEASURE_NUM + r"\s*(?:x|×)\s*)?" + _ONE_DIMENSION
+    + r"(?:\s*(?:/|x|by|×|,)\s*" + _ONE_DIMENSION + r")*" + _DIMENSION_TAIL + r"\s*$",
+    re.IGNORECASE)
+_ANY_DIMENSION_RE = re.compile(_MEASURE_NUM + r"\s*(?:-\s*)?" + _DIMENSION_UNIT, re.IGNORECASE)
+# A dimension at the very END of the text in front of a fragment: the fragment restates it.
+_DIMENSION_BEFORE_RE = re.compile(_ONE_DIMENSION + r"[\s\-]*$", re.IGNORECASE)
+# "(½ pound each)" sizes ONE piece, so it measures neither the line nor a package.
+_PER_ITEM_RE = re.compile(r"[\s,]*(?:each|apiece|per\s+\w+)\s*$", re.IGNORECASE)
+_PAREN_GROUP_RE = re.compile(r"\(([^()]*)\)")
+
+
+def is_measure_phrase(text):
+    """The whole string is one or more measures of one quantity and nothing else."""
+    s = (text or "").strip()
+    return bool(s) and not _ANY_DIMENSION_RE.search(s) and bool(_MEASURE_PHRASE_RE.match(s))
+
+
+def is_dimension_only(text):
+    """The whole string is a size. '2-inch', '9\"', '24 x 6cm/2.5\" long'."""
+    return bool(_DIMENSION_ONLY_RE.match((text or "").strip()))
+
+
+def split_measures(text):
+    """Every measure in the string, as the author wrote each one."""
+    return [m.group(0).strip() for m in _MEASURE_RE.finditer(text or "")]
+
+
+def read_measure(text):
+    """One measure as ("weight"|"volume", value) in grams or millilitres, else (None, None).
+
+    A range reads as its LOW end, which is the figure a cook budgets against.
+    """
+    s = (text or "").strip()
+    m = re.match(r"^\s*(?:" + _MEASURE_QUALIFIER + r"\s*)?(?P<n>" + _MEASURE_NUM
+                 + r")\s*-?\s*(?P<u>" + _MEASURE_UNIT + r")\s*\.?\s*$", s, re.IGNORECASE)
+    if not m:
+        return None, None
+    n = measure_number(m.group("n"))
+    if n is None:
+        return None, None
+    unit = re.sub(r"\s+", " ", m.group("u").strip().lower()).rstrip(".")
+    if unit in MEASURE_TO_GRAMS:
+        return "weight", n * MEASURE_TO_GRAMS[unit]
+    if unit in MEASURE_TO_ML:
+        return "volume", n * MEASURE_TO_ML[unit]
+    return None, None
+
+
+def measure_number(token):
+    """A matched amount token as a float, reading a range as its LOW end.
+
+    _to_value is the one number reader the amount parse already uses, and this adds the range on
+    top of it rather than spelling the number shapes again.
+    """
+    t = _normalize_unicode(_canon_amount((token or "").strip()))
+    parts = re.split(r"\s*(?:to|or|[-–—])\s*", t, maxsplit=1)
+    if len(parts) == 2 and parts[0].strip() and parts[1].strip():
+        t = parts[0].strip()
+    try:
+        return _to_value(t)
+    except (ValueError, ZeroDivisionError, IndexError):
+        return None
+
+
+# What a candidate second measure IS. Only ALTERNATE leaves the name.
+FRAGMENT_ALTERNATE = "alternate"
+FRAGMENT_PROSE = "prose"
+FRAGMENT_PACKAGE = "package size"
+FRAGMENT_PER_ITEM = "per item"
+FRAGMENT_COUNT = "count restatement"
+
+
+def classify_fragment(text, after="", before="", kind="paren"):
+    """What a candidate second measure is, and why.
+
+    `before` and `after` are the line on either side of the fragment, and `kind` is "paren" or
+    "slash". Both sides are read, because the same fragment means different things in different
+    company: "(2.5cm)" after "cut into 1 inch" restates a size the line already gave, and '(9")'
+    in front of "pie crusts" sizes the thing being counted.
+    """
+    t = (text or "").strip()
+    if not t:
+        return FRAGMENT_PROSE, "an empty parenthetical"
+    bare = _PER_ITEM_RE.sub("", t).strip()
+    if bare != t and (is_measure_phrase(bare) or is_dimension_only(bare)):
+        return FRAGMENT_PER_ITEM, ("the measure is marked per item, so it sizes one piece rather "
+                                   "than measuring the line's own quantity")
+    # ⚠️ A CONTAINER NOUN ONLY SETTLES A PARENTHETICAL. The slash form IS the line's own amount
+    #    written twice ("14 oz/400g can of plum tomatoes"), so the can that follows it is what the
+    #    amount measures rather than a package size the amount counts.
+    container = kind == "paren" and bool(_CONTAINER_AFTER.match(after or ""))
+    # ⚠️ AND THE CONTAINER NOUN MAY BE INSIDE THE FRAGMENT: "1 (14-ounce can) sweetened milk". The
+    #    noun is then part of what the paren says, so the measure phrase ends in front of it.
+    inner = _CONTAINER_INSIDE.search(t)
+    if kind == "paren" and inner and (is_measure_phrase(t[:inner.start()])
+                                      or is_dimension_only(t[:inner.start()])):
+        return FRAGMENT_PACKAGE, "the fragment names the container it sizes"
+    if is_dimension_only(t):
+        if _DIMENSION_BEFORE_RE.search(before or ""):
+            return FRAGMENT_PROSE, "the fragment restates in metric the size the line just gave"
+        return FRAGMENT_PACKAGE, ("the fragment is a size" + (" and a container noun follows it"
+                                                              if container else "")
+                                  + ", not a quantity")
+    if container and is_measure_phrase(t):
+        return FRAGMENT_PACKAGE, ("a container noun follows the fragment, so the size describes "
+                                  "the package")
+    if is_measure_phrase(t):
+        return FRAGMENT_ALTERNATE, "the whole fragment is a measure and nothing else"
+    count = count_restatement(t)
+    if count:
+        return FRAGMENT_COUNT, count
+    if _ANY_DIMENSION_RE.search(t):
+        return FRAGMENT_PROSE, "a size sits inside words, so the fragment is a prep note"
+    if split_measures(t):
+        return FRAGMENT_PROSE, "a measure sits inside words, so the fragment is a sentence"
+    return FRAGMENT_PROSE, "no measure in the fragment"
+
+
+# ⚠️ A COUNT OF THE SAME FOOD SCALES, AND THREE SHAPES THAT LOOK LIKE ONE DO NOT. Decision 5.
+#    "from about 1 lime" names where the juice came from, "or 2 small cloves" offers an
+#    alternative ingredient, and "4 large, 5 medium" is a list of two different answers.
+_COUNT_SOURCE_RE = re.compile(r"^\s*(?:from|of|in|using|per)\b", re.IGNORECASE)
+_COUNT_ALTERNATIVE_RE = re.compile(r"^\s*or\b|\bor\b", re.IGNORECASE)
+_COUNT_LIST_RE = re.compile(r"\d[^,]*,\s*\d")
+# ⚠️ A WORD THAT MAKES THE FRAGMENT A SENTENCE RATHER THAN A COUNT. "(1 if large)" is a note
+#    about scallions and "(16-20 per lb)" is a shrimp grade, and a pattern that accepted any
+#    lowercase words after the number read both as counts and took them out of the name.
+_COUNT_FUNCTION_WORDS = frozenset("""
+if or per once total each when unless while plus more and to with for from using divided
+""".split())
+_COUNT_UNIT_WORDS = (r"(?:" + "|".join(sorted(set(_COUNT_NOUNS) | {"cloves", "clove"},
+                                              key=len, reverse=True))
+                     + r"|" + _SIZE_ALT + r")")
+_COUNT_RESTATEMENT_RE = re.compile(
+    r"^\s*(?:" + _MEASURE_QUALIFIER + r"\s*)?" + _MEASURE_NUM
+    + r"(?:\s+(?:" + _SIZE_ALT + r"|semi-ripe|ripe|whole|medium-sized))*"
+    r"(?:\s+[a-z][\w'’-]*)*\s*$", re.IGNORECASE)
+
+
+def count_restatement(text):
+    """A parenthetical that is ONLY a count of the same food, as a reason, else "".
+
+    "(about 2 cloves)", "(2 large semi-ripe bananas)" and "(about 1 bunch)" all restate the line's
+    own quantity in a second way, so they scale with it. The three refusals above are why the test
+    is more than "it has a number in it".
+    """
+    t = (text or "").strip()
+    if not t or _ANY_DIMENSION_RE.search(t):
+        return ""
+    if _COUNT_SOURCE_RE.match(t):
+        return ""
+    if _COUNT_ALTERNATIVE_RE.search(t):
+        return ""
+    if _COUNT_LIST_RE.search(t):
+        return ""
+    if split_measures(t):
+        return ""                                   # a real unit makes it a measure, not a count
+    if not re.match(r"^\s*(?:" + _MEASURE_QUALIFIER + r"\s*)?" + _MEASURE_NUM, t, re.IGNORECASE):
+        return ""
+    if not _COUNT_RESTATEMENT_RE.match(t):
+        return ""
+    if len(t.split()) > 5:
+        return ""
+    if {w.strip(",.;").lower() for w in t.split()} & _COUNT_FUNCTION_WORDS:
+        return ""
+    return "the fragment is only a count of the same food, so it scales with the line"
+
+
+# ---- are the two figures describing one quantity? ------------------------------------------- #
+# Measured over the 379 backups the corpus carries. A same-kind pair the authors wrote as an honest
+# metric-imperial rounding runs from 10 to 13 percent off ("500 g / 1 lb" is 10.2, "220 g / 7 oz"
+# is 10.9, "225 g / 7 oz" is 13.0). The pairs that are a real disagreement start at 18 ("½ cup /
+# 100 ml") and run to 97 ("1 cup / 120mL"). 15 percent separates them, and the figure is the
+# measurement rather than a round number chosen first.
+SAME_KIND_TOLERANCE = 0.15
+# A weight against a volume with nothing known about the food. Flour sits near 0.5 and syrup near
+# 1.4, so this band only catches a pair that cannot be an ordinary food at all.
+DENSITY_LOW, DENSITY_HIGH = 0.3, 1.5
+# ⚠️ A LIGHT FOOD IS NOT A DEFECT, AND THE CORPUS CANNOT BE THE AUTHORITY ON WHICH FOODS ARE
+#    LIGHT. Measured over the corpus's own pairs: chopped parsley sits at 0.23, dried lavender at
+#    0.14, bread cubes and mixed sprouts at 0.13, and chopped cilantro at 0.08. A band wide enough
+#    to admit those admits everything, and a food that appears once has nothing to corroborate it,
+#    so the exceptions are a maintained list the way PROPER_NOUNS is.
+LIGHT_FOODS = frozenset("""
+parsley cilantro coriander mint basil dill chives chive tarragon oregano thyme rosemary sage
+lavender marjoram chervil fennel-fronds herb herbs
+sprout sprouts microgreen microgreens arugula rocket spinach lettuce leaves greens kale cabbage
+watercress radicchio endive
+breadcrumb breadcrumbs crumbs croutons crouton popcorn puffed flakes bread
+""".split())
+DENSITY_LOW_LIGHT = 0.05
+# How far a pair may sit from a density the corpus or the weight chart states for that food.
+# Measured: 0.35 admits the kitchen roundings the corpus writes (a quarter teaspoon of baking soda
+# written as 1 gram where the chart says 1.5) and still flags a teaspoon of sugar written as 7
+# grams, which is 67 percent over.
+DENSITY_TOLERANCE = 0.35
+
+
+def is_light_food(name):
+    """Is this food one the maintained light list names? See LIGHT_FOODS for why there is a list."""
+    words = {w.strip(".,;()").lower() for w in re.split(r"[\s/-]+", name or "")}
+    return bool(words & LIGHT_FOODS)
+
+
+def coherence(first, second, density=None, light=False):
+    """Can these two measures both describe one quantity? (True|False|None, reason).
+
+    None means one side does not read as a single measure, so there is nothing to compare and the
+    check has no answer. `density` is grams per millilitre for THIS food where something knows it,
+    and `light` says the food is on the maintained light list, which beats a stated density
+    because a chart figure for "cilantro" cannot know how finely this recipe chopped it.
+    """
+    kind_a, value_a = read_measure(first)
+    kind_b, value_b = read_measure(second)
+    if kind_a is None or kind_b is None:
+        return None, "one side does not read as a single measure"
+    if kind_a == kind_b:
+        high, low = max(value_a, value_b), min(value_a, value_b)
+        if low <= 0:
+            return False, "one side is zero"
+        off = (high - low) / low
+        if off > SAME_KIND_TOLERANCE:
+            return False, (f"both sides are a {kind_a} and they differ by {off * 100:.0f} percent")
+        return True, (f"both sides are a {kind_a} and they agree to within {off * 100:.0f} percent")
+    grams, millilitres = ((value_a, value_b) if kind_a == "weight" else (value_b, value_a))
+    if millilitres <= 0:
+        return False, "the volume side is zero"
+    implied = grams / millilitres
+    if light:
+        if implied < DENSITY_LOW_LIGHT or implied > DENSITY_HIGH:
+            return False, (f"the pair implies a density of {implied:.2f} grams per millilitre, "
+                           f"outside {DENSITY_LOW_LIGHT} to {DENSITY_HIGH} even for a light food")
+        return True, (f"the pair implies a density of {implied:.2f} grams per millilitre, which a "
+                      f"light food reaches")
+    if density is not None and density > 0:
+        off = abs(implied - density) / density
+        if off <= DENSITY_TOLERANCE:
+            return True, (f"the pair implies {implied:.2f} grams per millilitre, and this food is "
+                          f"known at {density:.2f}")
+        return False, (f"the pair implies {implied:.2f} grams per millilitre where this food is "
+                       f"known at {density:.2f}")
+    if implied < DENSITY_LOW or implied > DENSITY_HIGH:
+        return False, (f"the pair implies a density of {implied:.2f} grams per millilitre, outside "
+                       f"{DENSITY_LOW} to {DENSITY_HIGH}, and nothing states one for this food")
+    return True, f"the pair implies a density of {implied:.2f} grams per millilitre"
+
+
+# Two pairs agree about a food when their implied densities are this close to each other.
+CORROBORATION_TOLERANCE = 0.25
+CORROBORATION_RECIPES = 2
+
+
+def density_index(pairs):
+    """What the corpus itself says each food weighs, from its OWN weight-against-volume pairs.
+
+    `pairs` is [(recipe_id, name, first, second)]. A density is returned for a food only where at
+    least CORROBORATION_RECIPES DIFFERENT recipes imply densities that agree with each other, so one
+    row cannot vouch for itself and a single odd pair still falls back to the wide band.
+
+    ⚠️ THIS IS WHAT KEEPS A HERB OFF THE REVIEW LIST. "3 tablespoons / 10g parsley" implies 0.23,
+    which no band for an unknown food can admit without admitting everything. Three recipes write
+    that same pair, and a figure three authors agree on is evidence about parsley rather than a
+    defect in one row.
+    """
+    seen = collections.defaultdict(list)
+    for recipe_id, name, first, second in pairs:
+        kind_a, value_a = read_measure(first)
+        kind_b, value_b = read_measure(second)
+        if kind_a is None or kind_b is None or kind_a == kind_b:
+            continue
+        grams, millilitres = ((value_a, value_b) if kind_a == "weight" else (value_b, value_a))
+        if millilitres <= 0:
+            continue
+        seen[weights.normalize(name or "")].append((recipe_id, grams / millilitres))
+    out = {}
+    for key, rows in seen.items():
+        if not key:
+            continue
+        for recipe_id, implied in rows:
+            agreeing = {r for r, other in rows
+                        if implied > 0 and abs(other - implied) / implied <= CORROBORATION_TOLERANCE}
+            if len(agreeing) >= CORROBORATION_RECIPES:
+                members = [o for _r, o in rows
+                           if implied > 0 and abs(o - implied) / implied <= CORROBORATION_TOLERANCE]
+                out[key] = sum(members) / len(members)
+                break
+    return out
+
+
+# ---- the front of the name ------------------------------------------------------------------ #
+# ⚠️ ONE DISPATCH, BECAUSE THESE ARE ALTERNATIVES RATHER THAN STAGES. The front of a name either
+#    opens with a unit word, or a measure, or a number word, or a "+" compound, or a size, or a
+#    piece of punctuation. It cannot open with two of them, so one function answers which and
+#    nothing composes two front rules by accident. tests/test_round_b_rules.py asserts the
+#    exclusivity over the whole corpus rather than trusting this paragraph.
+
+# The four phrases Andy's decision 7 keeps exactly as written. A size adjective may sit inside them.
+_A_AN_KEPT_RE = re.compile(
+    r"^\s*an?\s+(?:\w+\s+)?(?:pinch|pinches|handful|handfuls|few|package|packages|bunch|bunches)\b",
+    re.IGNORECASE)
+# "a 2-inch piece of ginger" takes the shape "One 2-inch piece ginger" has, which is the one case
+# where a leading article is a count.
+_A_AN_SIZED_RE = re.compile(r"^\s*(an?)\s+(?=" + _ONE_DIMENSION + r")", re.IGNORECASE)
+# A number word opening a name, with the article that may follow it ("Half a bottle").
+# ⚠️ AND WHAT FOLLOWS IT HAS TO BE A SIZE OR AN ARTICLE, OR "five spice powder" BECOMES 5 OF
+#    "spice powder". Measured over the 11 corpus rows this rule fires on: every one is followed
+#    by a size ("16-ounce cans", "2-inch piece") or by an article ("half a bottle", and the typo
+#    "half and onion"). Nothing is followed by a bare noun, which is the shape of a compound
+#    ingredient name. "half-and-half" is refused by the whitespace alone.
+_NUMBER_WORD_RE = re.compile(
+    r"^\s*(?P<word>half|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
+    r"(?:\s+(?:a|an|and)\b)?\s+(?=\S)", re.IGNORECASE)
+_NUMBER_WORD_ARTICLE_RE = re.compile(r"^\s*\w+\s+(?:a|an|and)\b", re.IGNORECASE)
+NUMBER_WORD_NUMERALS = {"half": "½", "one": "1", "two": "2", "three": "3", "four": "4",
+                        "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9",
+                        "ten": "10", "eleven": "11", "twelve": "12"}
+# A unit word stranded at the front of the name with its number already in the amount.
+_STRANDED_UNIT_RE = re.compile(r"^\s*(?P<unit>" + _MEASURE_UNIT + r")\b\.?\s*", re.IGNORECASE)
+# ⚠️ THE WORD AFTER THE UNIT GOES WITH IT. "4 Quarts of water" left "of water" as the name and
+#    "1 Quart, Brodo (broth) or Stock" left ", Brodo". Both read as a name that lost its front.
+_UNIT_TAIL_RE = re.compile(r"^\s*(?:of\b|[,;])\s*")
+# A compound amount: the second half sits at the front of the name behind a "+" or a "plus".
+_COMPOUND_RE = re.compile(
+    r"^\s*(?P<join>\+|plus\b)\s*(?P<second>" + _ONE_MEASURE + r")\s*", re.IGNORECASE)
+# A size whose number was parsed off as an amount: "-inch knob ginger" with the 1 in the qty.
+_SIZED_PIECE_TAIL_RE = re.compile(
+    r"^\s*-\s*(?:inch(?:es)?|in\b|cm|centimet(?:re|er)s?|mm|ounce|ounces|oz|pound|pounds|lb|lbs|"
+    r"gram|grams|g)\b", re.IGNORECASE)
+# Punctuation the amount left behind. A "+" or "/" with a measure after it is NOT this rule.
+_LEADING_PUNCT_RE = re.compile(r"^\s*[,;+/]\s*")
+
+FRONT_KEEP = "keep"
+
+
+def front_of_name(row):
+    """What belongs in the amount that is sitting at the front of the name instead.
+
+    Returns None where the front is already right, else a dict carrying the columns to write and
+    `front_len`, how many characters of the stored name the answer consumes. The caller applies
+    it, so nothing here ever reads a name another rule has rewritten.
+    """
+    name = (row.get("label") or row.get("raw_text") or "")
+    qty = (row.get("qty") or "").strip()
+    quantity = (row.get("quantity") or "").strip()
+    unit = (row.get("unit") or "").strip()
+    has_amount = bool(qty)
+    # Decision 7, and it comes first so no later rule can reach these phrases.
+    if _A_AN_KEPT_RE.match(name):
+        return None
+
+    # (1) an article the amount is already counting. "1/2 a Lemon" is half a lemon, and the "a"
+    #     is a word of the sentence rather than a word of the name.
+    m = re.match(r"^\s*an?\s+(?=\S)", name, re.IGNORECASE)
+    if m and has_amount:
+        return {"front_len": m.end(), "rule": "article_after_amount",
+                "why": f"the amount is {qty!r} and the article after it is not part of the name"}
+
+    # (2) a leading article in front of a SIZE is the count one, and the only one.
+    m = _A_AN_SIZED_RE.match(name)
+    if m and not has_amount:
+        return {"qty": "1", "quantity": "1", "unit": "", "front_len": m.end(),
+                "rule": "a_an_sized_piece",
+                "why": "an article in front of a size is a count of one, the shape "
+                       "\"One 2-inch piece ginger\" already has"}
+
+    # (2) the word the unit left behind. "1 Pound of Large Fresh Shrimp" stores "of Large Fresh
+    #     Shrimp" as its name, which reads as a name that lost its front.
+    # ⚠️ ONLY WHERE THERE WAS A UNIT FOR IT TO LEAVE. pasta-bolognese stores qty "1/4" with
+    #    no unit against the name "of Cream", and "¼ of Cream" at least reads as English where
+    #    "¼ Cream" does not. The missing unit is the real defect there and no measure proves it.
+    m = re.match(r"^\s*of\s+(?=\S)", name, re.IGNORECASE)
+    if m and has_amount and unit:
+        return {"front_len": m.end(), "rule": "word_the_unit_left",
+                "why": f"the amount is {qty!r} and the name opened with the word its unit left "
+                       f"behind"}
+
+    # (3) punctuation the parse left at the front, with no measure behind it.
+    m = _LEADING_PUNCT_RE.match(name)
+    if m and not _MEASURE_LEAD_RE.match(name[m.end():]) and not _SIZED_PIECE_TAIL_RE.match(name):
+        return {"front_len": m.end(), "rule": "leading_punctuation",
+                "why": f"the name opened {name[:m.end()].strip()!r}, which the amount left behind"}
+
+    # (4) a compound amount, whose second half is at the front of the name.
+    m = _COMPOUND_RE.match(name)
+    if m and has_amount:
+        second = _norm_ws(m.group("second"))
+        joined = f"{qty} + {second}"
+        return {"qty": joined, "quantity": joined, "unit": "", "front_len": m.end(),
+                "rule": "compound_amount",
+                "why": f"the amount is {joined!r}, written in two parts, and both parts scale"}
+
+    # (5) a size whose number was read as an amount. The number goes BACK to the name.
+    m = _SIZED_PIECE_TAIL_RE.match(name)
+    if m and has_amount and not unit and _norm_ws(qty) == _norm_ws(quantity):
+        return {"qty": "", "quantity": "", "unit": "", "front_len": 0, "prefix": qty,
+                "rule": "sized_piece",
+                "why": f"{qty + name[:m.end()]!r} is a size rather than an amount, so the number "
+                       f"stays with the words it sizes"}
+
+    # (6) a unit word stranded at the front of the name.
+    m = _STRANDED_UNIT_RE.match(name)
+    if m and has_amount and not unit:
+        word = m.group("unit")
+        # A bare "l" is a unit only where a number stands in front of it, which here is the qty.
+        tail = name[m.end():]
+        cut = m.end() + _UNIT_TAIL_RE.match(tail).end() if _UNIT_TAIL_RE.match(tail) else m.end()
+        # ⚠️ A WORD WITH NOTHING BESIDE IT IS THE FOOD, WHICH IS THE GUARD _lift_count_unit
+        #    ALREADY MAKES FOR 'cloves'. A row reading "2 sticks" and nothing else is two sticks of
+        #    something, and moving the word into the unit leaves a row with no name at all.
+        rest = name[cut:].strip(" ,")
+        if not rest or _is_all_modifier(rest.lower()):
+            return None
+        return {"qty": _norm_ws(f"{quantity or qty} {word}"), "quantity": quantity or qty,
+                "unit": word, "front_len": cut, "rule": "stranded_unit",
+                "why": f"the amount was {qty!r} and the unit {word!r} was left at the front of "
+                       f"the name"}
+
+    # (7) the row has no amount at all and the name opens with one.
+    if not has_amount:
+        m = _NUMBER_WORD_RE.match(name)
+        if m and (_NUMBER_WORD_ARTICLE_RE.match(name)
+                  or re.match(r"^\s*" + _MEASURE_NUM + r"\s*-\s*\w", name[m.end():])):
+            numeral = NUMBER_WORD_NUMERALS[m.group("word").lower()]
+            return {"qty": numeral, "quantity": numeral, "unit": "", "front_len": m.end(),
+                    "rule": "number_word",
+                    "why": f"the name opened with the number word {m.group('word')!r} and the row "
+                           f"had no amount"}
+        m = _ONE_MEASURE_LEAD_RE.match(name)
+        if m:
+            text = _norm_ws(m.group(0))
+            tail = name[m.end():]
+            cut = m.end() + (_UNIT_TAIL_RE.match(tail).end() if _UNIT_TAIL_RE.match(tail) else 0)
+            # The qualifier is part of the figure, and it reads as copy rather than as a title.
+            lowered = re.sub(r"^(" + _MEASURE_QUALIFIER + r")",
+                             lambda g: g.group(1).lower(), text, count=1, flags=re.IGNORECASE)
+            amount, _value, unit_read, rest, _rng = parse_amount(lowered)
+            if amount and not rest:
+                return {"qty": lowered, "quantity": amount, "unit": unit_read,
+                        "front_len": cut, "rule": "leading_measure",
+                        "why": f"the row had no amount and the name opened with the measure "
+                               f"{lowered!r}"}
+            return {"qty": lowered, "quantity": lowered, "unit": "", "front_len": cut,
+                    "rule": "leading_measure",
+                    "why": f"the row had no amount and the name opened with the measure "
+                           f"{lowered!r}, which does not split into a number and one unit"}
+    # (8) a comma or a space the author left hanging off the end of the name.
+    if name != name.rstrip(" ,;"):
+        return {"front_len": 0, "rule": "trailing_punctuation",
+                "why": f"the name ended {name[len(name.rstrip(' ,;')):]!r}, which says nothing"}
+    return None
+
+
+# ---- the author's second amount -------------------------------------------------------------- #
+# A slash pair at the front of the author's line: the amount written twice.
+_SLASH_PAIR_RE = re.compile(r"\s*/\s*(?P<second>" + _ONE_MEASURE + r")", re.IGNORECASE)
+
+
+def author_line_fragments(line):
+    """Every candidate second measure in the author's line, with where it sits and what it is.
+
+    A fragment is a parenthetical, or the right-hand side of a slash pair that follows the line's
+    own leading measure. Each carries its verdict from classify_fragment, so the caller never has
+    to decide what a fragment is for itself.
+    """
+    text = line or ""
+    out = []
+    # ⚠️ A BARE COUNT IS STILL THE LINE'S AMOUNT, AND TREATING IT AS NO AMOUNT DISARMED THE
+    #    GUARD BELOW. everyday-palestinian-salad opens "4 Persian cucumbers", which carries no
+    #    unit, so the amount span matched nothing, the text in front of "(about 1)" was read as
+    #    empty, and the count of the ENGLISH cucumber was taken as the Persian cucumbers' backup.
+    lead = _AMOUNT_SPAN_RE.match(text) or re.match(r"^\s*" + _MEASURE_NUM, text, re.IGNORECASE)
+    if lead:
+        # A slash pair only restates the LEADING amount, so it is read directly behind it.
+        pos = lead.end()
+        while True:
+            m = _SLASH_PAIR_RE.match(text, pos)
+            if not m:
+                break
+            verdict, reason = classify_fragment(m.group("second"), after=text[m.end():],
+                                                before=text[:m.start()], kind="slash")
+            out.append({"text": _norm_ws(m.group("second")), "span": (m.start(), m.end()),
+                        "kind": "slash", "verdict": verdict, "reason": reason})
+            pos = m.end()
+    for m in _PAREN_GROUP_RE.finditer(text):
+        verdict, reason = classify_fragment(m.group(1), after=text[m.end():],
+                                           before=text[:m.start()], kind="paren")
+        # ⚠️ A SECOND MEASURE BETWEEN THE LINE'S OWN AMOUNT AND THE FRAGMENT MEANS THE FRAGMENT
+        #    BELONGS TO THAT ONE. pumpkin-spice-sandwich-cookies runs two ingredients into one
+        #    line, "packed light brown sugar 1 cup (200 grams) granulated sugar", and the 200
+        #    grams measures the cup of granulated sugar rather than the row's own amount.
+        # ⚠️ AND THE MEASURES INSIDE AN EARLIER BRACKET DO NOT COUNT AS BEING IN THE WAY.
+        #    bananas-foster writes "170 grams (6 ounces) bittersweet or semisweet chocolate,
+        #    roughly chopped (about 1 cup)", where the 6 ounces is the first backup rather than a
+        #    different ingredient's amount, so blanking the brackets is what tells the two apart.
+        between = _PAREN_SPAN_RE.sub(" ", text[lead.end():m.start()]) if lead else ""
+        if verdict in (FRAGMENT_ALTERNATE, FRAGMENT_COUNT) and split_measures(between):
+            verdict, reason = FRAGMENT_PROSE, ("a second measure sits between the line's amount "
+                                               "and the fragment, so the fragment measures that "
+                                               "one")
+        out.append({"text": _norm_ws(m.group(1)), "span": (m.start(), m.end()),
+                    "kind": "paren", "verdict": verdict, "reason": reason})
+    out.sort(key=lambda f: f["span"][0])
+    return out
+
+
+SECOND_AMOUNT_JOIN = " / "
+
+
+def author_second_amount(line):
+    """The second amount the author's line states, as written, and the fragments it came from.
+
+    One function, three callers: the row rule below, the corpus density index, and the importer.
+    """
+    frags = [f for f in author_line_fragments(line)
+             if f["verdict"] in (FRAGMENT_ALTERNATE, FRAGMENT_COUNT)]
+    # ⚠️ ONE FRAGMENT CAN HOLD TWO BACKUPS, and the slot has to say so. "(8 tablespoons/113
+    #    grams)" is one parenthetical and two measures, and the display stacks each on its own
+    #    line, so the separator is normalized to " / " while each measure keeps the author's own
+    #    spelling. 2 backups appear on 28 rows of the corpus and 3 on one.
+    parts = []
+    for frag in frags:
+        inner = split_measures(frag["text"]) if frag["verdict"] == FRAGMENT_ALTERNATE else []
+        parts.extend(inner if len(inner) > 1 else [frag["text"]])
+    return SECOND_AMOUNT_JOIN.join(parts), frags
+
+
+def corpus_densities(rows):
+    """What the corpus says each food weighs, read off THE AUTHORS' OWN LINES.
+
+    ⚠️ NOT OFF THE STORED secondary_measure COLUMN, WHICH IS THE THING THIS ROUND IS REPAIRING.
+       Measured: built from the stored column the index knows 3 foods, because 130 of the 293
+       filled slots hold a copy of the first amount and the rest carry a stray slash. Built from
+       raw_text it knows what the authors actually wrote twice.
+    """
+    pairs = []
+    for row in rows:
+        line = row.get("raw_text") or row.get("label") or ""
+        first = _ONE_MEASURE_LEAD_RE.match(line)
+        if not first:
+            continue
+        wanted, _frags = author_second_amount(line)
+        for part in wanted.split(SECOND_AMOUNT_JOIN):
+            if part:
+                pairs.append((row.get("recipe_id"), row.get("label") or row.get("raw_text"),
+                              _norm_ws(first.group(0)), part))
+    return density_index(pairs)
+
+
+def second_amount(row):
+    """The author's second amount for this row, as written, and where it still sits in the name.
+
+    Returns None when the row's stored second amount is already right. The slot holds the author's
+    BACKUP, in the author's own order, and two backups go in the one slot joined by " / " because
+    the display stacks each on its own line.
+    """
+    line = row.get("raw_text") or row.get("label") or ""
+    stored = _norm_ws(row.get("secondary_measure") or "")
+    wanted, frags = author_second_amount(line)
+    # ⚠️ A STORED VALUE THAT REPEATS THE FIRST AMOUNT IS NOT A BACKUP, and 130 rows hold one.
+    #    _dual_measure wrote the LEADING measure there whenever the line also carried a weight, so
+    #    the slot said "14 cups" on a row whose amount was already "14 cups".
+    if _norm_ws(stored) == _norm_ws(wanted):
+        return None
+    return {"secondary_measure": wanted or None, "fragments": frags,
+            "why": (f"the author's second amount is {wanted!r}" if wanted
+                    else f"the slot held {stored!r}, which is not a second amount the author wrote")}
+
+
+# ---- a broken amount, repaired only where one reading is proved ------------------------------ #
+# Decision 8. A repair needs another measure ON THE SAME LINE that fits exactly one reading. Where
+# no measure settles it, or more than one reading fits, the row is flagged and left as it is.
+#
+# ⚠️ THE CANDIDATE SET IS WHAT THE CHARACTERS CAN PRODUCE, NOT WHAT THE ARITHMETIC WANTS.
+#    "3/4 cups (416 grams)" of flour sits nearest 3½ cups, and 3½ is not a reading of "3/4" at all.
+#    Offering it would be the rule inventing a number. The candidates are the mixed numbers whose
+#    flattening IS the stored text, and three of them fit, so that row is flagged.
+_BROKEN_FRACTION_RE = re.compile(r"^\s*(?P<num>\d+)\s*/\s*(?P<den>\d+)\s*$")
+_BROKEN_TWO_DIGIT_RE = re.compile(r"^\s*(?P<whole>[1-9])(?P<den>[2-9])\s*$")
+_PLURAL_UNIT_RE = re.compile(r"s\s*$", re.IGNORECASE)
+# The amounts an author actually writes, for the shape where a unit carries no number at all.
+_SIMPLE_COUNTS = [0.25, 1 / 3, 0.5, 2 / 3, 0.75] + [float(n) for n in range(1, 13)]
+_SIMPLE_COUNT_TEXT = {0.25: "¼", 1 / 3: "⅓", 0.5: "½", 2 / 3: "⅔", 0.75: "¾"}
+SIMPLE_COUNT_TOLERANCE = 0.03
+BROKEN_AMOUNT_FLAG = "broken_amount_unproved"
+UNBALANCED_BRACKET_FLAG = "unbalanced_bracket"
+NO_NAME_COLUMN_FLAG = "no_name_column"
+FOOD_INSIDE_FRAGMENT_FLAG = "food_inside_the_fragment"
+# What a name reduced to a trailing clause looks like. A name does not open with a connective.
+_FRAGMENT_LEFTOVER_RE = re.compile(
+    r"^\s*(?:plus|and|or|for|to|with|at|in|of)\b", re.IGNORECASE)
+
+
+def _amount_text(value):
+    """A candidate amount as the app spells it."""
+    if value in _SIMPLE_COUNT_TEXT:
+        return _SIMPLE_COUNT_TEXT[value]
+    if abs(value - round(value)) < 1e-9:
+        return str(int(round(value)))
+    return f"{value:g}"
+
+
+def _mixed_text(whole, num, den):
+    glyph = {("1", "4"): "¼", ("1", "2"): "½", ("3", "4"): "¾", ("1", "3"): "⅓", ("2", "3"): "⅔",
+             ("1", "8"): "⅛", ("3", "8"): "⅜", ("5", "8"): "⅝", ("7", "8"): "⅞",
+             ("1", "6"): "⅙", ("5", "6"): "⅚"}.get((num, den))
+    return f"{whole}{glyph}" if glyph else f"{whole} {num}/{den}"
+
+
+def broken_amount_candidates(row):
+    """Every reading of this row's amount that its own characters can produce.
+
+    Returns (candidates, shape, gated, front_len). A candidate is (amount_text, unit_text), and a None amount
+    means the count has to be computed rather than chosen. `gated` says the stored amount looks
+    perfectly ordinary, so nothing may be read back from it until a measure on the line proves it
+    cannot be right.
+
+    ⚠️ THE GATE IS THE WHOLE RULE ON THE TWO-DIGIT SHAPE. "1¼" is "1 1/4" in ascii and losing
+       the " 1/" leaves "14", which is how basic-hummus came to say 14 cups of chickpeas. Read
+       without a gate that shape also claims "16 oz" is a broken "1⅙ oz", and 16 oz is just 16 oz.
+    """
+    qty = (row.get("qty") or "").strip()
+    quantity = (row.get("quantity") or "").strip()
+    unit = (row.get("unit") or "").strip()
+    name = (row.get("label") or row.get("raw_text") or "")
+    # Shape A: a bare fraction under a PLURAL unit. A fraction below one cannot be plural, so the
+    # whole part was lost. "1/3 cups" is "W 1/3" and the proving measure says which W.
+    m = _BROKEN_FRACTION_RE.match(quantity)
+    if m and unit and _PLURAL_UNIT_RE.search(unit) and int(m.group("num")) < int(m.group("den")):
+        # ⚠️ GATED, BECAUSE THE GRAMMAR IS RIGHT AND THE WRITING IS NOT. A fraction below one
+        #    cannot really be plural, and authors write "3/4 teaspoons" anyway. Measured over the
+        #    corpus: ungated this shape called 1 ordinary row of sea salt a broken amount.
+        return ([(_mixed_text(str(w), m.group("num"), m.group("den")), unit)
+                 for w in range(1, 10)],
+                "a fraction under a plural unit lost its whole part", True, 0)
+    # Shape B: a two-digit integer whose middle was eaten.
+    m = _BROKEN_TWO_DIGIT_RE.match(quantity)
+    if m and unit:
+        return ([(_mixed_text(m.group("whole"), "1", m.group("den")), unit)],
+                "a mixed number lost the \"1/\" from inside it", True, 0)
+    # Shape C: the amount is missing and the name opens with the tail of a fraction. "/3 Cup (67
+    # grams) sugar" is "1/3 Cup" with the numerator gone.
+    if not qty:
+        m = re.match(r"^\s*/\s*(?P<den>\d+)\s*(?P<unit>" + _MEASURE_UNIT + r")\b\.?",
+                     name, re.IGNORECASE)
+        if m:
+            den = int(m.group("den"))
+            return ([(_mixed_text("", str(n), m.group("den")).strip(), m.group("unit"))
+                     for n in range(1, max(den, 2))], "a fraction lost its numerator", False,
+                    m.end())
+    # Shape D: a unit with no number anywhere. "cups milk" behind "480mL", "stick" behind
+    # "(8 tablespoons/113 grams)". The count is whatever the other measure makes it.
+    m = _STRANDED_UNIT_RE.match(name)
+    if m and not re.search(r"\d", quantity):
+        return ([(None, m.group("unit"))], "a unit with no number", False, m.end())
+    # Shape E: a fraction that lost its DENOMINATOR. "1/ cups all-purpose flour". Nothing can read
+    # this back, so it is named here in order to be flagged rather than passed over in silence.
+    if re.match(r"^\s*/\s*(?=" + _MEASURE_UNIT + r"\b)", name, re.IGNORECASE) and qty:
+        return ([], "a fraction lost its denominator", False, 0)
+    return [], "", False, 0
+
+
+def repair_broken_amount(row, front=None, second=None, density=None):
+    """Decision 8, applied. Returns the repair, or the flag saying why there is not one.
+
+    `second` is the author's second amount where one was found, because on most of these rows the
+    backup IS the proving measure. `density` is grams per millilitre for this food where something
+    knows it, which is what tells 1⅓ cups of brown sugar from 2⅓.
+    """
+    candidates, shape, gated, front_len = broken_amount_candidates(row)
+    if not shape:
+        return None
+    qty = (row.get("qty") or "").strip()
+    proofs = []
+    grams = row.get("grams")
+    if grams:
+        proofs.append(f"{grams:g} g")
+    if second and second.get("secondary_measure"):
+        proofs.extend(p for p in str(second["secondary_measure"]).split(SECOND_AMOUNT_JOIN) if p)
+    proofs = [p for p in proofs if read_measure(p)[0] is not None]
+    if gated:
+        # The stored amount reads perfectly well. Only a measure on the line that it cannot
+        # possibly agree with makes it a broken amount at all.
+        if not proofs or any(coherence(qty, p, density)[0] is not False for p in proofs):
+            return None
+    if not candidates:
+        return {"flag": BROKEN_AMOUNT_FLAG, "shape": shape,
+                "why": f"{qty or shape!r} is a broken amount and nothing can read it back: {shape}"}
+    if not proofs:
+        return {"flag": BROKEN_AMOUNT_FLAG, "shape": shape,
+                "why": f"{qty or shape!r} reads as {len(candidates)} amounts and the line carries "
+                       f"no other measure to settle it"}
+    # Shape D asks a different question: the count is computed rather than chosen.
+    if candidates[0][0] is None:
+        unit = candidates[0][1]
+        kind_u = ("weight" if unit.lower() in MEASURE_TO_GRAMS else
+                  "volume" if unit.lower() in MEASURE_TO_ML else None)
+        per = (MEASURE_TO_GRAMS if kind_u == "weight" else MEASURE_TO_ML).get(unit.lower()) \
+            if kind_u else None
+        for proof in proofs:
+            kind_p, value_p = read_measure(proof)
+            if kind_p != kind_u or not per:
+                continue
+            count = value_p / per
+            near = [c for c in _SIMPLE_COUNTS if c > 0 and abs(count - c) / c <= SIMPLE_COUNT_TOLERANCE]
+            if len(near) == 1:
+                text = f"{_amount_text(near[0])} {unit}"
+                return {"qty": text, "quantity": _amount_text(near[0]), "unit": unit,
+                        "front_len": front_len,
+                        "shape": shape, "proof": proof,
+                        "why": f"{unit!r} carried no number and {proof} is {_amount_text(near[0])} "
+                               f"of them"}
+        return {"flag": BROKEN_AMOUNT_FLAG, "shape": shape,
+                "why": f"{unit!r} carried no number and no measure on the line lands on a figure "
+                       f"an author would write"}
+    fits = []
+    for text, unit in candidates:
+        ok = [p for p in proofs if coherence(f"{text} {unit}", p, density)[0] is True]
+        if ok:
+            fits.append((text, unit, ok[0]))
+    if len(fits) != 1:
+        return {"flag": BROKEN_AMOUNT_FLAG, "shape": shape,
+                "why": (f"{qty or shape!r} reads as {len(candidates)} amounts and "
+                        f"{len(fits)} of them fit the measures on the line, so no reading is "
+                        f"proved")}
+    text, unit, proof = fits[0]
+    return {"qty": _norm_ws(f"{text} {unit}"), "quantity": text, "unit": unit, "shape": shape,
+            "proof": proof, "front_len": front_len,
+            "why": f"{qty or shape!r} reads as {text} {unit}, the one reading {proof} fits"}
+
+
+# ---- the one plan for one row ---------------------------------------------------------------- #
+AMOUNT_PLAN_COLUMNS = ("qty", "quantity", "unit", "label", "secondary_measure")
+_UNBALANCED_CLOSE_RE = re.compile(r"(?<!\()\)")
+
+
+def _tidy_name(text):
+    """Collapse what removing a fragment leaves behind, and nothing else.
+
+    A removal can leave a doubled space, a comma with nothing in front of it, or a close paren
+    whose open paren went with the fragment. None of the three is a judgement about the words.
+
+    ⚠️ THE SPACE AND THE DOUBLED COMMA ARE THE RULES clean_source_text ALREADY CARRIES, reused
+       rather than spelled again. Removing "(24 ounces total)" from "Swiss chard (24 ounces
+       total), rinsed well" leaves a space in front of the comma, which is the same publisher
+       artifact cleaned_space_before_comma exists for.
+    """
+    s = re.sub(r"\s{2,}", " ", text or "")
+    for flag, rx, repl, _reason in CLEANUP_RULES:
+        if flag in ("cleaned_space_before_comma", "cleaned_double_comma"):
+            s = rx.sub(repl, s)
+    if s.count("(") < s.count(")"):
+        s = _UNBALANCED_CLOSE_RE.sub("", s, count=s.count(")") - s.count("("))
+    s = re.sub(r"\s{2,}", " ", s).strip()
+    s = re.sub(r"^[,;.\s]+", "", s)
+    s = re.sub(r"[,;\s]+$", "", s)
+    return s
+
+
+_LOOKALIKE_LB_LEAD = re.compile(r"^(\s*)I(bs?)\b")
+
+
+def repair_lookalike_units(text, at_start=False):
+    """The look-alike unit letters, repaired before any rule reads the text.
+
+    One rule, two callers: clean_source_text runs it on the way in and amount_plan runs it over a
+    stored row, because a row already in the database was imported before the rule existed.
+
+    `at_start` admits the letter at position 0, which is only safe where the NUMBER is in its own
+    column. spiced-fish-pilaf's label is "Ib./700g skinned white fish fillets" with the 1½ in qty,
+    so the lookbehind the import path relies on has nothing to look behind.
+    """
+    out = text or ""
+    for flag, rx, repl, _reason in CLEANUP_RULES:
+        if flag == "cleaned_lookalike_lb":
+            out = rx.sub(repl, out)
+    if at_start:
+        out = _LOOKALIKE_LB_LEAD.sub(r"\1l\2", out)
+    return out
+
+
+_DENSITY_NAME_STRIP = re.compile(
+    r"\([^()]*\)|" + _ONE_MEASURE + r"|^[\s,;+/]+|\b(?:of|about|approx\.?)\b", re.IGNORECASE)
+
+
+def food_name(row):
+    """The FOOD this row names, for looking a density up and nothing else.
+
+    ⚠️ A ROW WITH NO AMOUNT HOLDS ITS WHOLE LINE IN label, AND THAT DEFEATED THE LOOKUP.
+       mocha-chocolate-chunk-cookies stores "/3 Cup (67 grams) granulated sugar" as its name, so
+       asking the weight chart about that string found nothing, the repair fell back to the wide
+       band, and both ⅓ and ⅔ fitted it. With the measures and brackets taken off, the chart
+       answers 0.85 for granulated sugar and only ⅓ fits.
+    """
+    name = row.get("label") or row.get("raw_text") or ""
+    return _norm_ws(_DENSITY_NAME_STRIP.sub(" ", name)).strip(" ,;")
+
+
+def apply_amount_plan(res, line, density=None):
+    """Run the round B rules over a line the importer has just parsed, and write the answer back.
+
+    ⚠️ THIS IS THE IMPORTER'S HALF OF ONE RULE SET. The corpus pass calls amount_plan over a
+       stored row and this calls it over a row the parse has just built, so a recipe imported
+       tomorrow is structured the way the corpus was repaired to be. A comment saying the two
+       share their rules is not the same thing as calling one function, which is what polish
+       round 2 learned the hard way.
+    """
+    row = {"qty": _norm_ws(f"{res['amount']} {res['unit']}"), "quantity": res["amount"],
+           "unit": res["unit"], "label": res["name"], "raw_text": line,
+           "secondary_measure": res.get("secondary_measure"),
+           "grams": res.get("grams_harvested")}
+    plan = amount_plan(row, density)
+    changes = plan["changes"]
+    if "quantity" in changes or "unit" in changes or "qty" in changes:
+        res["amount"] = changes.get("quantity", row["quantity"]) or ""
+        res["unit"] = changes.get("unit", row["unit"]) or ""
+        try:
+            res["value"] = _to_value(_normalize_unicode(_canon_amount(res["amount"])))
+        except (ValueError, ZeroDivisionError, IndexError):
+            res["value"] = None
+    if "label" in changes:
+        res["name"] = changes["label"]
+    if "secondary_measure" in changes:
+        res["secondary_measure"] = changes["secondary_measure"]
+    for flag, reason in plan["flags"] + plan["notes"]:
+        if flag not in res["flags"]:
+            res["flags"].append(flag)
+        if not res["flag_reason"]:
+            res["flag_reason"] = reason
+    return res
+
+
+def amount_plan(row, density=None):
+    """Everything round B changes about ONE ingredient row, computed from that row as stored.
+
+    Returns {"changes": {column: value}, "flags": [(flag, reason)], "why": [reason, ...],
+             "rules": [name, ...]}. An empty `changes` means the row is already right.
+
+    ⚠️ EVERY RULE DECIDES FROM THE STORED ROW. The front rule reads the front of the stored name,
+       the second-amount rule reads the author's raw_text, and the repair reads the stored amount
+       and what the other two FOUND rather than what they wrote. Composing their answers is
+       mechanical, which is the half polish round 2 got wrong by letting part 6 read part 4's text.
+    """
+    # ⚠️ THE LOOK-ALIKE LETTER IS REPAIRED FIRST, so every rule below reads the same text the
+    #    importer would. See CLEANUP_RULES' cleaned_lookalike_lb for the row that proved it.
+    stored_label = row.get("label")
+    row = dict(row)
+    has_qty = bool((row.get("qty") or "").strip())
+    for key in ("label", "raw_text"):
+        if row.get(key):
+            row[key] = repair_lookalike_units(row[key], at_start=has_qty and key == "label")
+    name = (row.get("label") or row.get("raw_text") or "")
+    changes, flags, notes, why, rules = {}, [], [], [], []
+    # ⚠️ AN UNBALANCED BRACKET IS READ BEFORE ANYTHING ELSE AND STOPS THE ROW. chocolate-hazelnut
+    #    -wedges stores "1 stick ½ cup/113 grams) cold unsalted butter, cut into" with no opening
+    #    bracket at all, so the backup is in no shape any fragment rule can find. Repairing the
+    #    half of it the rules CAN see left a name reading "½ cup/113 grams cold unsalted butter",
+    #    which is worse than what it started with.
+    # ⚠️ A ROW WITH NO NAME COLUMN SATISFIES NEITHER CONTRACT THIS ROUND READS. These rules
+    #    take `label` as the name and `raw_text` as the author's line. 5 rows carry no label at
+    #    all, and their raw_text is not the author's line either: cauliflower-soup stores
+    #    qty "1 pound" against a raw_text reading "6 ounces very fresh cauliflower". Writing a
+    #    label for them would be inventing one.
+    if not (row.get("label") or "").strip():
+        return {"changes": {}, "flags": [(NO_NAME_COLUMN_FLAG,
+                 "the row carries no name of its own, so raw_text is not the author's line and "
+                 "nothing here can read it")], "notes": [], "why": [], "rules": []}
+    line = row.get("raw_text") or name
+    if line.count("(") != line.count(")"):
+        return {"changes": {}, "flags": [(UNBALANCED_BRACKET_FLAG,
+                 f"the line carries {line.count('(')} opening and {line.count(')')} closing "
+                 f"brackets, so no rule can tell what the brackets were around")],
+                "notes": [], "why": [], "rules": []}
+    front = front_of_name(row)
+    second = second_amount(row)
+    # `density` may be a figure or a lookup. A lookup is asked about the food rather than the row,
+    # because the row's name still carries the amount on exactly the rows a repair is about.
+    grams_per_ml = density(food_name(row)) if callable(density) else density
+    repair = repair_broken_amount(row, front, second, grams_per_ml)
+
+    # The repair is about the amount, so where it fires it replaces what the front rule said about
+    # the amount and keeps what the front rule said about the name.
+    amount_from = repair if (repair and "flag" not in repair) else front
+    if repair and "flag" in repair:
+        flags.append((repair["flag"], repair["why"]))
+    for key in ("qty", "quantity", "unit"):
+        if amount_from and key in amount_from and (amount_from[key] or "") != (row.get(key) or ""):
+            changes[key] = amount_from[key] or None
+    if amount_from is not None and amount_from is repair:
+        rules.append("broken_amount_repair")
+        why.append(repair["why"])
+    if front:
+        rules.append(front["rule"])
+        why.append(front["why"])
+
+    new_name = name
+    cut_from = front if front else (amount_from if amount_from else None)
+    if cut_from:
+        new_name = (cut_from.get("prefix") or "") + new_name[cut_from.get("front_len", 0) or 0:]
+    if second:
+        for frag in second["fragments"]:
+            for form in (f"({frag['text']})", f"/ {frag['text']}", f"/{frag['text']}",
+                         frag["text"]):
+                if not form or form not in new_name:
+                    continue
+                without = _tidy_name(new_name.replace(form, "", 1))
+                # ⚠️ A FRAGMENT STAYS WHERE THE FOOD IS INSIDE IT. bananas-foster stores
+                #    "(2 large semi-ripe bananas) , peeled and roughly chopped" as its name, and
+                #    taking the count out left an ingredient called "peeled and roughly chopped".
+                #    malted-brownie-biscotti left "plus more for dusting". The second amount is
+                #    still recorded either way, because that reads off the author's line.
+                if _is_all_modifier(without.lower()) or _FRAGMENT_LEFTOVER_RE.match(without):
+                    notes.append((FOOD_INSIDE_FRAGMENT_FLAG,
+                                  f"{form!r} carries the food's own name, so taking it out of the "
+                                  f"name would leave {without!r}"))
+                    break
+                new_name = new_name.replace(form, "", 1)
+                break
+        if (second.get("secondary_measure") or None) != (row.get("secondary_measure") or None):
+            changes["secondary_measure"] = second["secondary_measure"]
+            rules.append("second_amount")
+            why.append(second["why"])
+    new_name = _tidy_name(new_name)
+    if new_name != (stored_label or "") and new_name:
+        changes["label"] = new_name
+    # ⚠️ A FLAGGED ROW IS LEFT EXACTLY AS IT IS. Half a repair is not an improvement: the
+    #    flag says a person has to look, and a row that moved in the meantime is a row they are
+    #    reading in a state neither the author nor they chose.
+    # ⚠️ A FLAG SUPPRESSES THE ROW AND A NOTE DOES NOT, and the difference is whether the rule
+    #    understood the row. An unbalanced bracket means it did not, so nothing moves. A fragment
+    #    carrying the food's own name means it did: the second amount is the author's and is
+    #    recorded, and only the name is left as written.
+    if flags:
+        return {"changes": {}, "flags": flags, "notes": notes, "why": why, "rules": []}
+    return {"changes": changes, "flags": flags, "notes": notes, "why": why, "rules": rules}
+
+
+# ---- a row that is half of one line ---------------------------------------------------------- #
+# Decision for part 4. Two shapes, and both are read off the row ABOVE rather than off this row
+# alone, because what makes a row a continuation is the line it continues.
+_ENDS_MID_PHRASE_RE = re.compile(
+    r"(?:\b(?:cut|chopped|sliced|diced|torn|broken|grated|cubed)\s+into|\b(?:into|plus|and|or|of|"
+    r"with|for|about)|[,+/–—-])\s*$", re.IGNORECASE)
+# A row that is ONLY a parenthesized measure measures the row above it.
+_ONLY_A_MEASURE_PAREN_RE = re.compile(
+    r"^\s*\(\s*(?P<inner>" + _ONE_MEASURE + r")\s*\)\s*(?P<tail>[,;]?\s*(?:plus|and)\b.*)?$",
+    re.IGNORECASE)
+
+
+def joins_the_row_above(above, row):
+    """Is this row the rest of the row above it, and why?
+
+    `above` and `row` are the two rows as stored. Returns a reason, or "" when the row stands on
+    its own. A heading above, or nothing above, is never continued.
+    """
+    if not above or above.get("is_heading") or row.get("is_heading"):
+        return ""
+    above_text = (above.get("label") or above.get("raw_text") or "").strip()
+    text = (row.get("label") or row.get("raw_text") or "").strip()
+    if not above_text or not text:
+        return ""
+    if _ENDS_MID_PHRASE_RE.search(above_text):
+        return f"the row above ends mid-phrase, on {above_text.split()[-1]!r}"
+    m = _ONLY_A_MEASURE_PAREN_RE.match(text)
+    if m and not (row.get("qty") or "").strip():
+        return (f"the row is only the measure {_norm_ws(m.group('inner'))!r}, which measures the "
+                f"row above it")
+    return ""
 
 
 def parse_servings(raw):
@@ -2869,8 +3944,12 @@ def classify_line(raw, section_hints=None, has_stored_amount=False):
         res.update(amount=amount, value=value, unit=unit, name=name, range=rng)
         res["grams_harvested"] = grams
         res["secondary_measure"] = secondary or slash_secondary
-        res["has_alternative"] = bool(_ALT_RE.search(name))
-        res["has_prep_note"] = bool(_PREP.search(name))
+        # The round B rules, run by the same function the corpus pass runs. The two strips above
+        # have already taken their own fragment out of the name, so the plan simply finds nothing
+        # left to remove there and records the author's second amount without the stray slash.
+        apply_amount_plan(res, line)
+        res["has_alternative"] = bool(_ALT_RE.search(res["name"]))
+        res["has_prep_note"] = bool(_PREP.search(res["name"]))
         if _EACH_RE.search(line):
             res["kind"] = "flagged"
             res["flags"].append("each_multi")
@@ -2911,6 +3990,16 @@ def classify_line(raw, section_hints=None, has_stored_amount=False):
         res["has_alternative"] = bool(_ALT_RE.search(lifted_name))
         res["has_prep_note"] = bool(_PREP.search(lifted_name))
         return res
+
+    # 3d. No amount and no counting noun, but the name OPENS with one: a measure the parse could
+    #     not read ("Scant ½ cup (120ml) olive oil") or a number word ("One 16-ounce can
+    #     chickpeas"). The same plan the corpus pass runs answers both, so an import gets the
+    #     shape the repair gave the 300 rather than an ambiguous flag.
+    before = dict(res)
+    apply_amount_plan(res, line)
+    if res["amount"]:
+        return res
+    res.update(before)
 
     # 4. No amount, no measurement, not a clear section -> ambiguous; suggest (never decide).
     res["kind"] = "flagged"
