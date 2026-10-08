@@ -13,7 +13,11 @@
     "reminder"
    ],
    "corpus_paragraphs": 9,
-   "corpus_recipes": 8
+   "corpus_recipes": 8,
+   "restates_the_kind": [
+    "note",
+    "notes"
+   ]
   },
   {
    "kind": "tips",
@@ -25,7 +29,11 @@
     "pro-tip"
    ],
    "corpus_paragraphs": 4,
-   "corpus_recipes": 4
+   "corpus_recipes": 4,
+   "restates_the_kind": [
+    "tip",
+    "tips"
+   ]
   },
   {
    "kind": "storage",
@@ -43,7 +51,11 @@
     "leftovers"
    ],
    "corpus_paragraphs": 8,
-   "corpus_recipes": 6
+   "corpus_recipes": 6,
+   "restates_the_kind": [
+    "storage",
+    "storing"
+   ]
   },
   {
    "kind": "variations",
@@ -57,7 +69,11 @@
     "same day version"
    ],
    "corpus_paragraphs": 3,
-   "corpus_recipes": 3
+   "corpus_recipes": 3,
+   "restates_the_kind": [
+    "variation",
+    "variations"
+   ]
   },
   {
    "kind": "serving",
@@ -69,7 +85,11 @@
     "serving suggestion"
    ],
    "corpus_paragraphs": 0,
-   "corpus_recipes": 0
+   "corpus_recipes": 0,
+   "restates_the_kind": [
+    "serving"
+   ]
   }
- ]
+ ],
+ "restates_the_kind": "Per kind, the labels that merely RESTATE it. The page groups by kind and prints the kind's header over the group, so a note opening \"Note:\" under a heading reading \"Notes\" says it twice and the label comes off. A label NOT on this list says more than the header does and becomes the note's title instead: \"To Store\" and \"To Freeze\" are both the storage kind and are the pair a title exists to tell apart. THIS IS A LIST AND NOT A GRAMMAR RULE. An earlier version compared the label against the kind name with a plural rule, which titled \"Storing\" on the grounds that it is not spelled \"Storage\". Andy's call, 2026-10-08: \"Storing\" restates Storage and \"Reminder\" does not restate Notes. A label on no list is a judgement about words, so it is written down rather than derived."
 }

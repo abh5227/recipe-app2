@@ -5,7 +5,9 @@ been executed against `recipes.db`. The round was rehearsed end to end on a copy
 the figures each step expects are the ones that rehearsal produced.
 
 **What it carries.** 189 writes over 84 recipes, from three committed decision files, plus the code
-that makes them: `import_cleanup.names_a_stage`, `strip_author_letters`,
+that makes them. Part 5 is **15 labels stripped and 10 lifted into a title**, after Andy's
+2026-10-08 call that "Storing" restates the Storage kind, which is declared in
+`static/note-kinds.json` rather than derived by a rule: `import_cleanup.names_a_stage`, `strip_author_letters`,
 `strip_author_numbers_by_section`, `continues_the_line_above`, `note_label_plan`,
 `footnote_step_plan`, `strip_footnote_markers`, `optional_ingredient_groups`, the importer wiring for
 all of them, and `scripts/gates/cells.py`.
@@ -42,12 +44,19 @@ preparation opened live for writing.
 
 ```sh
 python3.13 backup.py
-ls -t backups/*.db | head -1
-shasum -a 256 "$(ls -t backups/*.db | head -1)" "$LIVE"      # the two must MATCH
+BACKUP="$(ls -t backups/*.db | head -1)" && echo "BACKUP=$BACKUP"
+shasum -a 256 "$BACKUP" "$LIVE"                               # the two must MATCH
 git fetch origin && git rev-parse origin/main                 # expect 0458c88 before the push
 ```
 
-A backup nobody fingerprinted is a hope. The data rollback in section 6 is this file.
+A backup nobody fingerprinted is a hope. The data rollback in section 6 restores **this exact file**.
+
+⚠️ **WRITE THE VALUE OF `$BACKUP` DOWN, HERE, BEFORE GOING ON.** The rollback used to say "the
+newest backup", which is a different file the moment anything else runs `backup.py`, and the one
+moment you reach for a rollback is the one moment you are not thinking about that. A restore of the
+wrong backup is silent: it is a valid database, it is just not the one this round started from.
+
+    BACKUP = ______________________________________________
 
 ## 0b. The CI-condition run, from a FRESH CLONE
 
@@ -74,13 +83,32 @@ git push origin --delete ci/polish-round-2
 
 ## 2. Read the checks, step by step
 
+With `gh`, which reads the steps in one call and needs no run id:
+
+```sh
+gh api "repos/abh5227/recipe-app2/actions/runs?per_page=8&branch=ci/polish-round-2" \
+  --jq '.workflow_runs[] | "\(.name): \(.status)/\(.conclusion) \(.head_sha[0:7]) \(.id)"'
+gh api "repos/abh5227/recipe-app2/actions/runs/<id>/jobs" \
+  --jq '.jobs[] | .name as $j | .steps[] | "\($j)  \(.conclusion)  \(.name)"'
+```
+
+⚠️ **`gh` IS NOT INSTALLED ON THIS MACHINE AND NO PREVIOUS ROUND USED IT.** Checked 2026-10-08:
+`gh` is on no PATH entry and there is no `GH_TOKEN` or `GITHUB_TOKEN` in the environment. Every round
+so far read the checks with the `curl` form below, against the public API. Use `gh` if it is there,
+because its job output is easier to read and it authenticates, and otherwise use this, which does the
+same job:
+
 ```sh
 curl -s "https://api.github.com/repos/abh5227/recipe-app2/actions/runs?per_page=8&branch=ci/polish-round-2" \
-  | python3.13 -c "import json,sys; [print(f\"{r['name']}: {r['status']}/{r['conclusion']} {r['head_sha'][:7]}\") for r in json.load(sys.stdin)['workflow_runs']]"
+  | python3.13 -c "import json,sys; [print(f\"{r['name']}: {r['status']}/{r['conclusion']} {r['head_sha'][:7]} {r['id']}\") for r in json.load(sys.stdin)['workflow_runs']]"
 
 curl -s "https://api.github.com/repos/abh5227/recipe-app2/actions/runs/<id>/jobs" \
   | python3.13 -c "import json,sys; [print(' ', s['conclusion'], s['name']) for j in json.load(sys.stdin)['jobs'] for s in j['steps']]"
 ```
+
+⚠️ **AND THE UNAUTHENTICATED FORM CANNOT READ A JOB LOG** (the API answers 403), so a failure has to
+be diagnosed from the code. That is the second reason to run on a branch: a red branch costs nothing
+and a red main is a bisect.
 
 ⚠️ **"Run Postgres integration tests" must read `success`, not `skipped`.** The module skips on one
 mark, so an all-skipped run exits 0 and is indistinguishable from a pass in the job's green tick. This
@@ -151,7 +179,7 @@ python3.13 scripts/gates/rounds.py --round golive/rounds/2026-10-08-polish-round
 The dry run must print exactly this, and if it does not, do not type `--apply`:
 
 ```
-  decisions read            : 78 levels, 112 names, 14 rows
+  decisions read            : 78 levels, 112 names, 15 rows
   to write                  : 189 over 84 recipe(s)
       part 1: 78
       part 2: 78
@@ -185,11 +213,11 @@ It must print **EVERY MOVED CELL WAS DECLARED**. Rehearsed 2026-10-08:
 ```
   recipe_steps:       2486 rows x  6 columns =  14916 cells, 89 moved over 89 rows; 1 deleted, 0 inserted
   recipe_ingredients: 3572 rows x 18 columns =  64296 cells, 105 moved over 102 rows; 0 deleted, 1 inserted
-  recipe_notes:        176 rows x  8 columns =   1408 cells, 37 moved over 25 rows; 0 deleted, 1 inserted
+  recipe_notes:        176 rows x  8 columns =   1408 cells, 35 moved over 25 rows; 0 deleted, 1 inserted
   recipe_snapshots:    306 rows x  7 columns =   2142 cells, 69 moved over 69 rows; 0 deleted, 0 inserted
 ```
 
-82,762 cells compared, 300 moved, every one on a row and in a column the round names. Proved red five
+82,762 cells compared, 298 moved, every one on a row and in a column the round names. Proved red five
 ways on a mutation copy during the rehearsal: a stray write to an undeclared row, a write in an
 undeclared column, a declared change that did not happen, an extra inserted row, and a declared column
 that moved on no row.
@@ -229,23 +257,43 @@ that moved on no row.
 
 ```sh
 pkill -f scripts/serve_live.py
-cd ../recipe-app-serve && git checkout --detach 0458c88 && npm run build
+cd ../recipe-app-serve && git checkout --detach 8fe756d && npm run build
 nohup python3.13 scripts/serve_live.py > /tmp/serve8000.log 2>&1 & disown
 cd -
+lsof -a -p "$(pgrep -f scripts/serve_live.py | head -1)" -d cwd -Fn    # must name recipe-app-serve
 ```
 
-`0458c88` is the commit `:8000` served before this round. It reads none of the new data as new, so it
-serves the applied corpus as well as the unapplied one, which is the same fact step 3 proves from the
-other side.
+⚠️ **`8fe756d`, NOT `0458c88`, AND THE DIFFERENCE IS WHICH ONE IS ACTUALLY RUNNING.** `origin/main`
+is at `0458c88`, and the worktree serving `:8000` is pinned at `8fe756d`, three commits behind it.
+An earlier draft of this file named `0458c88` on the assumption that main and the serve pin were the
+same thing. Rolling back to a commit `:8000` has never run is not a rollback.
 
-**The data** rolls back by restoring the whole file from step 0's backup.
+The three commits between them (`91f232e`, `5104094`, `0458c88`) touch `CLAUDE.md`,
+`golive/README.md`, two files in `docs/data-repairs/`, `tests/test_mining_boundaries.py` and
+`brand_guard.py`. Only the last is code, and **`app.py` does not import it**: `brand_guard` is read
+by `dish_facets.py`, `substitution_run.py`, `load_dish_facets.py`, `dish_facet_run.py` and
+`library_viewer.py`, none of which the serving app touches. So the two commits are identical as far
+as serving goes, and `8fe756d` is the one with a running record.
+
+**Measured rather than reasoned, 2026-10-08:** `8fe756d` was pointed at a copy of live with this
+round APPLIED and built **300 of 300 recipe pages**. The code rollback therefore stands on its own
+with the data left in place, which is the case that matters: it is the rollback you reach for when
+the data step was fine and the deploy was not.
+
+**The data** rolls back by restoring **the exact file step 0 recorded**, not the newest one.
 
 ```sh
 pkill -f scripts/serve_live.py
-cp "$(ls -t backups/*.db | head -1)" "$LIVE"
-shasum -a 256 "$LIVE"                              # must match step 0's reading
+echo "restoring $BACKUP"                           # if $BACKUP is unset, read it off step 0's note
+cp "$BACKUP" "$LIVE"
+shasum -a 256 "$LIVE"                              # must match step 0's reading of $BACKUP
 nohup python3.13 scripts/serve_live.py > /tmp/serve8000.log 2>&1 & disown
 ```
+
+⚠️ **"THE NEWEST BACKUP" IS NOT THIS BACKUP.** `backup.py` is run by the import runner and by hand,
+so the newest file changes under you, and a restore of the wrong one is silent: it is a valid
+database, just not the one this round started from. The name is written down at step 0 for that
+reason.
 
 ⚠️ **NEVER BY RE-INSERTING ROWS BY HAND.** This round INSERTS two rows and DELETES one. A new row
 gets a new id, and `recipe_notes.step_id` and every baseline entry that names an id would be wrong.
