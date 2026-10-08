@@ -13,6 +13,56 @@ Nothing here is optional, and the order is the content.
 - Record live's sha256. If it has moved since the last explained value, find out what moved it
   before going further. The server's own request log names writes.
 - `git fetch origin && git rev-parse origin/main` and confirm it is the SHA the round expects.
+- `echo "DATABASE_URL=[${DATABASE_URL-}]"`. It must print `[]`. `app.orm_session()` prefers that
+  variable over the file it was handed, so a pass named at a copy reads and writes somewhere else
+  while printing the copy's name.
+
+## 0b. Two runs that have to happen BEFORE the push, not after
+
+Both exist because "the suites are green" can be true while the thing that would have caught the
+defect never ran at all. Both are cheap and both have caught a real one.
+
+**The CI-condition run, from a FRESH CLONE.**
+
+```sh
+git clone --no-hardlinks . /tmp/ci-check && cd /tmp/ci-check
+git checkout --detach <the round's sha> && python3.13 -m pytest -q
+```
+
+⚠️ **A LINKED WORKTREE IS NOT THIS CONDITION.** `corpus_guard.live_db()` finds the MAIN working tree
+through `git rev-parse --git-common-dir`, so from a worktree the real database is still live, the
+7 `live_catalog` tests still run against it, and six guard tests fail for that reason alone.
+Measured 2026-10-07: the worktree attempt reported 13 failures, 12 of them artifacts of the setup.
+The clone has its own `.git`, so its `live_db()` names its own absent file, which is what CI sees.
+
+**The Postgres leg, locally, for any round that changes the database's STRUCTURE.** Required
+whenever the round touches `migrations/*.sql` or `alembic/`.
+
+```sh
+docker run -d --name pgci -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=recipe_test \
+  -p 55432:5432 postgres:16                        # once; reuse the container, not the database
+python3.13 -c "import psycopg; psycopg.connect('postgresql://postgres@localhost:55432/postgres', \
+  autocommit=True).execute('CREATE DATABASE recipe_test_<round>')"
+export DATABASE_URL=postgresql+psycopg://postgres@localhost:55432/recipe_test_<round> \
+       RECIPE_APP_TEST_DATABASE=1 SECRET_KEY=ci-only-not-a-real-secret
+PYTHONPATH=tests:scripts python3.13 -c \
+  "import corpus_guard, urlguard; urlguard.install(corpus_guard.live_db())"
+python3.13 -m alembic upgrade head
+python3.13 -m pytest tests/test_pg_integration.py tests/test_schema_parity.py
+```
+
+⚠️ **THOSE TWO FILES RUN IN CI AND NOWHERE ELSE.** The module skips on one pytestmark when
+`$DATABASE_URL` is not postgresql, and the clone above has no Postgres service either, so a local
+run and a clone run BOTH say green while the only check on `migrations/*.sql` against `alembic/`
+never executes. Measured 2026-10-07: the notes-column round went red in CI at
+`tests/test_pg_integration.py:425`, `KeyError: 'notes'`, on a column `alembic upgrade head` had
+dropped. Third instance of one shape in a single round.
+
+⚠️ **A FRESH DATABASE, AND A NAME THAT READS AS A THROWAWAY.** `tests/dbmarker.py` refuses to
+truncate a database it did not create that holds rows ("carries no harness marker and is NOT
+empty"), which is correct and is not a reason to drop somebody's database. Create a new one beside
+it. `tests/urlguard.py` separately refuses a name that does not say it is a test database, so
+`golive_check` is rejected where `recipe_test_golive` is accepted.
 
 ## 1. Prove it on a branch, not on main
 

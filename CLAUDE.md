@@ -796,6 +796,42 @@ How this project is run:
   `db()`). This is a *variant of the dry-run-must-run-tests rule*: both are "green locally because the
   tests aren't exercising what CI exercises" — the unifying guard is **run the suite in the CI-like
   environment (deps as CI installs them, `recipes.db` absent) before trusting green.**
+  ⚠️ **THE CI-CONDITION RUN IS A FRESH CLONE, NOT A LINKED WORKTREE.** `git clone --no-hardlinks . <tmp>`
+  then `git checkout --detach <sha>` and run pytest there. A worktree does NOT reproduce the
+  condition: `corpus_guard.live_db()` finds the MAIN working tree through
+  `git rev-parse --git-common-dir`, so from a linked worktree the real 344MB database is still live,
+  the 7 `live_catalog` tests still run against it, and six guard tests in
+  `tests/test_live_guards.py` FAIL for that reason alone. Measured 2026-10-07: the worktree attempt
+  reported 13 failures, 12 of them artifacts of the setup; the clone reported the one real thing and
+  then 0. A clone has its own `.git`, so its `live_db()` names its own absent file, which is exactly
+  what CI sees.
+- **A ROUND THAT CHANGES THE DATABASE'S STRUCTURE RUNS THE POSTGRES TESTS LOCALLY BEFORE IT IS
+  PUSHED.** A throwaway container and a FRESH database, not a reused one:
+
+      docker run -d --name pgci -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=recipe_test \
+        -p 55432:5432 postgres:16
+      psql -h localhost -p 55432 -U postgres -c 'CREATE DATABASE recipe_test_<round>'
+      export DATABASE_URL=postgresql+psycopg://postgres@localhost:55432/recipe_test_<round> \
+             RECIPE_APP_TEST_DATABASE=1 SECRET_KEY=ci-only-not-a-real-secret
+      PYTHONPATH=tests:scripts python3.13 -c "import corpus_guard, urlguard; urlguard.install(corpus_guard.live_db())"
+      python3.13 -m alembic upgrade head
+      python3.13 -m pytest tests/test_pg_integration.py tests/test_schema_parity.py
+
+  *Why:* **`tests/test_pg_integration.py` and `tests/test_schema_parity.py` run in CI and NOWHERE
+  ELSE.** The whole module skips on one module-level pytestmark when `$DATABASE_URL` is not
+  postgresql, and a CI-condition clone has no Postgres service either, so a plain local run and a
+  clone run BOTH say green. Measured 2026-10-07: the notes-column round went red on the Postgres
+  step at `tests/test_pg_integration.py:425`, `KeyError: 'notes'`, because `alembic upgrade head`
+  had dropped the column the test still read. That was the **third** instance of one shape in a
+  single round, the other two found in review. Any round touching `migrations/*.sql` or `alembic/`
+  changes one schema and not the other until something compares them, and this step is the only
+  local place that comparison happens.
+  ⚠️ **THE DATABASE MUST BE FRESH, AND THE NAME MUST SAY IT IS A TEST ONE.** `tests/dbmarker.py`
+  refuses to truncate a database it did not create that holds rows, so a reused `recipe_test` from
+  last month fails with "carries no harness marker and is NOT empty" — correct, and not a reason to
+  drop somebody's database. Create a new one beside it. `tests/urlguard.py` separately refuses a
+  name that does not read as a throwaway, so `golive_check` is rejected where
+  `recipe_test_golive` is accepted.
 
 *Why the first three exist (the seed→app miss):* converting the 5 seed recipes to app (flip `source` +
 empty `seed.py`'s `RECIPES`) was proven rebuild-safe on a DB dry-run and applied correctly to live,
