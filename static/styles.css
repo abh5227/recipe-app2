@@ -101,6 +101,17 @@
      ⚠️ THE THREE VALUES ARE KEPT, NOT UNIFIED, AND THAT IS ANDY'S CALL RATHER THAN MINE. Collapsing
      them to one number is the obvious next move and it moves pixels on four elements, which this
      round is not allowed to do. What moves today is WHERE the numbers live. */
+  /* ⚠️ THE QUIET SECOND LINE IN THE INGREDIENT COLUMN, AND IT IS AN EXISTING SIZE RATHER THAN A
+     NEW ONE. Andy's call on the round B click-through: the author's second amount goes one step
+     smaller than the amount above it. The ingredient column's own ladder is 15px (.qty, .iname),
+     13px (.inote) and 12px (.weight, the computed gram estimate), so one step down from the
+     amount is 13px, which .inote already used as a hardcoded number. Both read this token now, so
+     the column has one answer for "the quiet line under an ingredient" instead of two copies of
+     13. No pixels move on .inote.
+     ⚠️ AND IT IS NOT 12px, WHICH WOULD HAVE BEEN THE OTHER EXISTING SIZE. 12px is the COMPUTED
+     gram estimate. The second amount is a figure the author wrote down, and setting the two at one
+     size would throw away the only thing on the page that tells a measured figure from a guess. */
+  --fs-ing-sub:   13px;      /* .qty2, .inote */
   --fs-label-sm:  11px;      /* .note-lead */
   --fs-label-xs:  10.5px;    /* .pk-sect, .rc-uncooked */
   --fs-label-xxs: 10px;      /* .note-type, .step-note-marker */
@@ -622,6 +633,16 @@ a:hover { color: var(--berry-lift); }
    lightens it, so the pair reads as one amount with its backup rather than as two amounts. */
 .erow .e-second { width: 100%; line-height: 24px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-amount); color: var(--ink-soft); }
 .detail-card.editing .e-second:focus { padding: 2px 6px; margin: 0 -2px; box-shadow: 0 0 0 1px var(--paper-edge), 0 4px 10px -6px rgba(40,35,30,.25); }
+/* the COLLAPSED second amount: a quiet toggle that says what it holds, so nothing is hidden in
+   silence. It sits in the same grid cell the field does, at the same 13px the reading view prints
+   the second amount at (--fs-ing-sub), and it is muted further than the field because it is a
+   control rather than a value. */
+.erow .second-toggle { width: 100%; line-height: 24px; text-align: left; padding: 0; border: 0;
+  background: none; cursor: pointer; font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums; font-size: var(--fs-ing-sub); color: var(--ink-soft);
+  opacity: .55; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.erow .second-toggle.has { opacity: .75; }
+.erow .second-toggle:hover, .erow .second-toggle:focus-visible { opacity: 1; color: var(--green); }
 .erow .e-name { font-family: var(--font-serif); font-size: var(--fs-amount); color: var(--ink); }   /* name matches the measurement size (15px) */
 .erow .e-heading { font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--green); }
 .note-row .e-note { font-family: var(--font-sans); font-style: italic; font-size: 12.5px; color: var(--ink-soft); }
@@ -1201,11 +1222,13 @@ a:hover { color: var(--berry-lift); }
 .qty { font-size: var(--fs-amount); }                             /* the amount — primary figure */
 .weight { font-size: 12px; line-height: 1.15; margin-top: 1px; }  /* gram estimate, tucked under the amount */
 /* the AUTHOR'S second amount, stacked under the first (A1, as previewed on round B's page A).
-   It sits at the amount's own size rather than the estimate's 12px, because it is a figure the
-   author wrote down and not a computation, and it is lightened so the first amount still reads as
-   the primary one. Two backups take two of these lines. */
+   One step down the ingredient column's own size ladder (--fs-ing-sub, 13px), which is Andy's call
+   on the click-through: at the amount's own 15px it competed with the figure above it. It stays
+   ABOVE the computed estimate's 12px, because a figure the author wrote and a figure the app
+   worked out are different kinds of thing. Lightened so the first amount still reads as the
+   primary one. Two backups take two of these lines. */
 .qty2 { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-soft);
-  font-size: var(--fs-amount); line-height: 1.15; margin-top: 1px; opacity: .62; }
+  font-size: var(--fs-ing-sub); line-height: 1.15; margin-top: 1px; opacity: .62; }
 .qty.approx, .weight.approx { opacity: 0.8; }   /* "~" estimated / humane-rounded — shared treatment */
 /* ⚠️ .qty2 STARTS AT .62, SO THE SHARED 0.8 WOULD BRIGHTEN IT. Two classes beat one, so an
    estimated second amount rendered DARKER than an exact one. The treatment is "dimmer than my own
@@ -1215,7 +1238,7 @@ a:hover { color: var(--berry-lift); }
 /* a note: its own line beneath the ingredient, styled as a distinct secondary annotation (muted, italic,
    smaller, slightly indented) — not part of the ingredient name. Applies to every reading-mode note. */
 .inote { display: block; margin-top: 1px; padding-left: 10px; font-family: var(--font-serif);
-  font-style: italic; font-size: 13px; line-height: 1.35; color: var(--ink-soft); }
+  font-style: italic; font-size: var(--fs-ing-sub); line-height: 1.35; color: var(--ink-soft); }
 
 /* ---- O-c-1 annotation layer: the recipe's "your changes" marginalia (current vs original) ----
    ONE ink (--ink-pen); the edit TYPE is shown by TREATMENT, not colour. These classes are emitted ONLY

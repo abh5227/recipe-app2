@@ -1,16 +1,16 @@
 {
   "round": "2026-10-08-round-b",
-  "why": "Round B, from the committed decisions in docs/data-repairs/round-b-decisions-2026-10-08.csv (37 rows). One plan, computed from each row as stored and applied once. THE RULES (import_cleanup.amount_plan, which the importer calls too): the author's second amount read off raw_text into secondary_measure, which meant \"the volume\" until now and holds the author's BACKUP as written from now on; a unit, a measure, a number word or a piece of punctuation taken out of the front of a name; a compound amount joined so both halves scale; a size put back with the words it sizes; and 7 broken amounts repaired where exactly one reading is clearly proved by another measure on the same line. THE JOINS: 5 rows that are the rest of the row above them or only the measure of it. THE CALLS, each a judgement no rule can read: hummus-2's garnish line becomes an ingredient heading with its three garnishes under it, beans' 15-row simmer-time chart becomes one note titled \"Simmer times\" linked to step 1783 and leaves the ingredients, flatbreads-with-za-atar-mana-eesh row 3824 splits into two ingredients, and miso-tofu-recipe row 9135 keeps its 16 oz and sends \"block\" to the second amount. 443 writes over 155 recipes. 36 rows are FLAGGED and left exactly as they are, 24 of them because the cook has edited that row. Lockstep per recipe in one transaction, with the reason='original' baseline patched surgically. No schema change: migration 63 on both sides.",
+  "why": "Round B, from the committed decisions in docs/data-repairs/round-b-decisions-2026-10-08.csv (37 rows), docs/data-repairs/round-b-decisions-2-2026-10-08.csv (11 rows, Andy's :8002 click-through) and docs/data-repairs/round-b-residual-decisions-2026-10-08.csv (38 rows, his DECISION for every residual row). One plan, computed from each row as stored and applied once.\n\nTHE RULES (import_cleanup.amount_plan, which the importer calls too): the author's second amount read off raw_text into secondary_measure, which meant \"the volume\" until now and holds the author's BACKUP as written from now on; a unit, a measure, a number word or a piece of punctuation taken out of the front of a name; a compound amount joined so both halves scale; a size put back with the words it sizes; and 7 broken amounts repaired where exactly one reading is clearly proved by another measure on the same line.\n\nTHE SIX RULES THE CLICK-THROUGH ADDED. R1 a sized piece IS the amount, 7 rows, and the scaler scales the count and never the size. R2 an \"or\" count of the same food is a second amount keeping the \"or\", 5 rows, superseding decision 5's blanket refusal. R3 an amount marked per person is the amount and is never scaled with the servings, 3 rows. R4 \"(plus <amount> <another food>)\" becomes its own row under the line, 2 rows. R5 a substitution carrying its own amount moves to the row's note column, 16 rows. R6 a row that is only a remark, directly under an ingredient heading, becomes a recipe note titled with that heading, 1 row.\n\nTHE JOINS: 5 rows that are the rest of the row above them or only the measure of it, plus 3 joins Andy decided from the residual list.\n\nTHE CALLS, each a judgement no rule can read: hummus-2's garnish line becomes an ingredient heading with its three garnishes under it, beans' 15-row simmer-time chart becomes one note titled \"Simmer times\" linked to step 1783 and leaves the ingredients, flatbreads row 3824 splits into two ingredients, miso-tofu row 9135 keeps its 16 oz and sends \"block\" to the second amount, and 5 residual rows Andy settled (2834, 3135, 3517, 4320, 4422).\n\n471 writes over 162 recipes. 32 rows are FLAGGED and left exactly as they are, 24 of them because the cook has edited that row and 1 because Andy is holding its decision until he confirms where the recipe came from (tahini-brioche 7462). Lockstep per recipe in one transaction, with the reason='original' baseline patched surgically. No schema change: migration 63 on both sides.",
   "short_circuit": "unchanged",
   "annotations": "unchanged",
   "counts": {
     "ingredient_lines": [
       3573,
-      3556
+      3555
     ],
     "recipe_notes": [
       177,
-      178
+      179
     ]
   },
   "tables": {
@@ -23,17 +23,17 @@
   },
   "rows": {
     "recipe_ingredients": {
-      "set": "455 rows changed across ['heading', 'is_heading', 'label', 'position', 'qty', 'quantity', 'raw_text', 'secondary_measure', 'unit']; 21 DELETED ([2865, 2866, 2867, 2868, 2869, 2870, 2871, 2872, 2873, 2874, 2875, 2876, 2877, 2878, 2879, 2880, 4420, 4423, 4653, 7543, 7550]) and 4 inserted, with the positions after each one closed up",
-      "why": "the round B rules, the 5 joins and the 4 single-row calls",
+      "set": "489 rows changed across ['catalog_id', 'grams', 'heading', 'is_heading', 'label', 'note', 'position', 'qty', 'quantity', 'raw_text', 'secondary_measure', 'unit']; 24 DELETED ([2865, 2866, 2867, 2868, 2869, 2870, 2871, 2872, 2873, 2874, 2875, 2876, 2877, 2878, 2879, 2880, 3136, 3518, 4420, 4423, 4653, 5182, 7543, 7550]) and 6 inserted, with the positions after each one closed up",
+      "why": "the round B rules, the six rules the click-through added, the 8 joins and the 9 single-row calls",
       "checked_by": "the cells gate below, because recipe_ingredients is in tables.except"
     },
     "recipe_notes": {
-      "set": "one note INSERTED: beans' \"Simmer times\", linked to step 1783",
-      "why": "Andy's option 1 for the 15-row simmer-time chart",
+      "set": "two notes INSERTED: beans' \"Simmer times\" linked to step 1783, and hainanese's \"Basic Asian-Style Chicken Stock\" remark, which points at no step because an ingredient section is not a step",
+      "why": "Andy's option 1 for the simmer chart, and R6 for the remark",
       "checked_by": "the cells gate below"
     },
     "recipe_snapshots": {
-      "set": "the reason='original' content of 155 recipes, patched surgically in the same transaction as the row",
+      "set": "the reason='original' content of 162 recipes, patched surgically in the same transaction as the row",
       "why": "lockstep: a machine repair makes no mark",
       "checked_by": "the first gate, which holds the byte-equal set and the annotations still"
     }
@@ -41,9 +41,12 @@
   "cells": {
     "recipe_ingredients": {
       "columns": [
+        "catalog_id",
+        "grams",
         "heading",
         "is_heading",
         "label",
+        "note",
         "position",
         "qty",
         "quantity",
@@ -52,18 +55,27 @@
         "unit"
       ],
       "ids": [
+        2720,
+        2721,
+        2741,
+        2742,
+        2743,
         2744,
         2748,
+        2781,
         2817,
         2831,
         2832,
+        2834,
         2843,
         2900,
         2902,
+        2908,
         2913,
         2914,
         2915,
         2919,
+        2927,
         2936,
         2969,
         2970,
@@ -84,10 +96,13 @@
         3071,
         3077,
         3079,
+        3084,
         3117,
         3119,
         3128,
+        3135,
         3138,
+        3150,
         3182,
         3220,
         3223,
@@ -102,7 +117,9 @@
         3343,
         3344,
         3363,
+        3373,
         3391,
+        3410,
         3444,
         3472,
         3473,
@@ -123,7 +140,10 @@
         3513,
         3514,
         3515,
+        3517,
         3519,
+        3520,
+        3521,
         3522,
         3527,
         3534,
@@ -174,6 +194,7 @@
         3834,
         3842,
         3865,
+        3869,
         3886,
         3888,
         3891,
@@ -226,6 +247,7 @@
         4382,
         4388,
         4389,
+        4408,
         4412,
         4415,
         4416,
@@ -254,6 +276,7 @@
         4461,
         4463,
         4493,
+        4494,
         4508,
         4509,
         4511,
@@ -273,6 +296,7 @@
         4633,
         4635,
         4638,
+        4639,
         4640,
         4651,
         4652,
@@ -306,6 +330,7 @@
         4854,
         4864,
         4871,
+        4876,
         4877,
         4879,
         4884,
@@ -343,10 +368,18 @@
         5123,
         5125,
         5135,
+        5155,
+        5163,
         5166,
+        5169,
+        5183,
         5184,
         5185,
         5186,
+        5187,
+        5188,
+        5189,
+        5190,
         5203,
         5208,
         5209,
@@ -450,6 +483,8 @@
         5977,
         5990,
         6000,
+        6025,
+        6027,
         6030,
         6035,
         6037,
@@ -496,6 +531,8 @@
         7551,
         7552,
         7553,
+        7555,
+        7556,
         7558,
         7559,
         7567,
@@ -525,19 +562,22 @@
         2878,
         2879,
         2880,
+        3136,
+        3518,
         4420,
         4423,
         4653,
+        5182,
         7543,
         7550
       ],
-      "inserted": 4
+      "inserted": 6
     },
     "recipe_notes": {
       "columns": [],
       "ids": [],
       "deleted": [],
-      "inserted": 1
+      "inserted": 2
     },
     "recipe_snapshots": {
       "columns": [
@@ -545,8 +585,11 @@
       ],
       "ids": [
         3,
+        6,
+        10,
         11,
         13,
+        14,
         18,
         20,
         22,
@@ -562,6 +605,7 @@
         45,
         46,
         47,
+        48,
         51,
         54,
         55,
@@ -571,7 +615,9 @@
         63,
         64,
         65,
+        66,
         67,
+        68,
         71,
         74,
         75,
@@ -692,6 +738,7 @@
         285,
         287,
         288,
+        290,
         291,
         292,
         295,

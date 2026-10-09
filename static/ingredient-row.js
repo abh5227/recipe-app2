@@ -54,4 +54,27 @@
     return row;
   }
 
-  export { headingText, toggleRowType, rowIsBlank, nonEmptyRows, writeIngField };
+  // Edit mode shows the FIRST amount only, with the second behind an expand (Andy's call on the
+  // round B click-through). Collapsed, the toggle still SAYS what is there, so a second amount is
+  // never hidden in silence: "+ 2 sticks" on a row that has one, "+ second amount" on a row that
+  // does not. Expanding reveals the ordinary field.
+  //
+  // ⚠️ `_secondOpen` IS A DRAFT-ONLY FLAG AND IT IS NEVER SAVED. ingToPayload builds its object by
+  // naming each key, so an underscore field on the draft row cannot reach the wire. That is also
+  // why opening the field is not a content change: Save, Undo and the "your changes" mark see
+  // exactly what they saw before, which is the condition Andy put on this.
+  //
+  // ⚠️ AND IT DOES NOT AUTO-OPEN THE WAY A NOTE DOES. addNote opens its field whenever the row
+  // HAS a note, because a note is prose a cook reads while editing. The second amount is a
+  // measurement, and the whole point of the change is that the amount column shows one figure.
+  function secondToggle(row) {
+    const value = String((row && row.secondary_measure) || "").trim();
+    return {
+      open: !!(row && row._secondOpen),
+      value,
+      has: value !== "",
+      label: value === "" ? "+ second amount" : "+ " + value,
+    };
+  }
+
+  export { headingText, toggleRowType, rowIsBlank, nonEmptyRows, writeIngField, secondToggle };

@@ -3,7 +3,7 @@
 import {
   formatAmount, group, canonicalizeUnit, amountText, weightText, secondAmountParts,
 } from "./scaler.js";
-import { headingText, toggleRowType, nonEmptyRows, writeIngField } from "./ingredient-row.js";
+import { headingText, toggleRowType, nonEmptyRows, writeIngField, secondToggle } from "./ingredient-row.js";
 import { showLinksAsWords } from "./step-adapter.js";
 import { nonEmptySteps, focusIndexAfterRemove, writeStepField,
          stepLevel, toggleStepType, setStepLevel } from "./step-row.js";
@@ -3124,8 +3124,17 @@ function amountSpans(quantity, unit) {
 function amountZoneHTML(x, i) {
   const span = amountSpans(x.quantity, x.unit);
   const qty = ieCell("quantity", i, x.quantity, "e-qty", "qty");
+  // The second amount is COLLAPSED behind a toggle that says what it holds — see secondToggle in
+  // ingredient-row.js for the rule and for why opening it is not a content change.
+  const t = secondToggle(x);
+  const second = t.open
+    ? secondCell(i, x.secondary_measure)
+    : `<button type="button" class="second-toggle${t.has ? " has" : ""}" data-inline-edit-second data-i="${i}"` +
+      ` title="${t.has ? "Edit the second amount" : "Add a second amount"}"` +
+      ` aria-label="${t.has ? "Edit the second amount, " + esc(t.value) : "Add a second amount"}"` +
+      ` aria-expanded="false">${esc(t.label)}</button>`;
   return `<span class="amount-zone${span ? " no-unit" : ""}">${qty}${span ? "" : unitCell(i, x.unit)}` +
-         `${secondCell(i, x.secondary_measure)}</span>`;
+         `${second}</span>`;
 }
 function editIngRowHTML(x, i) {
   if (x.is_heading) {
@@ -3605,6 +3614,14 @@ function addNote(i) {
   rerenderEditIngredients();
   focusIngField(i, "note");
 }
+// Reveal the second-amount field (transient _secondOpen — never saved, see secondToggle). Not a
+// content change on its own, so NO markDirty until the cook actually types into the field: that is
+// what keeps Save, Undo and the "your changes" mark behaving exactly as they did before.
+function openIngSecond(i) {
+  view.draft.ingredients[i]._secondOpen = true;
+  rerenderEditIngredients();
+  focusIngField(i, "second");
+}
 
 function inlineSaveBarHTML() {
   return `<div class="inline-save-bar" role="group" aria-label="Editing recipe">
@@ -3753,6 +3770,8 @@ function handleInlineEdit(e) {
   if (unl) { unlinkIngredient(Number(unl.dataset.i)); return true; }
   const ani = e.target.closest("[data-inline-edit-addnote]");
   if (ani) { addNote(Number(ani.dataset.i)); return true; }
+  const sec = e.target.closest("[data-inline-edit-second]");
+  if (sec) { openIngSecond(Number(sec.dataset.i)); return true; }
   // Editor parity — step structural actions (re-render + re-mount via rerenderEditSteps)
   if (e.target.closest("[data-inline-edit-add-step]")) { addStep(); return true; }
   // NB: no rm-step branch — A stage 2 moved step delete into the row ⋯ menu (a .danger item), which

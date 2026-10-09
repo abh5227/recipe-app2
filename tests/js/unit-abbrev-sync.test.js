@@ -41,3 +41,44 @@ test("JS scaler.js UNIT_ABBREV agrees with Python units.py UNIT_ABBREV", () => {
     assert.equal(py[i][1], js[i][1], `replacement mismatch at ${i}: Py "${py[i][1]}" vs JS "${js[i][1]}"`);
   }
 });
+
+
+// ⚠️ AND THE PLURAL TABLE IS MIRRORED TOO, AS OF ROUND B REVISION 1. R5 writes a substitution into
+// a row's NOTE column ("OR 2 tablespoon Korean doenjang" is stored as "or 2 tablespoonS Korean
+// doenjang"), and a note is prose the scaler never touches, so the word has to agree with its
+// figure at the moment the pass writes it. That put UNIT_PLURALS on the Python side as well, and a
+// table that exists twice is a table that can drift.
+function jsPlurals() {
+  const src = fs.readFileSync(path.join(import.meta.dirname, "../../static/scaler.js"), "utf8");
+  const block = src.match(/const UNIT_PLURALS\s*=\s*\{([\s\S]*?)\};/);
+  assert.ok(block, "UNIT_PLURALS block not found in scaler.js");
+  const out = [];
+  for (const m of block[1].matchAll(/(\w+):\s*"(\w+)"/g)) out.push([m[1], m[2]]);
+  return out;
+}
+
+function pyPlurals() {
+  const src = fs.readFileSync(path.join(import.meta.dirname, "../../units.py"), "utf8");
+  const block = src.match(/UNIT_PLURALS = \{([\s\S]*?)\n\}/);
+  assert.ok(block, "UNIT_PLURALS block not found in units.py");
+  const out = [];
+  for (const m of block[1].matchAll(/"(\w+)":\s*"(\w+)"/g)) out.push([m[1], m[2]]);
+  return out;
+}
+
+test("JS scaler.js UNIT_PLURALS agrees with Python units.py UNIT_PLURALS", () => {
+  const js = jsPlurals();
+  const py = pyPlurals();
+  assert.ok(js.length >= 35, `parsed too few JS pairs (${js.length})`);
+  assert.deepEqual(py, js);
+});
+
+test("the two fixPlurals agree on what they rewrite", async () => {
+  const { fixPlurals } = await import("../../static/scaler.js");
+  // The Python side is proven by tests/test_round_b_rules.py; this pins the JS answers the
+  // comparison above is meant to keep equal to it.
+  assert.equal(fixPlurals("2 tablespoon"), "2 tablespoons");
+  assert.equal(fixPlurals("1 cups"), "1 cup");
+  assert.equal(fixPlurals("2 Cups"), "2 Cups");
+  assert.equal(fixPlurals("2 tbsp"), "2 tbsp");
+});

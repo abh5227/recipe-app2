@@ -66,8 +66,12 @@ def test_the_count_noun_is_lifted_in_either_word_order():
     assert (trail["value"], trail["unit"], trail["name"]) == (2.0, "cloves", "garlic, minced")
 
 
+# ⚠️ THE FIRST CASE USED TO KEEP ITS WHOLE BRACKET, AND ROUND B'S R5 MOVES IT. A substitution
+#    carrying its own amount ("or 1/4 tsp ground cloves") leaves the name and becomes the row's
+#    note. The clove itself is still not read as a unit, which is what this test is about, and
+#    test_round_b_rules.py holds the note it now carries.
 @pytest.mark.parametrize("line,name", [
-    ("10 cloves (or 1/4 tsp ground cloves)", "cloves (or 1/4 tsp ground cloves)"),
+    ("10 cloves (or 1/4 tsp ground cloves)", "cloves"),
     ("5 whole cloves", "whole cloves"),          # 'whole' names nothing, so the clove IS the food
     ("3 cloves, whole", "cloves, whole"),        # same, with the modifier behind a comma
     ("2 Cloves", "Cloves"),                      # nothing beside it at all

@@ -51,6 +51,132 @@ DECISIONS = (HERE.parent / "docs" / "data-repairs"
              / "round-b-decisions-2026-10-08.csv")
 RESIDUAL = "round-b-residual-2026-10-08.csv"
 
+# ---- revision 1: Andy's click-through, and the residual rows he settled ---------------------- #
+DECISIONS_2 = (HERE.parent / "docs" / "data-repairs"
+               / "round-b-decisions-2-2026-10-08.csv")
+RESIDUAL_DECISIONS = (HERE.parent / "docs" / "data-repairs"
+                      / "round-b-residual-decisions-2026-10-08.csv")
+
+# ⚠️ ONE ROW OF THE RESIDUAL FILE IS DELIBERATELY NOT APPLIED. tahini-brioche 7462's "1 ¾ cups" is
+#    a lower-confidence pre-fill: King Arthur's Tahini Brioche matches the recipe's order and its
+#    butter, and nothing proves it IS the source. Andy's instruction is that the row stays flagged
+#    until he confirms where the recipe came from, so the decision file carries the fix and this
+#    pass does not run it. It is in the residual list again, with its reason.
+RESIDUAL_HELD = {7462: "the fix needs Andy to confirm the recipe's source, so the row stays as it is"}
+
+# The six residual rows the pass DOES apply, each spelled out from the DECISION column of
+# round-b-residual-decisions-2026-10-08.csv. The file is READ, and these are what reading it means
+# for each row: a DECISION column holds a sentence, and a sentence is not a column list.
+RESIDUAL_FIXES = {
+    # "fix: 352 grams | second amount 2 ¾ cups" — the second amount is already right.
+    2834: {"what": "row", "changes": {"qty": "352 grams", "quantity": "352", "unit": "grams",
+                                      "grams": 352.0},
+           "why": "Andy's residual decision: the digit lost from '35 grams' is 352, which is 2 ¾ "
+                  "cups at the corpus's own spooned-and-leveled 128 grams a cup"},
+    # "fix: 3 ¼ cups | second amount 416 grams"
+    4320: {"what": "row", "changes": {"qty": "3 ¼ cups", "quantity": "3 ¼", "unit": "cups",
+                                      "secondary_measure": "416 grams"},
+           "why": "Andy's residual decision: '3/4 cups' is a broken '3 ¼ cups', and 416 grams is "
+                  "exactly that at 128 grams a cup"},
+    # "fix: join with the row BELOW -> amount 1¼ cups + 2 tablespoons | name buttermilk, shaken well"
+    3135: {"what": "join_below", "absorb": 3136,
+           "changes": {"qty": "1¼ cups + 2 tablespoons", "quantity": "1¼ cups + 2 tablespoons",
+                       "unit": "", "label": "buttermilk, shaken well",
+                       "raw_text": "1¼ cups plus 2 tablespoons buttermilk, shaken well"},
+           # ⚠️ THE LIBRARY LINK LIVES ON THE ROW BEING ABSORBED, so it has to travel. 3136 is
+           #    linked to buttermilk and 3135 is linked to nothing, and a join that kept the
+           #    survivor's empty link would have dropped it in silence. catalog_id is not a
+           #    snapshot field, so there is no baseline entry to keep in step with it.
+           "carry": {"catalog_id": "Q106612"},
+           "why": "Andy's residual decision: the amount is on top and the name is below it, the "
+                  "mirror of the four tail splits the rules already join"},
+    # "fix: restore the missing '(' -> amount 1 stick | second amount ½ cup / 113 grams |
+    #  name joined with row 3518"
+    3517: {"what": "join_below", "absorb": 3518,
+           "changes": {"qty": "1 stick", "quantity": "1", "unit": "stick",
+                       "secondary_measure": "½ cup / 113 grams",
+                       "label": "cold unsalted butter, cut into ½-inch cubes",
+                       "raw_text": "1 stick (½ cup/113 grams) cold unsalted butter, cut into "
+                                   "½-inch cubes"},
+           "why": "Andy's residual decision: the opening bracket is missing, and with it restored "
+                  "the line is the ordinary \"N stick (cups/grams) butter\" shape"},
+    # "fix: 'sifted' moves to the note column; name natural, unsweetened cocoa powder"
+    # ⚠️ AND THE SECOND AMOUNT IS SPELLED OUT HERE, BECAUSE A DECIDED ROW IS NOT RULED ON. Found
+    #    by reading the rehearsed row: the slot held "¼ cup", a copy of the row's own first
+    #    amount, which is one of the 130 the round exists to repair. The rule would have written
+    #    "23 grams" off the author's line, and claiming the row for a decision about the NAME
+    #    silently kept the wrong figure. Andy's decision is about "sifted"; this is the repair the
+    #    rule was already going to make, written out so owning the row does not lose it.
+    4422: {"what": "join_below", "absorb": 4423,
+           "changes": {"label": "natural, unsweetened cocoa powder", "note": "sifted",
+                       "secondary_measure": "23 grams",
+                       "raw_text": "¼ cup (23 grams) natural, unsweetened cocoa powder, sifted"},
+           "why": "Andy's residual decision: 'sifted' is preparation and the note column exists "
+                  "for it, which keeps the library match without a hand_repoints row"},
+}
+# ⚠️ bananas-foster 2832 IS NOT HERE, AND IT WAS IN AN EARLIER DRAFT OF THIS LIST. Its decision
+#    ("amount 300 grams | second amount 2 large / about 1 ¼ cups | name semi-ripe bananas, peeled
+#    and roughly chopped") is now what R2 produces on its own, because the count fragment is split
+#    into what measures and what names the food. A decided row that a rule can reach is a rule,
+#    which is the whole point of fixing by rule rather than by row.
+
+
+def _residual_decisions(path=None):
+    """Read the residual file and return {row_id: (decision, reason)}, refusing a blank DECISION.
+
+    ⚠️ THE FILE IS OPENED, which is what makes it a committed decision rather than a survey. A
+       pass that cannot be re-run from a fresh clone is a hand edit with more steps.
+    """
+    path = path or RESIDUAL_DECISIONS
+    out = {}
+    with open(path, newline="", encoding="utf-8") as fh:
+        for n, r in enumerate(csv.DictReader(fh), start=2):
+            rid = (r.get("row_id") or "").strip()
+            if not rid:
+                continue
+            decision = (r.get("DECISION") or "").strip()
+            if not decision:
+                raise SystemExit(f"{path.name} line {n}: row {rid} has a blank DECISION, and a "
+                                 f"blank is not an answer")
+            out[int(rid)] = (decision, (r.get("REASON") or "").strip())
+    return out
+
+
+def _click_through_decisions(path=None):
+    """Read the click-through file, so a fresh clone proves the rules it authorizes are present."""
+    path = path or DECISIONS_2
+    out = []
+    with open(path, newline="", encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            out.append({k: (v or "").strip() for k, v in r.items() if k})
+    if not out:
+        raise SystemExit(f"{path.name} is empty, and this round's rules are what it authorizes")
+    return out
+
+
+def _residual_calls(rows, writes, decided):
+    """The residual rows Andy settled, each checking for its own result first."""
+    by_id = {r["id"]: r for rs in rows.values() for r in rs}
+    for rid, fix in sorted(RESIDUAL_FIXES.items()):
+        row = by_id.get(rid)
+        if row is None:
+            continue
+        decision, _reason = decided.get(rid, ("", ""))
+        if not decision.lower().startswith("fix"):
+            raise SystemExit(f"row {rid} is applied by this pass and the residual file says "
+                             f"{decision!r}, which is not a fix")
+        changes = {k: v for k, v in fix["changes"].items() if (row.get(k) or None) != (v or None)}
+        absorb = fix.get("absorb")
+        if not changes and (absorb is None or absorb not in by_id):
+            continue                                        # already applied
+        if fix["what"] == "join_below":
+            writes[row["recipe_id"]].append(
+                {"what": "join", "id": rid, "absorb": [absorb] if absorb in by_id else [],
+                 "why": fix["why"]})
+        writes[row["recipe_id"]].append(
+            {"what": "row", "id": rid, "changes": changes, "why": fix["why"],
+             "rules": ["residual_decision"], "carry": fix.get("carry")})
+
 # The five single-row calls, by the row they name. Each one is a judgement about these words that no
 # rule can read, and each is recorded in the decisions file with its reason.
 HUMMUS_GARNISH_ROW = 4060
@@ -66,8 +192,19 @@ FLATBREADS_ROW = 3824
 MISO_TOFU_ROW = 9135
 MISO_TOFU_SECOND = "1 block"
 # Every row a single-row call owns. A rule never writes to one of these.
+# ⚠️ AND THE RESIDUAL ROWS JOIN IT, for the reason the declared set exists at all: on a SECOND run
+#    each call finds its work done and produces nothing, so a set derived from the writes would be
+#    empty and the rules would claim those rows back.
+_RESIDUAL_ROW_IDS = frozenset({2834, 4320, 3135, 3136, 3517, 3518, 4422, 4423})
+# ⚠️ RESIDUAL_HELD IS NOT IN THIS SET, AND THAT IS THE POINT OF IT. A row Andy is holding has to
+#    stay FLAGGED, which means the rule still has to look at it and still has to refuse it. Adding
+#    it here made the rule stand aside, and a row that is neither changed nor flagged is a row that
+#    has quietly left the review list.
 DECIDED_ROWS = frozenset({HUMMUS_GARNISH_ROW, FLATBREADS_ROW, MISO_TOFU_ROW,
-                          BEANS_CHART_HEADING} | set(BEANS_CHART_ROWS))
+                          BEANS_CHART_HEADING} | set(BEANS_CHART_ROWS) | _RESIDUAL_ROW_IDS)
+# The rows a residual fix absorbs, so the join rule's "decided elsewhere" flag does not report a
+# row that IS settled, by the decided join directly above it.
+_RESIDUAL_ABSORBED = frozenset({3136, 3518, 4423})
 
 
 def _load_rows(con):
@@ -77,7 +214,7 @@ def _load_rows(con):
     return rows
 
 
-def plan(con, ic, density_for, hand_edited):
+def plan(con, ic, density_for, hand_edited, snapshot_fields=()):
     """Every write this round makes, per recipe, computed from the rows as stored.
 
     Returns (writes, flags, notes) where writes is {recipe_id: [change, ...]}.
@@ -89,6 +226,11 @@ def plan(con, ic, density_for, hand_edited):
     #    column fight on every run. miso-tofu's "block" is the second amount by Andy's call and is
     #    nothing at all by the rule, so the pass set it and then unset it, run after run.
     _single_row_calls(con, rows, writes)
+    # ⚠️ AND THE RESIDUAL ROWS, FOR THE SAME REASON: a decision and a rule that both write one
+    #    column fight on every run. _click_through_decisions is read here so a clone that cannot
+    #    open the file cannot run the pass, which is what makes the rules below re-runnable.
+    _click_through_decisions()
+    _residual_calls(rows, writes, _residual_decisions())
     # ⚠️ THE OWNED ROWS ARE A DECLARED SET, NOT THE SET OF WRITES THE CALLS HAPPEN TO PRODUCE. On a
     #    SECOND run each call finds its work already done and produces nothing, so a set derived
     #    from the writes was empty and the rules claimed those rows back. miso-tofu's "1 block" and
@@ -115,9 +257,12 @@ def plan(con, ic, density_for, hand_edited):
                                         "one of the two, so neither is changed"})
                 continue
             if r["id"] in DECIDED_ROWS or above["id"] in DECIDED_ROWS:
-                flags.append({"recipe_id": rid, "row_id": r["id"], "part": "decided elsewhere",
-                              "reason": "this row joins the one above it and one of the two is a "
-                                        "row Andy decided about, so the rule stands aside"})
+                # A row a residual fix absorbs is settled by that fix, so it is not a residual row.
+                if r["id"] not in _RESIDUAL_ABSORBED:
+                    flags.append({"recipe_id": rid, "row_id": r["id"], "part": "decided elsewhere",
+                                  "reason": "this row joins the one above it and one of the two "
+                                            "is a row Andy decided about, so the rule stands "
+                                            "aside"})
                 continue
             absorbed[r["id"]] = (above["id"], why)
         final = []
@@ -148,8 +293,28 @@ def plan(con, ic, density_for, hand_edited):
                 r["_join_why"] = absorbed[tail[0]["id"]][1]
             final.append(r)
 
+        # (1b) R6: a row that is only a remark, directly under an ingredient heading, is a note
+        #      about that SECTION. One row in the corpus, and ten more that look like it sit under
+        #      an ordinary row where the remark belongs to the line above them.
+        remarked = set()
+        for i, r in enumerate(final):
+            above = final[i - 1] if i else None
+            note = ic.remark_row_to_note(above, r)
+            if not note:
+                continue
+            if r["id"] in hand_edited.get(rid, ()) or r["id"] in decided:
+                flags.append({"recipe_id": rid, "row_id": r["id"], "part": "lockstep",
+                              "reason": "this row would become a note and the cook has edited it, "
+                                        "so it is left where it is"})
+                continue
+            writes[rid].append({"what": "table_to_note", "ids": [r["id"]], "title": note["title"],
+                                "text": note["text"], "step_id": None, "why": note["why"]})
+            remarked.add(r["id"])
+
         for r in final:
             if r.get("is_heading"):
+                continue
+            if r["id"] in remarked:                 # R6 took the row out of the ingredients
                 continue
             if r["id"] in decided:                  # a row Andy decided about is not also ruled on
                 continue
@@ -172,6 +337,17 @@ def plan(con, ic, density_for, hand_edited):
                 changes["raw_text"] = r["raw_text"]
                 writes[rid].append({"what": "join", "id": r["id"], "absorb": r["_joined"],
                                     "why": r["_join_why"]})
+            # ⚠️ R4 ASKS FOR A ROW OF ITS OWN, AND split_row IS THE WRITE THAT MAKES ONE. The
+            #    `first` half is this row's own changes and the `second` is the new food, which
+            #    lands directly under it. flatbreads' decided split uses the same write, so there
+            #    is one insert path rather than two.
+            if p.get("insert"):
+                writes[rid].append({"what": "split_row", "id": r["id"],
+                                    "first": {k: v for k, v in changes.items()
+                                              if k in snapshot_fields},
+                                    "second": dict(p["insert"]),
+                                    "why": "; ".join(p["why"])})
+                changes = {k: v for k, v in changes.items() if k not in snapshot_fields}
             if changes:
                 writes[rid].append({"what": "row", "id": r["id"], "changes": changes,
                                     "why": "; ".join(p["why"]) or "the author's second amount",
@@ -289,6 +465,22 @@ def _write_recipe(s, sqlalchemy, snapshot_serialize, rid, writes, doc):
     gone = []
 
     for w in [x for x in writes if x["what"] == "row"]:
+        # ⚠️ A COLUMN THE SNAPSHOT DOES NOT HOLD IS CARRIED SEPARATELY, AND IT CANNOT BE USED TO
+        #    BYPASS LOCKSTEP. catalog_id is the library link (migration 033) and no baseline entry
+        #    records it, so there is nothing to keep in step; the assert is what stops a snapshot
+        #    field being smuggled through this door. buttermilk-biscuits' decided join needs it:
+        #    the link lives on the row being absorbed, and a join that kept the survivor's empty
+        #    link would have dropped it in silence.
+        carry = w.get("carry") or {}
+        for k in carry:
+            if k in snapshot_serialize.SNAPSHOT_ING_FIELDS:
+                raise RuntimeError(f"{k} is a snapshot field and must move in lockstep, not as a "
+                                   f"carried column")
+        if carry:
+            ex("UPDATE recipe_ingredients SET "
+               + ", ".join(f"{k}=:{k}" for k in carry) + " WHERE id=:_id", _id=w["id"], **carry)
+        if not w["changes"]:
+            continue
         sets = ", ".join(f"{k}=:{k}" for k in w["changes"])
         ex(f"UPDATE recipe_ingredients SET {sets} WHERE id=:_id",
            _id=w["id"], **w["changes"])
@@ -364,9 +556,13 @@ def _write_recipe(s, sqlalchemy, snapshot_serialize, rid, writes, doc):
         at = s.execute(sqlalchemy.text(
             "SELECT COALESCE(MAX(position)+1, 0) FROM recipe_notes WHERE recipe_id=:r"),
             {"r": rid}).scalar_one()
+        # ⚠️ step_id MAY BE None, AND THAT IS NOT THE SAME AS BEANS' CASE. beans' chart is a note
+        #    ON the step that points at it. R6's remark is about an ingredient SECTION, and a
+        #    section is not a step, so there is nothing for the note to point at and a guessed
+        #    pointer would be worse than none.
         ex("INSERT INTO recipe_notes (recipe_id, position, kind, title, text, step_id) "
            "VALUES (:r, :p, 'notes', :h, :t, :s)",
-           r=rid, p=at, h=w["title"], t=w["text"], s=w["step_id"])
+           r=rid, p=at, h=w["title"], t=w["text"], s=w.get("step_id"))
         # ⚠️ NO recipe_notes_original ENTRY. That table is the record of what the AUTHOR wrote in
         #    the notes field, and these words were in the INGREDIENTS. Writing them there would
         #    claim the author put a simmer chart in the notes.
@@ -434,7 +630,8 @@ def run(db, apply=False, record=None):
             if touched:
                 hand_edited[rid] = touched
 
-    writes, flags, notes = plan(con, ic, density_for, hand_edited)
+    writes, flags, notes = plan(con, ic, density_for, hand_edited,
+                                snapshot_fields=snapshot_serialize.SNAPSHOT_ING_FIELDS)
     # The linked rows whose NAME this round changes, read before the write so the matcher's two
     # answers can be compared. A row with no stored link has nothing to lose.
     import linkage_matcher
@@ -597,7 +794,14 @@ def _write_residual(path, flags, notes):
         w = csv.writer(fh)
         w.writerow(["kind", "recipe_id", "row_id", "part", "reason", "DECISION", "REASON"])
         for f in flags:
-            w.writerow(["flag", f["recipe_id"], f["row_id"], f["part"], f["reason"], "", ""])
+            # ⚠️ A ROW ANDY IS HOLDING SAYS SO IN ITS REASON. 7462's decision exists and is
+            #    waiting on him confirming where the recipe came from, so the row is back on this
+            #    list and the list has to explain why rather than looking like a rule that failed.
+            reason = f["reason"]
+            held = RESIDUAL_HELD.get(f["row_id"])
+            if held:
+                reason = f"{reason} -- HELD: {held}"
+            w.writerow(["flag", f["recipe_id"], f["row_id"], f["part"], reason, "", ""])
         for n in notes:
             w.writerow(["note", n["recipe_id"], n["row_id"], n["part"], n["reason"], "", ""])
 

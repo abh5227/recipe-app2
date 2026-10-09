@@ -149,7 +149,11 @@ def _ingredient_row(pos, line):
         "unit": None if qty is None else (line.get("unit") or ""),
         "ingredient_id": None,                           # linkage = separate later pass
         "label": None if heading else (line["name"] or None),
-        "note": None,                                    # name kept whole; no note split yet
+        # ⚠️ ROUND B'S R5 SPLITS A NOTE OFF THE NAME, so this is no longer always None. A
+        #    substitution carrying its own amount ("or 1 tsp ground cumin") leaves the name and
+        #    becomes the row's note, which is the one column the recipe page already shows under
+        #    an ingredient. Every other line still carries None.
+        "note": None if heading else (line.get("note") or None),
         # heading: the CLEAN section text (cleanup dropped any whole-line emphasis wrapper); ingredient:
         # the original line, ALWAYS preserved (reading renders + keys sections on a heading's raw_text).
         "raw_text": (line["name"] if heading else line["raw"].strip()),
@@ -182,6 +186,14 @@ def _ingredient_rows(cleaned):
     for pos, line in enumerate(cleaned["ingredients"]):
         rows.append(_ingredient_row(pos, line))
         flags.extend(_line_flag_rows(pos, line))
+        # ⚠️ R4 ASKS FOR A ROW OF ITS OWN, DIRECTLY UNDER THIS ONE. apple-pie's "lemon juice (plus
+        #    the zest of half of a lemon)" names a second food with its own amount. The position
+        #    here is provisional: every row is renumbered at the end of this function, which is
+        #    the same reason the grouping rule below can insert a heading.
+        extra = line.get("second_food")
+        if extra:
+            rows.append(dict({"position": pos, "is_heading": 0, "ingredient_id": None,
+                              "note": None, "grams": None}, **extra))
     rows, group_flags, moved = _group_optional_lines(rows)
     # ⚠️ EVERY FLAG BUILT ABOVE CARRIES A POSITION, AND THE GROUPING RENUMBERS THE ROWS UNDER IT.
     #    Found by review 2026-10-08. import_flags has one nullable `position` column and a line

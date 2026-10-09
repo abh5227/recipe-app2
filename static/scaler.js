@@ -290,9 +290,53 @@
 
   // The ledger AMOUNT column: the authored quantity, scaled, in canonical units (the volume the
   // recipe was written in). Counts round to whole; dual-unit ("2 lb / 1 kg") passes through scaled.
+  // ---- round B revision 1: two amounts that do not scale the way an ordinary one does ------- //
+
+  // R3. AN AMOUNT MARKED PER PERSON DOES NOT MOVE WITH THE SERVINGS. "about ½ cup per person" is
+  // half a cup each whether the cook is making it for two or for ten, so multiplying it by the
+  // factor would state a quantity the author never wrote.
+  // ⚠️ KEPT IN STEP with import_cleanup.py's PER_SERVING_SRC, byte for byte, by
+  // tests/js/per-serving-sync.test.js. A list of words that only exists on one side is the drift
+  // that makes a shared rule a comment claiming to be a rule.
+  const PER_SERVING = /\bper\s+(?:person|serving|servings|head|guest|portion|diner)\b/i;
+
+  // R1. A SIZED PIECE IS THE AMOUNT, AND THE SIZE IS NEVER A QUANTITY. "1-inch knob" doubled must
+  // not print "2-inch knob", which is what the ordinary number scaler does to it: the figure in
+  // front of the unit is the SIZE of one piece. What scales is how many pieces, so the count is
+  // written in front with a "×" and the piece is carried through untouched.
+  // ⚠️ KEPT IN STEP with import_cleanup.py's _PIECE_WORDS by tests/js/sized-piece-sync.test.js.
+  const PIECE_WORDS = ["knob", "knobs", "piece", "pieces", "section", "sections", "chunk",
+                       "chunks", "slice", "slices", "stick", "sticks"];
+  const PIECE_RE = new RegExp(
+    `^\\s*(?:(\\d+(?:\\.\\d+)?(?:\\s*/\\s*\\d+)?|\\d+\\s*[${GLYPHS}]|[${GLYPHS}])\\s*(?:x|×)\\s*)?` +
+    `((?:\\d+\\s*[${GLYPHS}]|\\d+(?:\\.\\d+)?|[${GLYPHS}])\\s*-?\\s*` +
+    `(?:inch(?:es)?|in|cm|centimet(?:re|er)s?|mm|"|”|″)\\s*-?\\s*` +
+    `(?:${PIECE_WORDS.join("|")}))\\s*$`, "i");
+
+  // The sized piece inside an amount, as {count, piece}, else null. Mirrors
+  // import_cleanup.sized_piece_text.
+  function sizedPiece(qty) {
+    const m = PIECE_RE.exec(String(qty == null ? "" : qty));
+    return m ? { count: m[1] || "1", piece: m[2].trim() } : null;
+  }
+
+  // One piece reads as itself; any other count reads "<n> × <piece>". A count of one is the
+  // default, so 1× prints "1-inch knob" rather than "1 × 1-inch knob".
+  function sizedPieceText(piece, factor) {
+    const n = tokenToNumber(normalizeFractions(piece.count));
+    const scaled = (isFinite(n) ? n : 1) * factor;
+    if (Math.abs(scaled - 1) < 1e-9) return piece.piece;
+    return `${formatAmount(scaled)} × ${piece.piece}`;
+  }
+
   function amountText(qty, factor) {
     if (qty == null || String(qty).trim() === "") return "";
     const f = factor > 0 ? factor : 1;
+    // R3 first: an amount marked per person is printed as the author wrote it, at every factor.
+    if (PER_SERVING.test(String(qty))) return toUnicodeFractions(abbrevUnits(String(qty).trim()));
+    // R1 next: a sized piece scales by its count and never by its size.
+    const piece = sizedPiece(qty);
+    if (piece) return toUnicodeFractions(sizedPieceText(piece, f));
     let t;
     if (isCountAmount(qty)) t = fixPlurals(scaleCount(qty, f));
     // ⚠️ A DUAL AMOUNT IS SPLIT BY THE CALLER NOW, so this branch is the one that is left when a
@@ -335,4 +379,5 @@
     SPOON_MAX_ML, isCountAmount, scaleCount, parseAmount, toMetric, displayQty,
     abbrevUnits, canonicalizeUnit, amountText, weightText, toUnicodeFractions,
     UNIT_PLURALS, fixPlurals, secondAmountParts, SECOND_AMOUNT_JOIN,
+    PER_SERVING, PIECE_WORDS, sizedPiece, sizedPieceText,
   };

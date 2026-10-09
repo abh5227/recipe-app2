@@ -55,6 +55,86 @@ def normalize_fractions(s):
     return " ".join(_FRACTION_RX.sub(lambda m: " " + UNICODE_FRACTIONS[m.group()] + " ", s).split())
 
 
+# ⚠️ THE SAME TABLE AS scaler.js's UNIT_PLURALS, in the same order, guarded cross-language by
+# tests/js/unit-abbrev-sync.test.js. Round B revision 1 needs it on this side because R5 writes a
+# substitution into a row's note column ("OR 2 tablespoon Korean doenjang" is stored as "or 2
+# tablespoonS Korean doenjang"), and a note is prose the scaler never touches, so the word has to
+# agree with its figure at the moment it is written rather than at display time.
+#
+# The table is spelled out rather than derived with a trailing "s", because the plurals that are
+# not formed that way are exactly the ones a bare rule gets wrong: pinches, boxes, bunches,
+# loaves, leaves.
+UNIT_PLURALS = {
+    "cup": "cups", "tablespoon": "tablespoons", "teaspoon": "teaspoons", "ounce": "ounces",
+    "pound": "pounds", "gram": "grams", "kilogram": "kilograms", "liter": "liters",
+    "litre": "litres", "milliliter": "milliliters", "millilitre": "millilitres",
+    "quart": "quarts", "pint": "pints", "stick": "sticks", "block": "blocks", "clove": "cloves",
+    "sprig": "sprigs", "stalk": "stalks", "slice": "slices", "piece": "pieces", "head": "heads",
+    "jar": "jars", "bag": "bags", "box": "boxes", "ear": "ears", "fillet": "fillets",
+    "can": "cans", "tin": "tins", "bulb": "bulbs", "bottle": "bottles", "packet": "packets",
+    "package": "packages", "tub": "tubs", "sheet": "sheets", "handful": "handfuls",
+    "pinch": "pinches", "bunch": "bunches", "loaf": "loaves", "leaf": "leaves",
+}
+UNIT_SINGULARS = {plural: one for one, plural in UNIT_PLURALS.items()}
+_GLYPHS = "".join(UNICODE_FRACTIONS)
+_NUMBER_THEN_WORD = re.compile(
+    r"(\d+\s+\d+/\d+|\d+/\d+|\d+\s*[" + _GLYPHS + r"]|[" + _GLYPHS + r"]|\d+(?:\.\d+)?)"
+    r"(\s*)([A-Za-z]+)")
+
+
+def _token_to_number(token):
+    """The numeric value of one amount token, else None. Mirrors scaler.js tokenToNumber."""
+    t = normalize_fractions(token)
+    total, parts = 0.0, t.split()
+    if not parts:
+        return None
+    for part in parts:
+        if "/" in part:
+            num, _, den = part.partition("/")
+            try:
+                num, den = float(num), float(den)
+            except ValueError:
+                return None
+            if den == 0:
+                return None
+            total += num / den
+        else:
+            try:
+                total += float(part)
+            except ValueError:
+                return None
+    return total
+
+
+def _match_case(sample, word):
+    """Keep the capital the author wrote. Mirrors scaler.js matchCase."""
+    if sample == sample.upper() and sample != sample.lower():
+        return word.upper()
+    if sample[:1] == sample[:1].upper():
+        return word[:1].upper() + word[1:]
+    return word
+
+
+def fix_plurals(s):
+    """Make every unit word agree with the figure in front of it. Mirrors scaler.js fixPlurals.
+
+    "2 tablespoon" -> "2 tablespoons", "1 cups" -> "1 cup". An abbreviation is never touched,
+    because "2 tbsp" is right and "2 tbsps" is not a thing anyone writes.
+    """
+    def one(m):
+        num, gap, word = m.group(1), m.group(2), m.group(3)
+        low = word.lower()
+        singular = UNIT_SINGULARS.get(low) or (low if low in UNIT_PLURALS else None)
+        if singular is None:
+            return m.group(0)
+        value = _token_to_number(num)
+        if value is None:
+            return m.group(0)
+        wanted = singular if 0 < value <= 1 else UNIT_PLURALS[singular]
+        return num + gap + _match_case(word, wanted)
+    return _NUMBER_THEN_WORD.sub(one, "" if s is None else str(s))
+
+
 def compare_key(s):
     """⚠️ THE COMPARISON FORM, AND IT IS DELIBERATELY STRONGER THAN canon_unit_str. Two amounts are
     the same for diffing purposes when the cook cannot tell them apart on the page: same number, same

@@ -31,6 +31,7 @@ import unicodedata
 # compromise (ROADMAP: extract a shared public amounts.py).
 from stepscale import _NUM, _SCALE_UNIT, _UNI, _to_value, _normalize_unicode, _canon_amount
 
+import units
 from recipe_line_parser import MEASURE_ABBREV, _is_all_modifier
 import weights
 
@@ -753,11 +754,19 @@ def _dual_measure(amount, value, unit, name, grams):
 #    returns the span of the name it consumes rather than a new name, so two rules cannot disagree
 #    about what the name is.
 #
-# ⚠️ AND THE AUTHOR'S LINE IS IN raw_text, NOT IN label. Measured over the 379 backups the corpus
-#    carries: 293 rows already hold something in `secondary_measure` and their `label` has had the
-#    fragment removed, so reading the backup back off the label is impossible for most of them.
-#    130 of those 293 hold a copy of the FIRST amount, which is no backup at all. raw_text is the
-#    only column that still holds what the author wrote.
+# ⚠️ AND THE AUTHOR'S LINE IS IN raw_text, NOT IN label. Measured on live: 284 rows already hold
+#    something in `secondary_measure` and their `label` has had the fragment removed, so reading
+#    the backup back off the label is impossible for most of them. Of those 284, 130 hold a copy
+#    of the row's own FIRST amount, which is no backup at all, 82 carry a stray leading slash, and
+#    72 hold a real second measure under the column's old meaning. raw_text is the only column
+#    that still holds what the author wrote.
+#    ⚠️ AN EARLIER VERSION OF THIS PARAGRAPH SAID "293 rows" AND "163 more with a stray leading
+#       slash", AND BOTH WERE WRONG. 293 came from the discovery survey, which counted 897
+#       bracketed FRAGMENTS over 839 rows and classed 379 of them "alternate"; its tallies are per
+#       FRAGMENT, and 29 rows carry two or three, so "293" is 293 fragments whose row holds
+#       something rather than 293 rows. 163 was simply 293 minus 130, the arithmetic remainder,
+#       described as leading-slash rows without being counted. The row count is 284 under every
+#       definition, and it agrees exactly with the reason='original' baselines.
 
 # A stick of butter and a block of cream cheese are WRAPPER measures, and they are weights. Calling
 # a stick a volume would read "2 sticks (226 grams)" as a density of 0.95 and pass a weight against
@@ -960,7 +969,7 @@ def classify_fragment(text, after="", before="", kind="paren"):
                                   "the package")
     if is_measure_phrase(t):
         return FRAGMENT_ALTERNATE, "the whole fragment is a measure and nothing else"
-    count = count_restatement(t)
+    count = count_restatement(t, context=f"{before or ''} {after or ''}")
     if count:
         return FRAGMENT_COUNT, count
     if _ANY_DIMENSION_RE.search(t):
@@ -991,44 +1000,169 @@ _COUNT_RESTATEMENT_RE = re.compile(
     r"(?:\s+[a-z][\w'’-]*)*\s*$", re.IGNORECASE)
 
 
-def count_restatement(text):
-    """A parenthetical that is ONLY a count of the same food, as a reason, else "".
+# R2. AN "OR" COUNT OF THE SAME FOOD IS A SECOND AMOUNT, AND THE FOOD'S NAME STAYS WHOLE. Andy's
+# call, and it SUPERSEDES decision 5's blanket refusal of "or 2 small cloves".
+#
+# ⚠️ THE REFUSAL IT REPLACES WAS DOING REAL WORK, AND MOST OF WHAT IT REFUSED IS STILL REFUSED.
+#    Measured over the corpus: 111 fragments open with or contain an "or". Fewer than ten are a
+#    count of the same food. The rest are an alternative INGREDIENT ("or apple cider vinegar", "or
+#    buttermilk", "or honey") or an alternative with its own measure ("or 1 tsp ground cumin"),
+#    and what tells those from a count is that a count carries NO unit of measure. That test was
+#    already in count_restatement, so dropping the "or" refusal did not open the gate it looks
+#    like it opens.
+#
+# ⚠️ AND THE WORDS ARE SPLIT RATHER THAN MOVED WHOLE. "(or 2 small ones)" stores "or 2 small",
+#    "cilantro roots or 6-8 cilantro stems" stores "or 6–8 stems", and "(2 large semi-ripe
+#    bananas)" stores "2 large" and gives "semi-ripe bananas" BACK to a name that would otherwise
+#    read "peeled and roughly chopped". One rule decides all three, by asking of each word whether
+#    it measures or whether it names the food.
+_COUNT_PRONOUNS = frozenset({"one", "ones", "each"})
+# Sizes a count is written in that the main parse deliberately does not know. _SIZE_WORDS is a
+# closed set of three because it writes the UNIT column; these only ever decide which words of a
+# fragment are measuring, so a wider list costs nothing.
+# ⚠️ A WORD ABOUT THE FOOD'S STATE IS NOT A SIZE. "ripe", "semi-ripe", "whole" and "baby" were on
+#    this list for one draft, which stored "2 large semi-ripe" as bananas-foster's second amount
+#    and left "bananas" to be moved back on its own. Andy's decision for that row reads "2 large"
+#    beside the name "semi-ripe bananas", so a ripeness goes with the food.
+_COUNT_SIZE_EXTRA = frozenset({"long", "big", "jumbo", "medium-sized", "extra-large", "whole"})
+# ⚠️ COUNTING NOUNS THE MAIN PARSE DOES NOT KNOW, AND LEAVING THEM OUT WAS A REGRESSION. _COUNT_NOUNS
+#    writes the UNIT column, so it is kept narrow on purpose. These only decide which words of a
+#    fragment measure, and the three rows that proved the gap are earl-grey-tea-cake's "(3
+#    teabags)" and khaliat-nahal's "(2 packets)", both of which round B already stored and which
+#    the first draft of R2 quietly stopped storing.
+_COUNT_EXTRA_NOUNS = frozenset({"teabag", "teabags", "packet", "packets", "bottle", "bottles",
+                                "tub", "tubs", "sheet", "sheets", "sachet", "sachets",
+                                "cube", "cubes", "sprigs", "strip", "strips"})
+# ⚠️ A PART OF THE PLANT IS A UNIT, NOT THE FOOD. "6-8 cilantro stems" counts stems, and the food
+#    is the cilantro. _COUNT_NOUNS holds the kitchen containers and the pieces a recipe counts;
+#    these are the parts a plant is counted in, and they belong on the same side of the split.
+_PLANT_PART_NOUNS = frozenset({"stem", "stems", "root", "roots", "leaf", "leaves", "rib", "ribs",
+                               "frond", "fronds", "top", "tops", "floret", "florets", "sprout",
+                               "sprouts", "wedge", "wedges", "segment", "segments"})
+_COUNT_OR_LEAD_RE = re.compile(r"^\s*or\b\s*", re.IGNORECASE)
+_RANGE_DASH_RE = re.compile(r"(\d)\s*[-–—]\s*(\d)")
+_ONLY_A_NUMBER_RE = re.compile(r"^(?:" + _MEASURE_NUM + r"|" + _MEASURE_QUALIFIER + r")$",
+                               re.IGNORECASE)
 
-    "(about 2 cloves)", "(2 large semi-ripe bananas)" and "(about 1 bunch)" all restate the line's
-    own quantity in a second way, so they scale with it. The three refusals above are why the test
-    is more than "it has a number in it".
+
+def _count_stem(word):
+    """A word reduced far enough that a plural and its singular are one answer."""
+    w = re.sub(r"[^\w'’-]", "", (word or "").lower())
+    if len(w) > 3 and w.endswith("ies"):
+        return w[:-3] + "y"
+    if len(w) > 3 and w.endswith("es") and not w.endswith("ses"):
+        return w[:-2]
+    if len(w) > 3 and w.endswith("s") and not w.endswith("ss"):
+        return w[:-1]
+    return w
+
+
+def count_parts(text, context=""):
+    """Split a count fragment into what MEASURES and what names the food.
+
+    Returns {"count": str, "food": str, "leftover": str}. `context` is the author's line with this
+    fragment taken out, which is how a word is known to name the food the row already names:
+    "cilantro" in "cilantro roots or 6-8 cilantro stems" is in the context and drops out, where
+    "stems" is not and stays.
     """
-    t = (text or "").strip()
+    t = _RANGE_DASH_RE.sub(r"\1–\2", _norm_ws(text or ""))
+    lead = "or" if _COUNT_OR_LEAD_RE.match(t) else ""
+    if lead:
+        t = _COUNT_OR_LEAD_RE.sub("", t, count=1)
+    seen = {_count_stem(w) for w in re.split(r"[\s/]+", context or "") if w}
+    count, food, dropped = ([lead] if lead else []), [], []
+    for raw in t.split():
+        word = raw.strip(",;.")
+        low = word.lower()
+        stem = _count_stem(word)
+        if not word:
+            continue
+        if low == "or" or _ONLY_A_NUMBER_RE.match(low) or _RANGE_DASH_RE.search(low):
+            count.append(word)
+        elif low in _SIZE_WORDS or low in _COUNT_SIZE_EXTRA:
+            count.append(word)
+        elif low in _COUNT_NOUNS or low in _PLANT_PART_NOUNS or low in _COUNT_EXTRA_NOUNS:
+            count.append(word)
+        elif low in _COUNT_PRONOUNS:
+            continue                               # "ones" stands for the food and says nothing
+        elif stem in seen:
+            dropped.append(word)                   # the row's name already carries this word
+        else:
+            food.append(word)
+    # ⚠️ "DROPPED" IS WHAT MAKES A LEFTOVER MEAN SOMETHING. A fragment that names the row's own
+    #    food AND adds a word to it ("or 2 PUREED tomatoes" on a row of tomato sauce, "or ½
+    #    ENGLISH cucumber" on a Persian one) is offering a different thing. A fragment that names
+    #    no word of the row at all is simply counting in a noun of its own ("3 teabags"), and
+    #    refusing that was the first draft's regression on three rows round B already stored.
+    return {"count": _norm_ws(" ".join(count)), "food": _norm_ws(" ".join(food)),
+            "dropped": dropped,
+            "leftover": _norm_ws(" ".join(food)) if dropped else ""}
+
+
+def _one_count(t, context=""):
+    """Does this phrase read as a count of one food, and nothing else?"""
+    t = (t or "").strip()
     if not t or _ANY_DIMENSION_RE.search(t):
-        return ""
+        return False
     if _COUNT_SOURCE_RE.match(t):
-        return ""
-    if _COUNT_ALTERNATIVE_RE.search(t):
-        return ""
+        return False
     if _COUNT_LIST_RE.search(t):
-        return ""
+        return False
     if split_measures(t):
-        return ""                                   # a real unit makes it a measure, not a count
+        return False                                # a real unit makes it a measure, not a count
     if not re.match(r"^\s*(?:" + _MEASURE_QUALIFIER + r"\s*)?" + _MEASURE_NUM, t, re.IGNORECASE):
-        return ""
+        return False
     if not _COUNT_RESTATEMENT_RE.match(t):
-        return ""
+        return False
     if len(t.split()) > 5:
-        return ""
-    if {w.strip(",.;").lower() for w in t.split()} & _COUNT_FUNCTION_WORDS:
-        return ""
+        return False
+    if {w.strip(",.;").lower() for w in t.split()} & (_COUNT_FUNCTION_WORDS - {"or"}):
+        return False
     # ⚠️ AND IT HAS TO END ON SOMETHING COUNTABLE. The trailing "<number> plus any lowercase
     #    words" had no positive test at all, so "(110 degrees F)", "(80 percent lean)" and
     #    "(2 days old)" were taken out of the name and stored as amounts that SCALE. A count ends
-    #    on a counting noun, a size word, or a plural, and a fragment that is only a number ends on
-    #    nothing, which is french-fries' "(3 – 4)" russet potatoes.
+    #    on a counting noun, a size word, a part of the plant, a plural, or a word the row's own
+    #    name already carries, and a fragment that is only a number ends on nothing, which is
+    #    french-fries' "(3 – 4)" russet potatoes.
+    # ⚠️ THE CONTEXT ARM IS WHAT ADMITS A SINGULAR FOOD. "or 1 large onion" on a row named
+    #    "onions" is a count of the same food and ends on neither a plural nor a counting noun.
+    #    The context is the author's line with this fragment taken out, so a word only has to be
+    #    somewhere ELSE on the line, which "degrees", "percent" and "old" are not.
+    seen = {_count_stem(w) for w in re.split(r"[\s/]+", context or "") if w}
     words = [w.strip(",.;’'") for w in t.split() if re.search(r"[A-Za-z]", w)]
     if words:
         last = words[-1].lower()
-        countable = (last in _COUNT_NOUNS or last in _SIZE_WORDS
+        countable = (last in _COUNT_NOUNS or last in _SIZE_WORDS or last in _PLANT_PART_NOUNS
+                     or last in _COUNT_SIZE_EXTRA or last in _COUNT_PRONOUNS
+                     or _count_stem(last) in seen
                      or (last.endswith("s") and len(last) > 3 and not last.endswith("ss")))
         if not countable:
-            return ""
+            return False
+    return True
+
+
+def count_restatement(text, context=""):
+    """A parenthetical that is ONLY a count of the same food, as a reason, else "".
+
+    "(about 2 cloves)", "(2 large semi-ripe bananas)" and "(about 1 bunch)" all restate the line's
+    own quantity in a second way, so they scale with it. The refusals in _one_count are why the
+    test is more than "it has a number in it".
+
+    ⚠️ AN "OR" IS ADMITTED NOW, WHICH IS ANDY'S R2, and the gate it looks like it opens was never
+       held by the "or" refusal in the first place. An alternative INGREDIENT carries its own unit
+       of measure and _one_count refuses every one of those.
+    """
+    t = _norm_ws(text or "")
+    if not t:
+        return ""
+    lead = bool(_COUNT_OR_LEAD_RE.match(t))
+    if lead:
+        t = _COUNT_OR_LEAD_RE.sub("", t, count=1)
+    halves = re.split(r"\s+or\s+", t, flags=re.IGNORECASE)
+    if len(halves) > 2 or not all(_one_count(h, context) for h in halves):
+        return ""
+    if lead:
+        return "the fragment is an alternative count of the same food, so it is a second amount"
     return "the fragment is only a count of the same food, so it scales with the line"
 
 
@@ -1179,6 +1313,123 @@ def density_index(pairs):
     return out
 
 
+# ---- revision 1: the rules Andy's :8002 click-through asked for ------------------------------ #
+# Decision file: docs/data-repairs/round-b-decisions-2-2026-10-08.csv. Each rule was MEASURED over
+# all 300 recipes before it was written, and the measurement is what shaped it rather than the
+# other way round. The hit lists are in the round's report.
+
+# R1. A SIZED PIECE IS THE AMOUNT, AND THE SIZE IS NOT A QUANTITY. Andy's call.
+# ⚠️ THE PIECE WORDS ARE A CLOSED LIST, AND "cube" IS DELIBERATELY OFF IT. Measured over the 56
+#    corpus rows that carry a dimension next to a shape word: 49 are a CUT instruction ("cut into
+#    ½-inch pieces", "diced into ½-inch cubes") and not an amount at all. What tells them apart is
+#    position, because a cut instruction never opens the name. chocolate-hazelnut-wedges' row 3518
+#    is the one that proves the list as well: it stores qty "½" against a name reading "-inch
+#    cubes", which is the exact SHAPE hainanese's "-inch knob" has and is in fact the tail of "cut
+#    into ½-inch cubes" split across two rows.
+_PIECE_WORDS = ("knob", "knobs", "piece", "pieces", "section", "sections", "chunk", "chunks",
+                "slice", "slices", "stick", "sticks")
+_PIECE_ALT = "|".join(sorted(_PIECE_WORDS, key=len, reverse=True))
+# The whole shape in the name, the count optional: "One 2-inch piece ginger", "a 2-inch piece of
+# ginger", "2-inch piece ginger".
+_SIZED_PIECE_AMOUNT_RE = re.compile(
+    r"^\s*(?:(?P<count>" + _MEASURE_NUM + r"|an?|one|two|three|four|five|six)\s+)?"
+    r"(?P<size>" + _ONE_DIMENSION + r")\s*-?\s*(?P<piece>" + _PIECE_ALT + r")\b[\s,]*(?:of\s+)?",
+    re.IGNORECASE)
+# The same shape with the dimension's NUMBER already parsed into qty: "-inch knob ginger".
+_SIZED_PIECE_SPLIT_RE = re.compile(
+    r"^\s*-\s*(?P<unit>inch(?:es)?|in|cm|centimet(?:re|er)s?|mm)\s*-?\s*"
+    r"(?P<piece>" + _PIECE_ALT + r")\b[\s,]*(?:of\s+)?", re.IGNORECASE)
+SIZED_PIECE_RULE = "sized_piece_amount"
+
+
+def sized_piece_text(amount):
+    """The sized piece inside an amount, as (count, piece), else (None, None).
+
+    One reader, two callers: the rule below writes the amount and static/scaler.js scales it. The
+    count is what scales and the piece is what never does.
+    """
+    s = _norm_ws(amount or "")
+    m = re.match(r"^\s*(?:(?P<count>" + _MEASURE_NUM + r")\s*(?:x|×)\s*)?"
+                 r"(?P<piece>" + _ONE_DIMENSION + r"\s*-?\s*(?:" + _PIECE_ALT + r"))\s*$",
+                 s, re.IGNORECASE)
+    if not m:
+        return None, None
+    return (m.group("count") or "1"), _norm_ws(m.group("piece"))
+
+
+def sized_piece_amount(row):
+    """R1: the sized piece sitting at the front of this row's name, as the amount, else None."""
+    name = (row.get("label") or row.get("raw_text") or "")
+    qty = (row.get("qty") or "").strip()
+    quantity = (row.get("quantity") or "").strip()
+    unit = (row.get("unit") or "").strip()
+    m = _SIZED_PIECE_SPLIT_RE.match(name)
+    if m:
+        # ⚠️ ONLY WHERE THE QTY IS THE SIZE'S OWN NUMBER AND NOTHING ELSE. A row carrying a real
+        #    measure ("2 cups") with a shape word after it is measuring in cups, and the shape is
+        #    the cut. sausage-kale-and-crouton-saute's "2 cups 1-inch cubes of bread" is that row.
+        if unit or not qty or _norm_ws(qty) != _norm_ws(quantity) or not re.fullmatch(
+                r"(?:" + _MEASURE_NUM + r")", qty.strip(), re.IGNORECASE):
+            return None
+        text = _norm_ws(f"{qty}-{m.group('unit').lower()} {m.group('piece').lower()}")
+        cut = m.end()
+    else:
+        if qty:
+            return None
+        m = _SIZED_PIECE_AMOUNT_RE.match(name)
+        if not m:
+            return None
+        count = (m.group("count") or "").strip().lower()
+        # "One", "a" and "an" all count ONE piece, and a single piece is the default, so the
+        # amount reads "2-inch piece" rather than "1 2-inch piece".
+        numeral = NUMBER_WORD_NUMERALS.get(count, count if count not in ("", "a", "an") else "1")
+        piece = _norm_ws(f"{m.group('size')} {m.group('piece')}".replace(" -", "-"))
+        piece = re.sub(r"\s*-\s*", "-", piece, count=1) if "-" in (m.group("size") or "") else piece
+        text = piece if numeral in ("1", "") else _norm_ws(f"{numeral} × {piece}")
+        cut = m.end()
+    rest = _tidy_name(name[cut:])
+    # A size with no food after it is a cut instruction that lost its verb, not an amount.
+    if not rest or _is_all_modifier(rest.lower()):
+        return None
+    return {"qty": text, "quantity": text, "unit": "", "front_len": cut,
+            "rule": SIZED_PIECE_RULE,
+            "why": f"{text!r} is a sized piece, which is what this row measures in, and the size "
+                   f"itself is never a quantity"}
+
+
+# R3. AN AMOUNT MARKED PER PERSON IS THE AMOUNT, AND IT NEVER SCALES WITH THE SERVINGS. Andy's
+# call. Measured: 3 rows in the corpus, every one of them a trailing clause on a row that carries
+# no amount of its own.
+# ⚠️ KEPT IN STEP WITH static/scaler.js's PER_SERVING, which refuses to scale an amount this
+#    matches, by tests/js/per-serving-sync.test.js. A figure the rule stores and the scaler then
+#    multiplies by the servings factor would be worse than leaving the clause in the name.
+PER_SERVING_WORDS = ("person", "serving", "servings", "head", "guest", "portion", "diner")
+PER_SERVING_SRC = r"\bper\s+(?:" + "|".join(PER_SERVING_WORDS) + r")\b"
+PER_SERVING_RE = re.compile(PER_SERVING_SRC, re.IGNORECASE)
+_PER_SERVING_CLAUSE_RE = re.compile(
+    r"[,;]\s*(?P<amount>(?:" + _MEASURE_QUALIFIER + r"\s*)?" + _MEASURE_NUM
+    + r"(?:\s+[A-Za-z]+)?\s+per\s+(?:" + "|".join(PER_SERVING_WORDS) + r"))\b",
+    re.IGNORECASE)
+
+
+def per_serving_amount(row):
+    """R3: an amount marked per person, moved out of the name into the amount, else None."""
+    name = (row.get("label") or row.get("raw_text") or "")
+    if (row.get("qty") or "").strip():
+        return None                       # a row with its own amount is a different question
+    m = _PER_SERVING_CLAUSE_RE.search(name)
+    if not m:
+        return None
+    text = _norm_ws(m.group("amount"))
+    rest = _tidy_name(name[:m.start()] + " " + name[m.end():])
+    if not rest or _is_all_modifier(rest.lower()):
+        return None
+    return {"qty": text, "quantity": text, "unit": "", "name": rest,
+            "rule": "per_serving_amount",
+            "why": f"{text!r} is marked per person, so it is the amount and it is never scaled "
+                   f"with the servings"}
+
+
 # ---- the front of the name ------------------------------------------------------------------ #
 # ⚠️ ONE DISPATCH, BECAUSE THESE ARE ALTERNATIVES RATHER THAN STAGES. The front of a name either
 #    opens with a unit word, or a measure, or a number word, or a "+" compound, or a size, or a
@@ -1239,6 +1490,20 @@ def front_of_name(row):
     # Decision 7, and it comes first so no later rule can reach these phrases.
     if _A_AN_KEPT_RE.match(name):
         return None
+
+    # (0) R1: a sized piece IS the amount. It comes before the article, the number word and the
+    #     sized-piece arms below, all three of which used to answer for these seven rows and
+    #     answered the opposite way: they put the size back in the name and left the row with no
+    #     amount, where Andy's call is that the size IS what the row measures in.
+    sized = sized_piece_amount(row)
+    if sized:
+        return sized
+
+    # (0b) R3: an amount marked per person. It replaces the whole name rather than cutting a
+    #      prefix off it, because the clause sits at the END of the name.
+    per = per_serving_amount(row)
+    if per:
+        return per
 
     # (1) an article the amount is already counting. "1/2 a Lemon" is half a lemon, and the "a"
     #     is a word of the sentence rather than a word of the name.
@@ -1345,6 +1610,9 @@ def front_of_name(row):
 # ---- the author's second amount -------------------------------------------------------------- #
 # A slash pair at the front of the author's line: the amount written twice.
 _SLASH_PAIR_RE = re.compile(r"\s*/\s*(?P<second>" + _ONE_MEASURE + r")", re.IGNORECASE)
+# A bare "or" alternative in the author's line, outside any bracket. R2.
+_BARE_OR_RE = re.compile(r"(?<![\w-])or\s+(?=(?:" + _MEASURE_QUALIFIER + r"\s*)?"
+                         + _MEASURE_NUM + r")", re.IGNORECASE)
 
 
 def author_line_fragments(line):
@@ -1376,7 +1644,8 @@ def author_line_fragments(line):
             verdict, reason = classify_fragment(m.group("second"), after=text[m.end():],
                                                 before=text[:m.start()], kind="slash")
             out.append({"text": _norm_ws(m.group("second")), "span": (m.start(), m.end()),
-                        "kind": "slash", "verdict": verdict, "reason": reason})
+                        "kind": "slash", "verdict": verdict, "reason": reason,
+                        "context": f"{text[:m.start()]} {text[m.end():]}"})
             pos = own_end = m.end()
     for m in _PAREN_GROUP_RE.finditer(text):
         verdict, reason = classify_fragment(m.group(1), after=text[m.end():],
@@ -1395,12 +1664,57 @@ def author_line_fragments(line):
                                                "and the fragment, so the fragment measures that "
                                                "one")
         out.append({"text": _norm_ws(m.group(1)), "span": (m.start(), m.end()),
-                    "kind": "paren", "verdict": verdict, "reason": reason})
+                    "kind": "paren", "verdict": verdict, "reason": reason,
+                    "context": f"{text[:m.start()]} {text[m.end():]}"})
+    # ⚠️ AN "OR" COUNT IS NOT ALWAYS IN BRACKETS, WHICH IS HALF OF ANDY'S R2. "3-4 cilantro roots
+    #    or 6-8 cilantro stems" writes it as prose and "2 small onions or 1 large onion, finely
+    #    diced" writes it in the middle of the name. The run ends at the next comma, semicolon or
+    #    bracket, because what follows one of those is the prep clause rather than more of the
+    #    alternative. A bare run is read on the BLANKED text so an "or" already inside a
+    #    parenthetical is not found twice.
+    blanked = _PAREN_SPAN_RE.sub(lambda m: " " * (m.end() - m.start()), text)
+    for m in _BARE_OR_RE.finditer(blanked):
+        stop = len(text)
+        for ch in ",;()":
+            at = text.find(ch, m.end())
+            if at != -1:
+                stop = min(stop, at)
+        inner = text[m.start():stop]
+        before, after = text[:m.start()], text[stop:]
+        verdict, reason = classify_fragment(inner, after=after, before=before, kind="bare")
+        # A bare "or" that is not a count of the same food is prose, and prose stays in the name.
+        if verdict != FRAGMENT_COUNT:
+            continue
+        out.append({"text": _norm_ws(inner), "span": (m.start(), stop), "kind": "bare",
+                    "verdict": verdict, "reason": reason, "context": f"{before} {after}"})
     out.sort(key=lambda f: f["span"][0])
     return out
 
 
 SECOND_AMOUNT_JOIN = " / "
+
+
+def compose_second_amount(frags):
+    """The stored second amount, from the fragments the rules accepted. One composer, two callers.
+
+    ⚠️ ONE FRAGMENT CAN HOLD TWO BACKUPS, and the slot has to say so. "(8 tablespoons/113
+       grams)" is one parenthetical and two measures, and the display stacks each on its own
+       line, so the separator is normalized to " / " while each measure keeps the author's own
+       spelling. 2 backups appear on 28 rows of the corpus and 3 on one.
+    ⚠️ AND A COUNT STORES ONLY THE WORDS THAT MEASURE. R2: "(or 2 small ones)" stores "or 2
+       small", because "ones" says nothing and the food is already in the name.
+    """
+    parts = []
+    for frag in frags:
+        if frag.get("rejected"):
+            continue
+        if frag["verdict"] == FRAGMENT_COUNT:
+            if frag.get("count"):
+                parts.append(frag["count"])
+            continue
+        inner = split_measures(frag["text"])
+        parts.extend(inner if len(inner) > 1 else [frag["text"]])
+    return SECOND_AMOUNT_JOIN.join(parts)
 
 
 def author_second_amount(line):
@@ -1410,24 +1724,21 @@ def author_second_amount(line):
     """
     frags = [f for f in author_line_fragments(line)
              if f["verdict"] in (FRAGMENT_ALTERNATE, FRAGMENT_COUNT)]
-    # ⚠️ ONE FRAGMENT CAN HOLD TWO BACKUPS, and the slot has to say so. "(8 tablespoons/113
-    #    grams)" is one parenthetical and two measures, and the display stacks each on its own
-    #    line, so the separator is normalized to " / " while each measure keeps the author's own
-    #    spelling. 2 backups appear on 28 rows of the corpus and 3 on one.
-    parts = []
     for frag in frags:
-        inner = split_measures(frag["text"]) if frag["verdict"] == FRAGMENT_ALTERNATE else []
-        parts.extend(inner if len(inner) > 1 else [frag["text"]])
-    return SECOND_AMOUNT_JOIN.join(parts), frags
+        if frag["verdict"] == FRAGMENT_COUNT:
+            split = count_parts(frag["text"], frag.get("context", ""))
+            frag["count"], frag["food"] = split["count"], split["food"]
+            frag["leftover"] = split["leftover"]
+    return compose_second_amount(frags), frags
 
 
 def corpus_densities(rows):
     """What the corpus says each food weighs, read off THE AUTHORS' OWN LINES.
 
     ⚠️ NOT OFF THE STORED secondary_measure COLUMN, WHICH IS THE THING THIS ROUND IS REPAIRING.
-       Measured: built from the stored column the index knows 3 foods, because 130 of the 293
-       filled slots hold a copy of the first amount and the rest carry a stray slash. Built from
-       raw_text it knows what the authors actually wrote twice.
+       Measured: built from the stored column the index knows 3 foods, because 130 of the 284
+       filled slots hold a copy of the first amount and 82 more carry a stray leading slash. Built
+       from raw_text it knows what the authors actually wrote twice.
     """
     pairs = []
     for row in rows:
@@ -1489,6 +1800,7 @@ NO_NAME_LEFT_FLAG = "no_name_left"
 #    could not read the LINE, so nothing about the row may move.
 WHOLE_ROW_FLAGS = frozenset({UNBALANCED_BRACKET_FLAG, NO_NAME_COLUMN_FLAG, NO_NAME_LEFT_FLAG})
 FOOD_INSIDE_FRAGMENT_FLAG = "food_inside_the_fragment"
+COUNT_NAMES_ANOTHER_FOOD_FLAG = "count_names_another_food"
 # What a name reduced to a trailing clause looks like. A name does not open with a connective.
 _FRAGMENT_LEFTOVER_RE = re.compile(
     r"^\s*(?:plus|and|or|for|to|with|at|in|of)\b", re.IGNORECASE)
@@ -1686,7 +1998,12 @@ def _tidy_name(text):
     s = re.sub(r"\s{2,}", " ", s).strip()
     s = re.sub(r"^[,;.\s]+", "", s)
     s = re.sub(r"[,;\s]+$", "", s)
-    return s
+    # ⚠️ AND A COMMA LEFT IN FRONT OF A BRACKET IS THE SAME ARTIFACT AS ONE LEFT AT THE END.
+    #    Taking "OR 1 tbsp vegetable oil" out of butter-chicken's name left "ghee or butter,
+    #    (Note 3)". Measured over the corpus before this was added: 2 names already carry a comma
+    #    in front of a bracket and both are the same defect arriving from the publisher.
+    s = re.sub(r"[,;]\s*(?=\()", " ", s)
+    return _norm_ws(s)
 
 
 _LOOKALIKE_LB_LEAD = re.compile(r"^(\s*)I(bs?)\b")
@@ -1728,6 +2045,155 @@ def food_name(row):
     return _norm_ws(_DENSITY_NAME_STRIP.sub(" ", name)).strip(" ,;")
 
 
+# R4. "(PLUS <AMOUNT> <ANOTHER FOOD>)" IS ITS OWN ROW, UNDER THE LINE. Andy's call on apple-pie.
+# ⚠️ "plus more" IS UNTOUCHED, AND IT IS THE COMMON CASE BY A LONG WAY. Measured: 96 corpus rows
+#    carry a "plus", 91 of them "plus more for dusting" / "plus more if needed" / "plus more to
+#    taste", which is the SAME food again with no amount at all. 5 are bracketed, and of those 2
+#    name a second food with its own amount, 2 say "plus more" and 1 ("plus ⅓ cup/80ml for
+#    frying") is more of the same oil for a second purpose and goes to the review list.
+_PLUS_FOOD_RE = re.compile(r"\(\s*plus\s+(?P<rest>[^()]*?)\s*\)", re.IGNORECASE)
+_PLUS_MORE_RE = re.compile(r"^\s*(?:more|extra|some|additional|another)\b", re.IGNORECASE)
+_HALF_OF_A_RE = re.compile(r"\bhalf\s+of\s+an?\b", re.IGNORECASE)
+_LEADING_THE_RE = re.compile(r"^\s*the\s+", re.IGNORECASE)
+PLUS_ANOTHER_FOOD_RULE = "plus_another_food"
+PLUS_NAMES_NO_FOOD_FLAG = "plus_names_no_food"
+
+
+def plus_another_food(row):
+    """R4: a second food with its own amount, as a row of its own, else None.
+
+    Returns {"row": {column: value}, "front_len": 0, "span": (lo, hi), "rule", "why"} where `span`
+    is the part of the NAME the new row takes with it, or {"flag": ...} where the bracket says
+    "plus" and names no food for a row to be about.
+    """
+    name = (row.get("label") or row.get("raw_text") or "")
+    m = _PLUS_FOOD_RE.search(name)
+    if not m:
+        return None
+    rest = _norm_ws(m.group("rest"))
+    if _PLUS_MORE_RE.match(rest):
+        return None                       # more of the same food, which is not a second row
+    text = _LEADING_THE_RE.sub("", rest)
+    text = _HALF_OF_A_RE.sub("½", text)
+    for word, numeral in NUMBER_WORD_NUMERALS.items():
+        text = re.sub(r"^" + word + r"\b", numeral, text, count=1, flags=re.IGNORECASE)
+    text = _tidy_name(text)
+    # ⚠️ A FOOD, NOT A PURPOSE. mongolian-chicken writes "(plus ⅓ cup/80ml for frying)", which is
+    #    the row's own oil again for a second job. Taking the measures and the purpose words off
+    #    leaves nothing, and a row with no name is not a row.
+    bare = _norm_ws(_DENSITY_NAME_STRIP.sub(" ", text)).strip(" ,;/+")
+    bare = re.sub(r"\bfor\b.*$", "", bare, flags=re.IGNORECASE).strip(" ,;/+")
+    bare = _norm_ws(re.sub(r"[^\w\s'’-]", " ", bare))
+    if not bare or _is_all_modifier(bare.lower()):
+        return {"flag": PLUS_NAMES_NO_FOOD_FLAG,
+                "why": f"the bracket reads {rest!r}, which names no food of its own, so there is "
+                       f"nothing for a row of its own to be about"}
+    return {"row": {"qty": None, "quantity": None, "unit": None, "label": text,
+                    "raw_text": text, "secondary_measure": None},
+            "span": (m.start(), m.end()), "rule": PLUS_ANOTHER_FOOD_RULE,
+            "why": f"{rest!r} is a second food with its own amount, so it is a row of its own "
+                   f"under this one, reading {text!r}"}
+
+
+# R5. A SUBSTITUTION CARRYING ITS OWN AMOUNT MOVES TO THE ROW'S NOTE. Andy's call on Tao Jiew.
+# ⚠️ THE NOTE COLUMN IS SHOWN ON THE PAGE, which is the condition Andy put on this rule. It
+#    renders as .inote, its own muted italic line under the ingredient (static/app.js, the
+#    `row.note` arm of the ingredient render, and static/styles.css's .inote). Checked before the
+#    rule was written, because the instruction was to stop rather than hide the text.
+# ⚠️ AND WHAT TELLS R5 FROM R2 IS THE UNIT. An "or" carrying no unit of measure is a count of the
+#    same food and goes to the second amount. An "or" carrying a unit is a different ingredient
+#    measured in its own right, and a second amount slot cannot hold that without claiming the
+#    row's own food comes in that quantity.
+_SUBSTITUTION_LEAD_RE = re.compile(r"^\s*or\b\s*", re.IGNORECASE)
+_SUB_FUNCTION_WORDS = frozenset("""
+as is was if when unless while than that which who original recipe written needed taste
+""".split())
+_SUB_TAIL_JOIN_RE = re.compile(r"(?:\+|\bplus\b|\band\b|,)\s*$", re.IGNORECASE)
+SUBSTITUTION_RULE = "substitution_to_the_note"
+SUBSTITUTION_NOTE_TAKEN_FLAG = "substitution_but_the_note_is_taken"
+
+
+def substitution_to_note(row):
+    """R5: an "or <amount> <other food>" alternative, as the row's note, else None."""
+    name = (row.get("label") or row.get("raw_text") or "")
+    for span, inner in _substitution_candidates(name):
+        rest = _SUBSTITUTION_LEAD_RE.sub("", inner, count=1)
+        lead = _ONE_MEASURE_LEAD_RE.match(rest)
+        if not lead:
+            continue                               # no amount of its own, so it is not this rule
+        food = rest[lead.end():].strip()
+        # A second measure is part of ONE substitution only where something joins it. Tao Jiew's
+        # "+ 1 tablespoon water" is joined; chicken-chow-fun's "8 ounces dried wide rice noodles 3
+        # tablespoons neutral oil" is two ingredients run into one line and is not this rule.
+        if not all(_SUB_TAIL_JOIN_RE.search(food[:food.find(e)].rstrip())
+                   for e in split_measures(food)):
+            continue
+        bare = _norm_ws(_DENSITY_NAME_STRIP.sub(" ", food)).strip(" ,;")
+        if not bare or _is_all_modifier(bare.lower()):
+            continue                               # "or 230 grams" restates the amount, no food
+        if {w.strip(",.;").lower() for w in bare.split()} & _SUB_FUNCTION_WORDS:
+            continue                               # "or 10 ounces as original recipe is written"
+        text = units.fix_plurals("or " + _norm_ws(rest))
+        if (row.get("note") or "").strip():
+            return {"flag": SUBSTITUTION_NOTE_TAKEN_FLAG,
+                    "why": f"{inner!r} is a substitution with its own amount and this row's note "
+                           f"already reads {row['note']!r}, so nothing is overwritten"}
+        return {"note": text, "span": span, "rule": SUBSTITUTION_RULE,
+                "why": f"{inner!r} offers a different ingredient in its own measure, so it is a "
+                       f"note on the row rather than a second amount for this food"}
+    return None
+
+
+def _substitution_candidates(name):
+    """Every "or ..." run in a name, as (span, text). Bracketed first, then bare."""
+    out = []
+    for m in _PAREN_GROUP_RE.finditer(name or ""):
+        if _SUBSTITUTION_LEAD_RE.match(m.group(1)):
+            out.append(((m.start(), m.end()), _norm_ws(m.group(1))))
+    blanked = _PAREN_SPAN_RE.sub(lambda m: " " * (m.end() - m.start()), name or "")
+    for m in re.finditer(r"(?<![\w-])(?:OR|[Oo]r)\s+(?=(?:" + _MEASURE_QUALIFIER + r"\s*)?"
+                         + _MEASURE_NUM + r")", blanked):
+        stop = len(name)
+        for ch in ";()":
+            at = name.find(ch, m.end())
+            if at != -1:
+                stop = min(stop, at)
+        out.append(((m.start(), stop), _norm_ws(name[m.start():stop])))
+    return out
+
+
+# R6. A ROW THAT IS ONLY A REMARK, DIRECTLY UNDER AN INGREDIENT HEADING, IS A RECIPE NOTE. Andy's
+# call on hainanese row 5182.
+# ⚠️ "DIRECTLY UNDER A HEADING" IS THE WHOLE RULE, AND IT IS WHAT KEEPS TEN ROWS WHERE THEY ARE.
+#    Measured: 11 corpus rows carry no amount and are entirely a parenthesized remark. Ten of them
+#    sit under an ordinary ingredient ROW ("(thinly sliced)" under chicken breast, "(160 ml,
+#    warmed)" under chicken stock), where the remark belongs to the line above it and
+#    joins_the_row_above is the rule that reads it. One sits under a heading, and a remark under a
+#    heading is about the SECTION, which no ingredient row can hold.
+REMARK_ROW_RULE = "remark_row_to_a_note"
+
+
+def remark_row_to_note(above, row):
+    """R6: this row as a recipe note titled with the heading above it, else None."""
+    if not above or not above.get("is_heading") or row.get("is_heading"):
+        return None
+    if (row.get("qty") or "").strip() or (row.get("secondary_measure") or "").strip():
+        return None
+    text = (row.get("label") or row.get("raw_text") or "").strip()
+    if not (text.startswith("(") and text.endswith(")") and text.count("(") == 1):
+        return None
+    inner = _norm_ws(text[1:-1])
+    # A remark is a sentence about the section. A measure in it makes it a line of the recipe.
+    if not inner or split_measures(inner) or len(inner.split()) < 3:
+        return None
+    title = _norm_ws(above.get("heading") or above.get("raw_text") or above.get("label") or "")
+    if not title:
+        return None
+    return {"title": title, "text": inner, "rule": REMARK_ROW_RULE,
+            "why": f"the row is only the remark {inner!r} and it sits directly under the "
+                   f"ingredient heading {title!r}, so it is a note about that section"}
+
+
 def apply_amount_plan(res, line, density=None):
     """Run the round B rules over a line the importer has just parsed, and write the answer back.
 
@@ -1754,6 +2220,16 @@ def apply_amount_plan(res, line, density=None):
         res["name"] = changes["label"]
     if "secondary_measure" in changes:
         res["secondary_measure"] = changes["secondary_measure"]
+    # ⚠️ R5 AND R4 CHANGED THE ROW SHAPE, AND LEAVING THEM OUT HERE WOULD HAVE MADE "ONE RULE SET,
+    #    TWO CALLERS" A COMMENT AGAIN. R5 writes a note column the importer wrote None into on
+    #    every row, and R4 asks for a SECOND row under this one. Both are carried on `res` and
+    #    import_write builds them, so a recipe imported tomorrow is structured the way the corpus
+    #    was just repaired to be. Found by the suite: classify_line was returning the shortened
+    #    name with the substitution simply gone.
+    if "note" in changes:
+        res["note"] = changes["note"]
+    if plan.get("insert"):
+        res["second_food"] = plan["insert"]
     for flag, reason in plan["flags"] + plan["notes"]:
         if flag not in res["flags"]:
             res["flags"].append(flag)
@@ -1783,6 +2259,7 @@ def amount_plan(row, density=None):
             row[key] = repair_lookalike_units(row[key], at_start=has_qty and key == "label")
     name = (row.get("label") or row.get("raw_text") or "")
     changes, flags, notes, why, rules = {}, [], [], [], []
+    insert = None                                 # R4's second food, as a row of its own
     # ⚠️ AN UNBALANCED BRACKET IS READ BEFORE ANYTHING ELSE AND STOPS THE ROW. chocolate-hazelnut
     #    -wedges stores "1 stick ½ cup/113 grams) cold unsalted butter, cut into" with no opening
     #    bracket at all, so the backup is in no shape any fragment rule can find. Repairing the
@@ -1796,13 +2273,14 @@ def amount_plan(row, density=None):
     if not (row.get("label") or "").strip():
         return {"changes": {}, "flags": [(NO_NAME_COLUMN_FLAG,
                  "the row carries no name of its own, so raw_text is not the author's line and "
-                 "nothing here can read it")], "notes": [], "why": [], "rules": []}
+                 "nothing here can read it")], "notes": [], "why": [], "rules": [],
+                "insert": None}
     line = row.get("raw_text") or name
     if line.count("(") != line.count(")"):
         return {"changes": {}, "flags": [(UNBALANCED_BRACKET_FLAG,
                  f"the line carries {line.count('(')} opening and {line.count(')')} closing "
                  f"brackets, so no rule can tell what the brackets were around")],
-                "notes": [], "why": [], "rules": []}
+                "notes": [], "why": [], "rules": [], "insert": None}
     front = front_of_name(row)
     second = second_amount(row)
     # `density` may be a figure or a lookup. A lookup is asked about the food rather than the row,
@@ -1827,7 +2305,9 @@ def amount_plan(row, density=None):
 
     new_name = name
     cut_from = front if front else (amount_from if amount_from else None)
-    if cut_from:
+    if cut_from and cut_from.get("name") is not None:
+        new_name = cut_from["name"]              # R3 takes a clause out of the MIDDLE of the name
+    elif cut_from:
         new_name = (cut_from.get("prefix") or "") + new_name[cut_from.get("front_len", 0) or 0:]
     if second:
         for frag in second["fragments"]:
@@ -1836,22 +2316,73 @@ def amount_plan(row, density=None):
                 if not form or form not in new_name:
                     continue
                 without = _tidy_name(new_name.replace(form, "", 1))
-                # ⚠️ A FRAGMENT STAYS WHERE THE FOOD IS INSIDE IT. bananas-foster stores
-                #    "(2 large semi-ripe bananas) , peeled and roughly chopped" as its name, and
-                #    taking the count out left an ingredient called "peeled and roughly chopped".
-                #    malted-brownie-biscotti left "plus more for dusting". The second amount is
-                #    still recorded either way, because that reads off the author's line.
-                if _is_all_modifier(without.lower()) or _FRAGMENT_LEFTOVER_RE.match(without):
+                needs_food = (_is_all_modifier(without.lower())
+                              or bool(_FRAGMENT_LEFTOVER_RE.match(without)))
+                food = frag.get("food") or ""
+                # ⚠️ R2: A COUNT THAT NAMES A FOOD THE ROW DOES NOT IS NOT A RESTATEMENT AT ALL.
+                #    "tomato sauce, or 2 pureed tomatoes" and "Persian cucumber or ½ English
+                #    cucumber" each leave a word the name never had ("pureed", "English"), which
+                #    means the alternative is a different thing rather than the same thing counted
+                #    another way. Those go to the review list and nothing moves.
+                if (frag["verdict"] == FRAGMENT_COUNT and frag.get("leftover")
+                        and not needs_food):
+                    frag["rejected"] = True
+                    notes.append((COUNT_NAMES_ANOTHER_FOOD_FLAG,
+                                  f"{form!r} counts something the name does not call the same "
+                                  f"thing ({frag['leftover']!r} is left over), so it may be a "
+                                  f"different "
+                                  f"ingredient rather than a second amount"))
+                    break
+                if needs_food:
+                    # ⚠️ R2: THE FOOD'S OWN WORDS COME BACK, rather than the whole fragment
+                    #    staying where it is. bananas-foster stores "(2 large semi-ripe bananas) ,
+                    #    peeled and roughly chopped" as its name, and taking the count out left an
+                    #    ingredient called "peeled and roughly chopped". Putting "semi-ripe
+                    #    bananas" back loses nothing and leaves "2 large" as the count it is.
+                    if frag["verdict"] == FRAGMENT_COUNT and food:
+                        new_name = new_name.replace(form, food, 1)
+                        rules.append("food_back_into_the_name")
+                        why.append(f"the count carried the food's own name, so {food!r} goes back "
+                                   f"into the name and {frag.get('count')!r} is the second amount")
+                        break
                     notes.append((FOOD_INSIDE_FRAGMENT_FLAG,
                                   f"{form!r} carries the food's own name, so taking it out of the "
                                   f"name would leave {without!r}"))
                     break
                 new_name = new_name.replace(form, "", 1)
                 break
-        if (second.get("secondary_measure") or None) != (row.get("secondary_measure") or None):
-            changes["secondary_measure"] = second["secondary_measure"]
+        wanted = compose_second_amount(second["fragments"]) or None
+        if wanted != (row.get("secondary_measure") or None):
+            changes["secondary_measure"] = wanted
             rules.append("second_amount")
             why.append(second["why"])
+    # ⚠️ R5 AND R4 TAKE THEIR OWN TEXT, BY THE EXACT WORDS, AND REFUSE WHEN THOSE WORDS ARE GONE.
+    #    Both are decided from the STORED name, like every rule above, and both apply by removing
+    #    the substring they read rather than by an index, so an earlier rule having already moved
+    #    part of the name cannot make either one cut in the wrong place. A rule whose words are no
+    #    longer there does not fire and claims nothing.
+    sub = substitution_to_note(row)
+    if sub and "flag" in sub:
+        notes.append((sub["flag"], sub["why"]))
+    elif sub:
+        lo, hi = sub["span"]
+        words = name[lo:hi]
+        if words and words in new_name and not (row.get("note") or "").strip():
+            new_name = new_name.replace(words, " ", 1)
+            changes["note"] = sub["note"]
+            rules.append(sub["rule"])
+            why.append(sub["why"])
+    plus = plus_another_food(row)
+    if plus and "flag" in plus:
+        notes.append((plus["flag"], plus["why"]))
+    elif plus:
+        lo, hi = plus["span"]
+        words = name[lo:hi]
+        if words and words in new_name:
+            new_name = new_name.replace(words, " ", 1)
+            insert = plus["row"]
+            rules.append(plus["rule"])
+            why.append(plus["why"])
     new_name = _tidy_name(new_name)
     # ⚠️ A RULE THAT WOULD LEAVE THE ROW WITH NO NAME DOES NOT FIRE, AND THAT IS WHAT MADE THE
     #    PASS NON-IDEMPOTENT. buttermilk-biscuits stores "1¼ cups plus 2 tablespoons" with no food
@@ -1861,7 +2392,7 @@ def amount_plan(row, density=None):
     if not new_name and (front or changes):
         return {"changes": {}, "flags": [(NO_NAME_LEFT_FLAG,
                  f"every rule that fits this row would leave it with no name: {name!r}")],
-                "notes": notes, "why": why, "rules": []}
+                "notes": notes, "why": why, "rules": [], "insert": None}
     if new_name != (stored_label or "") and new_name:
         changes["label"] = new_name
         # ⚠️ A CHANGE WITH NO RULE BEHIND IT IS NOT A CHANGE ANYONE CAN READ. The tidy alone
@@ -1878,7 +2409,8 @@ def amount_plan(row, density=None):
     #    carrying the food's own name means it did: the second amount is the author's and is
     #    recorded, and only the name is left as written.
     if any(f in WHOLE_ROW_FLAGS for f, _r in flags):
-        return {"changes": {}, "flags": flags, "notes": notes, "why": why, "rules": []}
+        return {"changes": {}, "flags": flags, "notes": notes, "why": why, "rules": [],
+                "insert": None}
     if flags:
         # ⚠️ ONLY THE SECOND AMOUNT, AND NOT THE NAME OR THE AMOUNT. Letting the name move on a
         #    flagged row re-opened the half-repair this rule exists to stop: tahini-brioche's
@@ -1888,8 +2420,9 @@ def amount_plan(row, density=None):
         #    decided it was one. The slot is the one column the amount flag says nothing about.
         changes = {k: v for k, v in changes.items() if k == "secondary_measure"}
         return {"changes": changes, "flags": flags, "notes": notes, "why": why,
-                "rules": ["second_amount"] if changes else []}
-    return {"changes": changes, "flags": flags, "notes": notes, "why": why, "rules": rules}
+                "rules": ["second_amount"] if changes else [], "insert": None}
+    return {"changes": changes, "flags": flags, "notes": notes, "why": why, "rules": rules,
+            "insert": insert}
 
 
 # ---- a row that is half of one line ---------------------------------------------------------- #

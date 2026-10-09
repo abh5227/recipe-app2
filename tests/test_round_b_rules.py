@@ -10,10 +10,10 @@ import planahead as pa
 
 
 def row(label, qty="", quantity=None, unit="", raw_text=None, secondary=None, grams=None,
-        recipe_id="a-recipe"):
+        recipe_id="a-recipe", note=None):
     return {"recipe_id": recipe_id, "label": label, "raw_text": raw_text or label, "qty": qty,
             "quantity": quantity if quantity is not None else qty, "unit": unit,
-            "secondary_measure": secondary, "grams": grams, "is_heading": 0}
+            "secondary_measure": secondary, "grams": grams, "is_heading": 0, "note": note}
 
 
 # --------------------------------------------------------------------------- #
@@ -70,14 +70,55 @@ def test_classify_fragment(text, after, verdict):
 
 @pytest.mark.parametrize("text", [
     "from about 1 lime",       # a source, not a count of this line's food
-    "or 2 small cloves",       # an alternative ingredient
     "4 large, 5 medium",       # a list of two answers
     "16-20 per lb",            # a grade
     "1 if large",              # a note
+    "or to taste",             # no count at all
+    "or apple cider vinegar",  # an alternative ingredient with no count
+    "or 1 tsp ground cumin",   # an alternative carrying its own unit of measure
 ])
 def test_a_count_restatement_refuses_what_only_looks_like_a_count(text):
     assert ic.count_restatement(text) == ""
     assert ic.classify_fragment(text)[0] == ic.FRAGMENT_PROSE
+
+
+# ⚠️ "or 2 small cloves" WAS ON THE LIST ABOVE AND ANDY'S R2 TOOK IT OFF. Decision 5 refused every
+#    fragment carrying an "or" on the grounds that it offers a different ingredient. The
+#    click-through's ruling is that an "or" COUNT of the same food is a second amount, keeping the
+#    "or", and the test that held the old answer is this one rather than a deletion.
+@pytest.mark.parametrize("frag, context, stored", [
+    ("or 2 small cloves", "1 large clove garlic, minced ", "or 2 small cloves"),
+    ("or 2 small ones", "1 large skin-on chicken breast ", "or 2 small"),
+    ("or 6-8 cilantro stems", "3-4 cilantro roots ", "or 6\u20138 stems"),
+    ("or 1 large onion", "2 small onions , finely diced", "or 1 large"),
+    ("4 medium or 2 long cucumbers", "500 g / 1 lb cucumbers ", "4 medium or 2 long"),
+])
+def test_an_or_count_of_the_same_food_is_a_second_amount(frag, context, stored):
+    assert ic.count_restatement(frag, context)
+    assert ic.count_parts(frag, context)["count"] == stored
+
+
+@pytest.mark.parametrize("line, stored", [
+    ("3-4 cilantro roots or 6-8 cilantro stems", "or 6\u20138 stems"),
+    ("2 small onions or 1 large onion, finely diced", "or 1 large"),
+    ("1 large skin-on chicken breast (or 2 small ones)", "or 2 small"),
+])
+def test_a_bare_or_outside_brackets_is_read_too(line, stored):
+    assert ic.author_second_amount(line)[0] == stored
+
+
+# ⚠️ AND A COUNT THAT NAMES A FOOD THE ROW DOES NOT IS REFUSED, which is what keeps R2 from
+#    swallowing an alternative INGREDIENT that happens to carry a bare count. Both of these leave
+#    a word the name never had, and both go to the review list with nothing moved.
+@pytest.mark.parametrize("name, raw", [
+    ("tomato sauce, or 2 pureed tomatoes", "1/4 cup tomato sauce, or 2 pureed tomatoes"),
+    ("Persian cucumber or \u00bd English cucumber, deseeded",
+     "1 Persian cucumber or \u00bd English cucumber, deseeded"),
+])
+def test_a_count_naming_another_food_is_refused_and_noted(name, raw):
+    plan = ic.amount_plan(row(name, qty="1", quantity="1", raw_text=raw))
+    assert plan["changes"].get("secondary_measure") is None
+    assert any(f == ic.COUNT_NAMES_ANOTHER_FOOD_FLAG for f, _r in plan["notes"])
 
 
 # --------------------------------------------------------------------------- #
@@ -98,14 +139,21 @@ def test_a_count_restatement_refuses_what_only_looks_like_a_count(text):
     (row("Scant ½ cup extra-virgin olive oil"), "leading_measure", "scant ½ cup",
      "extra-virgin olive oil"),
     (row("up to 2 cups of milk"), "leading_measure", "up to 2 cups", "milk"),
-    (row("-inch knob ginger, finely chopped", qty="1"), "sized_piece", "",
-     "1-inch knob ginger, finely chopped"),
+    # ⚠️ THESE TWO USED TO ANSWER sized_piece AND a_an_sized_piece, AND R1 ANSWERS THEM THE OTHER
+    #    WAY. The old rules put the size back into the name and left the row with no amount at
+    #    all; Andy's click-through call is that a sized piece IS what the row measures in.
+    (row("-inch knob ginger, finely chopped", qty="1"), "sized_piece_amount", "1-inch knob",
+     "ginger, finely chopped"),
     (row(", Italian Imported Marsala Wine", qty="2 Cups", quantity="2", unit="Cups"),
      "leading_punctuation", "2 Cups", "Italian Imported Marsala Wine"),
     (row("of Olive Oil", qty="1/2 Cup", quantity="1/2", unit="Cup"), "word_the_unit_left",
      "1/2 Cup", "Olive Oil"),
-    (row("a 2-inch piece of ginger (smashed)"), "a_an_sized_piece", "1",
-     "2-inch piece of ginger (smashed)"),
+    (row("a 2-inch piece of ginger (smashed)"), "sized_piece_amount", "2-inch piece",
+     "ginger (smashed)"),
+    # The arm R1 did NOT take: a size with no piece word after it, where the number goes back to
+    # the words it sizes. chocolate-hazelnut-wedges' "-inch cubes" is the row that needs it.
+    (row("-ounce pumpkin puree", qty="15", quantity="15"), "sized_piece", "",
+     "15-ounce pumpkin puree"),
     (row("a Lemon", qty="1/2"), "article_after_amount", "1/2", "Lemon"),
 ])
 def test_the_front_of_the_name(r, rule, qty, name_after):
@@ -174,16 +222,29 @@ def test_a_slot_holding_a_stray_slash_is_rewritten():
     assert ic.amount_plan(r)["changes"]["secondary_measure"] == "10g"
 
 
-def test_a_fragment_carrying_the_food_s_own_name_stays_in_the_name():
+# ⚠️ THIS TEST USED TO ASSERT THAT THE WHOLE FRAGMENT STAYED IN THE NAME, and R2 settles it the
+#    other way: the food's own words come back and the count is the second amount. It is residual
+#    row 2832, decided in round-b-residual-decisions-2026-10-08.csv, and no rule could reach it
+#    until the count fragment was split into what measures and what names the food.
+def test_a_count_carrying_the_food_s_own_name_gives_the_name_back():
     r = row("(2 large semi-ripe bananas) , peeled and roughly chopped", qty="300 grams",
             quantity="300", unit="grams",
-            raw_text="300 grams (2 large semi-ripe bananas), peeled and roughly chopped")
+            raw_text="300 grams (2 large semi-ripe bananas), peeled and roughly chopped "
+                     "(about 1 \u00bc cups)")
     plan = ic.amount_plan(r)
-    # The name keeps the fragment. It is tidied (the space in front of the comma is the artifact
-    # cleaned_space_before_comma exists for) and the bananas stay in it.
-    assert "2 large semi-ripe bananas" in plan["changes"]["label"]
-    assert plan["notes"][0][0] == ic.FOOD_INSIDE_FRAGMENT_FLAG
-    assert plan["changes"]["secondary_measure"] == "2 large semi-ripe bananas"
+    assert plan["changes"]["label"] == "semi-ripe bananas, peeled and roughly chopped"
+    assert plan["changes"]["secondary_measure"] == "2 large / about 1 \u00bc cups"
+    assert plan["changes"].get("qty") is None          # 300 grams is still the first amount
+    assert not plan["flags"]
+
+
+# A fragment that is NOT a count and still carries the food is left exactly where it is, which is
+# the half of the old rule that stands.
+def test_a_non_count_fragment_carrying_the_food_stays_in_the_name():
+    r = row("(224 grams), plus more for dusting", qty="1\u00be cups", quantity="1\u00be",
+            unit="cups", raw_text="1\u00be cups (224 grams), plus more for dusting")
+    plan = ic.amount_plan(r)
+    assert any(f == ic.FOOD_INSIDE_FRAGMENT_FLAG for f, _r in plan["notes"])
 
 
 # --------------------------------------------------------------------------- #
@@ -625,3 +686,263 @@ def test_the_recipe_payload_computes_its_estimate_inside_the_session():
     assert estimate < handoff, (
         "planahead.cook_estimate is evaluated after the session block has closed, which leaks a "
         "connection on every recipe page view")
+
+
+# =========================================================================== #
+# REVISION 1: the six rules Andy's :8002 click-through asked for
+#
+# Each was measured over all 300 recipes before it was written. The counts in
+# the comments are those measurements, and the rows named are the real rows.
+# =========================================================================== #
+
+# --------------------------------------------------------------------------- #
+# The four phrases EVERY rule here must leave alone
+# --------------------------------------------------------------------------- #
+MUST_NOT_FIRE = ["plus more for dusting", "salt and pepper, to taste", "or to taste",
+                 "4 to 5 minutes per side"]
+
+
+@pytest.mark.parametrize("text", MUST_NOT_FIRE)
+def test_no_revision_1_rule_fires_on_the_four_phrases(text):
+    """⚠️ ONE TEST OVER ALL SIX RULES, because a phrase that is safe from five of them and not
+    from the sixth is the defect this list exists to catch."""
+    r = row(text, raw_text=text)
+    assert ic.sized_piece_amount(r) is None
+    assert ic.per_serving_amount(r) is None
+    assert ic.plus_another_food(r) is None
+    assert ic.substitution_to_note(r) is None
+    assert ic.remark_row_to_note({"is_heading": 1, "heading": "FOR THE DOUGH"}, r) is None
+    assert ic.count_restatement(text) == ""
+    # and with an amount in front of it, which is how three of them really appear
+    with_amount = row(text, qty="1 tablespoon", quantity="1", unit="tablespoon",
+                      raw_text="1 tablespoon " + text)
+    assert ic.sized_piece_amount(with_amount) is None
+    assert ic.per_serving_amount(with_amount) is None
+    assert ic.substitution_to_note(with_amount) is None
+
+
+# --------------------------------------------------------------------------- #
+# R1. A sized piece IS the amount
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("r, qty, name_after", [
+    # the 7 corpus rows, as they are stored
+    (row("One 2-inch piece ginger, coarsely chopped (no need to peel)"),
+     "2-inch piece", "ginger, coarsely chopped (no need to peel)"),
+    (row("One 1½-inch piece fresh ginger, cut into quarters"),
+     "1½-inch piece", "fresh ginger, cut into quarters"),
+    (row("-inch knob ginger, finely chopped", qty="1", quantity="1"),
+     "1-inch knob", "ginger, finely chopped"),
+    (row("-inch section daikon, peeled and cut into big chunks", qty="3", quantity="3"),
+     "3-inch section", "daikon, peeled and cut into big chunks"),
+    (row("a 2-inch piece of ginger (smashed)"), "2-inch piece", "ginger (smashed)"),
+    (row("One 2-inch piece ginger, peeled and coarsely chopped"),
+     "2-inch piece", "ginger, peeled and coarsely chopped"),
+    (row("One 2-inch piece cinnamon stick"), "2-inch piece", "cinnamon stick"),
+])
+def test_a_sized_piece_is_the_amount(r, qty, name_after):
+    a = ic.sized_piece_amount(r)
+    assert a is not None
+    assert a["qty"] == qty
+    name = r["label"]
+    assert ic._tidy_name(name[a["front_len"]:]) == name_after
+
+
+@pytest.mark.parametrize("r, why", [
+    # ⚠️ 49 OF THE 56 CORPUS ROWS CARRYING A DIMENSION NEXT TO A SHAPE WORD ARE A CUT INSTRUCTION.
+    (row("potatoes, cut into 2-inch sticks", qty="2 medium"), "a cut, and not at the front"),
+    (row("bacon, cut into ½-inch pieces", qty="4 ounces"), "a cut"),
+    (row("asparagus, chopped into ¾ in/2cm pieces", qty="8 oz"), "a cut"),
+    (row("1-inch cubes of sturdy white bread", qty="2 cups", quantity="2", unit="cups"),
+     "the row measures in cups and 'cubes' is the cut"),
+    (row("-inch cubes", qty="½", quantity="½"),
+     "chocolate-hazelnut-wedges: 'cube' is a cut word and there is no food after it"),
+    (row("(torn ½-inch pieces) stale sourdough bread", qty="1 cup", quantity="1", unit="cup"),
+     "bracketed, and the row has its own amount"),
+    (row("kombu (a 4-inch x 6-inch piece of kelp)", qty="1 ounce"), "mid-name, in a bracket"),
+    (row("2-inch piece"), "a size with no food after it is not an amount"),
+])
+def test_a_cut_instruction_is_not_an_amount(r, why):
+    assert ic.sized_piece_amount(r) is None, why
+
+
+def test_the_scaler_and_the_rule_read_one_sized_piece():
+    """The amount the rule WRITES is the amount static/scaler.js has to scale. One reader."""
+    assert ic.sized_piece_text("1-inch knob") == ("1", "1-inch knob")
+    assert ic.sized_piece_text("2 × 1-inch knob") == ("2", "1-inch knob")
+    assert ic.sized_piece_text("1 cup") == (None, None)
+    assert ic.sized_piece_text("1-inch cubes") == (None, None)
+
+
+# --------------------------------------------------------------------------- #
+# R3. An amount marked per person
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("r, qty, name_after", [
+    (row("ditalini, about 1/4 per person"), "about 1/4 per person", "ditalini"),
+    (row("Thai basil leaves, 3 leaves per serving"), "3 leaves per serving",
+     "Thai basil leaves"),
+    (row("extra chicken stock for serving on the side, about 1/2 cup per person (see note 3)"),
+     "about 1/2 cup per person", "extra chicken stock for serving on the side (see note 3)"),
+])
+def test_an_amount_marked_per_person_is_the_amount(r, qty, name_after):
+    a = ic.per_serving_amount(r)
+    assert a is not None and a["qty"] == qty and a["name"] == name_after
+
+
+def test_a_row_that_already_has_an_amount_is_a_different_question():
+    assert ic.per_serving_amount(row("ditalini, about 1/4 per person", qty="1 cup")) is None
+
+
+def test_the_per_serving_rule_is_the_one_the_scaler_reads():
+    assert ic.PER_SERVING_RE.search("about 1/2 cup per person")
+    assert ic.PER_SERVING_RE.search("3 leaves per serving")
+    assert not ic.PER_SERVING_RE.search("4 to 5 minutes per side")
+
+
+# --------------------------------------------------------------------------- #
+# R4. "(plus <amount> <another food>)" is its own row
+# --------------------------------------------------------------------------- #
+def test_a_second_food_in_a_plus_bracket_becomes_its_own_row():
+    r = row("lemon juice (plus the zest of half of a lemon)", qty="1 tablespoon",
+            quantity="1", unit="tablespoon",
+            raw_text="1 tablespoon lemon juice (plus the zest of half of a lemon)")
+    plan = ic.amount_plan(r)
+    assert plan["changes"]["label"] == "lemon juice"
+    assert plan["insert"]["label"] == "zest of ½ lemon"
+    assert plan["insert"]["qty"] is None
+
+
+def test_an_ice_cube_is_a_second_food_too():
+    r = row("cold water (plus one ice cube)", qty="½ cup", quantity="½", unit="cup",
+            raw_text="½ cup cold water (plus one ice cube)")
+    plan = ic.amount_plan(r)
+    assert plan["changes"]["label"] == "cold water"
+    assert plan["insert"]["label"] == "1 ice cube"
+
+
+@pytest.mark.parametrize("name", [
+    "lemon juice (plus more for massaging kale // ~2 small lemons)",
+    "mint leaves (plus more for garnish)",
+    "all-purpose flour, plus more for dusting",
+    "kosher salt, plus more if needed",
+])
+def test_plus_more_is_untouched(name):
+    assert ic.plus_another_food(row(name)) is None
+
+
+def test_more_of_the_same_food_for_another_job_is_flagged_not_split():
+    """mongolian-chicken: "(plus ⅓ cup/80ml for frying)" is the row's own oil again. Taking
+    the measures and the purpose off leaves nothing, and a row with no name is not a row."""
+    a = ic.plus_another_food(row("vegetable oil (plus ⅓ cup/80ml for frying)"))
+    assert a is not None and a["flag"] == ic.PLUS_NAMES_NO_FOOD_FLAG
+
+
+# --------------------------------------------------------------------------- #
+# R5. A substitution with its own amount moves to the row's note
+# --------------------------------------------------------------------------- #
+def test_a_substitution_with_its_own_amount_becomes_the_note():
+    r = row("Tao Jiew (Thai fermented soybean paste) OR 2 tablespoon Korean doenjang "
+            "+ 1 tablespoon water", qty="3 Tbsp", quantity="3", unit="Tbsp",
+            raw_text="3 Tbsp Tao Jiew (Thai fermented soybean paste) OR 2 tablespoon Korean "
+                     "doenjang + 1 tablespoon water")
+    plan = ic.amount_plan(r)
+    assert plan["changes"]["note"] == "or 2 tablespoons Korean doenjang + 1 tablespoon water"
+    assert plan["changes"]["label"] == "Tao Jiew (Thai fermented soybean paste)"
+
+
+@pytest.mark.parametrize("name, note", [
+    ("cumin seeds (or 1 tsp ground cumin)", "or 1 tsp ground cumin"),
+    ("kosher salt (or 1/2 tsp table salt)", "or 1/2 tsp table salt"),
+    ("unsalted butter (or 2 tbsp canola or veg oil)", "or 2 tbsp canola or veg oil"),
+    ("harissa, or 1 teaspoon Maras pepper", "or 1 teaspoon Maras pepper"),
+])
+def test_the_substitutions_the_corpus_carries(name, note):
+    a = ic.substitution_to_note(row(name))
+    assert a is not None and a["note"] == note
+
+
+@pytest.mark.parametrize("name, why", [
+    ("(8 ounces or 230 grams) unsalted butter, softened", "the same amount in two units"),
+    ("Persian cucumbers, or 10 oz./350g (about 3 cups)", "no food of its own"),
+    ("bundle kale (loosely chopped or torn // ~6-8 cups or 10 ounces as original recipe "
+     "is written)", "a remark, not an ingredient"),
+    ("fresh wide rice noodles, either pre-cut or in sheets, or 8 ounces dried wide rice "
+     "noodles 3 tablespoons neutral oil", "two ingredients run together, nothing joins them"),
+    ("garlic, minced (or 2 small cloves)", "a count with no unit: that is R2, not R5"),
+])
+def test_what_is_not_a_substitution(name, why):
+    a = ic.substitution_to_note(row(name))
+    assert a is None or "flag" in a, why
+
+
+def test_r2_and_r5_can_never_both_fire():
+    """⚠️ THE UNIT IS WHAT DIVIDES THEM, so the two rules are exclusive by construction: R2 needs
+    a count with NO unit of measure and R5 needs an amount WITH one. Asserted rather than
+    reasoned, because two rules writing one row is how a pass comes to set and unset a cell on
+    every run."""
+    for name in ["garlic, minced (or 2 small cloves)", "skin-on chicken breast (or 2 small ones)",
+                 "cumin seeds (or 1 tsp ground cumin)", "harissa, or 1 teaspoon Maras pepper",
+                 "cilantro roots or 6-8 cilantro stems"]:
+        r = row(name, raw_text=name)
+        second = bool(ic.author_second_amount(name)[0])
+        sub = ic.substitution_to_note(r)
+        assert not (second and sub and "flag" not in sub), name
+
+
+def test_a_row_whose_note_is_taken_is_flagged_rather_than_overwritten():
+    a = ic.substitution_to_note(row("cumin seeds (or 1 tsp ground cumin)", note="use whole"))
+    assert a is not None and a["flag"] == ic.SUBSTITUTION_NOTE_TAKEN_FLAG
+
+
+# --------------------------------------------------------------------------- #
+# R6. A remark row under an ingredient heading becomes a recipe note
+# --------------------------------------------------------------------------- #
+def test_a_remark_under_a_heading_is_a_note_titled_with_the_heading():
+    heading = {"is_heading": 1, "heading": "Basic Asian-Style Chicken Stock", "raw_text": None}
+    r = row("(This makes more than you need, but you can freeze the rest)")
+    a = ic.remark_row_to_note(heading, r)
+    assert a is not None
+    assert a["title"] == "Basic Asian-Style Chicken Stock"
+    assert a["text"] == "This makes more than you need, but you can freeze the rest"
+
+
+@pytest.mark.parametrize("above, name, why", [
+    ({"is_heading": 0, "label": "chicken breast"}, "(thinly sliced)",
+     "under an ordinary row, so it belongs to the line above it"),
+    ({"is_heading": 0, "label": "low sodium chicken stock"}, "(160 ml, warmed)",
+     "under an ordinary row, and it carries a measure"),
+    ({"is_heading": 1, "heading": "FOR THE DOUGH"}, "(450g, medium thickness)",
+     "a measure in it makes it a line of the recipe"),
+    ({"is_heading": 1, "heading": "FOR THE DOUGH"}, "(sifted)",
+     "two words is a prep clause, not a remark about a section"),
+    (None, "(This makes more than you need, but you can freeze the rest)", "nothing above it"),
+])
+def test_what_is_not_a_remark_about_a_section(above, name, why):
+    assert ic.remark_row_to_note(above, row(name)) is None, why
+
+
+# --------------------------------------------------------------------------- #
+# The importer runs every one of them, which is clause (2) of FIX BY RULE
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("line, amount, name, note", [
+    ("1-inch knob ginger, finely chopped", "1-inch knob", "ginger, finely chopped", None),
+    ("One 2-inch piece ginger, peeled", "2-inch piece", "ginger, peeled", None),
+    ("10 cloves (or 1/4 tsp ground cloves)", "10", "cloves", "or 1/4 tsp ground cloves"),
+    ("2 tsp cumin seeds (or 1 tsp ground cumin)", "2", "cumin seeds", "or 1 tsp ground cumin"),
+])
+def test_the_importer_runs_the_revision_1_rules(line, amount, name, note):
+    d = ic.classify_line(line)
+    assert d["amount"] == amount
+    assert d["name"] == name
+    assert (d.get("note") or None) == note
+
+
+def test_the_importer_carries_r4_s_second_row():
+    d = ic.classify_line("1 tablespoon lemon juice (plus the zest of half of a lemon)")
+    assert d["name"] == "lemon juice"
+    assert d["second_food"]["label"] == "zest of ½ lemon"
+
+
+def test_the_importer_reads_an_or_count_as_a_second_amount():
+    d = ic.classify_line("1 large skin-on chicken breast (or 2 small ones)")
+    assert d["secondary_measure"] == "or 2 small"
+    assert d["name"] == "skin-on chicken breast"
