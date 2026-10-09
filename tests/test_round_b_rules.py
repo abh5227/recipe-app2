@@ -1473,3 +1473,35 @@ def test_an_answer_no_commit_holds_stops_the_residual_list_being_overwritten(tmp
         w.writerow(["note", "c", 4074, "plus_more_runs_on", "x", "", ""])
     assert _rb._answers_not_committed(p) == [3861]
     assert _rb._answers_not_committed(tmp_path / "absent.csv") == []
+
+
+def test_an_answer_a_later_file_replaced_is_still_held_by_a_commit(tmp_path):
+    """garlic-kale 3861's fourth-file answer was replaced by the fifth. The list on disk still says
+    the fourth's words, and those are in a commit, so they do not stop the run."""
+    fourth = _rb._residual_decisions(_rb.RESIDUAL_DECISIONS_4)[3861][0]
+    assert fourth != _rb._residual_decisions_all()[3861][0]
+    p = tmp_path / "residual.csv"
+    with p.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["kind", "recipe_id", "row_id", "part", "reason", "DECISION", "REASON"])
+        w.writerow(["note", "a", 3861, "plus_more_runs_on", "x", fourth, "carried"])
+    assert _rb._answers_not_committed(p) == []
+
+
+def test_the_four_plus_more_lines_are_decided_as_their_files_say():
+    """Revision 3. 3861 is one ingredient with a second amount (residual-decisions-5, Andy's answer
+    in the session), and the other three split, each new row directly below its line."""
+    decided = _rb._residual_decisions_all()
+    assert "second amount ~2 small lemons" in decided[3861][0]
+    fix = _rb.RESIDUAL_FIXES[3861]["changes"]
+    assert (fix["label"], fix["secondary_measure"], fix["note"]) == (
+        "lemon juice", "~2 small lemons", "plus more for massaging kale")
+    for rid, second in ((4074, "freshly ground black pepper"),
+                        (4075, "1 teaspoon whole black peppercorns"),
+                        (8493, "2 teaspoons kosher salt, plus more for the sauce")):
+        assert decided[rid][0].startswith("fix: split"), rid
+        assert _rb.RESIDUAL_FIXES[rid]["what"] == "split"
+        assert _rb.RESIDUAL_FIXES[rid]["second"]["raw_text"] == second
+        assert rid in _rb.DECIDED_ROWS
+    assert _rb.RESIDUAL_FIXES[8493]["second"]["note"] == "plus more for the sauce"
+    assert 7462 in _rb.RESIDUAL_HELD and 7462 not in _rb.DECIDED_ROWS

@@ -64,13 +64,31 @@ RESIDUAL_DECISIONS_2 = (HERE.parent / "docs" / "data-repairs"
 # ---- revision 3a: the same 36 rows, with kachumber-tilapia 4145 answered again ---------------- #
 RESIDUAL_DECISIONS_3 = (HERE.parent / "docs" / "data-repairs"
                         / "round-b-residual-decisions-3-2026-10-09.csv")
+# ---- revision 3: Andy's 9 Oct decisions, the residual list with every DECISION filled, and his ----- #
+#      answer for garlic-kale 3861, given in the session after the brief and the fourth file disagreed
+DECISIONS_4 = (HERE.parent / "docs" / "data-repairs"
+               / "round-b-decisions-4-2026-10-09.csv")
+RESIDUAL_DECISIONS_4 = (HERE.parent / "docs" / "data-repairs"
+                        / "round-b-residual-decisions-4-2026-10-09.csv")
+RESIDUAL_DECISIONS_5 = (HERE.parent / "docs" / "data-repairs"
+                        / "round-b-residual-decisions-5-2026-10-09.csv")
+# Each later file wins over the ones before it, row by row.
+RESIDUAL_LATER = (RESIDUAL_DECISIONS_2, RESIDUAL_DECISIONS_3, RESIDUAL_DECISIONS_4,
+                  RESIDUAL_DECISIONS_5)
 
 # ⚠️ ONE ROW OF THE RESIDUAL FILE IS DELIBERATELY NOT APPLIED. tahini-brioche 7462's "1 ¾ cups" is
 #    a lower-confidence pre-fill: King Arthur's Tahini Brioche matches the recipe's order and its
-#    butter, and nothing proves it IS the source. Andy's instruction is that the row stays flagged
-#    until he confirms where the recipe came from, so the decision file carries the fix and this
-#    pass does not run it. It is in the residual list again, with its reason.
-RESIDUAL_HELD = {7462: "the fix needs Andy to confirm the recipe's source, so the row stays as it is"}
+#    butter, and nothing proves it IS the source. decisions-4's last row set the test: set it only
+#    if every OTHER line agrees with King Arthur's. Measured on 9 Oct against King Arthur's page,
+#    six do not. The sponge's flour is 1⅓ cups against 1½, the salt is 1 tablespoon against 2
+#    teaspoons, and the recipe's four Loaves lines (2 pounds of the dough, 2 eggs, 2 teaspoons whole
+#    milk, 2 to 3 tablespoons toasted sesame seeds) are King Arthur's topping of 1 egg white, 2
+#    teaspoons water and 1 to 2 tablespoons sesame seeds, or nothing at all. The recipe credits
+#    Soframiz (Ana Sortun), and King Arthur's page does not. So the row stays flagged and the pass
+#    does not run the fix. It is in the residual list again, with its reason.
+RESIDUAL_HELD = {7462: "King Arthur's Tahini Brioche differs from the recipe on six other lines (the "
+                       "sponge's flour, the salt, and the four Loaves lines), so it is not shown to "
+                       "be the source and the row stays as it is"}
 
 # The six residual rows the pass DOES apply, each spelled out from the DECISION column of
 # round-b-residual-decisions-2026-10-08.csv. The file is READ, and these are what reading it means
@@ -145,6 +163,52 @@ RESIDUAL_FIXES = {
                        "raw_text": "2 ¼ cups spooned and leveled all-purpose flour (288 grams)"},
            "why": "Andy's residual decision: the opening bracket is missing before 288 grams, and "
                   "with it restored the grams are the line's second amount"},
+    # ---- revision 3's residual files: the four "plus more" lines ------------------------- #
+    # "fix: amount 1/4 cup stays | second amount ~2 small lemons | name lemon juice | note plus
+    #  more for massaging kale | the '//' is dropped" (residual-decisions-5). One ingredient: the
+    #  lemons are where the juice comes from, and Andy reads "~2 small lemons" as an amount.
+    3861: {"what": "row",
+           "changes": {"label": "lemon juice", "secondary_measure": "~2 small lemons",
+                       "note": "plus more for massaging kale"},
+           "why": "Andy's residual decision: one ingredient, with '~2 small lemons' as its second "
+                  "amount and 'plus more for massaging kale' as its note"},
+    # "fix: split. Row 1 '4 tablespoons extra virgin olive oil' with note 'plus more to serve'.
+    #  Row 2, directly below: 'freshly ground black pepper', no amount"
+    # ⚠️ EACH HALF KEEPS ITS OWN PIECE OF THE AUTHOR'S LINE AS ITS raw_text, as flatbreads' split
+    #    does. A remark rule 7 moves to the note stays in raw_text, because it is the author's.
+    4074: {"what": "split",
+           "changes": {"label": "extra virgin olive oil", "note": "plus more to serve",
+                       "raw_text": "4 tablespoons extra virgin olive oil, plus more to serve"},
+           "second": {"qty": None, "quantity": None, "unit": None,
+                      "label": "freshly ground black pepper",
+                      "raw_text": "freshly ground black pepper", "secondary_measure": None,
+                      "note": None},
+           "why": "Andy's residual decision: two ingredients ran together, and the remark belongs "
+                  "to the olive oil"},
+    # "fix: split. Row 1 '¼ cup good olive oil' with note 'plus more for serving'. Row 2, directly
+    #  below: '1 teaspoon whole black peppercorns'"
+    4075: {"what": "split",
+           "changes": {"label": "good olive oil", "note": "plus more for serving",
+                       "raw_text": "¼ cup good olive oil, plus more for serving"},
+           "second": {"qty": "1 teaspoon", "quantity": "1", "unit": "teaspoon",
+                      "label": "whole black peppercorns",
+                      "raw_text": "1 teaspoon whole black peppercorns", "secondary_measure": None,
+                      "note": None},
+           "why": "Andy's residual decision: two ingredients ran together, and the peppercorns "
+                  "have their own amount"},
+    # "fix: split. Row 1 '2 small skin-on boneless snapper fillets, 10 to 12 ounces each' (the
+    #  per-piece weight stays as it is today). Row 2, directly below: '2 teaspoons kosher salt'
+    #  with note 'plus more for the sauce'"
+    8493: {"what": "split",
+           "changes": {"label": "skin-on boneless snapper, 10 to 12 ounces each",
+                       "raw_text": "2 small skin-on boneless snapper fillets, 10 to 12 ounces "
+                                   "each"},
+           "second": {"qty": "2 teaspoons", "quantity": "2", "unit": "teaspoons",
+                      "label": "kosher salt",
+                      "raw_text": "2 teaspoons kosher salt, plus more for the sauce",
+                      "secondary_measure": None, "note": "plus more for the sauce"},
+           "why": "Andy's residual decision: two ingredients ran together, and 'plus more for "
+                  "the sauce' follows the salt, so it is the salt's note"},
     4422: {"what": "join_below", "absorb": 4423,
            "changes": {"label": "natural, unsweetened cocoa powder", "note": "sifted",
                        "secondary_measure": "23 grams",
@@ -181,17 +245,19 @@ RESIDUAL_2_NOT_RUN = {
 
 
 def _residual_decisions_all():
-    """The three residual files, a later one winning where a row is in more than one. Every "fix"
-    in the two later files has to be spelled out, settled by a rule, or named as not run."""
+    """Every residual file, a later one winning where a row is in more than one. Every "fix" in
+    the later files has to be spelled out, settled by a rule, or named as not run."""
     merged = _residual_decisions(RESIDUAL_DECISIONS)
-    later = _residual_decisions(RESIDUAL_DECISIONS_2)
-    later.update(_residual_decisions(RESIDUAL_DECISIONS_3))
+    later = {}
+    for path in RESIDUAL_LATER:
+        later.update(_residual_decisions(path))
     merged.update(later)
     unaccounted = [rid for rid, (decision, _r) in later.items()
                    if decision.lower().startswith("fix") and rid not in RESIDUAL_FIXES
                    and rid not in RESIDUAL_2_BY_RULE and rid not in RESIDUAL_2_NOT_RUN]
     if unaccounted:
-        raise SystemExit(f"{RESIDUAL_DECISIONS_3.name}: row(s) {unaccounted} say fix and nothing "
+        raise SystemExit(f"{', '.join(p.name for p in RESIDUAL_LATER)}: row(s) {unaccounted} "
+                         f"say fix and nothing "
                          f"in this pass runs them, and a decision skipped in silence is a hand "
                          f"edit nobody made")
     return merged
@@ -245,6 +311,13 @@ def _residual_calls(rows, writes, decided):
         absorb = fix.get("absorb")
         if not changes and (absorb is None or absorb not in by_id):
             continue                                        # already applied
+        # ⚠️ A SPLIT IS DONE WHEN THE ROW CARRIES ITS FIRST HALF, and the second half is then a
+        #    row of its own below it with an id of its own, which nothing here needs to find.
+        if fix["what"] == "split":
+            writes[row["recipe_id"]].append(
+                {"what": "split_row", "id": rid, "first": changes, "second": dict(fix["second"]),
+                 "why": fix["why"], "rules": ["residual_decision"]})
+            continue
         if fix["what"] == "join_below":
             writes[row["recipe_id"]].append(
                 {"what": "join", "id": rid, "absorb": [absorb] if absorb in by_id else [],
@@ -272,7 +345,7 @@ MISO_TOFU_SECOND = "1 block"
 #    each call finds its work done and produces nothing, so a set derived from the writes would be
 #    empty and the rules would claim those rows back.
 _RESIDUAL_ROW_IDS = frozenset({2834, 4320, 3135, 3136, 3517, 3518, 4422, 4423,
-                               7613, 4767, 5204})
+                               7613, 4767, 5204, 3861, 4074, 4075, 8493})
 # ⚠️ RESIDUAL_HELD IS NOT IN THIS SET, AND THAT IS THE POINT OF IT. A row Andy is holding has to
 #    stay FLAGGED, which means the rule still has to look at it and still has to refuse it. Adding
 #    it here made the rule stand aside, and a row that is neither changed nor flagged is a row that
@@ -308,6 +381,7 @@ def plan(con, ic, density_for, hand_edited, snapshot_fields=()):
     #    open the file cannot run the pass, which is what makes the rules below re-runnable.
     _click_through_decisions()
     _click_through_decisions(DECISIONS_3)
+    _click_through_decisions(DECISIONS_4)
     _residual_calls(rows, writes, _residual_decisions_all())
     # ⚠️ THE OWNED ROWS ARE A DECLARED SET, NOT THE SET OF WRITES THE CALLS HAPPEN TO PRODUCE. On a
     #    SECOND run each call finds its work already done and produces nothing, so a set derived
@@ -907,21 +981,29 @@ def _write_residual(path, flags, notes):
 
 
 def _answers_not_committed(path):
-    """Row ids whose DECISION in the residual list at `path` is filled in and differs from what
-    the committed residual files say, which is every answer the next overwrite would lose."""
+    """Row ids whose DECISION in the residual list at `path` is filled in and is held by no
+    committed residual file, which is every answer the next overwrite would lose.
+
+    ⚠️ ANY COMMITTED FILE, NOT ONLY THE ONE THAT WINS. garlic-kale 3861's answer in the fourth
+    file was replaced by the fifth, and the list on disk still carried the fourth's words. Those
+    words are in a commit, so overwriting them loses nothing, and comparing against the winner
+    alone refused the run over an answer git already holds."""
     path = pathlib.Path(path)
     if not path.exists():
         return []
-    try:
-        decided = _residual_decisions_all()
-    except SystemExit:
-        decided = {}
+    held = collections.defaultdict(set)
+    for source in (RESIDUAL_DECISIONS,) + RESIDUAL_LATER:
+        try:
+            for rid, (decision, _reason) in _residual_decisions(source).items():
+                held[rid].add(decision)
+        except (SystemExit, FileNotFoundError):
+            continue
     out = []
     with path.open(newline="", encoding="utf-8") as fh:
         for r in csv.DictReader(fh):
             rid = (r.get("row_id") or "").strip()
             answer = (r.get("DECISION") or "").strip()
-            if rid.isdigit() and answer and decided.get(int(rid), ("",))[0] != answer:
+            if rid.isdigit() and answer and answer not in held[int(rid)]:
                 out.append(int(rid))
     return out
 
