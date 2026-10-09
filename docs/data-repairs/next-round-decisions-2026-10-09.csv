@@ -1,0 +1,8 @@
+part,recipe_id,table,row_id,action,value,source_of_decision,REASON
+brackets,,recipe_ingredients,,or_no_amount_to_note,,andy,"Andy, 9 Oct (7a): an 'or' bracket with no amount ('or apple cider vinegar') goes to the note."
+brackets,,recipe_ingredients,,amount_plus_words_split,,andy,"Andy, 9 Oct (7b): '160 ml, warmed' splits: the amount becomes a stacked second-amount line, the words go to the note."
+brackets,,recipe_ingredients,,what_it_is_to_note,,andy,"Andy, 9 Oct (7c): a bracket saying what the ingredient is ('dried kelp', 'cayenne pepper') goes to the note."
+scaling,,,,fix_all_four,,andy,"Andy, 9 Oct (8): fix all four: a size word between number and unit ('2 large clove'), ranges that collapse at ½× (shown as one figure), method amounts written as words or left plain, and '1 pureed tomatoes'."
+notes,butter-chicken; birria-tacos; meat-lasagna,recipe_notes,,restore_lost_notes,"copy, author's numbering",andy,"Andy, 9 Oct (9): copy the 11 notes found on recipetineats into the recipes with the author's numbering, AFTER the import check shows whether the app's own importer would have pulled them in (Paprika problem vs importer problem)."
+moving,,,,phone_move_rows,later,andy,"Andy, 9 Oct (6): decide later."
+notes,caramelized-ginger-mushrooms; aloo-potato-parathas,,,cookbook_references,later,andy,"Andy, 9 Oct (10): decide later."
