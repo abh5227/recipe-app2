@@ -1287,12 +1287,16 @@ a:hover { color: var(--berry-lift); }
 .ingredient-list li.edited .qty { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.02; }
 .ingredient-list li.edited .qty .was { transform: rotate(-.6deg); }
 .ingredient-list li.edited .qty .fix { font-family: var(--font-hand); color: var(--ink-pen); font-size: 18px; margin: 1px 0 0; transform: rotate(-2deg); display: inline-block; }
-/* second-amount edit (round B revision 4): the SAME mark, one line down the cell. The struck original
-   keeps the sub-line's own print look with the shared rule through it (ledger-row.js nests the .was
-   inside its .qty2), and the ink is the amount ink at the amount ink's own 18px, so the hand is one
-   size wherever it writes. The child combinator keeps this off the first amount's .qty .fix. */
-.ingredient-list li.edited .qty2 .was { display: inline-block; transform: rotate(-.6deg); }
-.ingredient-list li.edited .amount-cell > .fix { align-self: flex-start; font-family: var(--font-hand); color: var(--ink-pen); font-size: 18px; line-height: 1.02; margin: 1px 0 0; transform: rotate(-2deg); }
+/* second-amount edit (round B revision 4): the SAME mark, on the sub-lines that changed
+   (ledger-row.js compares them as printed and leaves an unchanged line as print). The struck line is
+   one element carrying .qty2 for the sub-line's face and size and .was for the strike, and .was's
+   opacity beats .qty2's, so the rule through it is as strong as the one through a struck amount. The
+   ink is the amount ink at the amount ink's own 18px, so the hand is one size wherever it writes.
+   NOT scoped to li.edited, which stays an amount edit (see amountCellAt). The child combinator is
+   what keeps these off the first amount's .qty .was and .qty .fix, and no other row puts either one
+   directly in its amount cell. */
+.ingredient-list .amount-cell > .qty2.was { align-self: flex-start; transform: rotate(-.6deg); }
+.ingredient-list .amount-cell > .fix { align-self: flex-start; font-family: var(--font-hand); color: var(--ink-pen); font-size: 18px; line-height: 1.02; margin: 1px 0 0; transform: rotate(-2deg); }
 /* both amount AND name on one row: stack the name (struck over ink) too, so struck-originals share the top
    line and ink-corrections share the bottom line — aligned with the amount stack (one line across). */
 .ingredient-list li.edited .iname.is-stacked { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.02; }

@@ -23,13 +23,15 @@ def _tofu(client):
 
 
 def _save(client, rid, second):
+    # The shape the client's ingToPayload sends (static/save-payload.js): quantity and unit apart.
     rows = client.get(f"/api/recipes/{rid}").get_json()["ingredients"]
     tofu, flour = rows
     r = client.put(f"/api/recipes/{rid}", json={
         "name": "Second Amount Dish",
-        "ingredients": [{"id": tofu["id"], "qty": "1 block", "secondary_measure": second,
-                         "text": "firm tofu"},
-                        {"id": flour["id"], "qty": "1 cup", "text": "flour"}],
+        "ingredients": [{"id": tofu["id"], "quantity": "1", "unit": "block",
+                         "secondary_measure": second, "text": "firm tofu", "note": ""},
+                        {"id": flour["id"], "quantity": "1", "unit": "cup", "text": "flour",
+                         "note": "", "secondary_measure": ""}],
         "steps": ["Press the tofu"],
     })
     assert r.status_code == 200, r.get_json()
@@ -61,3 +63,12 @@ def test_clearing_the_second_amount_is_marked_too(kitchen):
     d = _save(kitchen.client, rid, "")
     assert [(a["field"], a["from"], a["to"]) for a in d["annotations"]] == [
         ("second_amount", "14 oz", "")]
+
+
+def test_a_two_line_second_amount_round_trips_and_marks_once(kitchen):
+    rid = _tofu(kitchen.client)
+    d = _save(kitchen.client, rid, "14 oz / 400 g")
+    assert d["ingredients"][0]["secondary_measure"] == "14 oz / 400 g"
+    assert [(a["field"], a["from"], a["to"]) for a in d["annotations"]] == [
+        ("second_amount", "14 oz", "14 oz / 400 g")]
+    assert _save(kitchen.client, rid, "14 oz")["annotations"] == []

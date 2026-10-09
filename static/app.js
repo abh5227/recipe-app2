@@ -4,7 +4,7 @@ import { formatAmount, group, canonicalizeUnit } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField, secondToggle, secondLines,
          joinSecondLines } from "./ingredient-row.js";
 import { esc } from "./esc.js";
-import { ledgerCellsAt, readNoteAt, editedAmountCellAt } from "./ledger-row.js";
+import { ledgerCellsAt, readNoteAt, amountCellAt } from "./ledger-row.js";
 import { showLinksAsWords } from "./step-adapter.js";
 import { nonEmptySteps, focusIndexAfterRemove, writeStepField,
          stepLevel, toggleStepType, setStepLevel } from "./step-row.js";
@@ -803,12 +803,10 @@ function browseCard(r, showDate) {
 function ledgerCells(row, inlineStyle) { return ledgerCellsAt(row, view.scale, inlineStyle); }
 function readNote(row) { return readNoteAt(row, view.scale); }
 
-// The amount-cell for a row whose AMOUNT or SECOND AMOUNT was edited: the struck original over the
-// ink correction, at view.scale. The markup is ledger-row.js's (editedAmountCellAt), so
-// tests/js/ledger-render.test.js reads what the page inserts.
-function editedAmountCell(amt, second, row, inlineStyle) {
-  return editedAmountCellAt(amt, second, row, view.scale, inlineStyle);
-}
+// A row's amount cell with its "your changes" marks, at view.scale, and whether the row is an amount
+// edit. Both come from ledger-row.js (amountCellAt), so tests/js/ledger-render.test.js reads the
+// page's own decision.
+function amountCell(row, ann) { return amountCellAt(row, ann, view.scale); }
 
 // The recipe's serving count as a number, if its servings text contains one.
 function servingsBase() {
@@ -881,7 +879,7 @@ function removedStepRow(e) {
 }
 
 // A plain ingredient line: used for the Original view and for app recipes. `ann` (O-c-1) is the row's
-// grouped annotation slot ({amount?, name?, added?}) or undefined — undefined falls through to today's
+// grouped annotation slot ({amount?, name?, second_amount?, added?}) or undefined — undefined falls through to today's
 // EXACT markup, so an unannotated row is byte-identical (clean recipes render unchanged).
 // O-c-1 refinement: a WORD-LEVEL diff for name/step edits — strike only removed words, ink only added
 // words, leave shared words as plain print. The tokenising + LCS live in word-diff.js (pure, tested);
@@ -921,17 +919,15 @@ function plainRow(row, ann) {
   if (!(row.label || row.raw_text || "").trim()) return "";
   // Added ingredient: the whole current line in the hand ink, "+"-prefixed (see li.added CSS).
   if (ann && ann.added) return `<li class="added">${ledgerCells(row)}<span class="iname">${lineBodyHTML(row)}</span></li>`;
-  const amt = ann && ann.amount, nm = ann && ann.name, second = ann && ann.second_amount;
+  const amt = ann && ann.amount, nm = ann && ann.name;
   // Amount edit stacks the struck original over the Kalam ink value INSIDE the 5rem cell (li.edited).
   // ⚠️ BOTH HALVES RENDER AT view.scale, like every other row. They used to render at a hardcoded 1,
   //    so an edited row stayed at its printed amount while the rows around it doubled. The gram
   //    sub-line comes back with them: an edited row is still a ledger row and keeps the column.
-  // ⚠️ A SECOND-AMOUNT EDIT GETS THE SAME MARK, ON ITS OWN LINE OF THE CELL (Andy, round B
+  // ⚠️ A SECOND-AMOUNT EDIT GETS THE SAME MARK, ON ITS OWN LINES OF THE CELL (Andy, round B
   //    revision 4). It was recorded and drew nothing, so a cook who changed "(14 oz)" to "400 g"
   //    saw the new figure printed as if the author had written it.
-  const amountCell = (amt || second)
-    ? editedAmountCell(amt, second, row)
-    : ledgerCells(row);
+  const cell = amountCell(row, ann);
   let iname;
   if (nm && amt) {
     // BOTH amount AND name change on one row: stack the name whole-field (struck over ink) so the struck
@@ -944,8 +940,8 @@ function plainRow(row, ann) {
   } else {
     iname = `<span class="iname">${lineBodyHTML(row)}</span>`;
   }
-  const cls = (amt || second) ? ' class="edited"' : "";
-  return `<li${cls}>${amountCell}${iname}</li>`;
+  const cls = cell.edited ? ' class="edited"' : "";
+  return `<li${cls}>${cell.html}${iname}</li>`;
 }
 
 // The whole Ingredients section — a plain list. R6 removed the per-person view switcher (the box

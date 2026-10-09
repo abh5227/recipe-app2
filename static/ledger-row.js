@@ -13,6 +13,7 @@
 import { esc } from "./esc.js";
 import { amountText, weightText, secondAmountParts } from "./scaler.js";
 import { noteSpanTexts, editedAmountParts } from "./annotation-amount.js";
+import { lcsWalk } from "./word-diff.js";
 
 // One ledger figure cell — the amount or the weight, mono + tabular. A leading "~" (an estimated
 // weight, or a humane-rounded amount) earns the shared "approx" treatment. (inlineStyle is unused
@@ -59,29 +60,46 @@ export function ledgerCellsAt(row, factor, inlineStyle) {
          `</span>`;
 }
 
-// The sub-lines of a row whose SECOND amount the cook edited: each original line struck, then each
-// new line in the hand. The same mark an edited first amount gets, one line further down the cell.
+// The sub-lines of a row whose SECOND amount the cook edited, each original line set against each
+// new one AS PRINTED at the factor. A line that prints the same before and after stays print, and
+// only what changed is struck and inked, the way a name edit marks only the words it changed.
 //
-// ⚠️ THE STRUCK LINE KEEPS ITS PRINT LOOK. It is a .qty2 with the strike inside it, so it sits at the
-//    sub-line's size and dimness with a rule through it, the way a struck amount is the amount's
-//    print with a rule through it. The ink is not inside .qty2, because .qty2 is dimmed.
-// ⚠️ AND BOTH SIDES RENDER AT THE FACTOR, through secondAmountParts like an unedited row, for the
-//    reason editedAmountParts gives: an edited row that holds still while its neighbours double.
-// A second amount cleared to nothing has no ink, and the row then gets the gram estimate an
-// unedited row with no second amount gets.
-export function editedSecondLinesAt(from, to, row, factor, inlineStyle) {
-  const approx = (t) => (t.charAt(0) === "~" ? " approx" : "");
-  const was = secondAmountParts(from, factor)
-    .map((t) => `<span class="qty2${approx(t)}"><span class="was">${esc(t)}</span></span>`);
-  const fix = secondAmountParts(to, factor).map((t) => `<span class="fix">${esc(t)}</span>`);
-  const rest = fix.length ? "" : amountSubLinesAt({ ...row, secondary_measure: null }, factor, inlineStyle);
-  return was.join("") + fix.join("") + rest;
+// ⚠️ COMPARED AS PRINTED, NOT AS STORED. The server compares the second amount as text, so a retype
+//    that prints the same figure ("8 ounces" to "8 oz", "1/2 cup" to "½ cup") is an entry. The same
+//    retype of the FIRST amount is not one, because that comparison canonicalizes the unit. Drawing
+//    it would strike "8 oz" and ink "8 oz" beside it. Live holds 0 such entries.
+// ⚠️ THE STRUCK LINE IS THE STRUCK FIRST AMOUNT, ONE SIZE DOWN. It carries .qty2 for the sub-line's
+//    face and size and .was for the strike, and .was's opacity wins over .qty2's dimming, so the rule
+//    through it is as strong as the one through an edited amount. The ink is never inside .qty2.
+// Both sides render at the factor, for the reason editedAmountParts gives. A second amount cleared
+// to nothing keeps its struck lines, and the row then gets the gram estimate an unedited row with
+// no second amount gets. Returns null when nothing prints differently, which is no mark at all.
+function secondLinesAt(second, row, factor, inlineStyle) {
+  const was = secondAmountParts(second.from, factor);
+  const now = secondAmountParts(second.to, factor);
+  const walk = lcsWalk(was, now);
+  if (!walk.some((x) => x.t !== "eq")) return null;
+  const html = walk.map((x) => {
+    if (x.t === "eq") return figCell("qty2", x.w, inlineStyle);
+    if (x.t === "del") return `<span class="qty2 was">${esc(x.w)}</span>`;
+    return `<span class="fix">${esc(x.w)}</span>`;
+  }).join("");
+  const rest = now.length ? "" : amountSubLinesAt({ ...row, secondary_measure: null }, factor, inlineStyle);
+  return html + rest;
 }
 
-// The amount cell of a row edited in its amount column: the first amount, the second, or both.
-// `amt` and `second` are the row's annotation entries (annotation-index.js), either may be absent.
-// With only `amt` this is the markup the amount mark has always had, byte for byte.
-export function editedAmountCellAt(amt, second, row, factor, inlineStyle) {
+// One ingredient row's amount cell with the "your changes" marks its annotation slot carries
+// (annotation-index.js), and whether the row is an amount edit. app.js's plainRow inserts exactly
+// this, so tests/js/ledger-render.test.js reads the page's own decision rather than a copy of it.
+//
+// `edited` is the li's "edited" class, and it stays an AMOUNT edit only. That class stacks the first
+// amount's struck figure over its ink, and on a row where only the second amount moved it would
+// tighten an unedited first amount against the line below it.
+// With only an amount edit, the markup is what the amount mark has always been, byte for byte.
+export function amountCellAt(row, slot, factor, inlineStyle) {
+  const amt = slot && slot.amount;
+  const subs = slot && slot.second_amount ? secondLinesAt(slot.second_amount, row, factor, inlineStyle) : null;
+  if (!amt && subs == null) return { edited: false, html: ledgerCellsAt(row, factor, inlineStyle) };
   let top;
   if (amt) {
     const p = editedAmountParts(amt.from, amt.to, row.grams_per_ml, factor);
@@ -89,12 +107,10 @@ export function editedAmountCellAt(amt, second, row, factor, inlineStyle) {
   } else {
     top = figCell("qty", amountText(row.qty, factor), inlineStyle);
   }
-  // The sub-line is whatever an unedited row would get, unless the second amount itself was edited:
-  // the author's second amount is a fact about the line and a hand edit to the AMOUNT does not change it.
-  const subs = second
-    ? editedSecondLinesAt(second.from, second.to, row, factor, inlineStyle)
-    : amountSubLinesAt(row, factor, inlineStyle);
-  return `<span class="amount-cell">${top}${subs}</span>`;
+  // The author's second amount is a fact about the line, and a hand edit to the AMOUNT does not
+  // change it, so without a second-amount edit the sub-line is whatever an unedited row would get.
+  const lines = subs == null ? amountSubLinesAt(row, factor, inlineStyle) : subs;
+  return { edited: !!amt, html: `<span class="amount-cell">${top}${lines}</span>` };
 }
 
 // A note rendered as a distinct secondary annotation on its OWN line below the ingredient (muted,

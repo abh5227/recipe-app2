@@ -21,7 +21,7 @@
 // ⚠️ THE SECOND AMOUNT HAS A SLOT OF ITS OWN (Andy, round B revision 4). snapshot_diff has emitted a
 //    second_amount entry since Edit mode first carried the field, and this index dropped it, so the
 //    change was recorded and the page drew nothing. A row may now carry amount, name and
-//    second_amount at once. Only the slot is new: the entries are the server's, unchanged.
+//    second_amount at once. Only the slot is new, and the entries are the server's, unchanged.
 const MARKED_FIELDS = new Set(["amount", "name", "second_amount"]);
 
 function annotationIndex(anns) {

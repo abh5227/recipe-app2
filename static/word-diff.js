@@ -93,4 +93,4 @@ function wordDiffParts(fromStr, toStr) {
   }));
 }
 
-export { wordDiffParts };
+export { wordDiffParts, lcsWalk };
