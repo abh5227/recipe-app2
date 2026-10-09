@@ -229,9 +229,17 @@ def test_a_size_inside_a_note_never_scales_and_its_count_does():
 
 
 def test_a_note_the_tagger_cannot_read_whole_is_left_whole():
-    """beef-bulgogi writes "tbs", which is not a unit the tagger knows. Scaling the brown sugar
-    and not the syrup would print a substitution that no longer adds up."""
-    assert note_spans("or 1 tbs of brown sugar and 1½ tbs rice syrup") is None
+    """Scaling the brown sugar and not the syrup would print a substitution that no longer adds
+    up, so a bare number the tagger cannot read keeps the whole note as written."""
+    assert note_spans("or 1 knob of brown sugar and 1½ knobs rice syrup") is None
+
+
+def test_beef_bulgogi_s_tbs_is_read_and_both_amounts_scale():
+    """It was the case that proved the refusal above, until "tbs" joined the units. 0 method steps
+    in the corpus write "tbs", so no step's tagging moved."""
+    spans = note_spans("or 1 tbs of brown sugar and 1½ tbs rice syrup")
+    assert [s["text"] for s in spans if s["t"] == "scale"] == ["1 tbs", "1½ tbs"]
+    assert [s["text"] for s in ss.parse_step("add 2 tbsp oil") if s["category"] == ss.HEURISTIC_SCALE] == ["2 tbsp"]
 
 
 def test_the_payload_carries_spans_only_on_a_substitution_note():

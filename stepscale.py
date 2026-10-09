@@ -80,10 +80,14 @@ _GUARD_UNIT = r"(?:" + _TEMP + r"|" + _TIME + r"|" + _DIM + r")"
 # DUPLICATION, keep the two in sync. Ordered longest-first so multi-word units win and
 # "fl oz" is matched as ONE unit (its inner "oz" is never tokenized separately). Single
 # ambiguous letters (bare "l"/"L" for litre) are deliberately excluded.
+# ⚠️ "tbs" JOINED IN ROUND B REVISION 2, measured first: it appears in 0 method steps and in one
+#    note, beef-bulgogi's "or 1 tbs of brown sugar and 1½ tbs rice syrup", where its absence left
+#    both amounts unread and the note could not scale with the line beside it. "tbs" sorts before
+#    "tsp" and after "tbsp" in the alternation, so "tbsp" is still matched whole.
 _SCALE_UNITS = [
     r"fl\s*oz", r"fluid\s+ounces?",
     "tablespoons?", "teaspoons?", "milli[lL]itres?", "milli[lL]iters?", "kilograms?",
-    "tbsp", "tsp", "cups?", "litres?", "liters?", "ml", "kg", "grams?",
+    "tbsp", "tbs", "tsp", "cups?", "litres?", "liters?", "ml", "kg", "grams?",
     "ounces?", "pounds?", "lbs?", "oz", "lb", "g",
 ]
 _SCALE_UNIT = r"(?:" + "|".join(_SCALE_UNITS) + r")"
@@ -265,10 +269,10 @@ def api_spans(text, _parsed=None, _promote=None):
 #    per-person figure, exactly as they are in the method. One thing is added: the bare count right
 #    after the "or" is the alternative's own quantity ("or 2 pureed tomatoes"), which the method
 #    tagger leaves alone because "divide into 4" in a step is not one.
-# ⚠️ AND A NOTE THE TAGGER CANNOT READ WHOLE IS NOT SCALED AT ALL. beef-bulgogi's "or 1 tbs of brown
-#    sugar and 1½ tbs rice syrup" writes "tbs", which is not a unit the tagger knows, so after the
-#    leading count every other number is a bare one. Scaling the brown sugar and not the syrup would
-#    print a substitution that no longer adds up, which is worse than the note as written.
+# ⚠️ AND A NOTE THE TAGGER CANNOT READ WHOLE IS NOT SCALED AT ALL. Scaling the first amount of
+#    "or 1 tbs of brown sugar and 1½ tbs rice syrup" and not the second would print a substitution
+#    that no longer adds up, which is worse than the note as written. beef-bulgogi wrote exactly
+#    that until "tbs" joined the units above; the refusal stays for the next unit nobody has met.
 _NOTE_OR_LEAD_RE = re.compile(r"^\s*or\s+(?:about\s+|approximately\s+|approx\.?\s+|~\s*)?",
                               re.IGNORECASE)
 
