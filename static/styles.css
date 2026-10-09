@@ -112,6 +112,25 @@
      gram estimate. The second amount is a figure the author wrote down, and setting the two at one
      size would throw away the only thing on the page that tells a measured figure from a guess. */
   --fs-ing-sub:   13px;      /* .qty2, .inote */
+
+  /* ⚠️ THE EDIT ROW'S AMOUNT ZONE, AS THREE TOKENS AND ONE SUM, BECAUSE THE SUM WAS WRITTEN OUT
+     THREE TIMES AND ONE OF THE THREE WAS LOSING A SPECIFICITY FIGHT. li.erow, the zone itself, the
+     .no-unit variant and .note-row all spelled "calc(2.8rem + 4.5rem + 5.5rem + 12px)" or its
+     parts by hand. A fresh review measured the result: `.ingredient-list li` (one class, one type)
+     outranks `.note-row` (one class), so an Edit-mode note row was laid out at --col-amount (7rem)
+     against the erow's 12.8rem, putting the below-note 106px to the left of the name it belongs
+     under. The comment above that rule claimed the two matched.
+     ⚠️ AND --ie-second IS 9.5rem, MEASURED RATHER THAN CHOSEN. Andy's collapsed toggle reads
+     "+ second amount" on every row that has none, and that label measures 142px in the row's own
+     font: in the old 5.5rem (88px) track it was ellipsed to "+ second amo…", and a first fix to
+     7.5rem (120px) was still short. A default state that cannot show its own label is not a label.
+     152px fits it with 10px to spare. A long stored value ("8 tablespoons / 113 grams", 229px)
+     still ellipses, and the button's title and aria-label carry it in full, as does the field when
+     it opens. Measured in the browser against this stylesheet, not estimated. */
+  --ie-qty:     2.8rem;
+  --ie-unit:    4.5rem;
+  --ie-second:  9.5rem;
+  --ie-amount:  calc(var(--ie-qty) + var(--ie-unit) + var(--ie-second) + 12px);
   --fs-label-sm:  11px;      /* .note-lead */
   --fs-label-xs:  10.5px;    /* .pk-sect, .rc-uncooked */
   --fs-label-xxs: 10px;      /* .note-type, .step-note-marker */
@@ -612,14 +631,14 @@ a:hover { color: var(--berry-lift); }
    quantity + unit pair (two tight fixed sub-columns) so it reads as one amount unit AND keeps names
    column-aligned across rows. Values are ONE line at rest; the quantity overlay truncates with "…" and
    expands (lift + wrap taller) on focus. Edit mode widens the page to ~1000px (see .page.recipe-view.editing). */
-.ingredient-list.edit li.erow { grid-template-columns: calc(2.8rem + 4.5rem + 5.5rem + 12px) 1fr auto; align-items: start; column-gap: 12px; padding: 8px 0; }
+.ingredient-list.edit li.erow { grid-template-columns: var(--ie-amount) 1fr auto; align-items: start; column-gap: 12px; padding: 8px 0; }
 .ingredient-list.edit li.erow.group-row { display: grid; grid-template-columns: 1fr auto; padding: 14px 0 6px; border-bottom: none; }
 .erow.has-note { border-bottom: none; padding-bottom: 2px; }        /* the below-note row carries the rule instead */
 /* Stage 4 (un-crowd): tighter amount zone (quantity 2.8rem + unit 4.5rem) reclaims ~1.7rem of name
    width while normal values still fit at rest (numbers "2.6"/"1/2"; short units "tbsp"/"cups"/"litre"). */
 /* round B adds the author's second amount as a third sub-column, beside the quantity it backs up. */
-.erow .amount-zone { display: grid; grid-template-columns: 2.8rem 4.5rem 5.5rem; column-gap: 6px; align-items: start; }
-.erow .amount-zone.no-unit { grid-template-columns: calc(2.8rem + 4.5rem + 6px) 5.5rem; }   /* A3: quantity spans the unit box too */
+.erow .amount-zone { display: grid; grid-template-columns: var(--ie-qty) var(--ie-unit) var(--ie-second); column-gap: 6px; align-items: start; }
+.erow .amount-zone.no-unit { grid-template-columns: calc(var(--ie-qty) + var(--ie-unit) + 6px) var(--ie-second); }   /* A3: quantity spans the unit box too */
 /* the unit combobox: short plain <input> (no overlay); mono/tabular to sit with the quantity */
 .erow .e-unit { width: 100%; line-height: 24px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-amount); color: var(--ink); }
 .detail-card.editing .e-unit:focus { padding: 2px 6px; margin: 0 -2px; box-shadow: 0 0 0 1px var(--paper-edge), 0 4px 10px -6px rgba(40,35,30,.25); }
@@ -685,8 +704,11 @@ a:hover { color: var(--berry-lift); }
 .note-add:hover { opacity: 1; background: var(--paper); border-color: var(--line); color: var(--amber); }
 .ic-note { width: 20px; height: 15px; stroke: currentColor; fill: none; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 /* a present note renders BELOW the ingredient — indented under the name, italic, clearly attached */
-/* first column matches the erow amount-zone width so the below-note aligns under the ingredient name */
-.note-row { display: grid; grid-template-columns: calc(2.8rem + 4.5rem + 5.5rem + 12px) 1fr; column-gap: 12px; padding: 0 0 6px; border-bottom: 1px solid var(--rule-soft); }
+/* First column matches the erow amount-zone width so the below-note aligns under the ingredient
+   name. ⚠️ THE SELECTOR CARRIES .edit AND li ON PURPOSE: as a bare `.note-row` it LOST to
+   `.ingredient-list li` and was laid out at --col-amount, 106px to the left of the name. Measured
+   by a fresh review. */
+.ingredient-list.edit li.note-row { display: grid; grid-template-columns: var(--ie-amount) 1fr; column-gap: 12px; padding: 0 0 6px; border-bottom: 1px solid var(--rule-soft); }
 /* gap >= the note field's focus-lift left-bleed (margin:0 -8px) so the lifted edit box never overlaps the icon */
 .note-below { grid-column: 2 / -1; display: flex; align-items: baseline; gap: 9px; min-width: 0; }
 .note-below .n-ico { flex: 0 0 auto; color: var(--amber); opacity: 0.75; }

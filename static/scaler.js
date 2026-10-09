@@ -152,7 +152,11 @@
       return String(Math.max(1, Math.round(scaled)));
     });
     if (!found) return qty;
-    return clampedUp ? "~" + out : out;   // "~1 egg" — honest that the true amount is less than 1
+    // ⚠️ THE "~" GOES AFTER A LEADING CONNECTIVE, NOT IN FRONT OF IT. Round B stores an
+    //    alternative count as "or 1 large", and prefixing the whole string printed "~or 1 large".
+    if (!clampedUp) return out;
+    const lead = /^\s*(?:or|plus|and)\s+/i.exec(out);
+    return lead ? out.slice(0, lead[0].length) + "~" + out.slice(lead[0].length) : "~" + out;
   }
 
   // Reduce an amount to a single {value, unit}, combining a same-unit "+"-compound
@@ -245,6 +249,9 @@
     ear: "ears", fillet: "fillets", can: "cans", tin: "tins", bulb: "bulbs", bottle: "bottles",
     packet: "packets", package: "packages", tub: "tubs", sheet: "sheets", handful: "handfuls",
     pinch: "pinches", bunch: "bunches", loaf: "loaves", leaf: "leaves",
+    // Added with R1's agreePiece: "2 × 1-inch slice" has to read "slices". The editor's own unit
+    // datalist already offers "knob", so these are words the app writes.
+    knob: "knobs", section: "sections", chunk: "chunks",
   };
   const UNIT_SINGULARS = {};
   for (const one in UNIT_PLURALS) UNIT_SINGULARS[UNIT_PLURALS[one]] = one;
@@ -256,7 +263,10 @@
   // Same quantity on screen, two spellings, decided by what the author happened to type.
   const GLYPHS = "¼½¾⅓⅔⅛⅜⅝⅞⅙⅚";
   const NUMBER_THEN_WORD = new RegExp(
-    `(\\d+\\s+\\d+\\/\\d+|\\d+\\/\\d+|\\d+\\s*[${GLYPHS}]|[${GLYPHS}]|\\d+(?:\\.\\d+)?)(\\s*)([A-Za-z]+)`,
+    // ⚠️ AND IT NEEDS A RIGHT-HAND BOUNDARY. Without it "2 pint-sized jars" became
+    // "2 pints-sized jars": the word matched "pint" and the hyphen did not stop it. A unit used
+    // attributively is not the thing being counted.
+    `(\\d+\\s+\\d+\\/\\d+|\\d+\\/\\d+|\\d+\\s*[${GLYPHS}]|[${GLYPHS}]|\\d+(?:\\.\\d+)?)(\\s*)([A-Za-z]+)(?![-\\w])`,
     "g");
 
   // Keep the capital the author wrote: "2 Cups" stays "2 Cups" and does not become "2 cups".
@@ -295,48 +305,102 @@
   // R3. AN AMOUNT MARKED PER PERSON DOES NOT MOVE WITH THE SERVINGS. "about ½ cup per person" is
   // half a cup each whether the cook is making it for two or for ten, so multiplying it by the
   // factor would state a quantity the author never wrote.
-  // ⚠️ KEPT IN STEP with import_cleanup.py's PER_SERVING_SRC, byte for byte, by
-  // tests/js/per-serving-sync.test.js. A list of words that only exists on one side is the drift
-  // that makes a shared rule a comment claiming to be a rule.
-  const PER_SERVING = /\bper\s+(?:person|serving|servings|head|guest|portion|diner)\b/i;
+  // ⚠️ THE WORD LIST LIVES IN units.py AND HAS THREE CALLERS: this one, import_cleanup's R3 which
+  // writes the amount, and stepscale.py which locks the same figure in the METHOD text. Kept in
+  // step by tests/js/per-serving-sync.test.js. A first draft put the list in import_cleanup where
+  // only one of the three could see it, and a fresh review found the ledger and the method
+  // disagreeing on one page at 2x.
+  const PER_SERVING = /\bper\s+(?:person|serving|servings|guest|portion|diner)\b/i;
 
   // R1. A SIZED PIECE IS THE AMOUNT, AND THE SIZE IS NEVER A QUANTITY. "1-inch knob" doubled must
   // not print "2-inch knob", which is what the ordinary number scaler does to it: the figure in
   // front of the unit is the SIZE of one piece. What scales is how many pieces, so the count is
   // written in front with a "×" and the piece is carried through untouched.
-  // ⚠️ KEPT IN STEP with import_cleanup.py's _PIECE_WORDS by tests/js/sized-piece-sync.test.js.
+  //
+  // ⚠️ THE NUMBER GRAMMAR MIRRORS import_cleanup's, AND A FIRST DRAFT DID NOT, which is the worst
+  // defect a fresh review found in this round. The Python side WRITES "1/2-inch slices",
+  // "1 to 2-inch chunks", "roughly 3 cm chunk", "about 2-inch piece", "4 in. piece" and
+  // "1 1/2-inch piece"; the first draft here read only bare integers and single glyphs, so all six
+  // fell through to the ordinary scaler and had their SIZE doubled. The guard is now two-layered:
+  // this reader, and PIECE_ANYWHERE below.
+  //
+  // ⚠️ AND THE MULTIPLIER IS "×" ONLY, NEVER A LETTER x. "1 x 2-inch piece" is a dimension PAIR, a
+  // sheet of kombu an inch by two, which the Python side declines to write an amount for at all.
+  // Reading its "1 x" as a count printed "2 × 2-inch piece" at 2x for a sheet that got no bigger.
   const PIECE_WORDS = ["knob", "knobs", "piece", "pieces", "section", "sections", "chunk",
                        "chunks", "slice", "slices", "stick", "sticks"];
+  const PIECE_QUALIFIER = "(?:about|approx\\.?|approximately|around|roughly|~|scant|heaped|" +
+                          "heaping|generous|rounded|packed|full|up\\s+to|a\\s+scant|a\\s+heaped|" +
+                          "a\\s+generous)";
+  const PIECE_ONE_NUM = `\\d+(?:\\s+|\\s+and\\s+|\\s*[&+]\\s*)\\d+\\/\\d+|\\d+\\/\\d+` +
+                        `|\\d+(?:\\s*|\\s+and\\s+|\\s*[&+]\\s*)[${GLYPHS}]|[${GLYPHS}]` +
+                        `|\\d+(?:\\.\\d+)?`;
+  const PIECE_NUM = `(?:(?:${PIECE_ONE_NUM})\\s*(?:to|or|[-–—])\\s*(?:${PIECE_ONE_NUM})` +
+                    `|(?:${PIECE_ONE_NUM}))`;
+  const PIECE_DIM_UNIT = `(?:"|''|”|″|inch(?:es)?|in\\.|\\bin\\b|cm|` +
+                         `centimet(?:re|er)s?|mm|millimet(?:re|er)s?)`;
+  const PIECE_DIM = `(?:${PIECE_QUALIFIER}\\s*)?${PIECE_NUM}\\s*(?:-\\s*)?${PIECE_DIM_UNIT}`;
   const PIECE_RE = new RegExp(
-    `^\\s*(?:(\\d+(?:\\.\\d+)?(?:\\s*/\\s*\\d+)?|\\d+\\s*[${GLYPHS}]|[${GLYPHS}])\\s*(?:x|×)\\s*)?` +
-    `((?:\\d+\\s*[${GLYPHS}]|\\d+(?:\\.\\d+)?|[${GLYPHS}])\\s*-?\\s*` +
-    `(?:inch(?:es)?|in|cm|centimet(?:re|er)s?|mm|"|”|″)\\s*-?\\s*` +
-    `(?:${PIECE_WORDS.join("|")}))\\s*$`, "i");
+    `^\\s*(?:(${PIECE_NUM})\\s*×\\s*)?` +
+    `((?:${PIECE_DIM})\\s*-?\\s*(?:${PIECE_WORDS.join("|")}))\\s*$`, "i");
+  // ⚠️ THE BELT, AND IT IS WHAT MAKES THE NEXT DRIFT HARMLESS. Any amount holding a dimension next
+  // to a piece word is never scaled, whether or not the count above reads. The worst case then
+  // becomes "the count did not scale", which a cook can see, instead of "the size doubled", which
+  // reads as a perfectly ordinary amount and is wrong.
+  const PIECE_ANYWHERE = new RegExp(
+    `${PIECE_DIM}\\s*-?\\s*(?:${PIECE_WORDS.join("|")})\\b`, "i");
 
   // The sized piece inside an amount, as {count, piece}, else null. Mirrors
-  // import_cleanup.sized_piece_text.
+  // import_cleanup.sized_piece_text, held to it by tests/fixtures/sized-piece.json, which is
+  // generated FROM the Python side and asserted by both suites.
   function sizedPiece(qty) {
     const m = PIECE_RE.exec(String(qty == null ? "" : qty));
     return m ? { count: m[1] || "1", piece: m[2].trim() } : null;
   }
 
-  // One piece reads as itself; any other count reads "<n> × <piece>". A count of one is the
-  // default, so 1× prints "1-inch knob" rather than "1 × 1-inch knob".
+  // One piece reads as itself; any other count reads "<n> × <piece>", with the piece word agreed
+  // to the count.
+  // ⚠️ THE COUNT IS NOT CLAMPED TO A WHOLE NUMBER, AND THAT IS A DELIBERATE DIFFERENCE FROM
+  // scaleCount. An egg is indivisible, so "~1 egg" is the honest answer for half of one. A 1-inch
+  // knob is a MEASUREMENT of something you cut, which is the whole premise of R1, so half of it is
+  // half of it: "½ × 1-inch knob" states the quantity where "~1-inch knob" overstates it.
   function sizedPieceText(piece, factor) {
     const n = tokenToNumber(normalizeFractions(piece.count));
-    const scaled = (isFinite(n) ? n : 1) * factor;
+    const scaled = (isFinite(n) && n > 0 ? n : 1) * (factor > 0 ? factor : 1);
     if (Math.abs(scaled - 1) < 1e-9) return piece.piece;
-    return `${formatAmount(scaled)} × ${piece.piece}`;
+    return `${formatAmount(scaled)} × ${agreePiece(piece.piece, scaled)}`;
+  }
+
+  // The piece word, agreed to its count. fixPlurals cannot reach it: NUMBER_THEN_WORD wants the
+  // number adjacent to the word and "1-inch" sits between them.
+  function agreePiece(piece, count) {
+    return String(piece).replace(/([A-Za-z]+)\s*$/, (whole, word) => {
+      const low = word.toLowerCase();
+      const one = UNIT_SINGULARS[low] || (low in UNIT_PLURALS ? low : null);
+      if (one === null) return whole;
+      return matchCase(word, count > 0 && count <= 1 ? one : UNIT_PLURALS[one]);
+    });
   }
 
   function amountText(qty, factor) {
     if (qty == null || String(qty).trim() === "") return "";
     const f = factor > 0 ? factor : 1;
     // R3 first: an amount marked per person is printed as the author wrote it, at every factor.
-    if (PER_SERVING.test(String(qty))) return toUnicodeFractions(abbrevUnits(String(qty).trim()));
+    // ⚠️ REFUSING TO SCALE IS NOT A REASON TO SKIP THE FACTOR-INDEPENDENT FIXES, and a first draft
+    //    skipped both. fixPlurals agrees the unit with its figure ("1 cups" -> "1 cup") and
+    //    collapseRange reduces a degenerate "1 to 1 tbsp" to "1 tbsp". Neither depends on the
+    //    factor, and the old path applied both at factor 1.
+    if (PER_SERVING.test(String(qty))) {
+      return toUnicodeFractions(abbrevUnits(fixPlurals(collapseRange(String(qty).trim()))));
+    }
     // R1 next: a sized piece scales by its count and never by its size.
     const piece = sizedPiece(qty);
     if (piece) return toUnicodeFractions(sizedPieceText(piece, f));
+    // And the belt: a dimension next to a piece word is never scaled even when the count above
+    // could not be read, because scaling a SIZE is the one outcome R1 exists to prevent.
+    if (PIECE_ANYWHERE.test(String(qty))) {
+      return toUnicodeFractions(abbrevUnits(fixPlurals(collapseRange(String(qty).trim()))));
+    }
     let t;
     if (isCountAmount(qty)) t = fixPlurals(scaleCount(qty, f));
     // ⚠️ A DUAL AMOUNT IS SPLIT BY THE CALLER NOW, so this branch is the one that is left when a
@@ -364,6 +428,11 @@
   // spoon-sized amounts, weights/counts, already-metric amounts, and unmatched names).
   function weightText(qty, gramsPerMl, factor) {
     if (gramsPerMl == null) return "";
+    // ⚠️ AND THE ESTIMATE UNDER A PER-PERSON AMOUNT DOES NOT SCALE EITHER. A fresh review found
+    //    the figure above holding at "about ½ cup per person" while the gram sub-line directly
+    //    beneath it went 63 g, 125 g, 251 g. The grams PER PERSON are a true figure, so the line
+    //    is kept rather than suppressed, and it is computed at the factor the amount itself uses.
+    if (PER_SERVING.test(String(qty))) factor = 1;
     const parsed = parseAmount(normalizeFractions(String(qty)));
     if (!parsed) return "";
     const mlPer = UNIT_TO_ML[parsed.unit];
@@ -379,5 +448,5 @@
     SPOON_MAX_ML, isCountAmount, scaleCount, parseAmount, toMetric, displayQty,
     abbrevUnits, canonicalizeUnit, amountText, weightText, toUnicodeFractions,
     UNIT_PLURALS, fixPlurals, secondAmountParts, SECOND_AMOUNT_JOIN,
-    PER_SERVING, PIECE_WORDS, sizedPiece, sizedPieceText,
+    PER_SERVING, PIECE_WORDS, sizedPiece, sizedPieceText, agreePiece, PIECE_ANYWHERE,
   };

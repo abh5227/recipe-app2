@@ -162,6 +162,25 @@ def _ingredient_row(pos, line):
     }
 
 
+def _remark_rows_to_notes(rows):
+    """R6: a row that is only a remark, directly under an ingredient heading, leaves the list.
+
+    -> (rows, [{"title", "text"}]). One rule, two callers: import_cleanup.remark_row_to_note is
+    what scripts/apply_round_b.py reads over the 300 already-imported recipes.
+    """
+    out, notes = [], []
+    for i, row in enumerate(rows):
+        above = rows[i - 1] if i else None
+        plan = cleanup.remark_row_to_note(
+            None if above is None else dict(above, label=_ingredient_text(above)),
+            dict(row, label=_ingredient_text(row)))
+        if plan:
+            notes.append({"title": plan["title"], "text": plan["text"]})
+            continue
+        out.append(row)
+    return out, notes
+
+
 def _line_flag_rows(pos, line):
     """Review-queue rows for one line's flags. The line is still written; this just marks it."""
     return [{
@@ -183,17 +202,28 @@ def _ingredient_rows(cleaned):
     They run over the BUILT rows rather than over the cleaned lines, because the first one INSERTS a
     row and positions have to be assigned once, at the end, over the list that is actually written."""
     rows, flags = [], []
-    for pos, line in enumerate(cleaned["ingredients"]):
-        rows.append(_ingredient_row(pos, line))
-        flags.extend(_line_flag_rows(pos, line))
+    for line in cleaned["ingredients"]:
+        # ⚠️ THE POSITION AND THE FLAG'S POSITION ARE BOTH THE ROW INDEX, NOT THE LINE INDEX, and
+        #    a first draft used the line index for the flags. Once R4 inserts a row the two stop
+        #    agreeing, and _group_optional_lines' `moved` map is keyed on the ROW index, so every
+        #    flag after an insert was remapped onto its neighbour: an each_multi landed on the
+        #    inserted zest and an ambiguous_section on the row above its own. Found by a fresh
+        #    review, which is the same defect polish round 2 fixed for an inserted heading.
+        rows.append(_ingredient_row(len(rows), line))
+        flags.extend(_line_flag_rows(len(rows) - 1, line))
         # ⚠️ R4 ASKS FOR A ROW OF ITS OWN, DIRECTLY UNDER THIS ONE. apple-pie's "lemon juice (plus
-        #    the zest of half of a lemon)" names a second food with its own amount. The position
-        #    here is provisional: every row is renumbered at the end of this function, which is
-        #    the same reason the grouping rule below can insert a heading.
+        #    the zest of half of a lemon)" names a second food with its own amount.
         extra = line.get("second_food")
         if extra:
-            rows.append(dict({"position": pos, "is_heading": 0, "ingredient_id": None,
+            rows.append(dict({"position": len(rows), "is_heading": 0, "ingredient_id": None,
                               "note": None, "grams": None}, **extra))
+    # ⚠️ R6 RUNS HERE, AND IT HAD NO IMPORTER CALLER AT ALL, which a fresh review found: nothing
+    #    outside scripts/apply_round_b.py and the tests called remark_row_to_note. It cannot live
+    #    in amount_plan because it needs the row ABOVE, and this is the only place in the import
+    #    path that holds the list. Without it an imported "(use the dark meat if you can get it)"
+    #    under "FOR THE CHICKEN:" was written as an ingredient named after the remark, which is
+    #    exactly the shape the corpus pass takes out. Clause (2) of FIX BY RULE.
+    rows, remarks = _remark_rows_to_notes(rows)
     rows, group_flags, moved = _group_optional_lines(rows)
     # ⚠️ EVERY FLAG BUILT ABOVE CARRIES A POSITION, AND THE GROUPING RENUMBERS THE ROWS UNDER IT.
     #    Found by review 2026-10-08. import_flags has one nullable `position` column and a line
@@ -205,8 +235,15 @@ def _ingredient_rows(cleaned):
     for f in flags:
         if f.get("position") is not None and f["position"] in moved:
             f["position"] = moved[f["position"]]
+    # ⚠️ EVERY ROW IS RENUMBERED HERE, UNCONDITIONALLY, AND THE "UNCONDITIONALLY" IS THE FIX.
+    #    _group_optional_lines renumbers as it rebuilds the list, but it EARLY-RETURNS when it
+    #    finds no group, so a recipe with an R4 insert and no Optional run was written with two
+    #    rows at one position: measured [0, 0, 1, 2] for a four-row list. It runs before the name
+    #    -case rule below, which reads row["position"] for its own flags.
+    for n, row in enumerate(rows):
+        row["position"] = n
     rows, case_flags = _lowercase_ingredient_names(rows)
-    return rows, flags + group_flags + case_flags
+    return rows, flags + group_flags + case_flags, remarks
 
 
 def _ingredient_text(row):
@@ -420,9 +457,15 @@ def plan_recipe(cleaned, uid_index, taken_slugs, now=None):
 
     now = now or datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     slug = mint_slug(cleaned["name"], taken_slugs)
-    ing_rows, line_flags = _ingredient_rows(cleaned)
+    ing_rows, line_flags, remark_notes = _ingredient_rows(cleaned)
     step_rows, step_notes, step_flags = _step_rows(cleaned)
     note_rows, note_flags = _note_rows(step_notes)
+    # ⚠️ R6's NOTES GO AFTER THE AUTHOR'S OWN, AND THEY CARRY NO MENTIONS. These words were in the
+    #    INGREDIENTS, not in the notes field, so there is nothing of the author's note numbering to
+    #    preserve and no "step N" to scan for. The title is the ingredient heading they sat under.
+    for n, remark in enumerate(remark_notes):
+        note_rows.append({"position": len(note_rows), "kind": "notes", "text": remark["text"],
+                          "title": remark["title"], "as_given": None, "mentions": []})
     recipe_flag_rows = [{"position": None, "flag": f, "reason": None}
                         for f in cleaned["recipe_flags"]]
 

@@ -24,6 +24,8 @@ format identically to the ingredient list.
 """
 import re
 
+import units
+
 # Span categories.
 MARKED_SCALE = "marked_scale"
 MARKED_LOCK = "marked_lock"
@@ -204,6 +206,25 @@ def parse_step(text):
     return spans
 
 
+# ⚠️ AN AMOUNT MARKED PER PERSON IS LOCKED IN THE METHOD TOO, AND LEAVING IT OUT PUT THE TWO
+#    COLUMNS OF ONE PAGE IN DISAGREEMENT. Round B's R3 locks such an amount in the ingredient
+#    ledger; without the same guard here, at 2x the ledger read "about 1/2 cup per person" while
+#    the step beside it read "1 cup rice per person". Found by a fresh review of R3.
+#
+#    ⚠️ THE LOOKAHEAD STOPS AT A COMMA, not at the sentence. "Divide 2 cups rice among the bowls,
+#       about 1/2 cup per person" has to scale the 2 cups and lock the 1/2 cup, and a lookahead
+#       that ran to the full stop would have locked both. The words live in units.py, which is the
+#       one home this rule, import_cleanup's R3 and static/scaler.js all read.
+_PER_SERVING_CLAUSE_END = re.compile(r"[,.;:]")
+
+
+def _locked_per_serving(text, after):
+    """Does the amount ending at `after` belong to a per-person figure in its own clause?"""
+    end = _PER_SERVING_CLAUSE_END.search(text, after)
+    clause = text[after:end.start() if end else len(text)]
+    return bool(units.PER_SERVING_RE.search(clause))
+
+
 def api_spans(text):
     """Client-ready spans for rendering. Contiguous fixed text (plain/guarded/unitless/locked)
     is merged into one "plain" span (the client linkifies it, never scales it); scalable spans
@@ -211,6 +232,7 @@ def api_spans(text):
     already stripped."""
     out = []
     buf = []
+    at = 0
 
     def flush():
         if buf:
@@ -218,7 +240,11 @@ def api_spans(text):
             buf.clear()
 
     for sp in parse_step(text):
-        if sp["category"] in (MARKED_SCALE, HEURISTIC_SCALE):
+        at += len(sp["text"])
+        scalable = sp["category"] in (MARKED_SCALE, HEURISTIC_SCALE)
+        if scalable and _locked_per_serving(text, at):
+            scalable = False               # per person is per person at every factor
+        if scalable:
             flush()
             out.append({"t": "scale", "text": sp["text"], "value": sp.get("value"), "unit": sp.get("unit")})
         else:

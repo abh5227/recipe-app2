@@ -604,7 +604,12 @@ def test_canned_unit_before_paren():
     assert d["kind"] == "ingredient"
     assert (d["amount"], d["unit"]) == ("1", "can")
     assert d["grams_harvested"] == 425.0                  # 15 oz -> g
-    assert d["name"].startswith("chickpeas") and "or 1 1/2 cups cooked chickpeas" in d["name"]
+    # ⚠️ THE SUBSTITUTION USED TO STAY IN THE NAME AND ROUND B'S R5 MOVES IT. A fresh review found
+    #    that this branch returned before apply_amount_plan, so a canned line got one answer at
+    #    import and a different one from the corpus pass reading the same row back. The rules run
+    #    here now, and "or 1 1/2 cups cooked chickpeas" is the row's note.
+    assert d["name"] == "chickpeas, rinsed and drained"
+    assert d["note"] == "or 1 1/2 cups cooked chickpeas"
     assert "multiplier" not in d["flags"]
 
 

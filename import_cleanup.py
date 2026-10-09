@@ -1349,7 +1349,12 @@ def sized_piece_text(amount):
     count is what scales and the piece is what never does.
     """
     s = _norm_ws(amount or "")
-    m = re.match(r"^\s*(?:(?P<count>" + _MEASURE_NUM + r")\s*(?:x|×)\s*)?"
+    # ⚠️ THE MULTIPLIER IS "×" ONLY, NEVER A LETTER x, AND THIS READER ACCEPTED BOTH FOR ONE DRAFT.
+    #    "1 x 2-inch piece" is a dimension PAIR, a sheet of kombu an inch by two.
+    #    sized_piece_amount above declines to write an amount for it, correctly, and this function
+    #    read its "1 x" as a count, so a sheet that got no bigger printed "2 × 2-inch piece" at 2x.
+    #    Found by generating tests/fixtures/sized-piece.json and reading the row it produced.
+    m = re.match(r"^\s*(?:(?P<count>" + _MEASURE_NUM + r")\s*×\s*)?"
                  r"(?P<piece>" + _ONE_DIMENSION + r"\s*-?\s*(?:" + _PIECE_ALT + r"))\s*$",
                  s, re.IGNORECASE)
     if not m:
@@ -1400,12 +1405,13 @@ def sized_piece_amount(row):
 # R3. AN AMOUNT MARKED PER PERSON IS THE AMOUNT, AND IT NEVER SCALES WITH THE SERVINGS. Andy's
 # call. Measured: 3 rows in the corpus, every one of them a trailing clause on a row that carries
 # no amount of its own.
-# ⚠️ KEPT IN STEP WITH static/scaler.js's PER_SERVING, which refuses to scale an amount this
-#    matches, by tests/js/per-serving-sync.test.js. A figure the rule stores and the scaler then
-#    multiplies by the servings factor would be worse than leaving the clause in the name.
-PER_SERVING_WORDS = ("person", "serving", "servings", "head", "guest", "portion", "diner")
-PER_SERVING_SRC = r"\bper\s+(?:" + "|".join(PER_SERVING_WORDS) + r")\b"
-PER_SERVING_RE = re.compile(PER_SERVING_SRC, re.IGNORECASE)
+# ⚠️ THE WORD LIST LIVES IN units.py, WHICH IS THE ONE HOME ALL THREE CALLERS CAN SEE. This rule
+#    writes the amount, static/scaler.js refuses to scale it, and stepscale.py refuses the same
+#    figure in the method text. Spelling the list here let stepscale drift, and a fresh review
+#    found the ledger and the method disagreeing on one page at 2x.
+PER_SERVING_WORDS = units.PER_SERVING_WORDS
+PER_SERVING_SRC = units.PER_SERVING_SRC
+PER_SERVING_RE = units.PER_SERVING_RE
 _PER_SERVING_CLAUSE_RE = re.compile(
     r"[,;]\s*(?P<amount>(?:" + _MEASURE_QUALIFIER + r"\s*)?" + _MEASURE_NUM
     + r"(?:\s+[A-Za-z]+)?\s+per\s+(?:" + "|".join(PER_SERVING_WORDS) + r"))\b",
@@ -2111,11 +2117,14 @@ as is was if when unless while than that which who original recipe written neede
 _SUB_TAIL_JOIN_RE = re.compile(r"(?:\+|\bplus\b|\band\b|,)\s*$", re.IGNORECASE)
 SUBSTITUTION_RULE = "substitution_to_the_note"
 SUBSTITUTION_NOTE_TAKEN_FLAG = "substitution_but_the_note_is_taken"
+SUBSTITUTION_SAME_FOOD_FLAG = "or_restates_the_same_food"
+SUBSTITUTION_TWO_FLAG = "two_substitutions_one_note"
 
 
 def substitution_to_note(row):
     """R5: an "or <amount> <other food>" alternative, as the row's note, else None."""
     name = (row.get("label") or row.get("raw_text") or "")
+    found = []
     for span, inner in _substitution_candidates(name):
         rest = _SUBSTITUTION_LEAD_RE.sub("", inner, count=1)
         lead = _ONE_MEASURE_LEAD_RE.match(rest)
@@ -2133,15 +2142,77 @@ def substitution_to_note(row):
             continue                               # "or 230 grams" restates the amount, no food
         if {w.strip(",.;").lower() for w in bare.split()} & _SUB_FUNCTION_WORDS:
             continue                               # "or 10 ounces as original recipe is written"
+        # ⚠️ AND IT HAS TO BE A DIFFERENT FOOD, WHICH THE RULE'S OWN REASON CLAIMED WITHOUT
+        #    TESTING. "500 g beef or 1 lb beef" and "1 cup milk or 240 ml milk" are the SAME food
+        #    stated in a second unit, which is what the second-amount slot exists for, and calling
+        #    either "a different ingredient in its own measure" is simply false. The row goes to
+        #    the review list: admitting it to the second-amount slot would widen R2 past the
+        #    decision Andy made, and guessing is what decline-over-guess exists to stop.
+        #
+        #    ⚠️ THE TEST IS WORD-SET EQUALITY, AND A FIRST DRAFT ASKED THE WEAKER QUESTION
+        #       "does the alternative name any word the row does not". That declined two real
+        #       substitutions: "green cardamom pods, or 1 teaspoon ground cardamom (freshly ground
+        #       is best)" lost BOTH its words to the row, "cardamom" to the name and "ground" to
+        #       the parenthetical remark at the end, so a whole spice against a ground one read as
+        #       one food. Ground cardamom is not cardamom pods. Two foods are the same food when
+        #       they are the same WORDS, which is a question the remark cannot affect.
+        if _same_food(bare, name[:span[0]] + " " + name[span[1]:]):
+            found.append({"flag": SUBSTITUTION_SAME_FOOD_FLAG,
+                          "why": f"{inner!r} restates the row's own food in a second measure "
+                                 f"rather than offering a different ingredient, so it may belong "
+                                 f"in the second amount instead of the note"})
+            continue
         text = units.fix_plurals("or " + _norm_ws(rest))
         if (row.get("note") or "").strip():
-            return {"flag": SUBSTITUTION_NOTE_TAKEN_FLAG,
-                    "why": f"{inner!r} is a substitution with its own amount and this row's note "
-                           f"already reads {row['note']!r}, so nothing is overwritten"}
-        return {"note": text, "span": span, "rule": SUBSTITUTION_RULE,
-                "why": f"{inner!r} offers a different ingredient in its own measure, so it is a "
-                       f"note on the row rather than a second amount for this food"}
-    return None
+            found.append({"flag": SUBSTITUTION_NOTE_TAKEN_FLAG,
+                          "why": f"{inner!r} is a substitution with its own amount and this row's "
+                                 f"note already reads {row['note']!r}, so nothing is overwritten"})
+            continue
+        found.append({"note": text, "span": span, "rule": SUBSTITUTION_RULE,
+                      "why": f"{inner!r} offers a different ingredient in its own measure, so it "
+                             f"is a note on the row rather than a second amount for this food"})
+    if not found:
+        return None
+    # ⚠️ A SECOND QUALIFYING SUBSTITUTION IS NAMED RATHER THAN DROPPED IN SILENCE. One note column,
+    #    two alternatives: the first wins and the second stayed in the name with nothing saying it
+    #    had been declined. Found by a fresh review.
+    takes = [f for f in found if "note" in f]
+    if len(takes) > 1:
+        return {"flag": SUBSTITUTION_TWO_FLAG,
+                "why": f"the line offers {len(takes)} substitutions, each with its own amount, and "
+                       f"a row has one note column, so none is moved: "
+                       + "; ".join(repr(f["note"]) for f in takes)}
+    return takes[0] if takes else found[0]
+
+
+def _same_food(alternative, rest_of_name):
+    """Do these two phrases name the same food, as the same words?
+
+    `rest_of_name` is the row's name with the alternative taken out. Parentheticals come off both
+    sides: a remark like "(freshly ground is best)" is about the cook's technique and says nothing
+    about which food this is.
+    """
+    # ⚠️ MODWORDS IS NOT USED HERE, AND IT WAS FOR ONE DRAFT. Stripping every prep word made the
+    #    answer independent of a trailing clause, which was the point, and it also collapsed three
+    #    real substitutions the corpus carries: "kosher salt (or 1/2 tsp table salt)",
+    #    "10 cloves (or 1/4 tsp ground cloves)" and "chickpeas, rinsed and drained, or 1 ½ cups
+    #    cooked chickpeas" all reduced to one word on both sides. "kosher", "table", "ground" and
+    #    "cooked" are prep words AND they are exactly what tells one FORM of a food from another,
+    #    which is what makes a substitution a substitution. The list below is therefore only the
+    #    grammar words.
+    #    The cost is that a prep clause can still tip the answer: "beef or 1 lb beef" reads as one
+    #    food and "beef or 1 lb beef, cut into cubes" reads as two. No corpus row has that shape,
+    #    and the wrong answer there is a note with a slightly overstated reason rather than a cell
+    #    moved anywhere a person cannot see it.
+    _SKIP = _SUB_FUNCTION_WORDS | {"or", "of", "and", "plus", "the", "a", "an", "into"}
+
+    def words(text):
+        bare = _PAREN_SPAN_RE.sub(" ", text or "")
+        bare = _norm_ws(_DENSITY_NAME_STRIP.sub(" ", bare))
+        return {_count_stem(w) for w in re.split(r"[\s/,;]+", bare)
+                if w and _count_stem(w) not in _SKIP and w.lower() not in _SKIP}
+    left, right = words(alternative), words(rest_of_name)
+    return bool(left) and bool(right) and left == right
 
 
 def _substitution_candidates(name):
@@ -2154,7 +2225,14 @@ def _substitution_candidates(name):
     for m in re.finditer(r"(?<![\w-])(?:OR|[Oo]r)\s+(?=(?:" + _MEASURE_QUALIFIER + r"\s*)?"
                          + _MEASURE_NUM + r")", blanked):
         stop = len(name)
-        for ch in ";()":
+        # ⚠️ THE RUN STOPS AT A COMMA, AND IT DID NOT FOR ONE DRAFT. R2's equivalent loop in
+        #    author_line_fragments stops at ",;()" and this stopped at ";()", so everything after
+        #    the comma, which is the ROW'S OWN prep clause, went into the alternative's note:
+        #    "1 pound beef or 1 pound lamb, cut into 1-inch cubes" left the name "beef" and a note
+        #    reading "or 1 pound lamb, cut into 1-inch cubes", with the cut instruction no longer
+        #    on the ingredient at all. The bracketed spelling of the same line already kept it,
+        #    so the two spellings of one thing disagreed. Found by a fresh review.
+        for ch in ",;()":
             at = name.find(ch, m.end())
             if at != -1:
                 stop = min(stop, at)
@@ -2186,7 +2264,12 @@ def remark_row_to_note(above, row):
     # A remark is a sentence about the section. A measure in it makes it a line of the recipe.
     if not inner or split_measures(inner) or len(inner.split()) < 3:
         return None
+    # ⚠️ THE TRAILING COLON COMES OFF, IN THE RULE RATHER THAN IN EITHER CALLER. A stored heading
+    #    has already lost it ("Basic Asian-Style Chicken Stock") and a heading arriving from an
+    #    import has not ("FOR THE CHICKEN:"), so the two callers produced two different titles for
+    #    one rule. A note title is a title, not a run-in heading.
     title = _norm_ws(above.get("heading") or above.get("raw_text") or above.get("label") or "")
+    title = title.rstrip(" :;")
     if not title:
         return None
     return {"title": title, "text": inner, "rule": REMARK_ROW_RULE,
@@ -2389,7 +2472,12 @@ def amount_plan(row, density=None):
     #    in it at all. The compound rule took the "plus 2 tablespoons" into the amount, the empty
     #    name was refused as a write, so the name still began "plus" and the next run appended the
     #    same 2 tablespoons again.
-    if not new_name and (front or changes):
+    # ⚠️ AND `insert` COUNTS AS A RULE HAVING FIRED, which a fresh review found by running R4
+    #    three times over one row. "(plus 1 cup sugar)" is a whole name inside a plus-bracket:
+    #    nothing landed in `changes`, so this guard did not fire, nothing was written to the row,
+    #    and the insert came back on EVERY run. That is the round's own "a second run writes
+    #    nothing" gate failing, and a pass run twice adding the food twice.
+    if not new_name and (front or changes or insert):
         return {"changes": {}, "flags": [(NO_NAME_LEFT_FLAG,
                  f"every rule that fits this row would leave it with no name: {name!r}")],
                 "notes": notes, "why": why, "rules": [], "insert": None}
@@ -4612,6 +4700,14 @@ def classify_line(raw, section_hints=None, has_stored_amount=False):
     canned = _parse_canned(line)
     if canned:
         res.update(canned)
+        # ⚠️ AND THE ROUND B RULES RUN HERE TOO, WHICH THEY DID NOT FOR ONE DRAFT. This branch
+        #    returned before apply_amount_plan, so a canned line got two different answers:
+        #    "2 (14-ounce) cans whole tomatoes (or 2 tablespoons tomato paste)" kept the
+        #    substitution in its name at IMPORT and had it moved to the note by the corpus pass
+        #    reading the same row back. R4 was split the same way, making a second row on one
+        #    caller and not the other. Found by a fresh review. Clause (2) of FIX BY RULE is "the
+        #    importer as a second caller", and a branch that returns early is not a second caller.
+        apply_amount_plan(res, line)
         res["has_alternative"] = bool(_ALT_RE.search(res["name"]))
         res["has_prep_note"] = bool(_PREP.search(res["name"]))
         return res
@@ -4698,10 +4794,17 @@ def classify_line(raw, section_hints=None, has_stored_amount=False):
     #    appends to res["flags"], and restoring a shallow copy restored that same mutated list, so
     #    a plan this block DISCARDED still left its flag on the row, paired with the next rule's
     #    reason. "Zest of 1 lemon (optional" carried unbalanced_bracket beside ambiguous_section.
+    # ⚠️ AND update() CANNOT REMOVE A KEY THE PLAN ADDED, which a fresh review found. R5 writes
+    #    `note` and R4 writes `second_food`, and `res` carries neither at snapshot time, so a
+    #    DISCARDED plan left both behind: "cumin seeds (or 1 tsp ground cumin)" was written as an
+    #    ambiguous row stating the substitution twice, in its name and in the .inote under it, and
+    #    the apple-pie line named the same zest twice, once inside the parent's name and once as a
+    #    row of its own. The restore is now a replacement rather than a merge.
     before = {k: (list(v) if isinstance(v, list) else v) for k, v in res.items()}
     apply_amount_plan(res, line)
     if res["amount"]:
         return res
+    res.clear()
     res.update(before)
 
     # 4. No amount, no measurement, not a clear section -> ambiguous; suggest (never decide).

@@ -3129,10 +3129,18 @@ function amountZoneHTML(x, i) {
   const t = secondToggle(x);
   const second = t.open
     ? secondCell(i, x.secondary_measure)
+    // ⚠️ THE TITLE CARRIES THE VALUE, AND IT CARRIED A STATIC STRING. A long backup ellipses in the
+    //    column ("+ 8 tables…" for "8 tablespoons / 113 grams"), and with a static title the only
+    //    place the whole value appeared was the aria-label. Hover now says it too.
+    // ⚠️ AND THERE IS NO aria-expanded, WHICH IS A STATE THAT NEVER RESOLVED. The button announced
+    //    "collapsed", activating it REMOVED the button from the DOM, nothing afterwards reported
+    //    expanded, and there was no aria-controls and no way to collapse again. This is a button
+    //    that adds a field, not a disclosure, so it says so and nothing more. Both found by a
+    //    fresh review.
     : `<button type="button" class="second-toggle${t.has ? " has" : ""}" data-inline-edit-second data-i="${i}"` +
-      ` title="${t.has ? "Edit the second amount" : "Add a second amount"}"` +
+      ` title="${t.has ? "Second amount: " + esc(t.value) : "Add a second amount"}"` +
       ` aria-label="${t.has ? "Edit the second amount, " + esc(t.value) : "Add a second amount"}"` +
-      ` aria-expanded="false">${esc(t.label)}</button>`;
+      `>${esc(t.label)}</button>`;
   return `<span class="amount-zone${span ? " no-unit" : ""}">${qty}${span ? "" : unitCell(i, x.unit)}` +
          `${second}</span>`;
 }

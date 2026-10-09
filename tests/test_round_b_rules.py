@@ -946,3 +946,218 @@ def test_the_importer_reads_an_or_count_as_a_second_amount():
     d = ic.classify_line("1 large skin-on chicken breast (or 2 small ones)")
     assert d["secondary_measure"] == "or 2 small"
     assert d["name"] == "skin-on chicken breast"
+
+
+# =========================================================================== #
+# What two fresh reviewers found in revision 1
+#
+# Fourteen MUST-FIX between them, every one verified by running the repro
+# before it was fixed. Each test below names the defect it holds shut.
+# =========================================================================== #
+
+def test_a_discarded_plan_leaves_no_note_and_no_second_food():
+    """⚠️ update() CANNOT REMOVE A KEY THE PLAN ADDED. Block 3d snapshots `res`, runs the plan, and
+    restores the snapshot when no amount comes back. `res` carries neither `note` nor
+    `second_food` at snapshot time, so a DISCARDED plan left both behind: the cumin row was
+    written as an ambiguous row stating its substitution twice, in the name and in the note under
+    it, and the apple-pie line named the same zest twice."""
+    d = ic.classify_line("cumin seeds (or 1 tsp ground cumin)")
+    assert d["kind"] == "flagged"
+    assert (d.get("note") or None) is None
+    assert d.get("second_food") is None
+    d = ic.classify_line("lemon juice (plus the zest of half of a lemon)")
+    assert d.get("second_food") is None
+
+
+def test_r4_flags_a_row_it_would_leave_with_no_name_rather_than_looping():
+    """⚠️ `insert` COUNTS AS A RULE HAVING FIRED. "(plus 1 cup sugar)" is a whole name inside a
+    plus-bracket: nothing landed in `changes`, the no-name guard did not fire, and the insert came
+    back on EVERY run. That is the round's own "a second run writes nothing" gate failing."""
+    r = row("(plus 1 cup sugar)")
+    for _ in range(3):
+        plan = ic.amount_plan(r)
+        assert plan["insert"] is None
+        assert any(f == ic.NO_NAME_LEFT_FLAG for f, _x in plan["flags"])
+        assert plan["changes"] == {}
+
+
+@pytest.mark.parametrize("line, name, note", [
+    ("1 pound beef or 1 pound lamb, cut into 1-inch cubes",
+     "beef, cut into 1-inch cubes", "or 1 pound lamb"),
+    ("1 cup yogurt (or 1 cup sour cream), whisked", "yogurt, whisked", "or 1 cup sour cream"),
+    ("1 cup milk or 1 cup cream, warmed, plus 2 tablespoons for brushing",
+     "milk, warmed, plus 2 tablespoons for brushing", "or 1 cup cream"),
+])
+def test_r5_s_bare_or_run_stops_at_a_comma_like_r2_s(line, name, note):
+    """⚠️ EVERYTHING AFTER THE COMMA IS THE ROW'S OWN PREP CLAUSE. R5's loop stopped at ";()" where
+    R2's stops at ",;()", so the cut instruction went into the alternative's note and left the
+    ingredient altogether. The bracketed spelling of the same line already kept it, so the two
+    spellings of one thing disagreed."""
+    d = ic.classify_line(line)
+    assert d["name"] == name
+    assert d["note"] == note
+
+
+@pytest.mark.parametrize("name", [
+    "beef or 1 lb beef",
+    "milk or 240 ml milk",
+])
+def test_an_or_that_restates_the_same_food_is_not_a_substitution(name):
+    """⚠️ THE RULE'S OWN REASON CLAIMED "a different ingredient" WITHOUT TESTING IT. These are one
+    food in a second unit, which is what the second-amount slot exists for. The row goes to the
+    review list: admitting it would widen R2 past the decision Andy made, and guessing is what
+    decline-over-guess exists to stop. R2's count_parts answers the question, so the test is
+    shared rather than written twice."""
+    a = ic.substitution_to_note(row(name, qty="500 g", quantity="500", unit="g"))
+    assert a is not None and a["flag"] == ic.SUBSTITUTION_SAME_FOOD_FLAG
+
+
+# ⚠️ AND A DIFFERENT FORM OF A FOOD IS A DIFFERENT FOOD, which is where the first two drafts of
+#    that test went wrong in opposite directions. Asking "does the alternative name any word the
+#    row does not" declined the two cardamom rows, because a trailing "(freshly ground is best)"
+#    lent them the word "ground". Stripping every MODWORD from both sides declined these four,
+#    because "kosher", "table", "ground" and "cooked" are prep words AND are exactly what tells
+#    one form of a food from another. Whole pods are not ground cardamom.
+@pytest.mark.parametrize("name, note", [
+    ("green cardamom pods, or 1 teaspoon ground cardamom (freshly ground is best)",
+     "or 1 teaspoon ground cardamom"),
+    ("cumin seeds (or 1 tsp ground cumin)", "or 1 tsp ground cumin"),
+    ("kosher salt (or 1/2 tsp table salt)", "or 1/2 tsp table salt"),
+    ("cloves (or 1/4 tsp ground cloves)", "or 1/4 tsp ground cloves"),
+    ("chickpeas, rinsed and drained, or 1 \u00bd cups cooked chickpeas",
+     "or 1 \u00bd cups cooked chickpeas"),
+])
+def test_a_different_form_of_a_food_is_still_a_substitution(name, note):
+    a = ic.substitution_to_note(row(name, qty="1 cup", quantity="1", unit="cup"))
+    assert a is not None and a.get("note") == note
+
+
+def test_two_substitutions_and_one_note_column_is_named_not_dropped():
+    a = ic.substitution_to_note(
+        row("2 tablespoons sugar or 2 tablespoons honey (or 1 tablespoon maple syrup)"))
+    assert a is not None and a["flag"] == ic.SUBSTITUTION_TWO_FLAG
+
+
+def test_the_canned_branch_runs_the_rules_too():
+    """⚠️ A BRANCH THAT RETURNS EARLY IS NOT A SECOND CALLER. classify_line's canned-good branch
+    returned before apply_amount_plan, so one line got two answers: the importer kept the
+    substitution in the name and the corpus pass, reading the same row back, moved it."""
+    d = ic.classify_line("2 (14-ounce) cans whole tomatoes (or 2 tablespoons tomato paste)")
+    assert (d["amount"], d["unit"]) == ("2", "cans")
+    assert d["name"] == "whole tomatoes"
+    assert d["note"] == "or 2 tablespoons tomato paste"
+    d = ic.classify_line("1 (15-ounce) can pumpkin puree (plus 1 cup heavy cream)")
+    assert d["second_food"]["label"] == "1 cup heavy cream"
+    # an ordinary canned line is untouched
+    d = ic.classify_line("1 (14-ounce) can coconut milk")
+    assert (d["amount"], d["unit"], d["name"]) == ("1", "can", "coconut milk")
+    assert (d.get("note") or None) is None
+
+
+def test_the_multiplier_is_a_times_sign_and_never_a_letter_x():
+    """⚠️ "1 x 2-inch piece" IS A DIMENSION PAIR, a sheet of kombu an inch by two. The writer
+    declines to make an amount of it, and the READER accepted its "1 x" as a count, so at 2x a
+    sheet that got no bigger printed "2 × 2-inch piece"."""
+    assert ic.sized_piece_text("1 x 2-inch piece") == (None, None)
+    assert ic.sized_piece_text("2 × 1-inch knob") == ("2", "1-inch knob")
+    assert ic.sized_piece_amount(row("a 1 x 2-inch piece of kombu")) is None
+
+
+def test_every_sized_piece_the_writer_emits_is_in_the_cross_language_fixture():
+    """⚠️ THE WORD-LIST GUARD MISSED EVERYTHING THAT MATTERED. tests/js/sized-piece-sync.test.js
+    compared PIECE_WORDS and four integer examples and passed while the two number grammars had
+    diverged on six shapes this side actually writes. tests/fixtures/sized-piece.json is generated
+    FROM this reader and asserted by both suites, so the next drift goes red."""
+    import json
+    import pathlib
+    doc = json.loads((pathlib.Path(__file__).resolve().parent
+                      / "fixtures" / "sized-piece.json").read_text())
+    assert len(doc["cases"]) >= 30
+    for case in doc["cases"]:
+        count, piece = ic.sized_piece_text(case["amount"])
+        assert count == case["count"], case["amount"]
+        assert piece == case["piece"], case["amount"]
+    # and the six shapes the JS could not read are all in it
+    held = {c["amount"] for c in doc["cases"] if c["count"]}
+    for shape in ("1/2-inch slices", "1 to 2-inch chunks", "roughly 3 cm chunk",
+                  "about 2-inch piece", "4 in. piece", "1 1/2-inch piece"):
+        assert shape in held, shape
+
+
+def test_per_serving_has_one_home_and_head_is_not_on_the_list():
+    """⚠️ ONE RULE, THREE CALLERS. The list lived in import_cleanup where only one of the three
+    could see it, and stepscale did not lock the same figure: at 2x the ledger read "about ½ cup
+    per person" while the step beside it read "1 cup rice per person".
+    ⚠️ AND "head" IS OFF IT. _COUNT_NOUNS holds "head"/"heads" as a UNIT the parse writes into the
+    unit column, so "1 pound per head" read as a per-diner figure and the scaler then refused to
+    scale a head of cabbage."""
+    import units
+    assert ic.PER_SERVING_WORDS is units.PER_SERVING_WORDS
+    assert "head" not in units.PER_SERVING_WORDS
+    assert "head" in ic._COUNT_NOUNS and "heads" in ic._COUNT_NOUNS
+    assert ic.per_serving_amount(row("cabbage, 1 pound per head")) is None
+
+
+def test_the_method_text_locks_a_per_person_figure_in_its_own_clause():
+    import stepscale
+    locked = stepscale.api_spans("Serve with about 1/2 cup rice per person.")
+    assert all(s["t"] == "plain" for s in locked)
+    # ⚠️ AND THE LOOKAHEAD STOPS AT A COMMA. A clause-wide guard would have locked both figures.
+    mixed = stepscale.api_spans("Divide 2 cups rice among the bowls, about 1/2 cup per person.")
+    assert [s["text"] for s in mixed if s["t"] == "scale"] == ["2 cups"]
+    # a full stop is a boundary too
+    two = stepscale.api_spans("Add 1 cup stock. Serve 2 tablespoons per person.")
+    assert [s["text"] for s in two if s["t"] == "scale"] == ["1 cup"]
+
+
+def test_fix_plurals_has_a_right_hand_boundary():
+    """⚠️ "2 pint-sized jars" BECAME "2 pints-sized jars". A unit used attributively is not the
+    thing being counted. static/scaler.js carries the identical guard."""
+    import units
+    assert units.fix_plurals("or 2 pint-sized jars tomatoes") == "or 2 pint-sized jars tomatoes"
+    assert units.fix_plurals("2 can-sized boxes") == "2 can-sized boxes"
+    assert units.fix_plurals("2 cup") == "2 cups"            # still does its job
+    assert units.fix_plurals("1 cups") == "1 cup"
+
+
+def test_r6_has_an_importer_caller():
+    """⚠️ CLAUSE (2) OF FIX BY RULE WAS MISSING FOR R6. Nothing outside the corpus pass and the
+    tests called remark_row_to_note, so an imported remark under a heading was written as an
+    ingredient named after the remark."""
+    import import_write as iw
+    rows, _flags, remarks = iw._ingredient_rows({"ingredients": [
+        ic.classify_line(line) for line in
+        ["FOR THE CHICKEN:", "(use the dark meat if you can get it)", "2 pounds chicken thighs"]]})
+    assert [r["label"] or r["raw_text"] for r in rows] == ["FOR THE CHICKEN:", "chicken thighs"]
+    assert remarks == [{"title": "FOR THE CHICKEN",
+                        "text": "use the dark meat if you can get it"}]
+
+
+def test_the_note_title_loses_a_trailing_colon_for_both_callers():
+    """A stored heading has already lost it and one arriving from an import has not, so the two
+    callers produced two different titles for one rule."""
+    a = ic.remark_row_to_note({"is_heading": 1, "raw_text": "FOR THE CHICKEN:"},
+                              row("(use the dark meat if you can get it)"))
+    assert a["title"] == "FOR THE CHICKEN"
+
+
+def test_r4_s_insert_renumbers_and_takes_no_flag_with_it():
+    """⚠️ _group_optional_lines EARLY-RETURNS WHEN IT FINDS NO GROUP, so a recipe with an R4 insert
+    and no Optional run was written with two rows at one position. And a flag's position was the
+    CLEANED LINE index while the move map is keyed on the ROW index, so every flag after an
+    insert was remapped onto its neighbour."""
+    import import_write as iw
+    rows, _f, _r = iw._ingredient_rows({"ingredients": [ic.classify_line(line) for line in
+        ["1 tablespoon lemon juice (plus the zest of half of a lemon)", "2 cups flour",
+         "1 tsp salt"]]})
+    assert [r["position"] for r in rows] == [0, 1, 2, 3]
+    assert [r["label"] for r in rows] == ["lemon juice", "zest of ½ lemon", "flour", "salt"]
+
+    rows, flags, _r = iw._ingredient_rows({"ingredients": [ic.classify_line(line) for line in
+        ["1 tablespoon lemon juice (plus the zest of half of a lemon)",
+         "2 cups flour, each sifted", "Optional: 1 tsp vanilla",
+         "Optional: 1 tsp almond extract"]]})
+    assert [r["position"] for r in rows] == [0, 1, 2, 3, 4, 5]
+    where = {f["flag"]: f["position"] for f in flags if f["flag"] == "each_multi"}
+    assert where["each_multi"] == 2            # the flour, not the inserted zest
+    assert sorted(f["position"] for f in flags if f["flag"] == "ambiguous_section") == [4, 5]

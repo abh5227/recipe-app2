@@ -74,12 +74,17 @@ UNIT_PLURALS = {
     "can": "cans", "tin": "tins", "bulb": "bulbs", "bottle": "bottles", "packet": "packets",
     "package": "packages", "tub": "tubs", "sheet": "sheets", "handful": "handfuls",
     "pinch": "pinches", "bunch": "bunches", "loaf": "loaves", "leaf": "leaves",
+    # Added with R1's piece agreement: "2 x 1-inch slice" has to read "slices".
+    "knob": "knobs", "section": "sections", "chunk": "chunks",
 }
 UNIT_SINGULARS = {plural: one for one, plural in UNIT_PLURALS.items()}
 _GLYPHS = "".join(UNICODE_FRACTIONS)
+# ⚠️ THE RIGHT-HAND BOUNDARY IS NOT OPTIONAL. Without it "2 pint-sized jars" became "2 pints-sized
+# jars": the pattern matched "pint" and the hyphen did not stop it. A unit used attributively is not
+# the thing being counted. static/scaler.js carries the identical guard.
 _NUMBER_THEN_WORD = re.compile(
     r"(\d+\s+\d+/\d+|\d+/\d+|\d+\s*[" + _GLYPHS + r"]|[" + _GLYPHS + r"]|\d+(?:\.\d+)?)"
-    r"(\s*)([A-Za-z]+)")
+    r"(\s*)([A-Za-z]+)(?![-\w])")
 
 
 def _token_to_number(token):
@@ -133,6 +138,23 @@ def fix_plurals(s):
         wanted = singular if 0 < value <= 1 else UNIT_PLURALS[singular]
         return num + gap + _match_case(word, wanted)
     return _NUMBER_THEN_WORD.sub(one, "" if s is None else str(s))
+
+
+# ⚠️ AN AMOUNT MARKED PER PERSON DOES NOT MOVE WITH THE SERVINGS, AND THE RULE HAS THREE CALLERS.
+# Round B's R3 writes such an amount into the qty column, static/scaler.js refuses to scale it, and
+# stepscale.py has to refuse the same figure in the METHOD text or the two columns of one page
+# disagree: at 2x the ledger read "about 1/2 cup per person" while the step read "1 cup rice per
+# person". A fresh review found that, and found it because the first draft put the list in
+# import_cleanup.py where only one of the three callers could see it.
+#
+# ⚠️ "head" IS DELIBERATELY ABSENT, and it was on the list for one draft. import_cleanup's
+# _COUNT_NOUNS holds "head"/"heads" as a UNIT the parse writes into the unit column, and
+# UNIT_PLURALS above holds it too, so "1 pound per head" read as a per-diner figure and the scaler
+# then refused to scale a head of cabbage. "per head" does mean per person in British English; the
+# collision is the problem, and the losing reading was silent.
+PER_SERVING_WORDS = ("person", "serving", "servings", "guest", "portion", "diner")
+PER_SERVING_SRC = r"\bper\s+(?:" + "|".join(PER_SERVING_WORDS) + r")\b"
+PER_SERVING_RE = re.compile(PER_SERVING_SRC, re.IGNORECASE)
 
 
 def compare_key(s):
