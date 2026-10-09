@@ -1441,6 +1441,7 @@ def test_the_importer_s_no_amount_path_still_runs_r5_and_r7(line, name, note):
 
 
 # ---- revision 3a: the third residual file ------------------------------------------------------- #
+import csv                                                                      # noqa: E402
 import pathlib as _pathlib                                                      # noqa: E402
 import sys as _sys                                                              # noqa: E402
 
@@ -1456,3 +1457,19 @@ def test_the_latest_residual_file_wins_and_every_fix_in_it_is_accounted_for():
     assert 4145 in _rb.RESIDUAL_2_BY_RULE
     assert not set(_rb.RESIDUAL_2_BY_RULE) & set(_rb.RESIDUAL_2_NOT_RUN)
 
+
+
+def test_an_answer_no_commit_holds_stops_the_residual_list_being_overwritten(tmp_path):
+    """The residual list is rewritten on every run. An answer typed into it and not yet committed
+    is named, so the run can refuse before it overwrites it. A carried answer and a blank are not."""
+    committed = _rb._residual_decisions_all()
+    rid, (answer, _reason) = next(iter(sorted(committed.items())))
+    p = tmp_path / "residual.csv"
+    with p.open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["kind", "recipe_id", "row_id", "part", "reason", "DECISION", "REASON"])
+        w.writerow(["flag", "a", rid, "lockstep", "x", answer, "carried"])
+        w.writerow(["note", "b", 3861, "plus_more_runs_on", "x", "fix: split the line", "typed"])
+        w.writerow(["note", "c", 4074, "plus_more_runs_on", "x", "", ""])
+    assert _rb._answers_not_committed(p) == [3861]
+    assert _rb._answers_not_committed(tmp_path / "absent.csv") == []

@@ -748,6 +748,16 @@ def run(db, apply=False, record=None):
     #    same path, which is how three committed records were truncated to their header lines. The
     #    overwrite refusal is report_target's, so it has to be asked once per run.
     out = report_target(RESIDUAL, record)   # it exits on its own over a non-empty record
+    # ⚠️ AND THE LIST A PERSON ANSWERS IS NOT OVERWRITTEN WHILE IT HOLDS ANSWERS NO COMMIT HAS. The
+    #    residual list is written on every run, dry runs included, and _carried brings back only
+    #    the answers a committed file holds. Andy's answers to revision 2's four "plus more" rows
+    #    were lost that way: the list was saved over before they reached a commit. Asked here,
+    #    before the first write, so a refused run has changed nothing.
+    unsaved = _answers_not_committed(out)
+    if unsaved:
+        raise SystemExit(f"{out} holds answers for row(s) {unsaved} that no committed decisions "
+                         f"file carries. Copy it into docs/data-repairs/ and commit it first, or "
+                         f"this run would overwrite them")
 
     if not apply:
         _write_residual(out, flags, notes)
@@ -894,6 +904,26 @@ def _write_residual(path, flags, notes):
         for n in notes:
             w.writerow(["note", n["recipe_id"], n["row_id"], n["part"], n["reason"]]
                        + _carried(decided, n["row_id"]))
+
+
+def _answers_not_committed(path):
+    """Row ids whose DECISION in the residual list at `path` is filled in and differs from what
+    the committed residual files say, which is every answer the next overwrite would lose."""
+    path = pathlib.Path(path)
+    if not path.exists():
+        return []
+    try:
+        decided = _residual_decisions_all()
+    except SystemExit:
+        decided = {}
+    out = []
+    with path.open(newline="", encoding="utf-8") as fh:
+        for r in csv.DictReader(fh):
+            rid = (r.get("row_id") or "").strip()
+            answer = (r.get("DECISION") or "").strip()
+            if rid.isdigit() and answer and decided.get(int(rid), ("",))[0] != answer:
+                out.append(int(rid))
+    return out
 
 
 def _carried(decided, row_id):
