@@ -124,7 +124,7 @@ app.register_blueprint(auth_bp)   # /api/signup | /api/login | /api/logout | /ap
 #    moved on underneath a running server has not changed what the server does until it restarts.
 # ⚠️ AND ONLY A COMMIT-SHAPED ANSWER IS TRUSTED. Anything else, including a checkout git cannot read,
 #    is "", which sends no header and no meta, and a page that hears nothing never shows the bar.
-_COMMIT_RE = re.compile(r"[0-9a-f]{40}")
+_COMMIT_RE = re.compile(r"[0-9a-f]{40}(?:[0-9a-f]{24})?")    # SHA-1, or a SHA-256 repository
 
 
 def _running_commit():

@@ -3192,10 +3192,15 @@ li.step.step-tapped .step-add-note,
 
 /* ===== The reload bar (Andy, 9 Oct, decisions-4: variant 1 of :8003/reload-prompt/) =====
    A quiet bar above the page, saying the server has moved on to a newer commit than the one that
-   served this tab, with a Reload button. Sticky, so it stays in view and moves nothing below it out
-   of place. With an unsaved Edit mode change it says to save or cancel first, in the amber the app
-   uses for a warning, and its Reload is disabled. */
-.update-bar { position: sticky; top: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
+   served this tab, with a Reload button. With an unsaved Edit mode change it says to save or cancel
+   first, in the amber the app uses for a warning, and its Reload is disabled.
+   ⚠️ THE SLOT IS STICKY, NOT THE BAR. A sticky element cannot leave its parent, and the slot is
+   exactly the bar's height, so a sticky bar scrolled away with the page.
+   ⚠️ AND IT SITS UNDER THE SCRIM (40), SO EVERY MODAL COVERS IT. At 70 it sat above the log-a-cook
+   box and the compose overlay, and Reload could discard a rating, staged photos or a half-typed
+   comment. Both found by a fresh review. */
+.update-bar-slot { position: sticky; top: 0; z-index: 30; }
+.update-bar { display: flex; align-items: center; justify-content: center;
   gap: 12px; padding: 7px 16px; background: var(--card); border-bottom: 1px solid var(--paper-edge);
   font-family: var(--font-sans); font-size: 13px; color: var(--ink-soft); }
 .update-bar-text { color: var(--ink); }

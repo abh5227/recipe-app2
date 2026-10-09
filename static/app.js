@@ -53,6 +53,7 @@ const fetch = hearingFetch(window.fetch.bind(window), (server) => {
   const next = heardCommit(commitState, server);
   if (next !== commitState) { commitState = next; paintUpdateBar(); }
 });
+updateSlot();                       // the bar's live region exists, empty, before anything is said into it
 
 // This file runs in the browser. It has no recipe content of its own — it asks
 // the backend (app.py) for data as JSON, builds HTML text from that data, and
@@ -3100,6 +3101,22 @@ function amountSpans(quantity, unit) {
   const q = String(quantity == null ? "" : quantity).trim();
   return q !== "" && /[a-zA-Z/+]/.test(q);
 }
+function secondArrowHTML(x, i) {
+  const t = secondToggle(x);
+  return `<button type="button" class="second-arrow${t.has ? " has" : ""}" data-inline-edit-second data-i="${i}"` +
+    ` aria-expanded="${t.open}"` +
+    ` title="${t.has ? "Second amount: " + esc(t.value) : "Add a second amount"}"` +
+    ` aria-label="${t.has ? "Second amount, " + esc(t.value) : "Add a second amount"}"` +
+    `>${secondCaret(t.has, t.open)}</button>`;
+}
+// ⚠️ THE ARROW FOLLOWS WHAT IS TYPED. A keystroke never re-renders the row (that would take the
+//    caret), so without this the arrow kept its outline over a value just typed into an empty
+//    row, and its title kept the old value, until the next repaint. Only the arrow is replaced.
+function syncSecondArrow(i) {
+  const row = view && view.draft && view.draft.ingredients[i];
+  const arrow = document.querySelector(`[data-inline-edit-second][data-i="${i}"]`);
+  if (row && arrow) arrow.outerHTML = secondArrowHTML(row, i);
+}
 function amountZoneHTML(x, i) {
   const span = amountSpans(x.quantity, x.unit);
   const qty = ieCell("quantity", i, x.quantity, "e-qty", "qty");
@@ -3110,11 +3127,7 @@ function amountZoneHTML(x, i) {
   // ⚠️ AND THIS ONE IS A DISCLOSURE, SO IT SAYS aria-expanded. Today's toggle was a button that
   //    added a field and vanished. The arrow stays where it is, opens and closes, and reports which.
   const t = secondToggle(x);
-  const arrow = `<button type="button" class="second-arrow${t.has ? " has" : ""}" data-inline-edit-second data-i="${i}"` +
-    ` aria-expanded="${t.open}"` +
-    ` title="${t.has ? "Second amount: " + esc(t.value) : "Add a second amount"}"` +
-    ` aria-label="${t.has ? "Second amount, " + esc(t.value) : "Add a second amount"}"` +
-    `>${secondCaret(t.has, t.open)}</button>`;
+  const arrow = secondArrowHTML(x, i);
   const lines = t.open ? secondLines(x) : [];
   const fields = t.open
     ? `<span class="second-fields">${lines.map((v, k) => secondCell(i, v, k, lines.length)).join("")}</span>`
@@ -3685,7 +3698,12 @@ function exitEditMode() {
 
 // First buffer mutation flips the "unsaved" indicator — WITHOUT re-rendering (keeps input focus/caret).
 function markDirty() {
-  if (!view || !view.editMode || view.dirty) return;
+  if (!view || !view.editMode) return;
+  // ⚠️ RESTATED ON EVERY CALL, NOT ONLY ON THE FIRST CHANGE. The plan-ahead handlers set view.dirty
+  //    themselves and then call this, so returning early on a view already dirty left "• Unsaved
+  //    changes" hidden and the reload bar's button enabled over a change nobody had saved. Found by
+  //    a fresh review. Both writes below are cheap, and paintUpdateBar touches the DOM only when
+  //    what it would draw has changed.
   view.dirty = true;
   const ind = document.querySelector(".inline-dirty");
   if (ind) ind.hidden = false;
@@ -3696,18 +3714,32 @@ function markDirty() {
 function updateWaiting() {
   return !!(view && view.editMode && view.dirty);
 }
-// ⚠️ THE BAR LIVES OUTSIDE #app, AS THE BODY'S FIRST CHILD, so no repaint of the page can wipe it.
-//    It is repainted from markDirty, from every paintRecipe (enter, save, cancel, route) and when a
-//    discard on navigation clears the flag, which are the places the waiting state can change.
-function paintUpdateBar() {
+// ⚠️ THE BAR LIVES OUTSIDE #app, IN A SLOT THAT IS THE BODY'S FIRST CHILD, so no repaint of the page
+//    can wipe it. The SLOT is the sticky element and the live region, and it is made once at start:
+//    a sticky child cannot leave a parent exactly its own height, so a sticky bar inside the slot
+//    scrolled away with the page, and a live region inserted together with its words is often not
+//    announced. Both found by a fresh review.
+function updateSlot() {
   let slot = document.getElementById("update-bar-slot");
-  if (!commitState.updated) { if (slot) slot.remove(); return; }
   if (!slot) {
     slot = document.createElement("div");
     slot.id = "update-bar-slot";
+    slot.className = "update-bar-slot";
+    slot.setAttribute("role", "status");
     document.body.prepend(slot);
   }
-  slot.innerHTML = updateBarHTML(updateWaiting());
+  return slot;
+}
+// Repainted from markDirty, from every paintRecipe (enter, save, cancel, route) and when a discard on
+// navigation clears the flag, which are the places the waiting state can change. ⚠️ IT WRITES ONLY
+// WHEN THE BAR WOULD CHANGE. markDirty runs on every keystroke, and rewriting a live region that often
+// is noise to a screen reader.
+let paintedBar = "";
+function paintUpdateBar() {
+  const html = commitState.updated ? updateBarHTML(updateWaiting()) : "";
+  if (html === paintedBar) return;
+  paintedBar = html;
+  updateSlot().innerHTML = html;
 }
 
 // Convert the draft (DB row shape) back into the PUT payload shape write_recipe_rows expects.
@@ -5719,6 +5751,7 @@ document.addEventListener("keydown", (e) => {
       const row = view.draft && view.draft.ingredients[Number(ta.dataset.i)];
       if (row) writeIngField(row, ta.dataset.inlineEditIng,             // restore draft to the snapshot
                              ta.dataset.inlineEditIng === "second" ? secondFieldsValue(ta) : iePreEdit);
+      if (ta.dataset.inlineEditIng === "second") syncSecondArrow(Number(ta.dataset.i));
       ta.blur();
       return;
     }
@@ -5828,6 +5861,7 @@ document.addEventListener("input", (e) => {
     // real field -> draft (shared w/ Esc-revert). A second-amount line is one of several (C1).
     writeIngField(row, ing.dataset.inlineEditIng,
                   ing.dataset.inlineEditIng === "second" ? secondFieldsValue(ing) : ing.value);
+    if (ing.dataset.inlineEditIng === "second") syncSecondArrow(Number(ing.dataset.i));
     markDirty();
   }
   // Editor parity — buffer a step HEADING into its draft row. Same no-re-render discipline as the
@@ -5942,9 +5976,15 @@ window.addEventListener("beforeunload", (e) => {
 });
 // The reload bar's button. ⚠️ CHECKED AGAIN HERE, NOT ONLY BY THE disabled ATTRIBUTE, because the
 // attribute is only as fresh as the last repaint. The beforeunload guard above stands behind both.
-document.addEventListener("click", (e) => {
+// ⚠️ AND A NOTE THIS SAME CLICK SAVED IS WAITED FOR. The click dispatcher runs first, and its
+//    click-away saves an open note editor. Reloading in the same event could cancel that write, or
+//    fetch the page before it lands. If the editor is still open once the write settles (a save the
+//    server refused), the page stays where it is, words and all. Found by a fresh review.
+document.addEventListener("click", async (e) => {
   if (!e.target.closest("[data-update-reload]")) return;
-  if (!updateWaiting()) location.reload();
+  if (updateWaiting()) return;
+  if (noteWriteInFlight()) await noteSettled;
+  if (!updateWaiting() && noteState.editingId == null) location.reload();
 });
 
 // Sign out (auth-4): delegated so it survives home re-renders. Ends the session, returns to login.

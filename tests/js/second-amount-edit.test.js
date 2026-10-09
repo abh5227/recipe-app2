@@ -50,16 +50,17 @@ test("filled when there is a second amount, an outline when there is none, both 
   const src = body("secondCaret");
   assert.match(src, /open \? \(has \? "&#9662;" : "&#9663;"\) : \(has \? "&#9656;" : "&#9657;"\)/);
   const zone = body("amountZoneHTML");
-  assert.match(zone, /second-arrow\$\{t\.has \? " has" : ""\}/);
-  assert.match(zone, /secondCaret\(t\.has, t\.open\)/);
+  const arrow = body("secondArrowHTML");
+  assert.match(arrow, /second-arrow\$\{t\.has \? " has" : ""\}/);
+  assert.match(arrow, /secondCaret\(t\.has, t\.open\)/);
   // closed, nothing else shows: the fields are built only when the row is open
   assert.match(zone, /const fields = t\.open\s*\?/);
 });
 
 test("closed, the arrow's title and label carry the value, and it reports open or closed", () => {
-  const zone = body("amountZoneHTML");
-  assert.match(zone, /aria-expanded="\$\{t\.open\}"/);
-  assert.match(zone, /title="\$\{t\.has \? "Second amount: " \+ esc\(t\.value\) : "Add a second amount"\}"/);
+  const arrow = body("secondArrowHTML");
+  assert.match(arrow, /aria-expanded="\$\{t\.open\}"/);
+  assert.match(arrow, /title="\$\{t\.has \? "Second amount: " \+ esc\(t\.value\) : "Add a second amount"\}"/);
 });
 
 test("a row with several second-amount lines opens them all", () => {
@@ -141,4 +142,18 @@ test("typing into one line writes the whole slot from every open line, in order"
   const row = {};
   writeIngField(row, "second", joinSecondLines(["1 lb", "5 medium"]));
   assert.equal(row.secondary_measure, "1 lb / 5 medium");
+});
+
+test("a slot whose lines were all cleared is no second amount, and the arrow says so", () => {
+  assert.deepEqual(secondToggle({ secondary_measure: " / " }), { open: false, value: "", has: false });
+  assert.equal(secondToggle({ secondary_measure: "1 lb / " }).value, "1 lb");
+  assert.equal(secondToggle({ secondary_measure: "1 lb /  / or 2 long" }).value, "1 lb / or 2 long");
+});
+
+test("the arrow follows what is typed, without a repaint of the row", () => {
+  assert.match(APP, /ing\.dataset\.inlineEditIng === "second"\) syncSecondArrow\(Number\(ing\.dataset\.i\)\)/);
+  assert.match(APP, /ta\.dataset\.inlineEditIng === "second"\) syncSecondArrow\(Number\(ta\.dataset\.i\)\)/);
+  const src = body("syncSecondArrow");
+  assert.match(src, /arrow\.outerHTML = secondArrowHTML\(row, i\)/);
+  assert.match(body("amountZoneHTML"), /const arrow = secondArrowHTML\(x, i\)/);
 });

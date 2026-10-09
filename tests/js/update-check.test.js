@@ -76,10 +76,39 @@ test("every fetch in app.js goes through the hearing fetch", () => {
 });
 
 test("Reload never runs while Edit mode holds a change, and the bar follows the dirty flag", () => {
-  assert.match(APP, /\[data-update-reload\][\s\S]{0,160}if \(!updateWaiting\(\)\) location\.reload\(\)/);
+  const click = APP.slice(APP.indexOf('if (!e.target.closest("[data-update-reload]")) return;'));
+  const body = click.slice(0, click.indexOf("});"));
+  assert.match(body, /if \(updateWaiting\(\)\) return;/);
+  // a note the same click saved is waited for, and an editor still open after it stops the reload
+  assert.match(body, /if \(noteWriteInFlight\(\)\) await noteSettled;/);
+  assert.match(body, /if \(!updateWaiting\(\) && noteState\.editingId == null\) location\.reload\(\);/);
   assert.match(APP, /function updateWaiting\(\) \{\s*return !!\(view && view\.editMode && view\.dirty\);/);
-  const markDirty = APP.slice(APP.indexOf("function markDirty("), APP.indexOf("function markDirty(") + 400);
+  const markDirty = APP.slice(APP.indexOf("function markDirty("), APP.indexOf("function markDirty(") + 900);
   assert.match(markDirty, /paintUpdateBar\(\)/);
+  // ⚠️ not only on the first change: the plan-ahead handlers set view.dirty and then call markDirty
+  assert.match(markDirty, /if \(!view \|\| !view\.editMode\) return;/);
+  assert.equal(/view\.dirty\) return/.test(markDirty.slice(0, markDirty.indexOf("view.dirty = true"))), false);
   const paint = APP.slice(APP.indexOf("function paintRecipe("));
   assert.match(paint.slice(0, paint.indexOf("\n}\n")), /paintUpdateBar\(\)/);
+});
+
+test("no other module fetches, so nothing can go around the hearing fetch", () => {
+  const dir = path.join(import.meta.dirname, "../../static");
+  const others = fs.readdirSync(dir).filter((f) => f.endsWith(".js") && f !== "app.js" && f !== "update-check.js")
+    .filter((f) => /\bfetch\(/.test(fs.readFileSync(path.join(dir, f), "utf8")));
+  assert.deepEqual(others, [], "these modules call fetch( directly and the reload bar never hears them");
+});
+
+test("the slot is the live region and the sticky element, made once, and sits under every modal", () => {
+  assert.equal(/role=/.test(updateBarHTML(false)), false, "the bar carries no role; the slot is the live region");
+  assert.match(APP, /slot\.setAttribute\("role", "status"\)/);
+  assert.match(APP, /\nupdateSlot\(\);/, "the slot is made at start, empty");
+  assert.match(APP, /if \(html === paintedBar\) return;/, "painted only when it would change");
+  const CSS = fs.readFileSync(path.join(import.meta.dirname, "../../static/styles.css"), "utf8");
+  const slot = CSS.match(/\.update-bar-slot \{([^}]*)\}/);
+  assert.ok(slot, "no .update-bar-slot rule");
+  assert.match(slot[1], /position: sticky; top: 0;/);
+  const z = Number(slot[1].match(/z-index: (\d+)/)[1]);
+  assert.ok(z < 40, `the slot's z-index ${z} must sit under the scrim's 40`);
+  assert.equal(/position: sticky/.test(CSS.match(/\.update-bar \{([^}]*)\}/)[1]), false);
 });

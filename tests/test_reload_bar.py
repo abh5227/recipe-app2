@@ -65,6 +65,8 @@ def test_a_server_git_cannot_name_sends_nothing(kitchen, tmp_path, monkeypatch):
 
 def test_only_a_commit_shaped_answer_is_trusted(monkeypatch):
     for out, want in (("0123456789abcdef0123456789abcdef01234567\n", "0123456789abcdef0123456789abcdef01234567"),
+                      ("a" * 64 + "\n", "a" * 64),          # a SHA-256 repository
+                      ("a" * 50 + "\n", ""),
                       ("fatal: not a git repository\n", ""), ("", ""), ('" onload="x\n', "")):
         monkeypatch.setattr(app.subprocess, "run",
                             lambda *a, _o=out, **k: subprocess.CompletedProcess(a, 0, _o, ""))

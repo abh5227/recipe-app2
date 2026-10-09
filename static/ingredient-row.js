@@ -69,8 +69,12 @@ import { SECOND_AMOUNT_JOIN } from "./scaler.js";
   // ⚠️ AND IT DOES NOT AUTO-OPEN THE WAY A NOTE DOES. addNote opens its field whenever the row
   // HAS a note, because a note is prose a cook reads while editing. The second amount is a
   // measurement, and the whole point of the change is that the amount column shows one figure.
+  //
+  // ⚠️ THE VALUE IS WHAT A SAVE WOULD SEND. A row whose lines were all cleared holds " / " while its
+  //    fields are open, and that is not a second amount: the arrow drew filled with the title
+  //    "Second amount: /" while the save stored NULL. Found by a fresh review.
   function secondToggle(row) {
-    const value = String((row && row.secondary_measure) || "").trim();
+    const value = secondForSave(row && row.secondary_measure).trim();
     return { open: !!(row && row._secondOpen), value, has: value !== "" };
   }
 

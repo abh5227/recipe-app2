@@ -36,9 +36,10 @@ export function heardCommit(state, server) {
   return updated === state.updated ? state : { page: state.page, updated };
 }
 
-// The bar, variant 1 as previewed. `waiting` is "Edit mode is open with a change unsaved".
+// The bar, variant 1 as previewed. `waiting` is "Edit mode is open with a change unsaved". It carries
+// no role of its own: the slot app.js draws it into is the live region, made once and kept.
 export function updateBarHTML(waiting) {
-  return `<div class="update-bar${waiting ? " is-waiting" : ""}" role="status">` +
+  return `<div class="update-bar${waiting ? " is-waiting" : ""}">` +
     `<span class="update-bar-text">${UPDATE_WORDS}</span>` +
     (waiting ? `<span class="update-wait">${UPDATE_WAIT}</span>` : "") +
     `<button type="button" class="btn sm" data-update-reload${waiting ? " disabled" : ""}>Reload</button>` +
