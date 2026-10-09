@@ -1015,7 +1015,15 @@ def _carried(decided, row_id):
     decision, reason = decided[row_id]
     if row_id in RESIDUAL_2_NOT_RUN:
         return [decision, f"NOT RUN by this pass: {RESIDUAL_2_NOT_RUN[row_id]}"]
-    return [decision, f"carried from a committed residual decisions file: {reason}"]
+    # ⚠️ ONCE, NOT ONCE PER REVISION. A decisions file can be this very list copied and committed
+    #    (round-b-residual-decisions-4 is), so its REASONs already carry the prefix, and adding it
+    #    again stacked "carried from ...: carried from ..." on every carried row.
+    if reason.startswith(CARRIED):
+        return [decision, reason]
+    return [decision, f"{CARRIED}{reason}"]
+
+
+CARRIED = "carried from a committed residual decisions file: "
 
 
 def main(argv=None):

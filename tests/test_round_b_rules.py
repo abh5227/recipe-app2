@@ -1505,3 +1505,12 @@ def test_the_four_plus_more_lines_are_decided_as_their_files_say():
         assert rid in _rb.DECIDED_ROWS
     assert _rb.RESIDUAL_FIXES[8493]["second"]["note"] == "plus more for the sauce"
     assert 7462 in _rb.RESIDUAL_HELD and 7462 not in _rb.DECIDED_ROWS
+
+
+def test_a_carried_reason_says_so_once():
+    """A decisions file can be the residual list copied and committed, so its REASONs already carry
+    the prefix. Carrying them again must not stack it."""
+    decided = {1: ("keep", "Your edits are sacred."), 2: ("keep", _rb.CARRIED + "Your edits are sacred.")}
+    assert _rb._carried(decided, 1)[1] == _rb.CARRIED + "Your edits are sacred."
+    assert _rb._carried(decided, 2)[1] == _rb.CARRIED + "Your edits are sacred."
+    assert _rb._carried({}, 3) == ["", ""]
