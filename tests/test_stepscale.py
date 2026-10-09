@@ -252,3 +252,19 @@ def test_the_payload_carries_spans_only_on_a_substitution_note():
     ])
     assert [("note_spans" in r) for r in rows] == [True, False, False, False]
     assert rows[0]["note"] == "or 2 tablespoons Korean doenjang + 1 tablespoon water"
+
+
+def test_a_per_serving_phrase_earlier_in_the_sentence_locks_the_amount():
+    """MUST-FIX from the revision 2 review: kfc-spicy-chicken-rice-bowl's six per-serving figures
+    doubled at 2x because the lock only looked AFTER each amount."""
+    text = ("In a mixing bowl, PER EACH SERVING OF CHICKEN (see note above), add 1 tablespoon of the "
+            "toasted rice powder, ¼ teaspoon of chicken bouillon powder. Then, per serving, add "
+            "1 tablespoon + ¾ teaspoon (~19 ml) of the liquid dressing.")
+    assert [s["text"] for s in ss.api_spans(text) if s["t"] == "scale"] == []
+
+
+def test_a_total_ahead_of_the_per_person_share_still_scales():
+    spans = ss.api_spans("Divide 2 cups rice among the bowls, about 1/2 cup per person.")
+    assert [s["text"] for s in spans if s["t"] == "scale"] == ["2 cups"]
+    spans = ss.api_spans("Toast 1 cup nuts. Set aside 2 tablespoons per serving.")
+    assert [s["text"] for s in spans if s["t"] == "scale"] == ["1 cup"]

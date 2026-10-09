@@ -136,7 +136,11 @@
   };
   // All measuring units (volume + weight, imperial + metric) — used to tell a real measure
   // from a bare count/descriptor. Excludes bare "l"/"L" (it would match "small", "oil").
-  const MEASURE_UNIT_RE = /\b(fl\s+oz|fluid\s+ounces?|cups?|tbsp|tablespoons?|tsp|teaspoons?|ounces?|oz|lbs?|pounds?|kilograms?|kg|grams?|g|millilit(?:er|re)s?|ml|lit(?:er|re)s?)\b/i;
+  // ⚠️ "tbs" IS HERE SINCE ROUND B REVISION 2. Without it a "tbs" amount read as a COUNT and
+  //    rounded to whole numbers: beef-bulgogi's note at ½x printed "~1 tbs" for ½ and ¾ of one.
+  //    stepscale.py's tagger learned the word in the same revision. It has no entry in UNIT_TO_ML,
+  //    so no estimate or metric conversion reads it, which is what it had before.
+  const MEASURE_UNIT_RE = /\b(fl\s+oz|fluid\s+ounces?|cups?|tbsp|tbs|tablespoons?|tsp|teaspoons?|ounces?|oz|lbs?|pounds?|kilograms?|kg|grams?|g|millilit(?:er|re)s?|ml|lit(?:er|re)s?)\b/i;
   const MEASURE_UNIT_RE_G = new RegExp(MEASURE_UNIT_RE.source, "gi");
 
   // Metric threshold: amounts at or below 2 tbsp stay in measuring spoons (tsp/tbsp).
@@ -324,7 +328,7 @@
   // step by tests/js/per-serving-sync.test.js. A first draft put the list in import_cleanup where
   // only one of the three could see it, and a fresh review found the ledger and the method
   // disagreeing on one page at 2x.
-  const PER_SERVING = /\bper\s+(?:person|serving|servings|guest|portion|diner)\b/i;
+  const PER_SERVING = /\bper\s+(?:each\s+)?(?:person|serving|servings|guest|portion|diner)\b/i;
 
   // R1. A SIZED PIECE IS THE AMOUNT, AND THE SIZE IS NEVER A QUANTITY. "1-inch knob" doubled must
   // not print "2-inch knob", which is what the ordinary number scaler does to it: the figure in

@@ -220,13 +220,26 @@ def parse_step(text):
 #       that ran to the full stop would have locked both. The words live in units.py, which is the
 #       one home this rule, import_cleanup's R3 and static/scaler.js all read.
 _PER_SERVING_CLAUSE_END = re.compile(r"[,.;:]")
+# ⚠️ AND A PER-SERVING PHRASE EARLIER IN THE SAME SENTENCE LOCKS IT TOO. Found by the revision 2
+#    review: kfc-spicy-chicken-rice-bowl writes "PER EACH SERVING OF CHICKEN (see note above), add
+#    1 tablespoon ..." and "Then, per serving, add 1 tablespoon + ¾ teaspoon (~19 ml)", and all six
+#    figures doubled at 2x. Measured over the 300 methods before writing it: exactly those 6 spans
+#    have a per-serving phrase earlier in their sentence, and nothing else does. The sentence, not
+#    the clause, because "Then, per serving, add" puts the phrase in the clause before the amount.
+_SENTENCE_END = re.compile(r"[.!?;:](?=\s|$)")
 
 
-def _locked_per_serving(text, after):
-    """Does the amount ending at `after` belong to a per-person figure in its own clause?"""
+def _locked_per_serving(text, after, start=None):
+    """Does the amount ending at `after` (and starting at `start`) belong to a per-person figure,
+    either in its own clause after it or earlier in its own sentence?"""
     end = _PER_SERVING_CLAUSE_END.search(text, after)
     clause = text[after:end.start() if end else len(text)]
-    return bool(units.PER_SERVING_RE.search(clause))
+    if units.PER_SERVING_RE.search(clause):
+        return True
+    if start is None:
+        return False
+    ends = [m.end() for m in _SENTENCE_END.finditer(text, 0, start)]
+    return bool(units.PER_SERVING_RE.search(text[ends[-1] if ends else 0:start]))
 
 
 def api_spans(text, _parsed=None, _promote=None):
@@ -244,9 +257,10 @@ def api_spans(text, _parsed=None, _promote=None):
             buf.clear()
 
     for i, sp in enumerate(_parsed if _parsed is not None else parse_step(text)):
+        start = at
         at += len(sp["text"])
         scalable = sp["category"] in (MARKED_SCALE, HEURISTIC_SCALE) or i == _promote
-        if scalable and _locked_per_serving(text, at):
+        if scalable and _locked_per_serving(text, at, start):
             scalable = False               # per person is per person at every factor
         if scalable:
             flush()

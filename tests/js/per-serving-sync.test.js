@@ -29,7 +29,7 @@ test("the JS PER_SERVING words equal the Python PER_SERVING_WORDS, in the same o
   assert.ok(m, "PER_SERVING_WORDS not found in units.py");
   const words = [...m[1].matchAll(/"([a-z]+)"/g)].map((x) => x[1]);
   assert.ok(words.length >= 5, `parsed too few Python words (${words.length})`);
-  assert.equal(PER_SERVING.source, `\\bper\\s+(?:${words.join("|")})\\b`);
+  assert.equal(PER_SERVING.source, `\\bper\\s+(?:each\\s+)?(?:${words.join("|")})\\b`);
   assert.equal(PER_SERVING.flags, "i");
 });
 

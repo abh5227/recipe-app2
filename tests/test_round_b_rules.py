@@ -969,10 +969,16 @@ def test_a_discarded_plan_leaves_no_note_and_no_second_food():
     restores the snapshot when no amount comes back. `res` carries neither `note` nor
     `second_food` at snapshot time, so a DISCARDED plan left both behind: the cumin row was
     written as an ambiguous row stating its substitution twice, in the name and in the note under
-    it, and the apple-pie line named the same zest twice."""
+    it, and the apple-pie line named the same zest twice.
+
+    ⚠️ REVISION 2 MOVED THE NOTE BACK, ON PURPOSE, AND THE GUARD IS NOW WHAT IT ALWAYS MEANT: ONCE.
+    note_rules runs on the no-amount path too, because the corpus pass applies R5 to the same line
+    stored with no amount. The substitution is in the note and OUT of the name, which is stated
+    once. What this test held shut was stating it twice."""
     d = ic.classify_line("cumin seeds (or 1 tsp ground cumin)")
     assert d["kind"] == "flagged"
-    assert (d.get("note") or None) is None
+    assert d["note"] == "or 1 tsp ground cumin"
+    assert "or 1 tsp" not in d["name"]
     assert d.get("second_food") is None
     d = ic.classify_line("lemon juice (plus the zest of half of a lemon)")
     assert d.get("second_food") is None
@@ -1372,3 +1378,63 @@ def test_the_importer_runs_r7(line, name, note):
     d = ic.classify_line(line)
     assert d["name"] == name
     assert d.get("note") == note
+
+
+# =========================================================================== #
+# What the fresh reviewer of revision 2 found. Each test holds one defect shut;
+# every one was reproduced before it was fixed.
+# =========================================================================== #
+
+@pytest.mark.parametrize("line", [
+    "4 tablespoons extra virgin olive oil, plus more for serving freshly ground black pepper",
+    "2 tbsp olive oil, plus more for drizzling Kosher salt and black pepper",
+])
+def test_a_for_purpose_cannot_carry_another_ingredient_into_the_note(line):
+    """MUST-FIX: the "for" arm took "for" plus anything without a digit, so the importer put the
+    pepper inside a note about olive oil with no flag. A purpose is short and lowercase."""
+    d = ic.classify_line(line)
+    assert d.get("note") is None
+    assert ic.PLUS_MORE_RUNS_ON_FLAG in d["flags"]
+
+
+@pytest.mark.parametrize("remark", [
+    "plus more for dusting", "plus more for rolling out the dough", "plus more for oiling the dough",
+    "plus more for greasing the pan", "plus more for kneading and rolling", "plus more for dough resting",
+    "plus more for the sauce", "plus extra for pan-frying", "plus more to taste and for seasoning croquettes",
+    "plus more if needed", "plus some for garnish",
+])
+def test_every_purpose_shape_the_corpus_writes_still_reads_as_a_remark(remark):
+    assert ic._PLUS_MORE_REMARK_RE.match(remark), remark
+
+
+@pytest.mark.parametrize("line, name, note", [
+    ("1 lemon or 2 limes", "lemon", "or 2 limes"),
+    ("1 medium onion (or 2 shallots)", "onion", "or 2 shallots"),
+])
+def test_an_or_count_of_a_food_the_line_never_names_keeps_its_food(line, name, note):
+    """MUST-FIX: "limes" shared no word with the line, so there was no leftover, no ruling, and R2
+    stored "or 2" alone. The limes were in no column at all."""
+    d = ic.classify_line(line)
+    assert d["name"] == name
+    assert d.get("note") == note
+    assert not d.get("secondary_measure")
+
+
+def test_the_alternative_s_head_is_a_food_word_never_a_counting_noun():
+    """SHOULD-FIX: "or 6 small lemon thyme sprigs" ended on "sprigs", which the line's head had
+    already stripped, so the two heads disagreed on one food and nothing moved or was flagged."""
+    d = ic.classify_line("4 sprigs thyme (or 6 small lemon thyme sprigs)")
+    assert d["secondary_measure"] == "or 6 small lemon"
+    assert d["name"] == "thyme"
+
+
+@pytest.mark.parametrize("line, name, note", [
+    ("Kosher salt, plus more for serving", "Kosher salt", "plus more for serving"),
+    ("cumin seeds (or 1 tsp ground cumin)", "cumin seeds", "or 1 tsp ground cumin"),
+])
+def test_the_importer_s_no_amount_path_still_runs_r5_and_r7(line, name, note):
+    """SHOULD-FIX: block 3d threw the whole plan away when no amount resolved, so the corpus pass
+    moved these remarks and the importer kept them in the name. note_rules is now both paths'."""
+    d = ic.classify_line(line)
+    assert d["name"] == name
+    assert d["note"] == note

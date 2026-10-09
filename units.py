@@ -153,7 +153,9 @@ def fix_plurals(s):
 # then refused to scale a head of cabbage. "per head" does mean per person in British English; the
 # collision is the problem, and the losing reading was silent.
 PER_SERVING_WORDS = ("person", "serving", "servings", "guest", "portion", "diner")
-PER_SERVING_SRC = r"\bper\s+(?:" + "|".join(PER_SERVING_WORDS) + r")\b"
+# ⚠️ "PER EACH SERVING" IS PER SERVING. kfc-spicy-chicken-rice-bowl writes it in capitals as the
+#    lead of a method step, and the pattern without the optional "each" read past it.
+PER_SERVING_SRC = r"\bper\s+(?:each\s+)?(?:" + "|".join(PER_SERVING_WORDS) + r")\b"
 PER_SERVING_RE = re.compile(PER_SERVING_SRC, re.IGNORECASE)
 
 

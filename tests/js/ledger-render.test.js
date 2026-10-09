@@ -134,3 +134,20 @@ test("a size or a per-person figure inside a substitution note never scales", ()
                    note_spans: [{ t: "plain", text: "or " }, { t: "scale", text: "1-inch piece" }] };
   assert.equal(noteLine(ginger, 2), "or 2 × 1-inch pieces");
 });
+
+// ---- What the revision 2 review found ---------------------------------------------------------- //
+test("beef-bulgogi: a tbs in a note scales as a tablespoon, not a count", () => {
+  // MUST-FIX: "tbs" was not a unit on the client, so it read as a count and rounded to whole numbers.
+  const row = { qty: "2 tbs", note: "or 1 tbs of brown sugar and 1½ tbs rice syrup",
+    note_spans: [{ t: "plain", text: "or " }, { t: "scale", text: "1 tbs" },
+                 { t: "plain", text: " of brown sugar and " }, { t: "scale", text: "1½ tbs" },
+                 { t: "plain", text: " rice syrup" }] };
+  assert.equal(noteLine(row, 0.5), "or ½ tbs of brown sugar and ¾ tbs rice syrup");
+  assert.equal(noteLine(row, 3), "or 3 tbs of brown sugar and 4½ tbs rice syrup");
+});
+
+test("'per each serving' is per serving", () => {
+  for (const f of [0.5, 2, 3]) {
+    assert.equal(amountText("1 tablespoon per each serving", f), amountText("1 tablespoon per each serving", 1));
+  }
+});

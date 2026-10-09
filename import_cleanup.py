@@ -1120,6 +1120,12 @@ def count_parts(text, context="", amount=""):
     #    each name is what decides it (same_food_count). A fragment that names no word of the
     #    row at all is simply counting in a noun of its own ("3 teabags"), and refusing that was
     #    the first draft's regression on three rows round B already stored.
+    # ⚠️ THE HEAD IS A FOOD WORD, NEVER A COUNTING NOUN, the same rule _name_head applies to the
+    #    line. "or 6 small lemon thyme sprigs" under "4 sprigs thyme" ended its names on "sprigs",
+    #    which the line's head had already stripped, so the two heads disagreed on one food and
+    #    the row was neither moved nor flagged. Found by a fresh review.
+    foods = [w for w in named if w.lower() not in _COUNT_NOUNS and w.lower() not in
+             _PLANT_PART_NOUNS and w.lower() not in _COUNT_EXTRA_NOUNS]
     return {"count": _norm_ws(" ".join(count)), "food": _norm_ws(" ".join(food)),
             "dropped": dropped,
             "leftover": _norm_ws(" ".join(food)) if dropped else "",
@@ -1127,7 +1133,7 @@ def count_parts(text, context="", amount=""):
             # words that say which kind, in the author's order. "or ½ English cucumber" on a
             # Persian cucumber reads "or ½ English".
             "kind": _norm_ws(" ".join(kept)),
-            "head": _count_stem(named[-1]) if named else ""}
+            "head": _count_stem(foods[-1]) if foods else ""}
 
 
 def _one_count(t, context=""):
@@ -1241,7 +1247,13 @@ def or_count_alternative(text, context="", amount=""):
     if not _COUNT_OR_LEAD_RE.match(t) or not count_restatement(t, context):
         return None
     split = count_parts(t, context, amount)
-    if not split["leftover"]:
+    # ⚠️ ANY FOOD WORD, NOT ONLY A LEFTOVER ONE, AND THE FIRST DRAFT ASKED ONLY ABOUT LEFTOVERS. A
+    #    fresh review ran "1 lemon or 2 limes": "limes" shares no word with the line, so there was
+    #    no leftover, no ruling, and R2 stored the count alone. The second amount read "or 2" under
+    #    "1 lemon" and the limes were in no column at all. A fragment that names a food the line
+    #    does not is asked the head question like any other; one that names nothing ("or 2 small
+    #    ones", "or 6-8 cilantro stems") needs no ruling. 0 corpus rows were affected.
+    if not split["food"]:
         return None
     head = _name_head(context)
     return {"same": bool(head) and split["head"] == head, "split": split}
@@ -2219,11 +2231,23 @@ def plus_another_food(row):
 _PLUS_MORE_LEAD = r"plus\s+(?:more|extra|some|additional)\b"
 _PLUS_MORE_BRACKET_RE = re.compile(r"\(\s*(" + _PLUS_MORE_LEAD + r"[^()]*?)\s*\)", re.IGNORECASE)
 _PLUS_MORE_BARE_RE = re.compile(r"(?:\s*,\s*|\s+)(" + _PLUS_MORE_LEAD + r")", re.IGNORECASE)
-_PLUS_MORE_PURPOSE = (r"(?:(?:if|as)\s+(?:needed|necessary|desired)|to\s+[a-z-]+"
-                      r"|for\s+[^\d]+?)")
+# ⚠️ "FOR" TAKES A PURPOSE, NOT "FOR" PLUS ANYTHING, AND THE FIRST DRAFT TOOK ANYTHING. A fresh
+#    review ran "olive oil, plus more for serving freshly ground black pepper" through the importer
+#    and got the pepper inside the note with no flag, where "to serve" with the same tail was
+#    caught. A purpose is one or two lowercase words ("garnish", "pan-frying", "dough resting",
+#    "kneading and rolling"), or a verb and its object ("oiling the dough", "rolling out the
+#    dough"). All 74 corpus remarks are one of those. Anything longer, or carrying a capital, is a
+#    line run into the remark, which is the case the flag exists for. Case-sensitive on purpose:
+#    "Kosher salt" in "for drizzling Kosher salt and black pepper" is the new line's first word.
+_W = r"[a-z][a-z'-]*"
+_PLUS_MORE_FOR = (r"for\s+(?:" + _W + r"(?:\s+and\s+" + _W + r")?"
+                  r"|" + _W + r"\s+" + _W
+                  + r"|" + _W + r"(?:\s+out)?\s+(?:the|a|an|your)\s+" + _W + r"(?:\s+" + _W + r")?)")
+_PLUS_MORE_PURPOSE = (r"(?:(?:if|as)\s+(?:needed|necessary|desired)|to\s+" + _W
+                      + r"|" + _PLUS_MORE_FOR + r")")
 _PLUS_MORE_REMARK_RE = re.compile(
-    r"^" + _PLUS_MORE_LEAD + r"\s+" + _PLUS_MORE_PURPOSE
-    + r"(?:\s+and\s+" + _PLUS_MORE_PURPOSE + r")?\s*$", re.IGNORECASE)
+    r"^[Pp]lus\s+(?:more|extra|some|additional)\s+" + _PLUS_MORE_PURPOSE
+    + r"(?:\s+and\s+" + _PLUS_MORE_PURPOSE + r")?\s*$")
 PLUS_MORE_RULE = "plus_more_to_the_note"
 PLUS_MORE_RUNS_ON_FLAG = "plus_more_runs_on"
 PLUS_MORE_NOTE_TAKEN_FLAG = "plus_more_but_the_note_is_taken"
@@ -2313,7 +2337,8 @@ def substitution_to_note(row):
             #    tomatoes" carries no unit and still offers a DIFFERENT food, because its head is
             #    tomatoes and the row's is sauce. or_count_alternative is the same question R2's
             #    fragment reader asks, so the count goes to exactly one of the two.
-            alt = or_count_alternative(inner, name[:span[0]] + " " + name[span[1]:])
+            alt = or_count_alternative(inner, name[:span[0]] + " " + name[span[1]:],
+                                       row.get("qty") or "")
             if not alt or alt["same"]:
                 continue                           # no amount of its own, or the same food
             text = units.fix_plurals("or " + _norm_ws(rest))
@@ -2472,6 +2497,50 @@ def remark_row_to_note(above, row):
     return {"title": title, "text": inner, "rule": REMARK_ROW_RULE,
             "why": f"the row is only the remark {inner!r} and it sits directly under the "
                    f"ingredient heading {title!r}, so it is a note about that section"}
+
+
+def note_rules(row, name, new_name, changes, notes, rules, why):
+    """R5 then R7: the two rules that move a clause out of the name into the row's note.
+
+    `name` is the stored name the rules read and `new_name` is the name as the rules before them
+    left it; each takes its own exact words out of `new_name`, so an earlier rule having moved part
+    of the name cannot make either cut in the wrong place. Returns the new name.
+
+    ⚠️ ONE FUNCTION, TWO CALLERS, AND THE SECOND ONE WAS MISSING. amount_plan calls it, and so does
+       the importer's no-amount path (classify_line block 3d), which throws the rest of the plan away
+       when no amount resolves. A fresh review found "Kosher salt, plus more for serving" moving its
+       remark in the corpus pass and keeping it in the name on import, the two callers of one rule
+       disagreeing. Neither rule needs an amount: each reads only the name.
+    """
+    sub = substitution_to_note(row)
+    if sub and "flag" in sub:
+        notes.append((sub["flag"], sub["why"]))
+    elif sub:
+        lo, hi = sub["span"]
+        words = name[lo:hi]
+        if words and words in new_name and not (row.get("note") or "").strip():
+            new_name = new_name.replace(words, " ", 1)
+            changes["note"] = sub["note"]
+            rules.append(sub["rule"])
+            why.append(sub["why"])
+    # R7: "plus more …" to the note. A note R5 already wrote on this row is a taken note, the same
+    # as one the row arrived with.
+    more = plus_more_to_note(row)
+    if more and "flag" in more:
+        notes.append((more["flag"], more["why"]))
+    elif more:
+        lo, hi = more["span"]
+        words = name[lo:hi]
+        if "note" in changes:
+            notes.append((PLUS_MORE_NOTE_TAKEN_FLAG,
+                          f"{more['note']!r} is a remark for the note and this row's note is "
+                          f"taken by {changes['note']!r}, so nothing is overwritten"))
+        elif words and words in new_name:
+            new_name = new_name.replace(words, " ", 1)
+            changes["note"] = more["note"]
+            rules.append(more["rule"])
+            why.append(more["why"])
+    return new_name
 
 
 def apply_amount_plan(res, line, density=None):
@@ -2644,17 +2713,7 @@ def amount_plan(row, density=None):
     #    the substring they read rather than by an index, so an earlier rule having already moved
     #    part of the name cannot make either one cut in the wrong place. A rule whose words are no
     #    longer there does not fire and claims nothing.
-    sub = substitution_to_note(row)
-    if sub and "flag" in sub:
-        notes.append((sub["flag"], sub["why"]))
-    elif sub:
-        lo, hi = sub["span"]
-        words = name[lo:hi]
-        if words and words in new_name and not (row.get("note") or "").strip():
-            new_name = new_name.replace(words, " ", 1)
-            changes["note"] = sub["note"]
-            rules.append(sub["rule"])
-            why.append(sub["why"])
+    new_name = note_rules(row, name, new_name, changes, notes, rules, why)
     plus = plus_another_food(row)
     if plus and "flag" in plus:
         notes.append((plus["flag"], plus["why"]))
@@ -2666,23 +2725,6 @@ def amount_plan(row, density=None):
             insert = plus["row"]
             rules.append(plus["rule"])
             why.append(plus["why"])
-    # R7: "plus more …" to the note, by its exact words like R4 and R5. A note R5 already wrote on
-    # this row is a taken note, the same as one the row arrived with.
-    more = plus_more_to_note(row)
-    if more and "flag" in more:
-        notes.append((more["flag"], more["why"]))
-    elif more:
-        lo, hi = more["span"]
-        words = name[lo:hi]
-        if "note" in changes:
-            notes.append((PLUS_MORE_NOTE_TAKEN_FLAG,
-                          f"{more['note']!r} is a remark for the note and this row's note is "
-                          f"taken by {changes['note']!r}, so nothing is overwritten"))
-        elif words and words in new_name:
-            new_name = new_name.replace(words, " ", 1)
-            changes["note"] = more["note"]
-            rules.append(more["rule"])
-            why.append(more["why"])
     new_name = _tidy_name(new_name)
     # ⚠️ A RULE THAT WOULD LEAVE THE ROW WITH NO NAME DOES NOT FIRE, AND THAT IS WHAT MADE THE
     #    PASS NON-IDEMPOTENT. buttermilk-biscuits stores "1¼ cups plus 2 tablespoons" with no food
@@ -5023,6 +5065,17 @@ def classify_line(raw, section_hints=None, has_stored_amount=False):
         return res
     res.clear()
     res.update(before)
+    # R5 and R7 still apply: they move a clause from the name to the note and need no amount, and
+    # the corpus pass applies them to the same line stored with no amount. See note_rules.
+    changes, notes_, rules_, why_ = {}, [], [], []
+    name = res["name"]
+    moved = _tidy_name(note_rules({"label": name, "raw_text": line, "note": None}, name, name,
+                                  changes, notes_, rules_, why_))
+    if "note" in changes and moved:
+        res["name"], res["note"] = moved, changes["note"]
+    for flag, _reason in notes_:
+        if flag not in res["flags"]:
+            res["flags"].append(flag)
 
     # 4. No amount, no measurement, not a clear section -> ambiguous; suggest (never decide).
     res["kind"] = "flagged"
