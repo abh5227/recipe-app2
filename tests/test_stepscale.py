@@ -180,3 +180,67 @@ def test_a_month_is_still_not_a_time_unit():
     widened past what was measured."""
     assert ss.GUARDED not in _categories("keeps 6 months")
 
+
+
+# --------------------------------------------------------------------------- #
+# Round B revision 2: a substitution note's amounts scale with the servings
+# --------------------------------------------------------------------------- #
+from stepscale import note_spans  # noqa: E402
+
+
+def _scaled(spans):
+    return [s["text"] for s in spans if s["t"] == "scale"]
+
+
+def test_the_tao_jiew_note_tags_both_amounts():
+    """Andy's case. At 2x it must read "or 4 tablespoons Korean doenjang + 2 tablespoons water",
+    and the client gets there by scaling exactly these two spans."""
+    spans = note_spans("or 2 tablespoons Korean doenjang + 1 tablespoon water")
+    assert _scaled(spans) == ["2 tablespoons", "1 tablespoon"]
+    assert "".join(s["text"] for s in spans) == \
+        "or 2 tablespoons Korean doenjang + 1 tablespoon water"
+
+
+def test_the_count_right_after_the_or_is_the_alternative_s_quantity():
+    """mexican-rice: "or 2 pureed tomatoes". The method tagger leaves a bare count alone; the
+    count opening a substitution note is the one it does not."""
+    assert _scaled(note_spans("or 2 pureed tomatoes")) == ["2"]
+
+
+@pytest.mark.parametrize("note", [
+    "(½ pound each)",                      # a size per piece
+    "about ½ cup per person",              # per person, and no "or" either
+    "or about ½ cup per person",           # per person after an "or": still never scales
+    "use 2 tablespoons if the paste is dry",   # a note with no "or" at the start
+    "plus more for dusting",
+    "sifted",
+    "or to taste",
+    "",
+    None,
+])
+def test_notes_that_must_not_scale_carry_no_spans(note):
+    assert note_spans(note) is None
+
+
+def test_a_size_inside_a_note_never_scales_and_its_count_does():
+    spans = note_spans("or 2 (1-inch) pieces ginger")
+    assert _scaled(spans) == ["2"]
+    assert "(1-inch) pieces ginger" in "".join(s["text"] for s in spans if s["t"] == "plain")
+
+
+def test_a_note_the_tagger_cannot_read_whole_is_left_whole():
+    """beef-bulgogi writes "tbs", which is not a unit the tagger knows. Scaling the brown sugar
+    and not the syrup would print a substitution that no longer adds up."""
+    assert note_spans("or 1 tbs of brown sugar and 1½ tbs rice syrup") is None
+
+
+def test_the_payload_carries_spans_only_on_a_substitution_note():
+    import app
+    rows = app.attach_note_spans([
+        {"is_heading": 0, "note": "or 2 tablespoons Korean doenjang + 1 tablespoon water"},
+        {"is_heading": 0, "note": "plus more for dusting"},
+        {"is_heading": 0, "note": None},
+        {"is_heading": 1, "note": None},
+    ])
+    assert [("note_spans" in r) for r in rows] == [True, False, False, False]
+    assert rows[0]["note"] == "or 2 tablespoons Korean doenjang + 1 tablespoon water"

@@ -97,9 +97,22 @@
   // Scale a quantity string by `factor`; unchanged at factor 1 or a 0/negative/NaN factor
   // (but a degenerate "N to N" range still collapses to "N"). factor is passed in — in the
   // browser it's view.scale; in tests it's explicit.
+  // ⚠️ THE TWO AMOUNTS THAT NEVER SCALE ARE REFUSED HERE, AT THE BOTTOM, so no caller can scale
+  //    them. Revision 1 refused them in amountText, one layer up, and every caller that reached
+  //    scaleQty or scaleCount directly (the method spans, toMetric, and the note amounts revision
+  //    2 adds) was on its own. Andy's click-through then showed "about ½ cup per person" doubling
+  //    at 2x. That page was running a bundle from before revision 1 (the :8002 log shows his tab
+  //    never fetched the new one), but the lesson stands: a rule stated one layer up from where
+  //    the scaling happens protects only the callers that pass through that layer.
+  //    PER_SERVING and PIECE_ANYWHERE are declared further down; both are read at call time.
+  function neverScales(qty) {
+    const s = String(qty == null ? "" : qty);
+    return PER_SERVING.test(s) || PIECE_ANYWHERE.test(s);
+  }
+
   function scaleQty(qty, factor) {
     if (qty == null) return "";
-    if (factor === 1 || !(factor > 0)) return collapseRange(qty);   // x1 / invalid: still collapse N-to-N
+    if (factor === 1 || !(factor > 0) || neverScales(qty)) return collapseRange(qty);   // x1 / invalid / locked: still collapse N-to-N
     let found = false;
     const scaled = normalizeFractions(qty).replace(AMOUNT_TOKEN, (token) => {
       const n = tokenToNumber(token);
@@ -141,7 +154,7 @@
 
   // Scale a countable amount, rounding to a whole number (min 1). Left as authored at factor 1.
   function scaleCount(qty, factor) {
-    if (!(factor > 0) || factor === 1) return qty;
+    if (!(factor > 0) || factor === 1 || neverScales(qty)) return qty;
     let found = false, clampedUp = false;
     const out = normalizeFractions(String(qty)).replace(AMOUNT_TOKEN, (token) => {
       const n = tokenToNumber(token);
@@ -183,6 +196,7 @@
   //  - oz/lb                -> grams by fixed factor; already-metric/uncombinable -> scaled as-is.
   // `factor` (view.scale) and `gramsPerMl` (server-attached, or null) are passed in.
   function toMetric(qty, gramsPerMl, factor) {
+    if (neverScales(qty)) factor = 1;     // converted, never multiplied (see neverScales)
     const parsed = parseAmount(normalizeFractions(String(qty)));
     if (!parsed) return scaleQty(qty, factor);
     const scaledValue = parsed.value * factor;
@@ -382,16 +396,21 @@
     });
   }
 
-  function amountText(qty, factor) {
+  // `opts.words` keeps the author's unit words ("tablespoons") instead of the ledger's
+  // abbreviation ("Tbsp"). Round B revision 2's note amounts use it: Andy's 2x of the Tao Jiew note
+  // reads "or 4 tablespoons Korean doenjang + 2 tablespoons water", in the words the author wrote,
+  // with every other step of the scaling exactly the ledger's.
+  function amountText(qty, factor, opts) {
     if (qty == null || String(qty).trim() === "") return "";
     const f = factor > 0 ? factor : 1;
+    const abbrev = opts && opts.words ? (x) => x : abbrevUnits;
     // R3 first: an amount marked per person is printed as the author wrote it, at every factor.
     // ⚠️ REFUSING TO SCALE IS NOT A REASON TO SKIP THE FACTOR-INDEPENDENT FIXES, and a first draft
     //    skipped both. fixPlurals agrees the unit with its figure ("1 cups" -> "1 cup") and
     //    collapseRange reduces a degenerate "1 to 1 tbsp" to "1 tbsp". Neither depends on the
     //    factor, and the old path applied both at factor 1.
     if (PER_SERVING.test(String(qty))) {
-      return toUnicodeFractions(abbrevUnits(fixPlurals(collapseRange(String(qty).trim()))));
+      return toUnicodeFractions(abbrev(fixPlurals(collapseRange(String(qty).trim()))));
     }
     // R1 next: a sized piece scales by its count and never by its size.
     const piece = sizedPiece(qty);
@@ -399,7 +418,7 @@
     // And the belt: a dimension next to a piece word is never scaled even when the count above
     // could not be read, because scaling a SIZE is the one outcome R1 exists to prevent.
     if (PIECE_ANYWHERE.test(String(qty))) {
-      return toUnicodeFractions(abbrevUnits(fixPlurals(collapseRange(String(qty).trim()))));
+      return toUnicodeFractions(abbrev(fixPlurals(collapseRange(String(qty).trim()))));
     }
     let t;
     if (isCountAmount(qty)) t = fixPlurals(scaleCount(qty, f));
@@ -408,7 +427,7 @@
     // was not: the branch skipped abbrevUnits, and four rounds of the round B preview judged a
     // wrapping problem that only existed because full words were being printed where the page
     // prints "tbsp".
-    else t = abbrevUnits(fixPlurals(scaleQty(qty, f)));
+    else t = abbrev(fixPlurals(scaleQty(qty, f)));
     return toUnicodeFractions(t);   // stored ascii ("1 1/2") -> unicode, so all amounts match
   }
 
@@ -449,4 +468,5 @@
     abbrevUnits, canonicalizeUnit, amountText, weightText, toUnicodeFractions,
     UNIT_PLURALS, fixPlurals, secondAmountParts, SECOND_AMOUNT_JOIN,
     PER_SERVING, PIECE_WORDS, sizedPiece, sizedPieceText, agreePiece, PIECE_ANYWHERE,
+    neverScales,
   };

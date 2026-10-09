@@ -1,9 +1,9 @@
 "use strict";
 
-import {
-  formatAmount, group, canonicalizeUnit, amountText, weightText, secondAmountParts,
-} from "./scaler.js";
+import { formatAmount, group, canonicalizeUnit } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField, secondToggle } from "./ingredient-row.js";
+import { esc } from "./esc.js";
+import { ledgerCellsAt, amountSubLinesAt, readNoteAt } from "./ledger-row.js";
 import { showLinksAsWords } from "./step-adapter.js";
 import { nonEmptySteps, focusIndexAfterRemove, writeStepField,
          stepLevel, toggleStepType, setStepLevel } from "./step-row.js";
@@ -74,11 +74,7 @@ let INGREDIENT_LIST = [];
 // the live data: 6 descr and 12 notes values carry trailing whitespace. Nothing is written back.
 const proseText = (s) => String(s ?? "").trim();
 
-function esc(s) {
-  return String(s ?? "").replace(/[&<>"]/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])
-  );
-}
+// esc lives in esc.js, so ledger-row.js renders with the same escape the rest of the page uses.
 
 // Fetch JSON from one of the backend's GET endpoints. "await" means "wait for the
 // server to answer before continuing". If the server returns an error, we throw,
@@ -788,45 +784,12 @@ function browseCard(r, showDate) {
    global before this file (and unit-tested under Node, tests/js/). app.js keeps the DOM/rendering
    and passes view.scale into the scaler's amount/weight formatters. */
 
-// One ledger figure cell — the amount or the weight, mono + tabular. A leading "~" (an estimated
-// weight, or a humane-rounded amount) earns the shared "approx" treatment. (inlineStyle is unused
-// now that the per-person coloured overlay is gone — R6; kept as an optional arg.)
-function figCell(cls, text, inlineStyle) {
-  const approx = text.charAt(0) === "~" ? " approx" : "";
-  const style = inlineStyle ? ` style="${inlineStyle}"` : "";
-  return `<span class="${cls}${approx}"${style}>${esc(text)}</span>`;
-}
-
-// The sub-lines under a ledger amount: the AUTHOR'S second amount where there is one, each on its
-// own line, and otherwise the computed gram estimate.
-//
-// ⚠️ THE AUTHOR'S FIGURE BEATS THE COMPUTED ONE, AND 90 LIVE ROWS HAVE BOTH. The estimate is
-//    weightText: the chart's grams-per-millilitre for this food times the authored volume, shown
-//    only above 2 tablespoons and only where the chart knows the food, with a "~" saying so. It is
-//    a good estimate and it is still an estimate: on those 90 rows the author weighed the
-//    ingredient and wrote the figure down, so "250g" replaces "~240 g" rather than sitting beside
-//    it. A row with no second amount keeps the estimate exactly as before.
-//
-// ⚠️ AND TWO BACKUPS GO ON TWO LINES. secondAmountParts splits the slot on " / ", which is how
-//    import_cleanup stores a line that states its amount three ways.
-function amountSubLines(row, inlineStyle) {
-  const parts = secondAmountParts(row.secondary_measure, view.scale);
-  if (parts.length) return parts.map((t) => figCell("qty2", t, inlineStyle)).join("");
-  const weight = weightText(row.qty, row.grams_per_ml, view.scale);
-  return weight ? figCell("weight", weight, inlineStyle) : "";
-}
-
-// One ledger amount-cell for a line: the amount, with the author's second amount or the gram
-// estimate stacked as a muted sub-line beneath it — nothing emitted otherwise, so rows with
-// neither reserve no column and names stay aligned (Option B2).
-// R2 hook: this .amount-cell (and its addressable .qty) is the reserved strike target — Round 2
-// will strike the printed amount and set the edited value beside it in the hand color. No R1 treatment.
-function ledgerCells(row, inlineStyle) {
-  return `<span class="amount-cell">` +
-         figCell("qty", amountText(row.qty, view.scale), inlineStyle) +
-         amountSubLines(row, inlineStyle) +
-         `</span>`;
-}
+// The ledger cells and a row's note are ledger-row.js's, rendered at view.scale. They live there so
+// tests/js/ledger-render.test.js can read the HTML the page inserts, which is the level Andy's
+// click-through checks at.
+function ledgerCells(row, inlineStyle) { return ledgerCellsAt(row, view.scale, inlineStyle); }
+function amountSubLines(row, inlineStyle) { return amountSubLinesAt(row, view.scale, inlineStyle); }
+function readNote(row) { return readNoteAt(row, view.scale); }
 
 // The amount-cell for a row whose AMOUNT was edited: the struck original over the ink correction,
 // with the same gram sub-line an unedited row gets. The numbers come from annotation-amount.js
@@ -864,11 +827,6 @@ function scaleControl() {
   return `<div class="scale-control" role="group" aria-label="Scale quantities">${buttons}${custom}</div>`;
 }
 
-// A note rendered as a distinct secondary annotation on its OWN line below the ingredient (muted,
-// italic, smaller — see .inote). Applies to every reading-mode line, linked or plain.
-function readNote(row) {
-  return row.note && row.note.trim() ? `<span class="inote">${esc(row.note)}</span>` : "";
-}
 // The clickable-ingredient-or-plain-text body of a line (no quantity, no tools).
 function lineBodyHTML(row) {
   if (row.ingredient_id) {

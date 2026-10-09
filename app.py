@@ -25,7 +25,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert       # pick per 
 from sqlalchemy.orm import Session
 
 from weights import build_index, match_weight
-from stepscale import api_spans
+from stepscale import api_spans, note_spans
 from import_cleanup import clean_recipe, split_qty   # shared qty->quantity+unit split (backfill/seed/import use it too)
 from units import canon_unit_str   # the Python mirror of scaler.js canonicalizeUnit, for the carry key
 # SQLAlchemy migration (Stage 1 complete): the entire serve path queries through orm_session() below —
@@ -1860,6 +1860,22 @@ def attach_weights(s, ings):
     return out
 
 
+def attach_note_spans(ings):
+    """Attach `note_spans` to each ingredient line whose note opens "or <amount>" (round B
+    revision 2). The note's raw text is kept for Edit mode and for "your changes"; the spans are
+    the render form, tagged by the method text's own grammar so the amounts scale on display only.
+    A note that is not a substitution carries no spans and renders exactly as stored."""
+    out = []
+    for x in ings:
+        d = dict(x)
+        if not d.get("is_heading"):
+            spans = note_spans(d.get("note") or "")
+            if spans:
+                d["note_spans"] = spans
+        out.append(d)
+    return out
+
+
 def serialize_steps(steps):
     """Attach display spans to each non-heading step (Phase 1d). Raw `text` is kept for the
     editor; `spans` is the render form — {{...}} markup stripped, scalable quantities tagged.
@@ -1891,7 +1907,7 @@ def get_recipe(rid):
             .order_by(RecipeStep.position, RecipeStep.id)
         ).mappings().all()
         stats = recipe_stats(s, rid, current_user.id)
-        ingredients = attach_weights(s, ings)
+        ingredients = attach_note_spans(attach_weights(s, ings))
         # Plan-ahead waits and storage (round 2). Several rows per recipe by design, ordered by
         # position, and the TOTAL is summed in Python rather than in SQL: Postgres returns Decimal
         # from AVG over an integer column and nothing here should ever have to care.

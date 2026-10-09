@@ -108,10 +108,16 @@
      amount is 13px, which .inote already used as a hardcoded number. Both read this token now, so
      the column has one answer for "the quiet line under an ingredient" instead of two copies of
      13. No pixels move on .inote.
-     ⚠️ AND IT IS NOT 12px, WHICH WOULD HAVE BEEN THE OTHER EXISTING SIZE. 12px is the COMPUTED
-     gram estimate. The second amount is a figure the author wrote down, and setting the two at one
-     size would throw away the only thing on the page that tells a measured figure from a guess. */
-  --fs-ing-sub:   13px;      /* .qty2, .inote */
+     ⚠️ REVISION 2 MOVED THE SECOND AMOUNT OFF THIS TOKEN, BY ANDY'S CALL. Revision 1 argued that
+     12px would throw away the only thing telling a measured figure from a guess. Andy's answer is
+     that the two sub-lines are one size, and the "~" in front of every computed estimate is what
+     still tells them apart. This token is the note's now, and Edit mode's collapsed toggle, which
+     is held as it is until Andy picks from the round B preview. */
+  --fs-ing-sub:   13px;      /* .inote, .erow .second-toggle */
+  /* ⚠️ THE SUB-LINES UNDER AN AMOUNT, ONE SIZE FOR ALL OF THEM. The computed gram estimate
+     ("~240 g") and every author's second amount, "or" lines included, read this and only this.
+     It is the estimate's own 12px, which .weight used to write out as a bare number. */
+  --fs-ing-figure-sub: 12px; /* .weight, .qty2 */
 
   /* ⚠️ THE EDIT ROW'S AMOUNT ZONE, AS THREE TOKENS AND ONE SUM, BECAUSE THE SUM WAS WRITTEN OUT
      THREE TIMES AND ONE OF THE THREE WAS LOSING A SPECIFICITY FIGHT. li.erow, the zone itself, the
@@ -653,9 +659,11 @@ a:hover { color: var(--berry-lift); }
 .erow .e-second { width: 100%; line-height: 24px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-amount); color: var(--ink-soft); }
 .detail-card.editing .e-second:focus { padding: 2px 6px; margin: 0 -2px; box-shadow: 0 0 0 1px var(--paper-edge), 0 4px 10px -6px rgba(40,35,30,.25); }
 /* the COLLAPSED second amount: a quiet toggle that says what it holds, so nothing is hidden in
-   silence. It sits in the same grid cell the field does, at the same 13px the reading view prints
-   the second amount at (--fs-ing-sub), and it is muted further than the field because it is a
-   control rather than a value. */
+   silence. It sits in the same grid cell the field does, at 13px (--fs-ing-sub), the size the
+   reading view printed the second amount at in revision 1, and it is muted further than the field because it is a
+   control rather than a value. ⚠️ Revision 2 took the reading view's second amount down to 12px
+   and left this at 13px on purpose: Edit mode is held as it is until Andy picks from the
+   preview of three ways to add a second amount. */
 .erow .second-toggle { width: 100%; line-height: 24px; text-align: left; padding: 0; border: 0;
   background: none; cursor: pointer; font-family: var(--font-mono);
   font-variant-numeric: tabular-nums; font-size: var(--fs-ing-sub); color: var(--ink-soft);
@@ -1242,15 +1250,16 @@ a:hover { color: var(--berry-lift); }
 .amount-cell { display: flex; flex-direction: column; }
 .qty, .weight { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-soft); }
 .qty { font-size: var(--fs-amount); }                             /* the amount — primary figure */
-.weight { font-size: 12px; line-height: 1.15; margin-top: 1px; }  /* gram estimate, tucked under the amount */
+/* ⚠️ EVERY SUB-LINE UNDER AN AMOUNT IS ONE SIZE, SET HERE AND NOWHERE ELSE. Andy's call on round B
+   revision 2: the author's second amount, each "or" line among them, prints at the computed
+   estimate's size rather than a step above it. One rule over both classes, so a third kind of
+   sub-line added later is one selector away from the same answer rather than one number away
+   from a different one. */
+.amount-cell .weight, .amount-cell .qty2 { font-size: var(--fs-ing-figure-sub); line-height: 1.15; margin-top: 1px; }
 /* the AUTHOR'S second amount, stacked under the first (A1, as previewed on round B's page A).
-   One step down the ingredient column's own size ladder (--fs-ing-sub, 13px), which is Andy's call
-   on the click-through: at the amount's own 15px it competed with the figure above it. It stays
-   ABOVE the computed estimate's 12px, because a figure the author wrote and a figure the app
-   worked out are different kinds of thing. Lightened so the first amount still reads as the
-   primary one. Two backups take two of these lines. */
-.qty2 { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-soft);
-  font-size: var(--fs-ing-sub); line-height: 1.15; margin-top: 1px; opacity: .62; }
+   Lightened so the first amount still reads as the primary one. Two backups take two of these
+   lines, and an "or" alternative is a line of its own. */
+.qty2 { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--ink-soft); opacity: .62; }
 .qty.approx, .weight.approx { opacity: 0.8; }   /* "~" estimated / humane-rounded — shared treatment */
 /* ⚠️ .qty2 STARTS AT .62, SO THE SHARED 0.8 WOULD BRIGHTEN IT. Two classes beat one, so an
    estimated second amount rendered DARKER than an exact one. The treatment is "dimmer than my own

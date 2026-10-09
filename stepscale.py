@@ -225,11 +225,11 @@ def _locked_per_serving(text, after):
     return bool(units.PER_SERVING_RE.search(clause))
 
 
-def api_spans(text):
+def api_spans(text, _parsed=None, _promote=None):
     """Client-ready spans for rendering. Contiguous fixed text (plain/guarded/unitless/locked)
     is merged into one "plain" span (the client linkifies it, never scales it); scalable spans
     are emitted as "scale" (the client rescales the text via the 1a scaler). Markup markers are
-    already stripped."""
+    already stripped. `_parsed` and `_promote` are note_spans' and nothing else's."""
     out = []
     buf = []
     at = 0
@@ -239,9 +239,9 @@ def api_spans(text):
             out.append({"t": "plain", "text": "".join(buf)})
             buf.clear()
 
-    for sp in parse_step(text):
+    for i, sp in enumerate(_parsed if _parsed is not None else parse_step(text)):
         at += len(sp["text"])
-        scalable = sp["category"] in (MARKED_SCALE, HEURISTIC_SCALE)
+        scalable = sp["category"] in (MARKED_SCALE, HEURISTIC_SCALE) or i == _promote
         if scalable and _locked_per_serving(text, at):
             scalable = False               # per person is per person at every factor
         if scalable:
@@ -251,3 +251,40 @@ def api_spans(text):
             buf.append(sp["text"])
     flush()
     return out
+
+
+# ---- round B revision 2: the amounts in a substitution note scale with the servings ------------ #
+# ⚠️ ANDY'S CALL (decisions-3): AT 2x THE TAO JIEW NOTE "or 2 tablespoons Korean doenjang + 1
+#    tablespoon water" READS "or 4 tablespoons Korean doenjang + 2 tablespoons water". Only a note
+#    that OPENS "or <amount>" scales, because that opening is what R5 and R2 write and what says the
+#    note is a quantity of something else. "(½ pound each)", "plus more for dusting", "sifted" and
+#    every note a cook typed stay exactly as stored. Display only: the stored text, Edit mode and
+#    "your changes" never see a scaled note.
+# ⚠️ THE GRAMMAR IS THE METHOD TEXT'S, NOT A SECOND READER. parse_step tags the note the way it
+#    tags a step, so a size ("2-inch") and a time are guarded, and _locked_per_serving holds a
+#    per-person figure, exactly as they are in the method. One thing is added: the bare count right
+#    after the "or" is the alternative's own quantity ("or 2 pureed tomatoes"), which the method
+#    tagger leaves alone because "divide into 4" in a step is not one.
+# ⚠️ AND A NOTE THE TAGGER CANNOT READ WHOLE IS NOT SCALED AT ALL. beef-bulgogi's "or 1 tbs of brown
+#    sugar and 1½ tbs rice syrup" writes "tbs", which is not a unit the tagger knows, so after the
+#    leading count every other number is a bare one. Scaling the brown sugar and not the syrup would
+#    print a substitution that no longer adds up, which is worse than the note as written.
+_NOTE_OR_LEAD_RE = re.compile(r"^\s*or\s+(?:about\s+|approximately\s+|approx\.?\s+|~\s*)?",
+                              re.IGNORECASE)
+
+
+def note_spans(text):
+    """Display spans for an ingredient row's note that opens "or <amount>", else None."""
+    m = _NOTE_OR_LEAD_RE.match(text or "")
+    if not m or not re.match(_NUM, text[m.end():]):
+        return None
+    parsed = parse_step(text)
+    at, promote = 0, None
+    for i, sp in enumerate(parsed):
+        if at == m.end() and sp["category"] == UNITLESS:
+            promote = i                      # the alternative's own count
+        at += len(sp["text"])
+    if any(sp["category"] == UNITLESS and i != promote for i, sp in enumerate(parsed)):
+        return None                          # a number the tagger cannot read: leave it whole
+    spans = api_spans(text, _parsed=parsed, _promote=promote)
+    return spans if any(sp["t"] == "scale" for sp in spans) else None

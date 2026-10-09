@@ -52,3 +52,17 @@ export function stepSpanTexts(spans, factor) {
     ? { t: "scale", text: toUnicodeFractions(abbrevUnits(fixPlurals(scaleQty(String(s.text || ""), factor)))) }
     : { t: "plain", text: String(s.text || "") }));
 }
+
+/** A substitution note's tagged spans with the scalable ones scaled, in render order.
+ *
+ * ⚠️ EACH AMOUNT GOES THROUGH amountText, THE LEDGER'S OWN PATH, so a note scales "exactly like the
+ * line's own amounts" (Andy, decisions-3): the same count rounding, the same never-scale rule for a
+ * size or a per-person figure, the same plural agreement. The one difference is { words: true },
+ * which keeps "tablespoons" as the author wrote it, because a note is prose and Andy's expected 2x
+ * reads "or 4 tablespoons Korean doenjang + 2 tablespoons water".
+ * Which numbers are amounts is the SERVER's call (stepscale.note_spans), as it is for a step. */
+export function noteSpanTexts(spans, factor) {
+  return (spans || []).map((s) => (s.t === "scale"
+    ? { t: "scale", text: amountText(String(s.text || ""), factor, { words: true }) }
+    : { t: "plain", text: String(s.text || "") }));
+}
