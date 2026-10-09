@@ -12,7 +12,7 @@
 
 import { esc } from "./esc.js";
 import { amountText, weightText, secondAmountParts } from "./scaler.js";
-import { noteSpanTexts } from "./annotation-amount.js";
+import { noteSpanTexts, editedAmountParts } from "./annotation-amount.js";
 
 // One ledger figure cell — the amount or the weight, mono + tabular. A leading "~" (an estimated
 // weight, or a humane-rounded amount) earns the shared "approx" treatment. (inlineStyle is unused
@@ -57,6 +57,44 @@ export function ledgerCellsAt(row, factor, inlineStyle) {
          figCell("qty", amountText(row.qty, factor), inlineStyle) +
          amountSubLinesAt(row, factor, inlineStyle) +
          `</span>`;
+}
+
+// The sub-lines of a row whose SECOND amount the cook edited: each original line struck, then each
+// new line in the hand. The same mark an edited first amount gets, one line further down the cell.
+//
+// ⚠️ THE STRUCK LINE KEEPS ITS PRINT LOOK. It is a .qty2 with the strike inside it, so it sits at the
+//    sub-line's size and dimness with a rule through it, the way a struck amount is the amount's
+//    print with a rule through it. The ink is not inside .qty2, because .qty2 is dimmed.
+// ⚠️ AND BOTH SIDES RENDER AT THE FACTOR, through secondAmountParts like an unedited row, for the
+//    reason editedAmountParts gives: an edited row that holds still while its neighbours double.
+// A second amount cleared to nothing has no ink, and the row then gets the gram estimate an
+// unedited row with no second amount gets.
+export function editedSecondLinesAt(from, to, row, factor, inlineStyle) {
+  const approx = (t) => (t.charAt(0) === "~" ? " approx" : "");
+  const was = secondAmountParts(from, factor)
+    .map((t) => `<span class="qty2${approx(t)}"><span class="was">${esc(t)}</span></span>`);
+  const fix = secondAmountParts(to, factor).map((t) => `<span class="fix">${esc(t)}</span>`);
+  const rest = fix.length ? "" : amountSubLinesAt({ ...row, secondary_measure: null }, factor, inlineStyle);
+  return was.join("") + fix.join("") + rest;
+}
+
+// The amount cell of a row edited in its amount column: the first amount, the second, or both.
+// `amt` and `second` are the row's annotation entries (annotation-index.js), either may be absent.
+// With only `amt` this is the markup the amount mark has always had, byte for byte.
+export function editedAmountCellAt(amt, second, row, factor, inlineStyle) {
+  let top;
+  if (amt) {
+    const p = editedAmountParts(amt.from, amt.to, row.grams_per_ml, factor);
+    top = `<span class="qty"><span class="was">${esc(p.was)}</span><span class="fix">${esc(p.fix)}</span></span>`;
+  } else {
+    top = figCell("qty", amountText(row.qty, factor), inlineStyle);
+  }
+  // The sub-line is whatever an unedited row would get, unless the second amount itself was edited:
+  // the author's second amount is a fact about the line and a hand edit to the AMOUNT does not change it.
+  const subs = second
+    ? editedSecondLinesAt(second.from, second.to, row, factor, inlineStyle)
+    : amountSubLinesAt(row, factor, inlineStyle);
+  return `<span class="amount-cell">${top}${subs}</span>`;
 }
 
 // A note rendered as a distinct secondary annotation on its OWN line below the ingredient (muted,

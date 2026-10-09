@@ -17,6 +17,13 @@
 //
 // A single row may carry BOTH an amount and a name edit, so entries are grouped into one slot per row.
 // kind "heading" is ignored: a heading change carries no annotation by standing ruling.
+//
+// ⚠️ THE SECOND AMOUNT HAS A SLOT OF ITS OWN (Andy, round B revision 4). snapshot_diff has emitted a
+//    second_amount entry since Edit mode first carried the field, and this index dropped it, so the
+//    change was recorded and the page drew nothing. A row may now carry amount, name and
+//    second_amount at once. Only the slot is new: the entries are the server's, unchanged.
+const MARKED_FIELDS = new Set(["amount", "name", "second_amount"]);
+
 function annotationIndex(anns) {
   const ing = new Map();
   const step = new Map();
@@ -32,7 +39,7 @@ function annotationIndex(anns) {
     if (a.kind === "ingredient") {
       const slot = ing.get(a.row_id) || {};
       if (a.type === "added") slot.added = a;
-      else if (a.type === "modified" && (a.field === "amount" || a.field === "name")) slot[a.field] = a;
+      else if (a.type === "modified" && MARKED_FIELDS.has(a.field)) slot[a.field] = a;
       ing.set(a.row_id, slot);
     } else if (a.kind === "step") {
       const slot = step.get(a.row_id) || {};

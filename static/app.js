@@ -4,7 +4,7 @@ import { formatAmount, group, canonicalizeUnit } from "./scaler.js";
 import { headingText, toggleRowType, nonEmptyRows, writeIngField, secondToggle, secondLines,
          joinSecondLines } from "./ingredient-row.js";
 import { esc } from "./esc.js";
-import { ledgerCellsAt, amountSubLinesAt, readNoteAt } from "./ledger-row.js";
+import { ledgerCellsAt, readNoteAt, editedAmountCellAt } from "./ledger-row.js";
 import { showLinksAsWords } from "./step-adapter.js";
 import { nonEmptySteps, focusIndexAfterRemove, writeStepField,
          stepLevel, toggleStepType, setStepLevel } from "./step-row.js";
@@ -12,7 +12,7 @@ import { insertIndexFor } from "./row-insert.js";
 import { removedInsertIndex } from "./annotation-place.js";
 import { annotationIndex } from "./annotation-index.js";
 import { wordDiffParts } from "./word-diff.js";
-import { editedAmountParts, removedAmountText, stepSpanTexts } from "./annotation-amount.js";
+import { removedAmountText, stepSpanTexts } from "./annotation-amount.js";
 import { timeParts, bindUnits } from "./timefmt.js";
 import { ingToPayload, stepToPayload } from "./save-payload.js";
 import { feedRelTime, feedDateShort } from "./feedtime.js";
@@ -801,20 +801,13 @@ function browseCard(r, showDate) {
 // tests/js/ledger-render.test.js can read the HTML the page inserts, which is the level Andy's
 // click-through checks at.
 function ledgerCells(row, inlineStyle) { return ledgerCellsAt(row, view.scale, inlineStyle); }
-function amountSubLines(row, inlineStyle) { return amountSubLinesAt(row, view.scale, inlineStyle); }
 function readNote(row) { return readNoteAt(row, view.scale); }
 
-// The amount-cell for a row whose AMOUNT was edited: the struck original over the ink correction,
-// with the same gram sub-line an unedited row gets. The numbers come from annotation-amount.js
-// (pure, tested); this is only the markup, so every value is esc()'d in one place.
-function editedAmountCell(from, to, row, inlineStyle) {
-  const p = editedAmountParts(from, to, row.grams_per_ml, view.scale);
-  // The sub-line is whatever an unedited row would get: the author's second amount is a fact
-  // about the line and a hand edit to the AMOUNT does not change it.
-  return `<span class="amount-cell">` +
-         `<span class="qty"><span class="was">${esc(p.was)}</span><span class="fix">${esc(p.fix)}</span></span>` +
-         amountSubLines(row, inlineStyle) +
-         `</span>`;
+// The amount-cell for a row whose AMOUNT or SECOND AMOUNT was edited: the struck original over the
+// ink correction, at view.scale. The markup is ledger-row.js's (editedAmountCellAt), so
+// tests/js/ledger-render.test.js reads what the page inserts.
+function editedAmountCell(amt, second, row, inlineStyle) {
+  return editedAmountCellAt(amt, second, row, view.scale, inlineStyle);
 }
 
 // The recipe's serving count as a number, if its servings text contains one.
@@ -928,13 +921,16 @@ function plainRow(row, ann) {
   if (!(row.label || row.raw_text || "").trim()) return "";
   // Added ingredient: the whole current line in the hand ink, "+"-prefixed (see li.added CSS).
   if (ann && ann.added) return `<li class="added">${ledgerCells(row)}<span class="iname">${lineBodyHTML(row)}</span></li>`;
-  const amt = ann && ann.amount, nm = ann && ann.name;
+  const amt = ann && ann.amount, nm = ann && ann.name, second = ann && ann.second_amount;
   // Amount edit stacks the struck original over the Kalam ink value INSIDE the 5rem cell (li.edited).
   // ⚠️ BOTH HALVES RENDER AT view.scale, like every other row. They used to render at a hardcoded 1,
   //    so an edited row stayed at its printed amount while the rows around it doubled. The gram
   //    sub-line comes back with them: an edited row is still a ledger row and keeps the column.
-  const amountCell = amt
-    ? editedAmountCell(amt.from, amt.to, row)
+  // ⚠️ A SECOND-AMOUNT EDIT GETS THE SAME MARK, ON ITS OWN LINE OF THE CELL (Andy, round B
+  //    revision 4). It was recorded and drew nothing, so a cook who changed "(14 oz)" to "400 g"
+  //    saw the new figure printed as if the author had written it.
+  const amountCell = (amt || second)
+    ? editedAmountCell(amt, second, row)
     : ledgerCells(row);
   let iname;
   if (nm && amt) {
@@ -948,7 +944,7 @@ function plainRow(row, ann) {
   } else {
     iname = `<span class="iname">${lineBodyHTML(row)}</span>`;
   }
-  const cls = amt ? ' class="edited"' : "";
+  const cls = (amt || second) ? ' class="edited"' : "";
   return `<li${cls}>${amountCell}${iname}</li>`;
 }
 

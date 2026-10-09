@@ -72,3 +72,24 @@ test("no annotations gives four empty collections", () => {
     assert.equal(r.ing.size + r.step.size + r.removedIng.length + r.removedStep.length, 0);
   }
 });
+
+// ---- Round B revision 4, A1: the second amount gets a slot ------------------------------------- //
+test("a second-amount edit gets its own slot on its row", () => {
+  // It used to be dropped here, so the server recorded the change and the page drew nothing.
+  const { ing } = annotationIndex([mod("ingredient", "second_amount", 9, { from: "14 oz", to: "400 g" })]);
+  assert.equal(ing.get(9).second_amount.to, "400 g");
+  assert.equal(ing.get(9).amount, undefined, "the first amount is not marked by it");
+});
+
+test("amount, name and second amount on one row share one slot", () => {
+  const { ing } = annotationIndex([mod("ingredient", "amount", 3), mod("ingredient", "name", 3),
+                                   mod("ingredient", "second_amount", 3)]);
+  assert.equal(ing.size, 1);
+  assert.ok(ing.get(3).amount && ing.get(3).name && ing.get(3).second_amount);
+});
+
+test("a note edit is still not slotted", () => {
+  // A note takes no part in "your changes" on the page. Only the second amount was added.
+  const { ing } = annotationIndex([mod("ingredient", "note", 4)]);
+  assert.deepEqual(ing.get(4), {});
+});

@@ -11,9 +11,10 @@
 //    is what now holds that.)
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { ledgerCellsAt, readNoteAt } from "../../static/ledger-row.js";
+import { ledgerCellsAt, readNoteAt, amountSubLinesAt, editedAmountCellAt } from "../../static/ledger-row.js";
+import { annotationIndex } from "../../static/annotation-index.js";
 import { scaleQty, scaleCount, toMetric, amountText } from "../../static/scaler.js";
-import { stepSpanTexts, noteSpanTexts } from "../../static/annotation-amount.js";
+import { stepSpanTexts, noteSpanTexts, editedAmountParts } from "../../static/annotation-amount.js";
 
 const FACTORS = [0.5, 1, 2];
 
@@ -150,4 +151,75 @@ test("'per each serving' is per serving", () => {
   for (const f of [0.5, 2, 3]) {
     assert.equal(amountText("1 tablespoon per each serving", f), amountText("1 tablespoon per each serving", 1));
   }
+});
+
+// ---- Round B revision 4, A1: the second amount's "your changes" mark --------------------------- //
+// Andy: an edit to only the second amount gets the same mark as an edit to the first amount. The
+// entries come from the server (tests/test_second_amount_mark.py pins when one exists). These read
+// the cell the page inserts for a row carrying one, the way plainRow builds it.
+const TOFU = { id: 11, qty: "1 block", secondary_measure: "400 g", grams_per_ml: null };
+const secondEntry = (from, to, row_id = 11) =>
+  ({ kind: "ingredient", type: "modified", field: "second_amount", from, to, row_id });
+// The cell plainRow inserts for this row, given the recipe's entries.
+function cellFor(row, anns, f) {
+  const slot = annotationIndex(anns).ing.get(row.id);
+  const amt = slot && slot.amount, second = slot && slot.second_amount;
+  return (amt || second) ? editedAmountCellAt(amt, second, row, f) : ledgerCellsAt(row, f);
+}
+
+test("an edit to only the second amount is struck and inked, and the first amount is not", () => {
+  const html = cellFor(TOFU, [secondEntry("14 oz", "400 g")], 1);
+  assert.deepEqual(seen(html), [{ cls: "qty", text: "1 block" }, { cls: "was", text: "14 oz" },
+                                { cls: "fix", text: "400 g" }]);
+  assert.match(html, /<span class="qty2"><span class="was">14 oz<\/span><\/span>/,
+               "the struck line keeps the sub-line's print look");
+  assert.match(html, /<\/span><span class="fix">400 g<\/span><\/span>$/,
+               "the ink is a line of the cell itself, outside .qty2");
+});
+
+test("putting it back takes the mark away: no entry, no strike, no ink", () => {
+  const row = { ...TOFU, secondary_measure: "14 oz" };
+  const html = cellFor(row, [], 1);
+  assert.equal(html, ledgerCellsAt(row, 1));
+  assert.doesNotMatch(html, /class="(was|fix)"/);
+});
+
+test("both sides of a second-amount mark scale with the rows around it", () => {
+  const row = { id: 2, qty: "2 cups", secondary_measure: "1 lb", grams_per_ml: null };
+  const anns = [secondEntry("8 oz", "1 lb", 2)];
+  assert.deepEqual(seen(cellFor(row, anns, 2)).map((s) => s.text), ["4 cups", "16 oz", "2 lb"]);
+  assert.deepEqual(seen(cellFor(row, anns, 0.5)).map((s) => s.text), ["1 cup", "4 oz", "½ lb"]);
+});
+
+test("a two-line second amount strikes each old line and inks each new one", () => {
+  const row = { id: 5, qty: "1 cup", secondary_measure: "8 ounces / 227 grams", grams_per_ml: null };
+  const lines = seen(cellFor(row, [secondEntry("8 ounces / 225 grams", "8 ounces / 227 grams", 5)], 1));
+  assert.deepEqual(lines.map((s) => `${s.cls} ${s.text}`),
+                   ["qty 1 cup", "was 8 oz", "was 225 g", "fix 8 oz", "fix 227 g"]);
+});
+
+test("a cleared second amount is struck, and the row gets the estimate an unedited row would", () => {
+  const row = { id: 6, qty: "1 cup", secondary_measure: null, grams_per_ml: 0.5 };
+  const lines = seen(cellFor(row, [secondEntry("120 g", "", 6)], 1));
+  assert.deepEqual(lines.map((s) => `${s.cls} ${s.text}`), ["qty 1 cup", "was 120 g", "weight ~118 g"]);
+  assert.equal(lines.filter((s) => s.cls === "fix").length, 0);
+});
+
+test("an amount-only edit renders byte for byte as it did before revision 4", () => {
+  // The markup app.js's editedAmountCell built until revision 4, written out here.
+  const row = { id: 8, qty: "4", secondary_measure: "1 lb", grams_per_ml: null };
+  for (const f of FACTORS) {
+    const p = editedAmountParts("2", "4", row.grams_per_ml, f);
+    const before = `<span class="amount-cell"><span class="qty"><span class="was">${p.was}</span>` +
+      `<span class="fix">${p.fix}</span></span>${amountSubLinesAt(row, f)}</span>`;
+    assert.equal(editedAmountCellAt({ from: "2", to: "4" }, undefined, row, f), before, `at ${f}x`);
+  }
+});
+
+test("an amount and a second amount edited together each get the mark", () => {
+  const row = { id: 12, qty: "2 blocks", secondary_measure: "800 g", grams_per_ml: null };
+  const anns = [{ kind: "ingredient", type: "modified", field: "amount", from: "1 block", to: "2 blocks",
+                  row_id: 12 }, secondEntry("14 oz", "800 g", 12)];
+  assert.deepEqual(seen(cellFor(row, anns, 1)).map((s) => `${s.cls} ${s.text}`),
+                   ["was 1 block", "fix 2 blocks", "was 14 oz", "fix 800 g"]);
 });
