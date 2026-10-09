@@ -14,6 +14,7 @@ import datetime
 import json
 import os
 import re
+import subprocess
 from pathlib import Path
 from urllib.parse import parse_qsl, urlencode, urlsplit
 
@@ -114,6 +115,39 @@ app.config["SESSION_COOKIE_SECURE"] = _IS_PRODUCTION
 login_manager = LoginManager()
 login_manager.init_app(app)
 app.register_blueprint(auth_bp)   # /api/signup | /api/login | /api/logout | /api/me (all public; auth-3 gates the rest)
+
+
+# THE RELOAD BAR'S SERVER HALF (Andy, 9 Oct, decisions-4). The server names the commit it runs on
+# every API answer, and writes the same commit into the index.html it serves (see home). An open tab
+# compares the two and shows a quiet bar when the server under it has moved on (static/update-check.js).
+# ⚠️ READ ONCE, WHEN THE SERVER STARTS, because that is the code this process is running. A checkout
+#    moved on underneath a running server has not changed what the server does until it restarts.
+# ⚠️ AND ONLY A COMMIT-SHAPED ANSWER IS TRUSTED. Anything else, including a checkout git cannot read,
+#    is "", which sends no header and no meta, and a page that hears nothing never shows the bar.
+_COMMIT_RE = re.compile(r"[0-9a-f]{40}")
+
+
+def _running_commit():
+    """The commit this checkout is at, or "" when git cannot say."""
+    try:
+        out = subprocess.run(["git", "-C", str(BASE_DIR), "rev-parse", "HEAD"],
+                             capture_output=True, text=True, timeout=5)
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    sha = (out.stdout or "").strip()
+    return sha if out.returncode == 0 and _COMMIT_RE.fullmatch(sha) else ""
+
+
+APP_COMMIT = _running_commit()
+
+
+@app.after_request
+def _name_the_commit(resp):
+    # Every /api/ answer, a refusal included: a tab whose session has lapsed still learns the
+    # server has moved on.
+    if APP_COMMIT and request.path.startswith("/api/"):
+        resp.headers["X-App-Commit"] = APP_COMMIT
+    return resp
 
 
 @login_manager.unauthorized_handler
@@ -1729,6 +1763,10 @@ def home():
     # so it stays no-cache (always revalidated → always names the current build), while those hashed
     # assets cache for a year. Requires `npm run build` to have produced dist/index.html.
     html = (BASE_DIR / "dist" / "index.html").read_text(encoding="utf-8")
+    # The commit that served this page, for the reload bar. The page compares it with the commit on
+    # each API answer, so a tab learns the server has moved on without anything baked into the bundle.
+    if APP_COMMIT:
+        html = html.replace("</head>", f'<meta name="app-commit" content="{APP_COMMIT}">\n</head>', 1)
     resp = app.make_response(html)
     resp.headers["Content-Type"] = "text/html; charset=utf-8"
     resp.headers["Cache-Control"] = "no-cache"

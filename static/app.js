@@ -42,6 +42,17 @@ import { heroCaption } from "./hero-caption.js";
 import { reorderBefore } from "./reorder.js";
 import { applyRowDrop, dropBeforeIndex } from "./drop-index.js";
 import heroUrl from "./login-hero.jpg";   // auth-4 login hero — Vite hashes it into dist/assets (served via /assets)
+import { pageCommit, heardCommit, updateBarHTML, hearingFetch } from "./update-check.js";
+
+// THE RELOAD BAR (Andy, 9 Oct, decisions-4). ⚠️ `fetch` IS SHADOWED FOR THIS MODULE ON PURPOSE.
+// Every API call in app.js goes through it, so the first answer after the server moves to a new
+// commit is the one that shows the bar, whichever call that happens to be. It is declared here,
+// above every call, because a const is unusable until its line has run.
+let commitState = { page: pageCommit(document), updated: false };
+const fetch = hearingFetch(window.fetch.bind(window), (server) => {
+  const next = heardCommit(commitState, server);
+  if (next !== commitState) { commitState = next; paintUpdateBar(); }
+});
 
 // This file runs in the browser. It has no recipe content of its own — it asks
 // the backend (app.py) for data as JSON, builds HTML text from that data, and
@@ -2439,6 +2450,7 @@ async function renderRecipe(rid) {
 // The Polaroid assembly (photoSlot) stays a SIBLING of the .detail-card so it keeps straddling the edge.
 function paintRecipe() {
   const editing = !!view.editMode;
+  paintUpdateBar();                 // the reload bar follows Edit mode's unsaved state
   // Stage 4: mark the PAGE element when editing so .page.recipe-view.editing widens to ~1000px (reading
   // stays 760px). Re-applied on every paint, so the toggle enter/exit updates the width.
   app.className = "page recipe-view" + (editing ? " editing" : "");
@@ -3677,6 +3689,25 @@ function markDirty() {
   view.dirty = true;
   const ind = document.querySelector(".inline-dirty");
   if (ind) ind.hidden = false;
+  paintUpdateBar();                 // an unsaved change disables the reload bar's button
+}
+// The reload bar's two states, as previewed. Waiting means Edit mode holds a change nobody has
+// saved, and then the bar says to save or cancel first and its Reload is disabled.
+function updateWaiting() {
+  return !!(view && view.editMode && view.dirty);
+}
+// ⚠️ THE BAR LIVES OUTSIDE #app, AS THE BODY'S FIRST CHILD, so no repaint of the page can wipe it.
+//    It is repainted from markDirty, from every paintRecipe (enter, save, cancel, route) and when a
+//    discard on navigation clears the flag, which are the places the waiting state can change.
+function paintUpdateBar() {
+  let slot = document.getElementById("update-bar-slot");
+  if (!commitState.updated) { if (slot) slot.remove(); return; }
+  if (!slot) {
+    slot = document.createElement("div");
+    slot.id = "update-bar-slot";
+    document.body.prepend(slot);
+  }
+  slot.innerHTML = updateBarHTML(updateWaiting());
 }
 
 // Convert the draft (DB row shape) back into the PUT payload shape write_recipe_rows expects.
@@ -5897,6 +5928,7 @@ function onHashChange() {
       return;                                                        // keep editing; do not re-route
     }
     view.editMode = false; view.draft = null; view.dirty = false;    // discard, then route on through
+    paintUpdateBar();                                                // nothing unsaved now: Reload is free
   }
   // Any navigation that reaches route() repaints a fresh view — tear down step editors first so they
   // aren't orphaned by that repaint. (The "keep editing" branch above returns before reaching here.)
@@ -5907,6 +5939,12 @@ window.addEventListener("hashchange", onHashChange);
 // Full page unload / reload / tab-close with unsaved edits → native browser confirm.
 window.addEventListener("beforeunload", (e) => {
   if (view && view.editMode && view.dirty) { e.preventDefault(); e.returnValue = ""; }
+});
+// The reload bar's button. ⚠️ CHECKED AGAIN HERE, NOT ONLY BY THE disabled ATTRIBUTE, because the
+// attribute is only as fresh as the last repaint. The beforeunload guard above stands behind both.
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("[data-update-reload]")) return;
+  if (!updateWaiting()) location.reload();
 });
 
 // Sign out (auth-4): delegated so it survives home re-renders. Ends the session, returns to login.

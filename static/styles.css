@@ -3189,3 +3189,18 @@ li.step.step-tapped .step-add-note,
   .note-foot { gap: 10px; }
   .note-hint { display: none; }                        /* no room beside three controls at 390px */
 }
+
+/* ===== The reload bar (Andy, 9 Oct, decisions-4: variant 1 of :8003/reload-prompt/) =====
+   A quiet bar above the page, saying the server has moved on to a newer commit than the one that
+   served this tab, with a Reload button. Sticky, so it stays in view and moves nothing below it out
+   of place. With an unsaved Edit mode change it says to save or cancel first, in the amber the app
+   uses for a warning, and its Reload is disabled. */
+.update-bar { position: sticky; top: 0; z-index: 70; display: flex; align-items: center; justify-content: center;
+  gap: 12px; padding: 7px 16px; background: var(--card); border-bottom: 1px solid var(--paper-edge);
+  font-family: var(--font-sans); font-size: 13px; color: var(--ink-soft); }
+.update-bar-text { color: var(--ink); }
+.update-wait { color: var(--amber); }
+.update-bar .btn[disabled] { opacity: .45; cursor: default; pointer-events: none; }
+@media (max-width: 560px) {
+  .update-bar { justify-content: space-between; flex-wrap: wrap; row-gap: 4px; }
+}
