@@ -107,18 +107,27 @@ def test_a_bare_or_outside_brackets_is_read_too(line, stored):
     assert ic.author_second_amount(line)[0] == stored
 
 
-# ⚠️ AND A COUNT THAT NAMES A FOOD THE ROW DOES NOT IS REFUSED, which is what keeps R2 from
-#    swallowing an alternative INGREDIENT that happens to carry a bare count. Both of these leave
-#    a word the name never had, and both go to the review list with nothing moved.
-@pytest.mark.parametrize("name, raw", [
-    ("tomato sauce, or 2 pureed tomatoes", "1/4 cup tomato sauce, or 2 pureed tomatoes"),
-    ("Persian cucumber or \u00bd English cucumber, deseeded",
-     "1 Persian cucumber or \u00bd English cucumber, deseeded"),
-])
-def test_a_count_naming_another_food_is_refused_and_noted(name, raw):
-    plan = ic.amount_plan(row(name, qty="1", quantity="1", raw_text=raw))
+# ⚠️ REVISION 1 REFUSED BOTH OF THESE, AND ANDY'S FINAL CALL SPLITS THEM (decisions-3). Each leaves
+#    a word the name never had ("English", "pureed"), and revision 1 read any such word as a
+#    possible different food and sent both to the review list. The head of each name decides it:
+#    an English cucumber is a cucumber, so "English" says which kind and stays on the second line,
+#    and pureed tomatoes are not tomato sauce, so that alternative is R5's and goes to the note.
+def test_a_count_of_the_same_food_keeps_the_words_that_say_which_kind():
+    plan = ic.amount_plan(row("Persian cucumber or ½ English cucumber, finely diced",
+                              qty="1", quantity="1",
+                              raw_text="1 Persian cucumber or ½ English cucumber, finely diced"))
+    assert plan["changes"]["secondary_measure"] == "or ½ English"
+    assert plan["changes"]["label"] == "Persian cucumber, finely diced"
+    assert "note" not in plan["changes"]
+
+
+def test_a_count_of_a_different_food_is_r5_and_goes_to_the_note():
+    plan = ic.amount_plan(row("tomato sauce, or 2 pureed tomatoes", qty="1/4 cup", quantity="1/4",
+                              unit="cup", raw_text="1/4 cup tomato sauce, or 2 pureed tomatoes"))
+    assert plan["changes"]["note"] == "or 2 pureed tomatoes"
+    assert plan["changes"]["label"] == "tomato sauce"
     assert plan["changes"].get("secondary_measure") is None
-    assert any(f == ic.COUNT_NAMES_ANOTHER_FOOD_FLAG for f, _r in plan["notes"])
+    assert not plan["notes"]
 
 
 # --------------------------------------------------------------------------- #
@@ -1161,3 +1170,205 @@ def test_r4_s_insert_renumbers_and_takes_no_flag_with_it():
     where = {f["flag"]: f["position"] for f in flags if f["flag"] == "each_multi"}
     assert where["each_multi"] == 2            # the flour, not the inserted zest
     assert sorted(f["position"] for f in flags if f["flag"] == "ambiguous_section") == [4, 5]
+
+
+# =========================================================================== #
+# Revision 2. Andy's final call on "or" (decisions-3), and "plus more" to the note
+# =========================================================================== #
+
+# --------------------------------------------------------------------------- #
+# 2a. An "or" of the SAME food is a second amount line, keeping "or", minus the
+#     words that only repeat the line
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("line, qty, label, second", [
+    ("1 large skin-on chicken breast (or 2 small ones)", "1 large",
+     "skin-on chicken breast (or 2 small ones)", "or 2 small"),
+    ("3-4 cilantro roots or 6-8 cilantro stems", "3-4", "cilantro roots or 6-8 cilantro stems",
+     "or 6–8 stems"),
+    ("1 large garlic clove, minced (or 2 small cloves)", "1 large clove",
+     "garlic, minced (or 2 small cloves)", "or 2 small"),
+    ("1 Persian cucumber or ½ English cucumber, finely diced", "1",
+     "Persian cucumber or ½ English cucumber, finely diced", "or ½ English"),
+])
+def test_an_or_of_the_same_food_is_its_own_second_amount_line(line, qty, label, second):
+    plan = ic.amount_plan(row(label, qty=qty, raw_text=line))
+    assert plan["changes"]["secondary_measure"] == second
+    assert "note" not in plan["changes"]
+
+
+def test_a_counting_noun_the_amount_does_not_say_is_kept():
+    """panang-curry's "(~ 6 leaves)" sits under "1 tbsp". Dropping "leaves" because the NAME says
+    it would leave "~ 6" under a tablespoon, which reads as six of them."""
+    assert ic.count_parts("~ 6 leaves", "1 tbsp kaffir lime leaves ", "1 tbsp")["count"] == "~ 6 leaves"
+    assert ic.count_parts("or 2 small cloves", "1 large garlic clove ", "1 large clove")["count"] \
+        == "or 2 small"
+
+
+# --------------------------------------------------------------------------- #
+# 2b. A backup count with an "or" INSIDE it is two lines
+# --------------------------------------------------------------------------- #
+def test_an_or_inside_a_backup_count_splits_into_stacked_lines():
+    plan = ic.amount_plan(row("cucumbers (4 medium or 2 long cucumbers)", qty="500 g",
+                              quantity="500", unit="g",
+                              raw_text="500g/ 1 lb cucumbers (4 medium or 2 long cucumbers)"))
+    assert plan["changes"]["secondary_measure"] == "1 lb / 4 medium / or 2 long"
+    assert plan["changes"]["label"] == "cucumbers"
+
+
+def test_a_leading_or_is_one_line_not_two():
+    assert ic._split_at_or("or 2 small") == ["or 2 small"]
+    assert ic._split_at_or("4 medium or 2 long") == ["4 medium", "or 2 long"]
+
+
+# --------------------------------------------------------------------------- #
+# 2c. An "or" substituting a DIFFERENT food with its own amount is R5, the note
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("label, qty, line, note", [
+    ("tomato sauce, or 2 pureed tomatoes", "1/4 cup", "1/4 cup tomato sauce, or 2 pureed tomatoes",
+     "or 2 pureed tomatoes"),
+    ("Tao Jiew (Thai fermented soybean paste) OR 2 tablespoon Korean doenjang + 1 tablespoon water",
+     "3 Tbsp", "3 Tbsp Tao Jiew (Thai fermented soybean paste) OR 2 tablespoon Korean doenjang "
+     "+ 1 tablespoon water", "or 2 tablespoons Korean doenjang + 1 tablespoon water"),
+])
+def test_an_or_of_a_different_food_is_the_note(label, qty, line, note):
+    plan = ic.amount_plan(row(label, qty=qty, raw_text=line))
+    assert plan["changes"]["note"] == note
+    assert plan["changes"].get("secondary_measure") is None
+
+
+def test_the_same_food_question_has_one_answer_for_r2_and_r5():
+    """or_count_alternative is asked by both rules, so a count goes to exactly one of them."""
+    for name, line in [
+        ("Persian cucumber or ½ English cucumber, finely diced",
+         "1 Persian cucumber or ½ English cucumber, finely diced"),
+        ("tomato sauce, or 2 pureed tomatoes", "1/4 cup tomato sauce, or 2 pureed tomatoes"),
+        ("skin-on chicken breast (or 2 small ones)",
+         "1 large skin-on chicken breast (or 2 small ones)"),
+    ]:
+        second = bool(ic.author_second_amount(line)[0])
+        sub = ic.substitution_to_note(row(name, raw_text=line))
+        assert second != bool(sub and "note" in sub), name
+
+
+@pytest.mark.parametrize("line", [
+    "kosher salt, or to taste",
+    "salt and pepper, or to taste",
+    "1 tsp kosher salt, or to taste",
+])
+def test_or_to_taste_does_not_fire(line):
+    plan = ic.amount_plan(row(line, raw_text=line))
+    assert "secondary_measure" not in plan["changes"]
+    assert "note" not in plan["changes"]
+    assert ic.or_count_alternative("or to taste", line) is None
+
+
+# --------------------------------------------------------------------------- #
+# The importer runs 2a, 2b and 2c, which is clause (2) of FIX BY RULE
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("line, name, second, note", [
+    ("1 Persian cucumber or ½ English cucumber, finely diced", "Persian cucumber, finely diced",
+     "or ½ English", None),
+    ("1 large garlic clove, minced (or 2 small cloves)", "garlic, minced", "or 2 small", None),
+    ("500g/ 1 lb cucumbers (4 medium or 2 long cucumbers)", "cucumbers",
+     "1 lb / 4 medium / or 2 long", None),
+    ("1/4 cup tomato sauce, or 2 pureed tomatoes", "tomato sauce", None, "or 2 pureed tomatoes"),
+    ("1 tsp kosher salt, or to taste", "kosher salt, or to taste", None, None),
+])
+def test_the_importer_runs_revision_2_s_or_rule(line, name, second, note):
+    d = ic.classify_line(line)
+    assert d["name"] == name
+    assert (d.get("secondary_measure") or None) == second
+    assert (d.get("note") or None) == note
+
+
+# --------------------------------------------------------------------------- #
+# R7. "plus more …" is the row's note
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("label, name, note", [
+    ("all-purpose flour, plus more for dusting", "all-purpose flour", "plus more for dusting"),
+    ("kosher salt, plus more if needed", "kosher salt", "plus more if needed"),
+    ("milk, plus more as needed", "milk", "plus more as needed"),
+    ("mint leaves (plus more for garnish)", "mint leaves", "plus more for garnish"),
+    ("self-rising flour (plus extra for dusting)", "self-rising flour", "plus extra for dusting"),
+    ("thyme, plus some for garnish", "thyme", "plus some for garnish"),
+    ("heavy cream plus more for brushing", "heavy cream", "plus more for brushing"),
+    ("olive oil, divided, plus more for drizzling", "olive oil, divided", "plus more for drizzling"),
+    ("unsalted butter, plus more for pan, at room temperature",
+     "unsalted butter, at room temperature", "plus more for pan"),
+    ("kosher salt, plus more to taste and for seasoning croquettes", "kosher salt",
+     "plus more to taste and for seasoning croquettes"),
+    ("parsley, finely chopped, plus extra for garnish (optional)", "parsley, finely chopped",
+     "plus extra for garnish (optional)"),
+])
+def test_plus_more_goes_to_the_note(label, name, note):
+    plan = ic.amount_plan(row(label, qty="1 cup", quantity="1", unit="cup",
+                              raw_text="1 cup " + label))
+    assert plan["changes"]["label"] == name
+    assert plan["changes"]["note"] == note
+    # and a second run over the result changes nothing
+    again = ic.amount_plan(row(name, qty="1 cup", quantity="1", unit="cup",
+                               raw_text="1 cup " + label, note=note))
+    assert "note" not in again["changes"] and "label" not in again["changes"]
+
+
+@pytest.mark.parametrize("label, qty, why", [
+    ("plus 2 tablespoons", "½ cup", "a compound amount stays in the amount"),
+    ("lemon juice (plus the zest of half of a lemon)", "1 tablespoon", "another food is R4"),
+    ("vegetable oil (plus ⅓ cup/80ml for frying)", "1 tablespoon",
+     "more with an amount of its own: Andy's 'keep as is' on mongolian-chicken 4666"),
+    ("cornstarch (plus 2 teaspoons)", "1/4 cup", "Andy's 'keep as is' on teriyaki-tofu 5799"),
+    ("salt and pepper, to taste", "", "no plus at all"),
+    ("plus more for dusting", "", "a row that is only the remark keeps its name"),
+])
+def test_what_r7_leaves_alone(label, qty, why):
+    plan = ic.amount_plan(row(label, qty=qty, raw_text=(qty + " " + label).strip()))
+    assert plan["changes"].get("note") is None, why
+
+
+@pytest.mark.parametrize("label", [
+    "extra virgin olive oil, plus more to serve freshly ground black pepper",
+    "good olive oil, plus more for serving 1 teaspoon whole black peppercorns",
+    "skin-on boneless snapper, 10 to 12 ounces each 2 teaspoons kosher salt, plus more for the sauce",
+    "lemon juice (plus more for massaging kale // ~2 small lemons)",
+])
+def test_a_remark_that_carries_another_ingredient_is_flagged_not_hidden(label):
+    """A note would hide the pepper inside a remark about olive oil. Each of these is a real line."""
+    plan = ic.amount_plan(row(label, qty="2 tablespoons", raw_text="2 tablespoons " + label))
+    assert "note" not in plan["changes"]
+    assert ic.PLUS_MORE_RUNS_ON_FLAG in [f for f, _ in plan["notes"]]
+
+
+def test_the_compound_half_is_not_read_as_a_second_ingredient():
+    """cinnamon-sugar-speculoos: the leading "plus 1 teaspoon" is the amount's own second half."""
+    plan = ic.amount_plan(row("plus 1 teaspoon milk, plus more as needed", qty="1 tablespoon",
+                              quantity="1", unit="tablespoon",
+                              raw_text="1 tablespoon plus 1 teaspoon milk, plus more as needed"))
+    assert plan["changes"]["label"] == "milk"
+    assert plan["changes"]["note"] == "plus more as needed"
+    assert plan["changes"]["qty"] == "1 tablespoon + 1 teaspoon"
+
+
+def test_a_taken_note_is_flagged_rather_than_overwritten():
+    plan = ic.amount_plan(row("kosher salt, plus more if needed", qty="1 tsp",
+                              raw_text="1 tsp kosher salt, plus more if needed", note="Diamond"))
+    assert "note" not in plan["changes"]
+    assert ic.PLUS_MORE_NOTE_TAKEN_FLAG in [f for f, _ in plan["notes"]]
+
+
+def test_r5_s_note_and_r7_s_remark_on_one_row_name_the_clash():
+    plan = ic.amount_plan(row("kosher salt (or 1/2 tsp table salt), plus more to taste",
+                              qty="1 tsp", raw_text="1 tsp kosher salt (or 1/2 tsp table salt), "
+                                                    "plus more to taste"))
+    assert plan["changes"]["note"] == "or 1/2 tsp table salt"
+    assert ic.PLUS_MORE_NOTE_TAKEN_FLAG in [f for f, _ in plan["notes"]]
+
+
+@pytest.mark.parametrize("line, name, note", [
+    ("2 cups all-purpose flour, plus more for dusting", "all-purpose flour",
+     "plus more for dusting"),
+    ("1/4 cup mint leaves (plus more for garnish)", "mint leaves", "plus more for garnish"),
+])
+def test_the_importer_runs_r7(line, name, note):
+    d = ic.classify_line(line)
+    assert d["name"] == name
+    assert d.get("note") == note

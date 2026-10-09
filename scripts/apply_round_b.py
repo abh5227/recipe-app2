@@ -56,6 +56,11 @@ DECISIONS_2 = (HERE.parent / "docs" / "data-repairs"
                / "round-b-decisions-2-2026-10-08.csv")
 RESIDUAL_DECISIONS = (HERE.parent / "docs" / "data-repairs"
                       / "round-b-residual-decisions-2026-10-08.csv")
+# ---- revision 2: Andy's click-through of revision 1, and the 36 residual rows it left --------- #
+DECISIONS_3 = (HERE.parent / "docs" / "data-repairs"
+               / "round-b-decisions-3-2026-10-08.csv")
+RESIDUAL_DECISIONS_2 = (HERE.parent / "docs" / "data-repairs"
+                        / "round-b-residual-decisions-2-2026-10-08.csv")
 
 # ⚠️ ONE ROW OF THE RESIDUAL FILE IS DELIBERATELY NOT APPLIED. tahini-brioche 7462's "1 ¾ cups" is
 #    a lower-confidence pre-fill: King Arthur's Tahini Brioche matches the recipe's order and its
@@ -107,6 +112,36 @@ RESIDUAL_FIXES = {
     #    "23 grams" off the author's line, and claiming the row for a decision about the NAME
     #    silently kept the wrong figure. Andy's decision is about "sifted"; this is the repair the
     #    rule was already going to make, written out so owning the row does not lose it.
+    # ---- revision 2's residual file ------------------------------------------------------- #
+    # "fix: same as buttermilk-biscuits 3135 -> amount 1 cup + 2 tablespoons | name tahini (light
+    #  roast)". ⚠️ NOT A JOIN, AND THE DECISION'S "SAME AS" IS ABOUT THE RESULT. 3135's two halves
+    #  sat on two rows; this one row holds both, "1 cup" in its amount and "plus 2 tablespoons
+    #  tahini (light roast)" in its raw text, with no name column at all. ⚠️ AND THE SLOT GOES
+    #  EMPTY: it held "1 cup", a copy of the old first amount, which is one of the 130 copies the
+    #  round exists to clear. The raw text is the row's own amount in front of its own raw text,
+    #  which is how the joins rebuild a line.
+    7613: {"what": "row", "changes": {"qty": "1 cup + 2 tablespoons",
+                                      "quantity": "1 cup + 2 tablespoons", "unit": "",
+                                      "label": "tahini (light roast)", "secondary_measure": None,
+                                      "raw_text": "1 cup plus 2 tablespoons tahini (light roast)"},
+           "why": "Andy's residual decision: the amount is 1 cup plus 2 tablespoons and the name "
+                  "is tahini (light roast), the shape of buttermilk-biscuits 3135"},
+    # "fix: restore the missing closing ')'" — the line ends inside its own list of oils.
+    4767: {"what": "row",
+           "changes": {"label": "oil (neutral flavored coconut oil, regular coconut oil, avocado "
+                                "oil, or vegetable oil)",
+                       "raw_text": "1/2 cup oil (neutral flavored coconut oil, regular coconut "
+                                   "oil, avocado oil, or vegetable oil)"},
+           "why": "Andy's residual decision: the closing bracket is missing at the end of the "
+                  "line, after the last oil it lists"},
+    # "fix: restore the missing '(' as in chocolate-hazelnut-wedges 3517". With the bracket back,
+    # the line is the ordinary "<cups> flour (<grams>)" shape, spelled out the way 3517 was.
+    5204: {"what": "row",
+           "changes": {"label": "spooned and leveled all-purpose flour",
+                       "secondary_measure": "288 grams",
+                       "raw_text": "2 ¼ cups spooned and leveled all-purpose flour (288 grams)"},
+           "why": "Andy's residual decision: the opening bracket is missing before 288 grams, and "
+                  "with it restored the grams are the line's second amount"},
     4422: {"what": "join_below", "absorb": 4423,
            "changes": {"label": "natural, unsweetened cocoa powder", "note": "sifted",
                        "secondary_measure": "23 grams",
@@ -114,11 +149,51 @@ RESIDUAL_FIXES = {
            "why": "Andy's residual decision: 'sifted' is preparation and the note column exists "
                   "for it, which keeps the library match without a hand_repoints row"},
 }
+# ⚠️ EVERY "FIX" IN REVISION 2'S RESIDUAL FILE IS ACCOUNTED FOR, AND THE PASS REFUSES OTHERWISE. A
+#    decision a pass silently skips is a hand edit nobody made. Each row is either spelled out in
+#    RESIDUAL_FIXES above, settled by a rule, or not run, with the reason the report repeats.
+RESIDUAL_2_BY_RULE = {
+    4604: "R5's count arm writes it: 'or 2 pureed tomatoes' names a different food from the row's "
+          "tomato sauce, so it is the row's note (decisions-3)",
+}
+RESIDUAL_2_NOT_RUN = {
+    # ⚠️ THIS DECISION CONTRADICTS THE TWO FILES IT CITES, so the pass stops on the row rather
+    #    than running it. Its DECISION says "'or ½ English cucumber' moves to the row's note
+    #    (decisions-3)". decisions-3's own first row names this exact line as a SAME-food "or"
+    #    that stays in the second amount, and the revision 2 brief writes the answer out:
+    #    "or ½ English cucumber" -> "or ½ English". R2 as Andy finally called it writes that, and
+    #    this row's note move is not run. A one-line change if the note was the intent.
+    4145: "contradicted: decisions-3 and the revision 2 brief both put this line in the second "
+          "amount as 'or ½ English'; the rule writes that and this decision is not run",
+    # "fix ONLY if it is just a missing ')' at the end ... otherwise leave as is". It is not: the
+    # line is "3 tbsp Thai tea mix (" with NOTHING after the bracket, so restoring ")" gives "()"
+    # around nothing. Whatever the bracket held was lost before the import, and the name the page
+    # prints is already "Thai tea mix" with no stray bracket in it.
+    5835: "left as is: the bracket opens at the very end of the line with nothing inside it, so a "
+          "closing bracket would enclose nothing, and the stored name already reads 'Thai tea mix'",
+}
+
 # ⚠️ bananas-foster 2832 IS NOT HERE, AND IT WAS IN AN EARLIER DRAFT OF THIS LIST. Its decision
 #    ("amount 300 grams | second amount 2 large / about 1 ¼ cups | name semi-ripe bananas, peeled
 #    and roughly chopped") is now what R2 produces on its own, because the count fragment is split
 #    into what measures and what names the food. A decided row that a rule can reach is a rule,
 #    which is the whole point of fixing by rule rather than by row.
+
+
+def _residual_decisions_all():
+    """Both residual files, the later one winning where a row is in both. Every "fix" in the later
+    file has to be spelled out, settled by a rule, or named as not run."""
+    merged = _residual_decisions(RESIDUAL_DECISIONS)
+    later = _residual_decisions(RESIDUAL_DECISIONS_2)
+    merged.update(later)
+    unaccounted = [rid for rid, (decision, _r) in later.items()
+                   if decision.lower().startswith("fix") and rid not in RESIDUAL_FIXES
+                   and rid not in RESIDUAL_2_BY_RULE and rid not in RESIDUAL_2_NOT_RUN]
+    if unaccounted:
+        raise SystemExit(f"{RESIDUAL_DECISIONS_2.name}: row(s) {unaccounted} say fix and nothing "
+                         f"in this pass runs them, and a decision skipped in silence is a hand "
+                         f"edit nobody made")
+    return merged
 
 
 def _residual_decisions(path=None):
@@ -195,7 +270,8 @@ MISO_TOFU_SECOND = "1 block"
 # ⚠️ AND THE RESIDUAL ROWS JOIN IT, for the reason the declared set exists at all: on a SECOND run
 #    each call finds its work done and produces nothing, so a set derived from the writes would be
 #    empty and the rules would claim those rows back.
-_RESIDUAL_ROW_IDS = frozenset({2834, 4320, 3135, 3136, 3517, 3518, 4422, 4423})
+_RESIDUAL_ROW_IDS = frozenset({2834, 4320, 3135, 3136, 3517, 3518, 4422, 4423,
+                               7613, 4767, 5204})
 # ⚠️ RESIDUAL_HELD IS NOT IN THIS SET, AND THAT IS THE POINT OF IT. A row Andy is holding has to
 #    stay FLAGGED, which means the rule still has to look at it and still has to refuse it. Adding
 #    it here made the rule stand aside, and a row that is neither changed nor flagged is a row that
@@ -230,7 +306,8 @@ def plan(con, ic, density_for, hand_edited, snapshot_fields=()):
     #    column fight on every run. _click_through_decisions is read here so a clone that cannot
     #    open the file cannot run the pass, which is what makes the rules below re-runnable.
     _click_through_decisions()
-    _residual_calls(rows, writes, _residual_decisions())
+    _click_through_decisions(DECISIONS_3)
+    _residual_calls(rows, writes, _residual_decisions_all())
     # ⚠️ THE OWNED ROWS ARE A DECLARED SET, NOT THE SET OF WRITES THE CALLS HAPPEN TO PRODUCE. On a
     #    SECOND run each call finds its work already done and produces nothing, so a set derived
     #    from the writes was empty and the rules claimed those rows back. miso-tofu's "1 block" and
@@ -785,7 +862,17 @@ def _link_drift(db, renamed):
 
 
 def _write_residual(path, flags, notes):
-    """The rows no rule settles, with a blank DECISION column for Andy."""
+    """The rows no rule settles, with a DECISION column for Andy.
+
+    ⚠️ A ROW ANDY HAS ALREADY DECIDED CARRIES THAT DECISION, so the next list asks him only about
+       what is new. 24 of revision 1's 36 rows are hand edits he answered "keep", and a list that
+       blanked them again would ask the same question a third time. The REASON says which file
+       the answer came from, so a carried answer never reads as a fresh one.
+    """
+    try:
+        decided = _residual_decisions_all()
+    except SystemExit:
+        decided = {}
     path = pathlib.Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     # The path comes from corpus_guard.report_target, which puts it in gitignored reports/ unless
@@ -801,9 +888,21 @@ def _write_residual(path, flags, notes):
             held = RESIDUAL_HELD.get(f["row_id"])
             if held:
                 reason = f"{reason} -- HELD: {held}"
-            w.writerow(["flag", f["recipe_id"], f["row_id"], f["part"], reason, "", ""])
+            w.writerow(["flag", f["recipe_id"], f["row_id"], f["part"], reason]
+                       + _carried(decided, f["row_id"]))
         for n in notes:
-            w.writerow(["note", n["recipe_id"], n["row_id"], n["part"], n["reason"], "", ""])
+            w.writerow(["note", n["recipe_id"], n["row_id"], n["part"], n["reason"]]
+                       + _carried(decided, n["row_id"]))
+
+
+def _carried(decided, row_id):
+    """[DECISION, REASON] for a row already decided in a committed residual file, else blanks."""
+    if row_id not in decided:
+        return ["", ""]
+    decision, reason = decided[row_id]
+    if row_id in RESIDUAL_2_NOT_RUN:
+        return [decision, f"NOT RUN by this pass: {RESIDUAL_2_NOT_RUN[row_id]}"]
+    return [decision, f"carried from a committed residual decisions file: {reason}"]
 
 
 def main(argv=None):
