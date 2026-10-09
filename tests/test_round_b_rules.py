@@ -1438,3 +1438,21 @@ def test_the_importer_s_no_amount_path_still_runs_r5_and_r7(line, name, note):
     d = ic.classify_line(line)
     assert d["name"] == name
     assert d["note"] == note
+
+
+# ---- revision 3a: the third residual file ------------------------------------------------------- #
+import pathlib as _pathlib                                                      # noqa: E402
+import sys as _sys                                                              # noqa: E402
+
+_sys.path.insert(0, str(_pathlib.Path(__file__).resolve().parent.parent / "scripts"))
+import apply_round_b as _rb                                                     # noqa: E402
+
+
+def test_the_latest_residual_file_wins_and_every_fix_in_it_is_accounted_for():
+    """kachumber-tilapia 4145 was sent to the note by the second file and to the second amount by
+    the third. The pass reads all three, the latest wins, and a "fix" nothing runs stops the pass."""
+    decided = _rb._residual_decisions_all()
+    assert "second amount" in decided[4145][0]
+    assert 4145 in _rb.RESIDUAL_2_BY_RULE
+    assert not set(_rb.RESIDUAL_2_BY_RULE) & set(_rb.RESIDUAL_2_NOT_RUN)
+

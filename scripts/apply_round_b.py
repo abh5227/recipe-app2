@@ -61,6 +61,9 @@ DECISIONS_3 = (HERE.parent / "docs" / "data-repairs"
                / "round-b-decisions-3-2026-10-08.csv")
 RESIDUAL_DECISIONS_2 = (HERE.parent / "docs" / "data-repairs"
                         / "round-b-residual-decisions-2-2026-10-08.csv")
+# ---- revision 3a: the same 36 rows, with kachumber-tilapia 4145 answered again ---------------- #
+RESIDUAL_DECISIONS_3 = (HERE.parent / "docs" / "data-repairs"
+                        / "round-b-residual-decisions-3-2026-10-09.csv")
 
 # ⚠️ ONE ROW OF THE RESIDUAL FILE IS DELIBERATELY NOT APPLIED. tahini-brioche 7462's "1 ¾ cups" is
 #    a lower-confidence pre-fill: King Arthur's Tahini Brioche matches the recipe's order and its
@@ -155,16 +158,13 @@ RESIDUAL_FIXES = {
 RESIDUAL_2_BY_RULE = {
     4604: "R5's count arm writes it: 'or 2 pureed tomatoes' names a different food from the row's "
           "tomato sauce, so it is the row's note (decisions-3)",
+    # The second file sent this line to the note, against decisions-3's first row. The third file
+    # answers it again with what R2 writes, so the decision and the rule agree and nothing is
+    # left unrun.
+    4145: "R2 writes it: 'or ½ English cucumber' is the same food as the row's Persian cucumber, "
+          "so it is a line of the second amount, 'or ½ English' (decisions-3)",
 }
 RESIDUAL_2_NOT_RUN = {
-    # ⚠️ THIS DECISION CONTRADICTS THE TWO FILES IT CITES, so the pass stops on the row rather
-    #    than running it. Its DECISION says "'or ½ English cucumber' moves to the row's note
-    #    (decisions-3)". decisions-3's own first row names this exact line as a SAME-food "or"
-    #    that stays in the second amount, and the revision 2 brief writes the answer out:
-    #    "or ½ English cucumber" -> "or ½ English". R2 as Andy finally called it writes that, and
-    #    this row's note move is not run. A one-line change if the note was the intent.
-    4145: "contradicted: decisions-3 and the revision 2 brief both put this line in the second "
-          "amount as 'or ½ English'; the rule writes that and this decision is not run",
     # "fix ONLY if it is just a missing ')' at the end ... otherwise leave as is". It is not: the
     # line is "3 tbsp Thai tea mix (" with NOTHING after the bracket, so restoring ")" gives "()"
     # around nothing. Whatever the bracket held was lost before the import, and the name the page
@@ -181,16 +181,17 @@ RESIDUAL_2_NOT_RUN = {
 
 
 def _residual_decisions_all():
-    """Both residual files, the later one winning where a row is in both. Every "fix" in the later
-    file has to be spelled out, settled by a rule, or named as not run."""
+    """The three residual files, a later one winning where a row is in more than one. Every "fix"
+    in the two later files has to be spelled out, settled by a rule, or named as not run."""
     merged = _residual_decisions(RESIDUAL_DECISIONS)
     later = _residual_decisions(RESIDUAL_DECISIONS_2)
+    later.update(_residual_decisions(RESIDUAL_DECISIONS_3))
     merged.update(later)
     unaccounted = [rid for rid, (decision, _r) in later.items()
                    if decision.lower().startswith("fix") and rid not in RESIDUAL_FIXES
                    and rid not in RESIDUAL_2_BY_RULE and rid not in RESIDUAL_2_NOT_RUN]
     if unaccounted:
-        raise SystemExit(f"{RESIDUAL_DECISIONS_2.name}: row(s) {unaccounted} say fix and nothing "
+        raise SystemExit(f"{RESIDUAL_DECISIONS_3.name}: row(s) {unaccounted} say fix and nothing "
                          f"in this pass runs them, and a decision skipped in silence is a hand "
                          f"edit nobody made")
     return merged
