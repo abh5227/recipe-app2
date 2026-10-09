@@ -61,7 +61,8 @@ library_names.csv     library_id, canonical, commonality. About 400 KB, 10,020 r
 
 **A fresh clone does not have it, and that is expected.** Without it the lookup table is empty, the
 app runs normally, and the linking feature never fires. Nothing errors. Drop the file in the project
-folder and rerun `build_db.py` to switch it on. Generating it yourself needs `join.db` and
+folder and rerun `python3.13 build_db.py --i-mean-live` to switch it on. The flag is there because
+`recipes.db` holds your data by then, and the script refuses to rebuild an existing database without it. Generating it yourself needs `join.db` and
 `sources.db`, two large vocabulary databases that are also not in git, and if you do not have those
 then you do not need this file.
 

@@ -49,6 +49,8 @@ npm install                          # frontend deps: Vite (build) + TipTap (ste
 npm run build                        # build the Vite bundle → dist/ (git-ignored)
                                      #   REQUIRED: Flask's "/" serves dist/index.html — skip this and / 500s
 python3.13 build_db.py               # apply migrations + load seed.py → recipes.db (never wipes your data)
+                                     #   creates recipes.db on a fresh clone. Rebuilding one that EXISTS
+                                     #   needs --i-mean-live, and --db points it at a copy
 python3.13 app.py                    # serve the built frontend + API at http://localhost:8000
 
 # Active development (two processes, hot-reload)
@@ -68,7 +70,7 @@ node --test tests/js/*.test.js       # JS suite (zero-dep; scaler, factor-sync, 
 ```
 
 After editing frontend source (`static/*.js`, `static/styles.css`), rerun `npm run build` (or use the
-`npm run dev` loop). After editing `seed.py`, rerun `build_db.py` then restart `app.py`.
+`npm run dev` loop). After editing `seed.py`, rerun `build_db.py --i-mean-live` then restart `app.py`.
 
 ## Architecture & conventions
 
@@ -629,6 +631,16 @@ How this project is run:
   output to be recorded decisions. Opening the file is the thing that matters, because that is what a
   fresh clone has to be able to do. Measured today: 4 of the 20 files are untracked, no `.py` opens
   any of them, and the index already lists all four as read by nothing.
+- **NEVER RUN A SCRIPT AGAINST LIVE TO READ ITS HELP. READ THE SOURCE.** `--help` is a request for
+  help only in a script that parses its arguments. One that does not runs its whole job instead.
+  *Why:* on 2026-10-09 `build_db.py --help` ran a full build against live in a session forbidden to
+  write it. The script parsed no arguments, and it sat at the repo root, outside the `scripts/`
+  folder the guard sweep walks. The rows came back identical only because the build deletes and
+  re-inserts the weights and library names from the same files. Live's fingerprint still moved,
+  from fd74bec9 to 430ad7bf. `build_db.py` now reads its arguments before it opens anything and
+  refuses an EXISTING live database without `--i-mean-live`, and `tests/test_live_guards.py` sweeps
+  it. The rule stands for the next script: grep its `add_argument` lines, or run it from a scratch
+  copy of the repo.
 - **RUN THE WHOLE CHAIN FROM A CLEAN CHECKOUT BEFORE RUNNING IT FOR REAL.** A pass applied on its own
   to a corpus already part way through agrees with the chain by luck. The passes are ordered and each
   reads what the one before it left (`docs/data-repairs/README.md`). Every defect in this round's

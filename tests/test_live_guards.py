@@ -183,7 +183,9 @@ def _sources():
     scripts = REPO / "scripts"
     found = [p for pattern in _SWEPT for p in sorted(scripts.glob(pattern))]
     out = [p for p in found if _rel(p) not in _READ_ONLY_BY_INSPECTION]
-    return out + [REPO / "migrate.py"]
+    # ⚠️ AND build_db.py, WHICH SAT OUTSIDE THE SWEEP AND WROTE LIVE ON `--help`. It read no
+    #    arguments, so on 2026-10-09 typing --help to learn them ran a full build against live.
+    return out + [REPO / "migrate.py", REPO / "build_db.py"]
 
 
 def test_no_script_can_open_a_database_without_the_shared_guard():
@@ -372,6 +374,10 @@ _NO_DRY_RUN = {
     "migrate.py":              "not a pass. Applying the pending migrations IS its job, it is "
                                "idempotent by the schema_migrations ledger, and the chain's own "
                                "rehearsal calls it first",
+    "build_db.py":             "not a pass. It is the README's setup command, it creates a "
+                               "database that does not exist yet without being asked, and an "
+                               "existing one needs --i-mean-live, which test_build_db_guard.py "
+                               "proves",
     "serve_rehearsal.py":      "not a pass. It serves a COPY through the app for a click-through, "
                                "so every write is an ordinary one a person made in the UI, and "
                                "there is nothing for a dry run to preview. It refuses the real "
@@ -393,7 +399,7 @@ def test_every_pass_that_takes_a_database_dry_runs_until_it_is_told_to_apply():
 def test_the_no_dry_run_exemptions_are_still_what_they_say_they_are():
     """An exemption is a named entry with a reason, and the reason has to stay true."""
     for name in _NO_DRY_RUN:
-        p = (REPO / name) if name == "migrate.py" else (REPO / "scripts" / name)
+        p = (REPO / name) if name in ("migrate.py", "build_db.py") else (REPO / "scripts" / name)
         assert p.exists(), f"{name} is exempted and no longer exists"
     survey = (REPO / "scripts" / "scan_notes_for_waits.py").read_text(encoding="utf-8")
     for write in ("INSERT INTO", "UPDATE recipe", "DELETE FROM"):

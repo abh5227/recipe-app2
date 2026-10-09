@@ -10,8 +10,22 @@ wipes everything and rebuilds. Two kinds of data live side by side:
     per-line "changes" to seed recipes. These are NEVER touched here.
 
 So it upserts seed rows by their stable key (slug) and leaves everything else alone.
-Run it with:  python3 build_db.py
+
+⚠️ IT NAMES ITS DATABASE, AND AN EXISTING LIVE ONE NEEDS THE SENTENCE TYPED OUT.
+
+    python3.13 build_db.py                       a fresh clone: creates recipes.db, which is safe
+                                                 because there is nothing in it to lose yet
+    python3.13 build_db.py --db /tmp/copy.db     rehearse on a copy
+    python3.13 build_db.py --i-mean-live         rebuild the real one, said out loud
+
+It used to take no arguments at all and build whatever sat at BASE_DIR/recipes.db, which is live.
+On 2026-10-09 `build_db.py --help`, typed to read the arguments, ran a full build against live in
+the middle of a session forbidden to write it. The rows came back identical (the 129 weights and
+10,020 library names are deleted and re-inserted from the same files) and the fingerprint moved
+from fd74bec9 to 430ad7bf. It sat at the repo root, outside the scripts/ folder the live-guard test
+walks, so nothing had ever asked it the question every other script answers.
 """
+import argparse
 import csv
 import datetime
 import re
@@ -432,7 +446,9 @@ def build():
             DB.unlink()
 
     # 1) make sure the schema exists / is current (this never deletes data)
-    migrate(verbose=True)
+    # ⚠️ THE SAME FILE THIS FUNCTION SEEDS. migrate() falls back to ITS OWN module global, so a
+    #    caller that redirected only build_db.DB used to migrate one database and seed another.
+    migrate(verbose=True, db=DB)
 
     # 2) refresh seed content only. We briefly suspend foreign keys for the bulk
     #    upsert (a maintenance operation), then turn them back on and re-verify.
@@ -477,5 +493,29 @@ def build():
     print_step_coverage(step_coverage)
 
 
-if __name__ == "__main__":
+def main(argv=None):
+    """The command line. ⚠️ THE ARGUMENTS ARE READ BEFORE ANY FILE IS OPENED, so --help prints and
+    exits having touched nothing, and the guard runs before build() can reach a database."""
+    global DB
+    ap = argparse.ArgumentParser(
+        description="apply pending migrations and load seed.py into a SQLite database")
+    ap.add_argument("--db", default=None,
+                    help=f"the database to build (default: {DB})")
+    ap.add_argument("--i-mean-live", action="store_true",
+                    help=f"required to rebuild {DB} once it exists")
+    a = ap.parse_args(argv)
+    db = Path(a.db) if a.db else DB
+    # ⚠️ THE SHARED GUARD, NOT A COPY OF IT, and only over a database that EXISTS. The README's
+    #    setup runs this bare on a fresh clone, where live is about to be created and holds nothing
+    #    to protect, and the cold-start CI job runs that line verbatim. Once the file exists it is
+    #    the owner's data, and rebuilding it is a sentence a person has to type.
+    if db.exists():
+        sys.path.insert(0, str(BASE_DIR / "scripts"))
+        from corpus_guard import refuse_live
+        refuse_live(db, a.i_mean_live)
+    DB = db
     build()
+
+
+if __name__ == "__main__":
+    main()
