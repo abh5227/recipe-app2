@@ -1,7 +1,8 @@
 "use strict";
 
 import { formatAmount, group, canonicalizeUnit } from "./scaler.js";
-import { headingText, toggleRowType, nonEmptyRows, writeIngField, secondToggle } from "./ingredient-row.js";
+import { headingText, toggleRowType, nonEmptyRows, writeIngField, secondToggle, secondLines,
+         joinSecondLines } from "./ingredient-row.js";
 import { esc } from "./esc.js";
 import { ledgerCellsAt, amountSubLinesAt, readNoteAt } from "./ledger-row.js";
 import { showLinksAsWords } from "./step-adapter.js";
@@ -3065,10 +3066,18 @@ function unitCell(i, val) {
   return `<input class="ie e-unit" list="ie-units" data-inline-edit-ing="unit" data-i="${i}" value="${esc(canonicalizeUnit(val))}" placeholder="unit" aria-label="Unit" spellcheck="false">`;
 }
 // The SECOND AMOUNT field: the author's own backup, as written. A plain <input> like the unit, and
-// deliberately free text — "250g", "8 tablespoons / 113 grams", "about 1 bunch" are all things an
-// author wrote and none of them splits into a number and one unit.
-function secondCell(i, val) {
-  return `<input class="ie e-second" data-inline-edit-ing="second" data-i="${i}" value="${esc(val == null ? "" : val)}" placeholder="2nd amount" aria-label="Second amount, as the author wrote it" spellcheck="false">`;
+// deliberately free text. "250g" and "about 1 bunch" are things an author wrote and neither splits
+// into a number and one unit. C1 draws ONE FIELD PER LINE (`k` of `n`), the lines the reading view
+// stacks under the amount, and the input handler joins them back (secondFieldsValue).
+function secondCell(i, val, k, n) {
+  const which = n > 1 ? `, line ${k + 1} of ${n}` : "";
+  return `<input class="ie e-second" data-inline-edit-ing="second" data-i="${i}" data-line="${k}" value="${esc(val == null ? "" : val)}" placeholder="2nd amount" aria-label="Second amount, as the author wrote it${which}" spellcheck="false">`;
+}
+// C1: the arrow is the app's own caret family (.note-caret, note-ui.js prints &#9662;). FILLED
+// (▸ closed, ▾ open) when the row has a second amount, an outline (▹ ▿) when it has none.
+function secondCaret(has, open) {
+  const glyph = open ? (has ? "&#9662;" : "&#9663;") : (has ? "&#9656;" : "&#9657;");
+  return `<span class="note-caret" aria-hidden="true">${glyph}</span>`;
 }
 // A3: the amount zone spans to one wide field (no unit box) ONLY for a whole-string fallback — a
 // non-empty quantity carrying letters/slash/plus ("pinch", "2 lb / 1 kg", "3 + 2 tbsp") where a unit
@@ -3082,25 +3091,24 @@ function amountSpans(quantity, unit) {
 function amountZoneHTML(x, i) {
   const span = amountSpans(x.quantity, x.unit);
   const qty = ieCell("quantity", i, x.quantity, "e-qty", "qty");
-  // The second amount is COLLAPSED behind a toggle that says what it holds — see secondToggle in
-  // ingredient-row.js for the rule and for why opening it is not a content change.
+  // C1 (Andy, 9 Oct): the second amount sits behind a small arrow beside the amount. See
+  // secondToggle in ingredient-row.js for the rule and for why opening it is not a content change.
+  // ⚠️ THE TITLE AND THE LABEL CARRY THE VALUE. Closed, the arrow is the only thing on the row
+  //    that says a second amount exists, so hover and a screen reader both get it in full.
+  // ⚠️ AND THIS ONE IS A DISCLOSURE, SO IT SAYS aria-expanded. Today's toggle was a button that
+  //    added a field and vanished. The arrow stays where it is, opens and closes, and reports which.
   const t = secondToggle(x);
-  const second = t.open
-    ? secondCell(i, x.secondary_measure)
-    // ⚠️ THE TITLE CARRIES THE VALUE, AND IT CARRIED A STATIC STRING. A long backup ellipses in the
-    //    column ("+ 8 tables…" for "8 tablespoons / 113 grams"), and with a static title the only
-    //    place the whole value appeared was the aria-label. Hover now says it too.
-    // ⚠️ AND THERE IS NO aria-expanded, WHICH IS A STATE THAT NEVER RESOLVED. The button announced
-    //    "collapsed", activating it REMOVED the button from the DOM, nothing afterwards reported
-    //    expanded, and there was no aria-controls and no way to collapse again. This is a button
-    //    that adds a field, not a disclosure, so it says so and nothing more. Both found by a
-    //    fresh review.
-    : `<button type="button" class="second-toggle${t.has ? " has" : ""}" data-inline-edit-second data-i="${i}"` +
-      ` title="${t.has ? "Second amount: " + esc(t.value) : "Add a second amount"}"` +
-      ` aria-label="${t.has ? "Edit the second amount, " + esc(t.value) : "Add a second amount"}"` +
-      `>${esc(t.label)}</button>`;
+  const arrow = `<button type="button" class="second-arrow${t.has ? " has" : ""}" data-inline-edit-second data-i="${i}"` +
+    ` aria-expanded="${t.open}"` +
+    ` title="${t.has ? "Second amount: " + esc(t.value) : "Add a second amount"}"` +
+    ` aria-label="${t.has ? "Second amount, " + esc(t.value) : "Add a second amount"}"` +
+    `>${secondCaret(t.has, t.open)}</button>`;
+  const lines = t.open ? secondLines(x) : [];
+  const fields = t.open
+    ? `<span class="second-fields">${lines.map((v, k) => secondCell(i, v, k, lines.length)).join("")}</span>`
+    : "";
   return `<span class="amount-zone${span ? " no-unit" : ""}">${qty}${span ? "" : unitCell(i, x.unit)}` +
-         `${second}</span>`;
+         `${arrow}${fields}</span>`;
 }
 function editIngRowHTML(x, i) {
   if (x.is_heading) {
@@ -3580,13 +3588,27 @@ function addNote(i) {
   rerenderEditIngredients();
   focusIngField(i, "note");
 }
-// Reveal the second-amount field (transient _secondOpen — never saved, see secondToggle). Not a
-// content change on its own, so NO markDirty until the cook actually types into the field: that is
-// what keeps Save, Undo and the "your changes" mark behaving exactly as they did before.
-function openIngSecond(i) {
-  view.draft.ingredients[i]._secondOpen = true;
+// C1: the arrow opens and closes the second-amount field(s). _secondOpen is transient and never
+// saved (see secondToggle). Not a content change on its own, so NO markDirty until the cook actually types
+// into a field: that is what keeps Save, Undo and the "your changes" mark behaving exactly as they
+// did before. Opening puts the cursor in the first line. Closing hands focus back to the arrow,
+// because the re-render replaced the one that was clicked.
+function toggleIngSecond(i) {
+  const row = view.draft.ingredients[i];
+  row._secondOpen = !row._secondOpen;
   rerenderEditIngredients();
-  focusIngField(i, "second");
+  if (row._secondOpen) focusIngField(i, "second");
+  else {
+    const arrow = document.querySelector(`[data-inline-edit-second][data-i="${i}"]`);
+    if (arrow) arrow.focus();
+  }
+}
+// C1: a row's second amount is every open line field in order, joined the way the reading view
+// splits it. See joinSecondLines for why the fields are read as a whole.
+function secondFieldsValue(el) {
+  const zone = el.closest(".second-fields");
+  if (!zone) return el.value;
+  return joinSecondLines([...zone.querySelectorAll('[data-inline-edit-ing="second"]')].map((f) => f.value));
 }
 
 function inlineSaveBarHTML() {
@@ -3737,7 +3759,7 @@ function handleInlineEdit(e) {
   const ani = e.target.closest("[data-inline-edit-addnote]");
   if (ani) { addNote(Number(ani.dataset.i)); return true; }
   const sec = e.target.closest("[data-inline-edit-second]");
-  if (sec) { openIngSecond(Number(sec.dataset.i)); return true; }
+  if (sec) { toggleIngSecond(Number(sec.dataset.i)); return true; }
   // Editor parity — step structural actions (re-render + re-mount via rerenderEditSteps)
   if (e.target.closest("[data-inline-edit-add-step]")) { addStep(); return true; }
   // NB: no rm-step branch — A stage 2 moved step delete into the row ⋯ menu (a .danger item), which
@@ -5664,7 +5686,8 @@ document.addEventListener("keydown", (e) => {
       const ta = e.target;
       ta.value = iePreEdit;
       const row = view.draft && view.draft.ingredients[Number(ta.dataset.i)];
-      if (row) writeIngField(row, ta.dataset.inlineEditIng, iePreEdit);   // restore draft to the snapshot
+      if (row) writeIngField(row, ta.dataset.inlineEditIng,             // restore draft to the snapshot
+                             ta.dataset.inlineEditIng === "second" ? secondFieldsValue(ta) : iePreEdit);
       ta.blur();
       return;
     }
@@ -5771,7 +5794,9 @@ document.addEventListener("input", (e) => {
   if (ing && view && view.editMode && view.draft) {
     const row = view.draft.ingredients[Number(ing.dataset.i)];
     if (!row) return;
-    writeIngField(row, ing.dataset.inlineEditIng, ing.value);   // real <textarea> -> draft (shared w/ Esc-revert)
+    // real field -> draft (shared w/ Esc-revert). A second-amount line is one of several (C1).
+    writeIngField(row, ing.dataset.inlineEditIng,
+                  ing.dataset.inlineEditIng === "second" ? secondFieldsValue(ing) : ing.value);
     markDirty();
   }
   // Editor parity — buffer a step HEADING into its draft row. Same no-re-render discipline as the

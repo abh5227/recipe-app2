@@ -2,6 +2,7 @@
 // Pure ingredient-row transforms (no DOM, no `view`) so they're unit-testable in node. ES module,
 // like scaler.js: app.js imports these names in the browser (loaded as <script type="module">)
 // and the tests under tests/js/ import them the same way.
+import { SECOND_AMOUNT_JOIN } from "./scaler.js";
 
   // The heading text to DISPLAY / SAVE for a heading row. Heading text lives in its own `heading`
   // field; `raw_text` is only a back-compat fallback for drafts that predate the dedicated field.
@@ -55,9 +56,10 @@
   }
 
   // Edit mode shows the FIRST amount only, with the second behind an expand (Andy's call on the
-  // round B click-through). Collapsed, the toggle still SAYS what is there, so a second amount is
-  // never hidden in silence: "+ 2 sticks" on a row that has one, "+ second amount" on a row that
-  // does not. Expanding reveals the ordinary field.
+  // round B click-through). C1 is how it is drawn (Andy, 9 Oct, decisions-4): a small arrow beside
+  // the amount, and nothing else while it is closed. The arrow is FILLED when the row has a second
+  // amount and an outline when it has none, so a second amount is never hidden in silence, and its
+  // title and label carry the value. Open, the field or fields sit under the amount.
   //
   // ⚠️ `_secondOpen` IS A DRAFT-ONLY FLAG AND IT IS NEVER SAVED. ingToPayload builds its object by
   // naming each key, so an underscore field on the draft row cannot reach the wire. That is also
@@ -69,12 +71,34 @@
   // measurement, and the whole point of the change is that the amount column shows one figure.
   function secondToggle(row) {
     const value = String((row && row.secondary_measure) || "").trim();
-    return {
-      open: !!(row && row._secondOpen),
-      value,
-      has: value !== "",
-      label: value === "" ? "+ second amount" : "+ " + value,
-    };
+    return { open: !!(row && row._secondOpen), value, has: value !== "" };
   }
 
-  export { headingText, toggleRowType, rowIsBlank, nonEmptyRows, writeIngField, secondToggle };
+  // The lines the open arrow shows, one field each, split exactly the way the reading view splits
+  // them (scaler.js secondAmountParts), so "1 lb / 4 medium / or 2 long" opens as three fields. A
+  // row with no second amount opens one empty field to type into.
+  function secondLines(row) {
+    const value = String((row && row.secondary_measure) || "");
+    return value.trim() === "" ? [""] : value.split(SECOND_AMOUNT_JOIN);
+  }
+
+  // The slot, rebuilt from the open fields in order. The fields are read as a whole rather than one
+  // line patched by position, so a line the cook splits by typing " / " cannot push the line below
+  // it out from under the next keystroke.
+  function joinSecondLines(values) {
+    return values.join(SECOND_AMOUNT_JOIN);
+  }
+
+  // What a save sends for the slot. ⚠️ A CLEARED LINE STAYS IN THE DRAFT, EMPTY, while the fields
+  // are open, because dropping it on the keystroke would renumber the fields under the cursor. It
+  // is left out here, on the way to the server. A slot with no blank line goes back EXACTLY as it
+  // is, which is every row nobody typed into, so the payload of an untouched row cannot move.
+  function secondForSave(value) {
+    const s = value == null ? "" : String(value);
+    const lines = s.split(SECOND_AMOUNT_JOIN);
+    if (!lines.some((l) => l.trim() === "")) return s;
+    return lines.filter((l) => l.trim() !== "").join(SECOND_AMOUNT_JOIN);
+  }
+
+  export { headingText, toggleRowType, rowIsBlank, nonEmptyRows, writeIngField, secondToggle,
+           secondLines, joinSecondLines, secondForSave };

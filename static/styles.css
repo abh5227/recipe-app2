@@ -111,9 +111,9 @@
      ⚠️ REVISION 2 MOVED THE SECOND AMOUNT OFF THIS TOKEN, BY ANDY'S CALL. Revision 1 argued that
      12px would throw away the only thing telling a measured figure from a guess. Andy's answer is
      that the two sub-lines are one size, and the "~" in front of every computed estimate is what
-     still tells them apart. This token is the note's now, and Edit mode's collapsed toggle, which
-     is held as it is until Andy picks from the round B preview. */
-  --fs-ing-sub:   13px;      /* .inote, .erow .second-toggle */
+     still tells them apart. This token is the note's now, and the size of Edit mode's
+     second-amount arrow (C1, Andy's pick of 9 Oct from the round B preview). */
+  --fs-ing-sub:   13px;      /* .inote, .erow .second-arrow */
   /* ⚠️ THE SUB-LINES UNDER AN AMOUNT, ONE SIZE FOR ALL OF THEM. The computed gram estimate
      ("~240 g") and every author's second amount, "or" lines included, read this and only this.
      It is the estimate's own 12px, which .weight used to write out as a bare number. */
@@ -126,16 +126,15 @@
      outranks `.note-row` (one class), so an Edit-mode note row was laid out at --col-amount (7rem)
      against the erow's 12.8rem, putting the below-note 106px to the left of the name it belongs
      under. The comment above that rule claimed the two matched.
-     ⚠️ AND --ie-second IS 9.5rem, MEASURED RATHER THAN CHOSEN. Andy's collapsed toggle reads
-     "+ second amount" on every row that has none, and that label measures 142px in the row's own
-     font: in the old 5.5rem (88px) track it was ellipsed to "+ second amo…", and a first fix to
-     7.5rem (120px) was still short. A default state that cannot show its own label is not a label.
-     152px fits it with 10px to spare. A long stored value ("8 tablespoons / 113 grams", 229px)
-     still ellipses, and the button's title and aria-label carry it in full, as does the field when
-     it opens. Measured in the browser against this stylesheet, not estimated. */
+     ⚠️ AND --ie-second IS 1.3rem, BECAUSE IT HOLDS AN ARROW NOW AND NOT A LABEL. C1, Andy's pick
+     of 9 Oct: a small caret beside the amount replaces the 9.5rem toggle column that read
+     "+ second amount" on every row. The column was 152px wide for that label, and every pixel of
+     it came out of the name. Open, the field or fields sit UNDER the amount and span the whole
+     zone, so a long value ("8 tablespoons / 113 grams") gets the zone's width rather than this
+     column's. The value an arrow cannot show is in its title and its aria-label. */
   --ie-qty:     2.8rem;
   --ie-unit:    4.5rem;
-  --ie-second:  9.5rem;
+  --ie-second:  1.3rem;
   --ie-amount:  calc(var(--ie-qty) + var(--ie-unit) + var(--ie-second) + 12px);
   --fs-label-sm:  11px;      /* .note-lead */
   --fs-label-xs:  10.5px;    /* .pk-sect, .rc-uncooked */
@@ -658,18 +657,17 @@ a:hover { color: var(--berry-lift); }
    lightens it, so the pair reads as one amount with its backup rather than as two amounts. */
 .erow .e-second { width: 100%; line-height: 24px; font-family: var(--font-mono); font-variant-numeric: tabular-nums; font-size: var(--fs-amount); color: var(--ink-soft); }
 .detail-card.editing .e-second:focus { padding: 2px 6px; margin: 0 -2px; box-shadow: 0 0 0 1px var(--paper-edge), 0 4px 10px -6px rgba(40,35,30,.25); }
-/* the COLLAPSED second amount: a quiet toggle that says what it holds, so nothing is hidden in
-   silence. It sits in the same grid cell the field does, at 13px (--fs-ing-sub), the size the
-   reading view printed the second amount at in revision 1, and it is muted further than the field because it is a
-   control rather than a value. ⚠️ Revision 2 took the reading view's second amount down to 12px
-   and left this at 13px on purpose: Edit mode is held as it is until Andy picks from the
-   preview of three ways to add a second amount. */
-.erow .second-toggle { width: 100%; line-height: 24px; text-align: left; padding: 0; border: 0;
-  background: none; cursor: pointer; font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums; font-size: var(--fs-ing-sub); color: var(--ink-soft);
-  opacity: .55; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.erow .second-toggle.has { opacity: .75; }
-.erow .second-toggle:hover, .erow .second-toggle:focus-visible { opacity: 1; color: var(--green); }
+/* C1, the second amount behind an arrow (Andy, 9 Oct, as previewed on :8003 page C). The arrow
+   is the app's own caret glyph in the --ie-second column beside the unit. Filled and darker when
+   the row HAS a second amount, an outline at half strength when it has none, so a second amount
+   is never hidden in silence. Open, the field(s) sit under the amount, one per line, spanning the
+   whole zone. */
+.erow .second-arrow { line-height: 24px; padding: 0; border: 0; background: none; cursor: pointer;
+  color: var(--ink-soft); opacity: .5; font-size: var(--fs-ing-sub); text-align: left; }
+.erow .second-arrow .note-caret { margin-left: 0; }
+.erow .second-arrow.has { opacity: .9; color: var(--ink); }
+.erow .second-arrow:hover, .erow .second-arrow:focus-visible { opacity: 1; color: var(--green); }
+.erow .second-fields { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .erow .e-name { font-family: var(--font-serif); font-size: var(--fs-amount); color: var(--ink); }   /* name matches the measurement size (15px) */
 .erow .e-heading { font-family: var(--font-mono); font-size: 12px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase; color: var(--green); }
 .note-row .e-note { font-family: var(--font-sans); font-style: italic; font-size: 12.5px; color: var(--ink-soft); }

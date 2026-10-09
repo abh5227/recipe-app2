@@ -20,7 +20,7 @@ import { canonicalizeUnit } from "./scaler.js";
 // 052 lets a heading hold the line's dormant name, so the `|| x.label` arm would have sent "salt"
 // back as the section title and renamed the heading on the next save. headingText is the one
 // definition of "which string is the title", and the server's _heading_title mirrors it.
-import { headingText } from "./ingredient-row.js";
+import { headingText, secondForSave } from "./ingredient-row.js";
 import { stepLevel } from "./step-row.js";
 
 // A row the user just added has no id yet. `undefined` and `null` are the same answer here, and
@@ -41,7 +41,9 @@ export function ingToPayload(x) {
   // ANSWER. A cook who clears the field sends "", which stores NULL. A client too old to know
   // about the field sends no key at all, and the server then keeps what it has rather than
   // reading the silence as a deletion. Same rule a note's kind and step link follow.
-  const second = oneLine(x.secondary_measure);
+  // ⚠️ AND A LINE THE COOK CLEARED IS LEFT OUT (C1's fields, one per line). secondForSave returns
+  // every slot without a blank line unchanged, so an untouched row sends what it always sent.
+  const second = oneLine(secondForSave(x.secondary_measure));
   if (x.ingredient_id) return { id, quantity, unit, secondary_measure: second, item: x.ingredient_id, label: oneLine(x.label || x.raw_text), note: x.note || "" };
   return { id, quantity, unit, secondary_measure: second, text: oneLine(x.label || x.raw_text), note: x.note || "" };
 }
