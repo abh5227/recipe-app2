@@ -72,9 +72,12 @@ RESIDUAL_DECISIONS_4 = (HERE.parent / "docs" / "data-repairs"
                         / "round-b-residual-decisions-4-2026-10-09.csv")
 RESIDUAL_DECISIONS_5 = (HERE.parent / "docs" / "data-repairs"
                         / "round-b-residual-decisions-5-2026-10-09.csv")
+# ---- revision 4: bbq-gulf-snapper 8493, whose salt the recipe already carried as its own row ---- #
+RESIDUAL_DECISIONS_6 = (HERE.parent / "docs" / "data-repairs"
+                        / "round-b-residual-decisions-6-2026-10-09.csv")
 # Each later file wins over the ones before it, row by row.
 RESIDUAL_LATER = (RESIDUAL_DECISIONS_2, RESIDUAL_DECISIONS_3, RESIDUAL_DECISIONS_4,
-                  RESIDUAL_DECISIONS_5)
+                  RESIDUAL_DECISIONS_5, RESIDUAL_DECISIONS_6)
 
 # ⚠️ ONE ROW OF THE RESIDUAL FILE IS DELIBERATELY NOT APPLIED. tahini-brioche 7462's "1 ¾ cups" is
 #    a lower-confidence pre-fill: King Arthur's Tahini Brioche matches the recipe's order and its
@@ -196,19 +199,20 @@ RESIDUAL_FIXES = {
                       "note": None},
            "why": "Andy's residual decision: two ingredients ran together, and the peppercorns "
                   "have their own amount"},
-    # "fix: split. Row 1 '2 small skin-on boneless snapper fillets, 10 to 12 ounces each' (the
-    #  per-piece weight stays as it is today). Row 2, directly below: '2 teaspoons kosher salt'
-    #  with note 'plus more for the sauce'"
-    8493: {"what": "split",
+    # "fix: name skin-on boneless snapper, 10 to 12 ounces each | raw_text 2 small skin-on boneless
+    #  snapper fillets, 10 to 12 ounces each | no split, because the salt is already its own row
+    #  (8504, kosher salt, note plus more for the sauce)" (residual-decisions-6)
+    # ⚠️ REVISION 3 SPLIT THIS ROW AND THE SALT CAME OUT TWICE. The Paprika archive lists the salt
+    #    once, run into the snapper's line, and 8504 has carried it since the recipe was created
+    #    (it is in the 1 July baseline). Rule 7 already gives 8504 its note. The snapper keeps only
+    #    its own piece of the author's line as raw_text, so nothing rebuilding a name from raw_text
+    #    can run the salt back into it.
+    8493: {"what": "row",
            "changes": {"label": "skin-on boneless snapper, 10 to 12 ounces each",
                        "raw_text": "2 small skin-on boneless snapper fillets, 10 to 12 ounces "
                                    "each"},
-           "second": {"qty": "2 teaspoons", "quantity": "2", "unit": "teaspoons",
-                      "label": "kosher salt",
-                      "raw_text": "2 teaspoons kosher salt, plus more for the sauce",
-                      "secondary_measure": None, "note": "plus more for the sauce"},
-           "why": "Andy's residual decision: two ingredients ran together, and 'plus more for "
-                  "the sauce' follows the salt, so it is the salt's note"},
+           "why": "Andy's residual decision: two ingredients ran together, and the salt is "
+                  "already its own row (8504), so the snapper row keeps only its own words"},
     4422: {"what": "join_below", "absorb": 4423,
            "changes": {"label": "natural, unsweetened cocoa powder", "note": "sifted",
                        "secondary_measure": "23 grams",

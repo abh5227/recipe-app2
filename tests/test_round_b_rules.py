@@ -1490,21 +1490,56 @@ def test_an_answer_a_later_file_replaced_is_still_held_by_a_commit(tmp_path):
 
 def test_the_four_plus_more_lines_are_decided_as_their_files_say():
     """Revision 3. 3861 is one ingredient with a second amount (residual-decisions-5, Andy's answer
-    in the session), and the other three split, each new row directly below its line."""
+    in the session), and 4074 and 4075 split, each new row directly below its line. Revision 4:
+    8493 does NOT split (residual-decisions-6), because its salt is already row 8504."""
     decided = _rb._residual_decisions_all()
     assert "second amount ~2 small lemons" in decided[3861][0]
     fix = _rb.RESIDUAL_FIXES[3861]["changes"]
     assert (fix["label"], fix["secondary_measure"], fix["note"]) == (
         "lemon juice", "~2 small lemons", "plus more for massaging kale")
     for rid, second in ((4074, "freshly ground black pepper"),
-                        (4075, "1 teaspoon whole black peppercorns"),
-                        (8493, "2 teaspoons kosher salt, plus more for the sauce")):
+                        (4075, "1 teaspoon whole black peppercorns")):
         assert decided[rid][0].startswith("fix: split"), rid
         assert _rb.RESIDUAL_FIXES[rid]["what"] == "split"
         assert _rb.RESIDUAL_FIXES[rid]["second"]["raw_text"] == second
         assert rid in _rb.DECIDED_ROWS
-    assert _rb.RESIDUAL_FIXES[8493]["second"]["note"] == "plus more for the sauce"
+    assert decided[8493][0].startswith("fix: name skin-on boneless snapper")
+    assert "no split" in decided[8493][0]
+    assert _rb.RESIDUAL_FIXES[8493]["what"] == "row"
+    assert "second" not in _rb.RESIDUAL_FIXES[8493]
+    assert 8493 in _rb.DECIDED_ROWS
     assert 7462 in _rb.RESIDUAL_HELD and 7462 not in _rb.DECIDED_ROWS
+
+
+def test_the_snapper_s_salt_comes_out_once():
+    """Revision 4. Andy saw "2 teaspoons kosher salt" twice: the split made a second salt row under
+    a recipe that already carried one (8504). Driven over the two rows as live stores them, the
+    pass now writes the snapper row's own words and makes no row."""
+    from collections import defaultdict
+    snapper = {"id": 8493, "recipe_id": "bbq-gulf-snapper", "position": 0, "is_heading": 0,
+               "qty": "2 small fillets", "quantity": None, "unit": None, "note": "",
+               "secondary_measure": None,
+               "label": "skin-on boneless snapper, 10 to 12 ounces each 2 teaspoons kosher salt, "
+                        "plus more for the sauce",
+               "raw_text": "2 small skin-on boneless snapper fillets, 10 to 12 ounces each 2 "
+                           "teaspoons kosher salt, plus more for the sauce"}
+    salt = {"id": 8504, "recipe_id": "bbq-gulf-snapper", "position": 11, "is_heading": 0,
+            "qty": "2 tsp", "label": "kosher salt, plus more for the sauce",
+            "raw_text": "kosher salt, plus more for the sauce", "note": ""}
+    writes = defaultdict(list)
+    _rb._residual_calls({"bbq-gulf-snapper": [snapper, salt]}, writes,
+                        _rb._residual_decisions_all())
+    got = writes["bbq-gulf-snapper"]
+    assert [w["what"] for w in got] == ["row"]
+    assert got[0]["id"] == 8493
+    assert got[0]["changes"] == {
+        "label": "skin-on boneless snapper, 10 to 12 ounces each",
+        "raw_text": "2 small skin-on boneless snapper fillets, 10 to 12 ounces each"}
+    # ...and a second run finds the row already carrying its words and writes nothing.
+    done = dict(snapper, **got[0]["changes"])
+    again = defaultdict(list)
+    _rb._residual_calls({"bbq-gulf-snapper": [done, salt]}, again, _rb._residual_decisions_all())
+    assert again["bbq-gulf-snapper"] == []
 
 
 def test_a_carried_reason_says_so_once():
